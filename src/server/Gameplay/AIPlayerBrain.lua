@@ -137,11 +137,9 @@ function Service:_tryMidfieldLongShot(context: any, carrier: any, pressure: any)
 	if self.Random:NextNumber() > 0.1 then
 		return false
 	end
-	local target = PitchConfig.TeamPitchPositionToWorld(Vector3.new(PitchConfig.HALF_WIDTH, 5.2, PitchConfig.PITCH_LENGTH), carrier.Side, context.Options)
-	local longShots = tonumber(carrier.Model:GetAttribute("LongShots")) or carrier.Stats.longShots or carrier.Stats.shooting
-	local shooting = tonumber(carrier.Model:GetAttribute("SHO")) or carrier.Stats.shooting
-	local chance = math.clamp(0.2 + ((longShots * 0.7 + shooting * 0.3) - 65) * 0.004, 0.08, 0.38)
-	carrier.Model:SetAttribute("VTRLongShotGoalChance", chance)
+	local targetX = self.Random:NextNumber() < 0.5 and 156 or 268
+	local target = PitchConfig.TeamPitchPositionToWorld(Vector3.new(targetX, 5.2, PitchConfig.PITCH_LENGTH), carrier.Side, context.Options)
+	carrier.Model:SetAttribute("VTRLongShotGoalChance", 0.1)
 	carrier.Model:SetAttribute("VTRLongShotChanceUntil", context.Now + 2.8)
 	local shot = {
 		Target = target,
@@ -275,20 +273,6 @@ function Service:_carrierDecision(context: any, carrier: any, assignment: any)
 		end
 	end
 
-	if pressure.None and not wingerEndLine and carrier.Pitch.Z < 690 then
-		local openCarryTarget = PitchConfig.ClampInsidePitch(Vector3.new(carrier.Pitch.X, 3, carrier.Pitch.Z + (attackStage == "FinalChance" and 18 or 42)))
-		if AIContextBuilder.SpaceAt(context, carrier.Side, openCarryTarget, 20) then
-			local target = PitchConfig.TeamPitchPositionToWorld(openCarryTarget, carrier.Side, context.Options)
-			assignment.TargetWorld = target
-			assignment.MovementTarget = target
-			assignment.PrimaryAssignment = "CarryIntoSpace"
-			assignment.MovementUrgency = 1
-			assignment.SprintAllowed = true
-			carrier.Model:SetAttribute("AICarryIntoSpace", true)
-			self.LastAction[carrier.Model] = "CarryForward"
-			return
-		end
-	end
 
 	local forcedSafe = wingerEndLine or (defensiveMood ~= "AggressiveRisk" and (pressure.Heavy or carriedFor >= holdLimit or self.Style:Risk() < 0.38 or (pressure.Under and passTempo > 0.55)))
 	local pass = AIPassingDecisionService.Choose(context, carrier, self.Style, self.Difficulty, forcedSafe)

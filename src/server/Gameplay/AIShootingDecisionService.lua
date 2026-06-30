@@ -10,25 +10,26 @@ local Service = {}
 local laneOpenTo: (any, any, number) -> boolean
 
 local function goalTarget(context: any, shooter: any): Vector3
-	local rectangle = GoalModelResolver.ResolveSide(shooter.Side, context.PitchCFrame, context.Width, context.Length)
-	local goalPitch = Vector3.new(PitchConfig.HALF_WIDTH, 3, PitchConfig.PITCH_LENGTH)
+	local attackSign = context.AttackSigns and context.AttackSigns[shooter.Side] or PitchConfig.GetAttackDirection(shooter.Side, context.Options)
+	local rectangle = GoalModelResolver.ResolveByAttackSign(attackSign, context.PitchCFrame, context.Width, context.Length)	local goalPitch = Vector3.new(PitchConfig.HALF_WIDTH, 3, PitchConfig.PITCH_LENGTH)
 	local center = PitchConfig.TeamPitchPositionToWorld(goalPitch, shooter.Side, context.Options)
 	local distance = PitchConfig.GetDistanceStuds(shooter.World, center)
 	local pressure = AIContextBuilder.Pressure(context, shooter)
 	local leftOpen = laneOpenTo(context, shooter, 180)
 	local rightOpen = laneOpenTo(context, shooter, 244)
 	local width = math.max(1, rectangle.RightBound - rectangle.Left)
+	local height = math.max(1, rectangle.Top - rectangle.Bottom)
 	local closeAlpha = math.clamp((150 - distance) / 120, 0, 1)
-	local cornerInset = math.clamp(width * (0.08 + (1 - closeAlpha) * 0.12 + pressure.Score * 0.06), 0.35, width * 0.28)
+	local cornerInset = math.clamp(width * (0.1 + pressure.Score * 0.04), 0.25, width * 0.18)
 	local leftX = rectangle.Left + cornerInset
 	local rightX = rectangle.RightBound - cornerInset
 	local sideBias = shooter.Pitch.X < PitchConfig.HALF_WIDTH and rightX or leftX
 	if leftOpen ~= rightOpen then
 		sideBias = leftOpen and leftX or rightX
 	end
-	local top = math.clamp(rectangle.Top - math.max(0.35, (rectangle.Top - rectangle.Bottom) * (0.24 + pressure.Score * 0.08)), rectangle.Bottom, rectangle.Top)
-	local low = math.clamp(rectangle.Bottom + math.max(0.25, (rectangle.Top - rectangle.Bottom) * 0.22), rectangle.Bottom, rectangle.Top)
-	local vertical = closeAlpha > 0.62 and low or top
+	local top = math.clamp(rectangle.Top - height * math.clamp(0.12 + pressure.Score * 0.08, 0.12, 0.26), rectangle.Bottom, rectangle.Top)
+	local low = math.clamp(rectangle.Bottom + height * 0.24, rectangle.Bottom, rectangle.Top)
+	local vertical = closeAlpha > 0.68 and low or top
 	return GoalModelResolver.Point(rectangle, sideBias, vertical)
 end
 

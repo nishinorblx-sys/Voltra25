@@ -272,14 +272,25 @@ local function cdmTarget(context: any, info: any, ballPitch: Vector3, pressed: b
 	return "ResetOption", Vector3.new(x, 3, math.max(120, ballPitch.Z - 48)), 0.82, false
 end
 
+local function inFrontOfDefensiveDangerZone(context: any, defendingSide: string, attacker: any): boolean
+	local zone = PitchConfig.Zones.OwnBox
+	local threatPitch = PitchConfig.WorldToTeamPitchPosition(attacker.World, defendingSide, context.Options)
+	local xMargin = 24
+	return threatPitch.X >= zone.XMin - xMargin
+		and threatPitch.X <= zone.XMax + xMargin
+		and threatPitch.Z >= zone.ZMax
+		and threatPitch.Z <= zone.ZMax + 60
+end
+
 local function boxStrikerThreat(context: any, defendingSide: string): any?
 	local best = nil
 	local bestScore = -math.huge
 	for _, attacker in ipairs(context.Teams[defendingSide == "Home" and "Away" or "Home"].List) do
-		if attacker.Role == "ST" and attacker.Root and PenaltyBoxService.IsInsideDefensiveBox(defendingSide, attacker.World, context.Options) then
+		if attacker.Root and inFrontOfDefensiveDangerZone(context, defendingSide, attacker) then
 			local distanceToBall = PitchConfig.GetDistanceStuds(attacker.World, context.BallWorld)
 			local hasBall = context.Owner == attacker.Model
-			local score = (hasBall and 80 or 0) - distanceToBall
+			local roleBonus = attacker.Role == "ST" and 24 or attacker.Role == "CAM" and 16 or attacker.Role == "Winger" and 8 or 0
+			local score = (hasBall and 120 or 0) + roleBonus - distanceToBall
 			if score > bestScore then
 				best = attacker
 				bestScore = score

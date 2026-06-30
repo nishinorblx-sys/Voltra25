@@ -118,7 +118,9 @@ function Resolver.ResolveSide(side: string, pitchCFrame: CFrame, width: number, 
 	local planePoint = pitchCFrame:PointToWorldSpace(Vector3.new(-goalWidth / 2, 0, targetZ))
 	return {PlanePoint = planePoint, Normal = normal.Unit, Right = right, Up = up, Left = 0.12, RightBound = goalWidth - 0.12, Bottom = 0.08, Top = Config.Pitch.GoalHeight - 0.12}
 end
-
+function Resolver.ResolveByAttackSign(attackSign: number, pitchCFrame: CFrame, width: number, length: number): GoalRectangle
+	return Resolver.ResolveSide(attackSign < 0 and "Home" or "Away", pitchCFrame, width, length)
+end
 function Resolver.Resolve(active: Model?, pitchCFrame: CFrame, width: number, length: number): GoalRectangle
 	local side = active and tostring(active:GetAttribute("VTRTeam") or "Home") or "Home"
 	return Resolver.ResolveSide(side, pitchCFrame, width, length)

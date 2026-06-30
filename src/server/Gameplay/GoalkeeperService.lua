@@ -125,30 +125,15 @@ local function shooterRating(shooter: Model?): number
 end
 
 local function saveProbability(keeper:Model,rectangle:any,target:Vector3,time:number,xg:number?,shooter:Model?):number
-	local rating=keeperRating(keeper)
 	if shooter and (tonumber(shooter:GetAttribute("VTRLongShotChanceUntil")) or 0) >= os.clock() then
-		local baseGoalChance = tonumber(shooter:GetAttribute("VTRLongShotGoalChance")) or 0.2
-		local differential = shooterRating(shooter) - rating
-		local goalChance = math.clamp(baseGoalChance + differential * 0.004, 0.04, 0.45)
-		return math.clamp(1 - goalChance, 0.55, 0.96)
+		local goalChance = tonumber(shooter:GetAttribute("VTRLongShotGoalChance")) or 0.1
+		return math.clamp(1 - goalChance, 0.85, 0.96)
 	end
-	local offset=target-rectangle.PlanePoint
-	local horizontal=math.abs(offset:Dot(rectangle.Right)-((rectangle.Left+rectangle.RightBound)*.5))
-	local vertical=offset:Dot(rectangle.Up)
-	local halfWidth=math.max(.1,(rectangle.RightBound-rectangle.Left)*.5)
-	local height=math.max(.1,rectangle.Top-rectangle.Bottom)
-	local cornerDifficulty=math.clamp(horizontal/halfWidth,0,1)*.2+math.clamp(vertical/height,0,1)*.14
-	local closePenalty=math.clamp((.95-time)/.95,0,1)*.22
-	local xgPenalty=math.clamp((xg or 0)-.12,0,.55)*.34
-	local ratingBoost=(rating-65)/34*.28
-	local baseSave=math.clamp(.52+ratingBoost-cornerDifficulty-closePenalty-xgPenalty,.08,.96)
-	local shotXG=xg or 0
-	if shotXG>=.24 then
-		local differential=rating-shooterRating(shooter)
-		local goalChance=math.clamp(.8-differential*.02+cornerDifficulty*.08+closePenalty*.05,.08,.96)
-		return math.clamp(1-goalChance,.04,.92)
-	end
-	return baseSave
+
+	local rating=keeperRating(keeper)
+	local shooterStat=shooterRating(shooter)
+	local goalChance=math.clamp(.5+(shooterStat-rating)/100,.05,.95)
+	return 1-goalChance
 end
 
 function Service.new(ball: BasePart, teams: any, pitchCFrame: CFrame, width: number, length: number, ballService: any, animations: any, remote: RemoteEvent,aiService:any?)
