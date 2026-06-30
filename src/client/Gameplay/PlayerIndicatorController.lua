@@ -116,19 +116,19 @@ end
 
 function Controller:SetActive(model: Model?)
 	self.Active = model
-	self:_setMarker("ActiveUser", model)
+	self:_setMarker("ActiveUser", nil)
 	self:_refreshNames()
 end
 
 function Controller:SetNextSwitch(model: Model?)
 	self.NextSwitch = model
-	self:_setMarker("NextSwitch", model)
+	self:_setMarker("NextSwitch", nil)
 	self:_refreshNames()
 end
 
 function Controller:SetOpponentTarget(model: Model?)
 	self.OpponentTarget = model
-	self:_setMarker("OpponentTarget", model)
+	self:_setMarker("OpponentTarget", nil)
 	if self.HUD then
 		self.HUD:SetOpponent(model)
 	end
@@ -136,7 +136,7 @@ end
 
 function Controller:SetPassTarget(model: Model?, fallback: boolean?)
 	self.PassTarget = model
-	self:_setMarker("PassTarget", model)
+	self:_setMarker("PassTarget", nil)
 	local color = fallback and Color3.fromHex("FFB020") or COLORS.PassTarget
 	self.TargetRing.Color = color
 	local arrow = self.Markers.PassTarget:FindFirstChild("Arrow") :: TextLabel?
@@ -222,19 +222,10 @@ function Controller:Update(dt: number)
 	self.Pulse += dt
 	local activeRoot = rootOf(self.Active)
 	if activeRoot then
-		self.Ring.Color=self.Active:GetAttribute("VTRYellowCard")==true and Color3.fromHex("FFD83D")or COLORS.ActiveUser
 		self.Ring.CFrame = CFrame.new(activeRoot.Position - Vector3.new(0, 2.85, 0)) * CFrame.Angles(0, 0, math.pi / 2)
-		self.Ring.Transparency = 0.34 + math.sin(self.Pulse * 4) * 0.08
-	else
-		self.Ring.Transparency = 1
 	end
-	local passRoot = rootOf(self.PassTarget)
-	if passRoot then
-		self.TargetRing.CFrame = CFrame.new(passRoot.Position - Vector3.new(0, 2.85, 0)) * CFrame.Angles(0, 0, math.pi / 2)
-		self.TargetRing.Transparency = 0.42 + math.sin(self.Pulse * 4.5) * 0.06
-	else
-		self.TargetRing.Transparency = 1
-	end
+	self.Ring.Transparency = 1
+	self.TargetRing.Transparency = 1
 	self.Clock += dt
 	if self.Clock < 0.16 or not activeRoot then
 		return
@@ -258,13 +249,9 @@ function Controller:Update(dt: number)
 			end
 		end
 	end
-	local team = tostring(self.Active:GetAttribute("VTRTeam") or "Home")
-	local opponentSide = team == "Home" and "Away" or "Home"
-	local switch = self:_nearest(team, self.Ball.Position, self.Active)
-	local opponent = self:_nearest(opponentSide, activeRoot.Position, nil)
-	self:SetNextSwitch(switch)
-	self:SetOpponentTarget(opponent)
-	self:SetPassTarget(self.BallCarrier == self.Active and self:_passTarget(team, activeRoot.Position) or nil)
+	self:SetNextSwitch(nil)
+	self:SetOpponentTarget(nil)
+	self:SetPassTarget(nil)
 end
 
 function Controller:Destroy()

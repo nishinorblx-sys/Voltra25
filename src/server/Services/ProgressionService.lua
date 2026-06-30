@@ -43,6 +43,7 @@ function ProgressionService:GetClientData(player: Player): any?
 		RankedRewards = copy(profile.RankedRewards),
 		RewardsInbox = copy(profile.RewardsInbox),
 		PackInventory = copy(profile.PackInventory),
+		CampaignProgress = copy(profile.CampaignProgress),
 		PlayerCardInventory = copy(profile.PlayerCardInventory),
 		TeamTactics = copy(profile.TeamTactics),
 		PlayerInstructions = copy(profile.PlayerInstructions),

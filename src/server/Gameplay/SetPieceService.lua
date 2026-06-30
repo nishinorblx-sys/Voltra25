@@ -82,6 +82,16 @@ local function markerPart(names:{string}):BasePart?
 	return nil
 end
 
+local function debugEnabled(): boolean
+	return Workspace:GetAttribute("VTRKickoffDebug") ~= false
+end
+
+local function debugKickoff(message: string, ...: any)
+	if debugEnabled() then
+		print("[VTR KICKOFF][SetPiece] " .. message, ...)
+	end
+end
+
 local function penaltySpotFromMarker(goalSign:number,pitchCFrame:CFrame,length:number):Vector3
 	local marker=goalSign==1 and markerPart({"HomePen","HomePenaltySpot","PenaltyHome"}) or markerPart({"AwayPen","AwayPenaltySpot","PenaltyAway"})
 	if marker then
@@ -225,11 +235,13 @@ function Service:_releaseCorner(player:Player,payload:any)
 	local delivery=payload.Delivery;local allowed={Cross=true,Driven=true,Lob=true,Short=true};if not allowed[delivery]then return false end
 	local power=math.clamp(tonumber(payload.Power)or 0,0,1);local target=payload.Target
 	if typeof(target)~="Vector3"then return false end
-	local localTarget=self.World.PitchCFrame:PointToObjectSpace(target)
-	-- Keep the exact authored mouse point. Corner aiming intentionally has no
-	-- penalty-box or pitch-edge clamp; the player can overhit a cross anywhere.
-	target=self.World.PitchCFrame:PointToWorldSpace(Vector3.new(localTarget.X,.15,localTarget.Z))
 	if delivery=="Short"then local shortRoot=active.Data.ShortOption and active.Data.ShortOption:FindFirstChild("HumanoidRootPart")::BasePart?;if shortRoot then target=shortRoot.Position end end
+	if delivery~="Short"then
+		local goalSign=tonumber(active.Data.GoalSign)or 1
+		target=self.World.PitchCFrame:PointToWorldSpace(Vector3.new(0,.15,goalSign*(self.World.Length*.5-18)))
+		local distance=(Vector3.new(target.X,0,target.Z)-Vector3.new(self.World.Ball.Position.X,0,self.World.Ball.Position.Z)).Magnitude
+		power=math.clamp((distance-48)/95,.42,.86)
+	end
 	local takerRoot=active.Data.Taker:FindFirstChild("HumanoidRootPart")::BasePart?;if takerRoot then takerRoot.Anchored=false;takerRoot.AssemblyLinearVelocity=Vector3.zero;takerRoot.AssemblyAngularVelocity=Vector3.zero end
 	active.Data.Taker:SetAttribute("VTRForceIdle",nil)
 	self.World.Ball.Anchored=false;self.World.Ball:SetNetworkOwner(nil);self.Possession:ForcePickup(active.Data.Taker)
@@ -314,7 +326,7 @@ function Service:Start(player: Player, kind: string, restartTeam: string, locati
 	if kind=="Corner"then
 		local data=self.ActiveCorner.Data
 		if userControlled==true and player and player.Parent then self.Remote:FireClient(player,{Type="CornerMode",Team=restartTeam,Taker=taker,Ball=self.World.Ball,Location=ballPosition,CornerSign=data.CornerSign,GoalSign=data.GoalSign,PitchCFrame=self.World.PitchCFrame,PitchWidth=self.World.Width,PitchLength=self.World.Length})
-		else task.delay(1.25,function()if self.ActiveCorner and self.ActiveCorner.Sequence==sequence then local target=self.World.PitchCFrame:PointToWorldSpace(Vector3.new(0,.15,data.GoalSign*(self.World.Length*.5-16)));self:_releaseCorner(player,{Delivery="Cross",Power=.55,Target=target,ServerAI=true})end end)end
+		else task.delay(1.25,function()if self.ActiveCorner and self.ActiveCorner.Sequence==sequence then local target=self.World.PitchCFrame:PointToWorldSpace(Vector3.new(0,.15,data.GoalSign*(self.World.Length*.5-18)));self:_releaseCorner(player,{Delivery="Cross",Power=.65,Target=target,ServerAI=true})end end)end
 		return
 	end
 	if kind=="FreeKick"or kind=="Penalty"or kind=="GoalKick"or kind=="ThrowIn"then
@@ -355,6 +367,7 @@ function Service:Start(player: Player, kind: string, restartTeam: string, locati
 			local partnerRoot=root(kickoffPartner)
 			if takerRoot and partnerRoot then
 				local offset=partnerRoot.Position-takerRoot.Position
+				debugKickoff("auto pass attempt", "taker", taker.Name, "partner", kickoffPartner.Name, "distance", math.floor(offset.Magnitude*10)/10, "userControlled", userControlled==true)
 				if offset.Magnitude>1 then
 					local target=partnerRoot.Position+offset.Unit*2.4
 					if self.BallService and self.BallService.Last then self.BallService.Last[taker]={}end
@@ -369,14 +382,24 @@ function Service:Start(player: Player, kind: string, restartTeam: string, locati
 					end
 					if partnerRoot then partnerRoot.Anchored=false end
 					local released=self.BallService:Kick(taker,"Pass",target-takerRoot.Position,.16,kickoffPartner,"Ground",offset.Magnitude,target)
+					debugKickoff("auto pass result", "released", released, "owner", self.Possession:GetOwner() and self.Possession:GetOwner().Name or "nil", "ballSpeed", math.floor(self.World.Ball.AssemblyLinearVelocity.Magnitude*10)/10)
 					if released then
 						taker:SetAttribute("VTRNoAutoPassUntil",nil)
-						kickoffPartner:SetAttribute("VTRNoAutoPassUntil",os.clock()+.18)
+						kickoffPartner:SetAttribute("VTRNoAutoPassUntil",nil)
+						kickoffPartner:SetAttribute("VTRKickoffReturnUntil",os.clock()+1.35)
+						debugKickoff("receiver return window", kickoffPartner.Name, "until", kickoffPartner:GetAttribute("VTRKickoffReturnUntil"))
 					end
+				else
+					debugKickoff("auto pass skipped; partner too close", "distance", math.floor(offset.Magnitude*10)/10)
 				end
+			else
+				debugKickoff("auto pass skipped; missing roots", "takerRoot", takerRoot ~= nil, "partnerRoot", partnerRoot ~= nil)
 			end
 		end
 		self:ReleaseRestartTaker()
+		if kind=="Kickoff" then
+			debugKickoff("release restart taker complete", "owner", self.Possession:GetOwner() and self.Possession:GetOwner().Name or "nil")
+		end
 		onReady()
 		if kind=="Kickoff" and kickoffPartner and kickoffPartner.Parent and userControlled==true and player and player.Parent then
 			task.defer(function()

@@ -20,7 +20,13 @@ end
 
 function Controller:SetSuppressed(suppressed:boolean)
 	self.Suppressed=suppressed
-	if suppressed then self.Charge=nil end
+	if suppressed then
+		self.Charge=nil
+	else
+		for _,key in {Enum.KeyCode.W, Enum.KeyCode.A, Enum.KeyCode.S, Enum.KeyCode.D, Enum.KeyCode.LeftShift, Enum.KeyCode.RightShift, Enum.KeyCode.LeftAlt, Enum.KeyCode.RightAlt, Enum.KeyCode.LeftControl, Enum.KeyCode.RightControl} do
+			self.Keys[key] = UserInputService:IsKeyDown(key) or nil
+		end
+	end
 end
 
 function Controller:ResetFreeKickModifiers()

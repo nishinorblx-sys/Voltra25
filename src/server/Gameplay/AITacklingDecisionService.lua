@@ -12,7 +12,7 @@ function Service.CanTackle(context: any, defender: any, carrier: any, style: any
 		return false, false
 	end
 	local distance = PitchConfig.GetDistanceStuds(defender.World, carrier.World)
-	if distance > 7 then
+	if distance > 10 then
 		return false, false
 	end
 	local toCarrier = flat(carrier.World - defender.World)
@@ -31,7 +31,7 @@ function Service.CanTackle(context: any, defender: any, carrier: any, style: any
 	local insideBox = PitchConfig.InZone(defender.Pitch, "OwnBox")
 	local lowStamina = (defender.Stamina or 60) < 25
 	local foulRisk = (fromBehind and 0.45 or 0.08) + (insideBox and 0.22 or 0) + (lowStamina and 0.14 or 0) + (1 - style:Risk()) * 0.08 - (defender.Stats.defending or 60) / 420
-	local slide = distance > 5.5 and not insideBox and style:Risk() > 0.65 and defender.Stats.standingTackle > 70
+	local slide = distance > 7.5 and not insideBox and style:Risk() > 0.65 and defender.Stats.standingTackle > 70
 	return foulRisk < 0.28, slide
 end
 

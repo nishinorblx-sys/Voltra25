@@ -50,6 +50,10 @@ function Controller:SetActive(model: Model?)
 	self.Active = model
 end
 
+function Controller:SetBallCarrier(model: Model?)
+	self.BallCarrier = model
+end
+
 function Controller:SetMatchActive(active: boolean)
 	self.MatchActive = active
 	if active then
@@ -84,16 +88,15 @@ function Controller:Update(dt: number)
 	for _, model in self.Teams.Home or {} do
 		local root = model:FindFirstChild("HumanoidRootPart") :: BasePart?
 		if root then
-			local active = model == self.Active
-			local controlled = self.ControlledSide == "Home"
-			self.View:UpdateDot(model, self:_map(root.Position), active and Color3.fromHex("B7FF1A") or controlled and Color3.fromHex("2D9CFF") or Color3.fromHex("FF594D"), active and 9 or 6, dt)
+			local carrier = model == self.BallCarrier
+			self.View:UpdateDot(model, self:_map(root.Position), carrier and Color3.fromHex("FFE45C") or Color3.fromHex("2D9CFF"), carrier and 9 or 6, dt)
 		end
 	end
 	for _, model in self.Teams.Away or {} do
 		local root = model:FindFirstChild("HumanoidRootPart") :: BasePart?
 		if root then
-			local controlled = self.ControlledSide == "Away"
-			self.View:UpdateDot(model, self:_map(root.Position), controlled and Color3.fromHex("2D9CFF") or Color3.fromHex("FF594D"), 6, dt)
+			local carrier = model == self.BallCarrier
+			self.View:UpdateDot(model, self:_map(root.Position), carrier and Color3.fromHex("FFE45C") or Color3.fromHex("FF594D"), carrier and 9 or 6, dt)
 		end
 	end
 	if self.Ball.Parent then

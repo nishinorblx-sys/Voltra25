@@ -1277,6 +1277,21 @@ function Controller:ShowResult(payload: any, onReturn: () -> ())
 	local stats = payload.Stats or {}
 	local home = stats.Home or {}
 	local away = stats.Away or {}
+	local motm = stats.MOTM or (stats.PlayerRatings and stats.PlayerRatings[1])
+	if motm then
+		local spotlight = panel(overlay, UDim2.new(.70, 0, .095, 0), UDim2.new(.20, 0, 0, 92))
+		spotlight.ZIndex = 44
+		spotlight.BackgroundTransparency = .12
+		local teamCode = motm.Team == "Away" and self.AwayCode or self.HomeCode
+		local kicker = label(spotlight, "FULL TIME PLAYER OF THE MATCH", UDim2.fromOffset(14, 10), UDim2.new(1, -28, 0, 15), 8)
+		kicker.TextColor3 = Theme.Colors.Electric
+		local name = label(spotlight, string.upper(tostring(motm.Name or "PLAYER")), UDim2.fromOffset(14, 30), UDim2.new(1, -28, 0, 24), 15)
+		name.TextColor3 = Theme.Colors.White
+		name.TextTruncate = Enum.TextTruncate.AtEnd
+		local rating = tonumber(motm.Rating) or 6
+		local meta = label(spotlight, teamCode .. "  /  MR " .. string.format("%.1f", rating), UDim2.fromOffset(14, 59), UDim2.new(1, -28, 0, 18), 9)
+		meta.TextColor3 = Theme.Colors.Silver
+	end
 	local tabs=Instance.new("Frame");tabs.Name="ResultTabs";tabs.BackgroundTransparency=1;tabs.Position=UDim2.new(.5,-210,.285,0);tabs.Size=UDim2.fromOffset(420,38);tabs.ZIndex=180;tabs.Parent=overlay;local tabLayout=Instance.new("UIListLayout");tabLayout.FillDirection=Enum.FillDirection.Horizontal;tabLayout.Padding=UDim.new(0,10);tabLayout.Parent=tabs
 	local content=panel(overlay,UDim2.new(.10,0,.345,0),UDim2.new(.80,0,.46,0));content.ZIndex=50;content.BackgroundTransparency=.11
 	local function teamValue(source:any,...:string):any

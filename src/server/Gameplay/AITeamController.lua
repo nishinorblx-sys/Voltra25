@@ -46,7 +46,25 @@ function Service.new(teams: any, formations: any, pitchCFrame: CFrame, width: nu
 		CurrentAssignments = {Home = {}, Away = {}},
 		LastContext = nil,
 		WasLive = false,
+		LastDebugLive = nil,
+		LastDebugOwner = nil,
+		PressState = {
+			LastOwner = nil,
+			LastOwnerSide = nil,
+			Chains = {Home = 0, Away = 0},
+			CooldownUntil = {Home = 0, Away = 0},
+		},
 	}, Service)
+end
+
+local function debugEnabled(): boolean
+	return workspace:GetAttribute("VTRKickoffDebug") ~= false
+end
+
+local function debugKickoff(message: string, ...: any)
+	if debugEnabled() then
+		print("[VTR KICKOFF][AI] " .. message, ...)
+	end
 end
 
 function Service:_attackSigns(): {[string]: number}
@@ -87,8 +105,51 @@ function Service:_context(): any
 	return AIContextBuilder.Build(self.Teams, self.Formations, self.PitchCFrame, self.Width, self.Length, self.Ball, self.Possession, self:_attackSigns())
 end
 
+function Service:_updatePressState(context: any)
+	local owner = context.Owner
+	local side = context.OwnerSide
+	if owner and side and owner ~= self.PressState.LastOwner then
+		local passTeam = tostring(self.Ball:GetAttribute("VTRPassTeam") or "")
+		if self.PressState.LastOwnerSide == side and passTeam == side then
+			self.PressState.Chains[side] = math.clamp((self.PressState.Chains[side] or 0) + 1, 0, 10)
+		else
+			self.PressState.Chains[side] = 0
+		end
+		if (self.PressState.Chains[side] or 0) >= 3 then
+			local defendingSide = side == "Home" and "Away" or "Home"
+			self.PressState.CooldownUntil[defendingSide] = context.Now + 2.8
+			for _, model in ipairs(self.Teams[defendingSide] or {}) do
+				model:SetAttribute("AIPressPausedUntil", self.PressState.CooldownUntil[defendingSide])
+			end
+		end
+		self.PressState.LastOwner = owner
+		self.PressState.LastOwnerSide = side
+	elseif not owner then
+		self.PressState.LastOwner = nil
+		self.PressState.LastOwnerSide = nil
+	end
+	for _, defendingSide in ipairs({"Home", "Away"}) do
+		local paused = (self.PressState.CooldownUntil[defendingSide] or 0) > context.Now
+		if paused then
+			local ballPitch = context.BallTeam[defendingSide]
+			local ownerInfo = owner and context.Players[owner]
+			local pressureSituation = ballPitch.Z < 210 or (ownerInfo and ownerInfo.Role == "ST" and ballPitch.Z < 300)
+			if pressureSituation then
+				self.PressState.CooldownUntil[defendingSide] = 0
+				paused = false
+			end
+		end
+		context.PressPaused = context.PressPaused or {}
+		context.PressPaused[defendingSide] = paused
+	end
+end
+
 function Service:Step(dt: number)
 	local live = self:_isLive()
+	if self.LastDebugLive ~= live then
+		self.LastDebugLive = live
+		debugKickoff("live state changed", "live", live, "externalPhase", self.ExternalPhase)
+	end
 	if not live then
 		if self.WasLive then
 			for _, side in ipairs({"Home", "Away"}) do
@@ -107,7 +168,12 @@ function Service:Step(dt: number)
 	self.WasLive = true
 
 	local context = self:_context()
+	self:_updatePressState(context)
 	self.LastContext = context
+	if context.Owner ~= self.LastDebugOwner then
+		self.LastDebugOwner = context.Owner
+		debugKickoff("context owner changed", "owner", context.Owner and context.Owner.Name or "nil", "ownerSide", context.OwnerSide or "nil", "loose", context.LooseBall, "motion", context.MotionKind)
+	end
 	for _, side in ipairs({"Home", "Away"}) do
 		for _, model in ipairs(self.Teams[side] or {}) do
 			if model:GetAttribute("VTRSentOff") ~= true and model:GetAttribute("VTRRedCard") ~= true then
@@ -146,6 +212,19 @@ function Service:Step(dt: number)
 			Home = self.Assignments.Home:BuildSide(context, "Home", self.Phases.Home or "LooseBall"),
 			Away = self.Assignments.Away:BuildSide(context, "Away", self.Phases.Away or "LooseBall"),
 		}
+		if debugEnabled() and context.Owner and (tonumber(context.Owner:GetAttribute("VTRKickoffReturnUntil")) or 0)>context.Now then
+			local debugAt=tonumber(context.Owner:GetAttribute("VTRKickoffAIDebugAt"))or 0
+			if context.Now-debugAt>.35 then
+				context.Owner:SetAttribute("VTRKickoffAIDebugAt",context.Now)
+				for model,assignment in pairs(self.CurrentAssignments[context.OwnerSide=="Home"and"Away"or"Home"])do
+					if assignment.PrimaryAssignment=="PressBallCarrier"or assignment.PrimaryAssignment=="ContainBallCarrier"or assignment.PrimaryAssignment=="CoverPresser"then
+						local root=model:FindFirstChild("HumanoidRootPart")::BasePart?
+						local ownerRoot=context.Owner:FindFirstChild("HumanoidRootPart")::BasePart?
+						debugKickoff("defensive pressure assigned","defender",model.Name,"assignment",assignment.PrimaryAssignment,"distance",root and ownerRoot and math.floor((root.Position-ownerRoot.Position).Magnitude*10)/10 or "n/a","target",assignment.MovementTarget)
+					end
+				end
+			end
+		end
 	end
 
 	self.Accum.OnBall += dt

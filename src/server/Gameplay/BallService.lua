@@ -10,7 +10,7 @@ local FreeKickTrajectory = require(ReplicatedStorage.VTR.Shared.FreeKickTrajecto
 
 local Service = {}
 Service.__index = Service
-local TARGETED_SHOT_GRAVITY=118
+local TARGETED_SHOT_GRAVITY=59
 local ballisticVelocity: (Vector3, Vector3, number, number?) -> Vector3?
 
 local function flat(vector: Vector3): Vector3
@@ -174,11 +174,11 @@ function Service:_shotVelocity(model: Model, direction: Vector3, charge: number,
 	local powerRisk = math.max(0, charge - 0.72) * 0.055
 	local angleError = (1 - quality) * 0.13 + pressure * 0.018 + powerRisk
 	horizontal = CFrame.fromAxisAngle(Vector3.yAxis, self.Random:NextNumber(-angleError, angleError)):VectorToWorldSpace(horizontal)
-	local chargedLift = 0.025 + charge * 0.255
-	local targetLift = math.clamp(raw.Y, 0, 0.34)
-	local lift = math.max(chargedLift, targetLift * (0.72 + charge * 0.28))
-	lift += self.Random:NextNumber(-1, 1) * (1 - quality) * (0.018 + charge * 0.025)
-	lift = math.clamp(lift, 0.018, 0.36)
+	local chargedLift = 0.0125 + charge * 0.1275
+	local targetLift = math.clamp(raw.Y, 0, 0.17)
+	local lift = math.max(chargedLift, targetLift * (0.36 + charge * 0.14))
+	lift += self.Random:NextNumber(-1, 1) * (1 - quality) * (0.009 + charge * 0.0125)
+	lift = math.clamp(lift, 0.009, 0.18)
 	return (horizontal + Vector3.new(0, lift, 0)).Unit * shotSpeed
 end
 

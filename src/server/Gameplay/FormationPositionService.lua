@@ -86,20 +86,20 @@ function Service.GoalKick(teams: any, restartTeam: string, location: Vector3, pi
 	local goalkeeper = teams[restartTeam][1]
 	move(goalkeeper, spot, world(pitchCFrame, 0, 0))
 	local ownTargets = {
-		[2] = Vector2.new(-width * 0.40, goalSign * (length / 2 - 52)), [3] = Vector2.new(-18, goalSign * (length / 2 - 49)),
-		[4] = Vector2.new(18, goalSign * (length / 2 - 49)), [5] = Vector2.new(width * 0.40, goalSign * (length / 2 - 52)),
-		[6] = Vector2.new(-28, goalSign * (length / 2 - 78)), [7] = Vector2.new(0, goalSign * (length / 2 - 72)), [8] = Vector2.new(28, goalSign * (length / 2 - 78)),
-		[9] = Vector2.new(-width * 0.34, goalSign * 12), [10] = Vector2.new(0, goalSign * 4), [11] = Vector2.new(width * 0.34, goalSign * 12),
+		[2] = Vector2.new(-width * 0.40, goalSign * (length / 2 - 86)), [3] = Vector2.new(-24, goalSign * (length / 2 - 88)),
+		[4] = Vector2.new(24, goalSign * (length / 2 - 88)), [5] = Vector2.new(width * 0.40, goalSign * (length / 2 - 86)),
+		[6] = Vector2.new(-34, goalSign * (length / 2 - 112)), [7] = Vector2.new(0, goalSign * (length / 2 - 116)), [8] = Vector2.new(34, goalSign * (length / 2 - 112)),
+		[9] = Vector2.new(-width * 0.34, goalSign * 28), [10] = Vector2.new(0, goalSign * 18), [11] = Vector2.new(width * 0.34, goalSign * 28),
 	}
 	for index = 2, #teams[restartTeam] do local target = ownTargets[index]; if target then move(teams[restartTeam][index], world(pitchCFrame, target.X, target.Y), ballSpot) end end
 	local opponent = restartTeam == "Home" and "Away" or "Home"
 	for index, model in teams[opponent] do
 		if index >= 9 and index < 9 + Spacing.GoalKick.Pressers then
 			local pressIndex = index - 8
-			move(model, world(pitchCFrame, (pressIndex - 2) * 16, goalSign * (length / 2 - 72 - pressIndex * 4)), ballSpot)
+			move(model, world(pitchCFrame, (pressIndex - 2) * 18, goalSign * (length / 2 - 106 - pressIndex * 5)), ballSpot)
 		else
 			local lane = ((index - 1) % 5 - 2) * width * 0.19
-			move(model, world(pitchCFrame, lane, -goalSign * (18 + math.floor((index - 1) / 5) * 25)), ballSpot)
+			move(model, world(pitchCFrame, lane, -goalSign * (34 + math.floor((index - 1) / 5) * 26)), ballSpot)
 		end
 	end
 	return goalkeeper

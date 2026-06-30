@@ -34,6 +34,13 @@ local OffsideService=require(script.Parent.OffsideService)
 local GameplayLinkDebugService=require(script.Parent.GameplayLinkDebugService)
 local Service={};Service.__index=Service
 local PREMATCH_PRESENTATION_DURATION=66.0
+local GOAL_REPLAY_RESTART_TIMEOUT=12.0
+local function kickoffDebugEnabled():boolean
+	return Workspace:GetAttribute("VTRKickoffDebug")~=false
+end
+local function debugKickoff(message:string,...:any)
+	if kickoffDebugEnabled()then print("[VTR KICKOFF][Runtime] "..message,...)end
+end
 local function broadcast(remote:RemoteEvent,session:any,payload:any)
 	for _,participant in session.Players or{session.Player}do if participant.Parent==Players then remote:FireClient(participant,payload)end end
 end
@@ -617,9 +624,11 @@ function Service:_startSetPiece(session:any,kind:string,restartTeam:string,locat
 	if session.Ended then return end
 	if kind~="Kickoff"then session.Clock:Record(kind)end
 	session.Running=false;session.Phase=kind;session.Possession:Reset();session.TeamControl.Receiving:Clear();session.AI:SetExternalPhase(kind)
+	if kind=="Kickoff"then debugKickoff("start set piece","team",restartTeam,"running",session.Running,"phase",session.Phase)end
 	self:_setPlayersFrozen(session,true)
 	if session.Goalkeepers then session.Goalkeepers:Reset()end
-	local sideController=session.Setup and session.Setup.WatchMode==true and nil or session.SidePlayers and session.SidePlayers[restartTeam]
+	local watchMode=session.Setup and session.Setup.WatchMode==true
+	local sideController=if watchMode then nil else session.SidePlayers and session.SidePlayers[restartTeam]
 	local controller=sideController or session.Player
 	if session.SetPieces then
 		session.SetPieces.Half = session.Clock and session.Clock:Payload().Half or 1
@@ -630,7 +639,9 @@ function Service:_startSetPiece(session:any,kind:string,restartTeam:string,locat
 	if session.Goalkeepers and session.Goalkeepers.SetHalf then session.Goalkeepers:SetHalf(currentHalf)end
 	session.SetPieces:Start(controller,kind,restartTeam,location,function()
 		if session.Ended then return end
+		if kind=="Kickoff"then debugKickoff("ready callback","team",restartTeam,"owner",session.Possession:GetOwner()and session.Possession:GetOwner().Name or"nil","ballSpeed",math.floor(session.World.Ball.AssemblyLinearVelocity.Magnitude*10)/10)end
 		session.OutOfBounds:Reset();session.Goals:Unlock();session.Phase="IN PLAY";session.AI:SetExternalPhase(nil);self:_setPlayersFrozen(session,session.Paused==true);if not session.Paused then self:_releasePlayersForLive(session);self:_stabilizePlayers(session);task.delay(.18,function()if not session.Ended and session.Running then self:_releasePlayersForLive(session);self:_stabilizePlayers(session)end end)end;session.Running=true;self:_syncPositions(session);broadcast(self.State,session,{Type="Phase",Phase="IN PLAY"})
+		if kind=="Kickoff"then debugKickoff("phase broadcast","phase",session.Phase,"running",session.Running,"externalPhaseCleared",true)end
 	end,sideController~=nil,forcedTaker)
 	if kind=="Corner"and session.SetPieces.ActiveCorner then session.Animations:ForceIdle(session.SetPieces.ActiveCorner.Data.Taker)end
 	if session.Setup and session.Setup.WatchMode==true or sideController==nil then
@@ -647,6 +658,52 @@ function Service:_startSetPiece(session:any,kind:string,restartTeam:string,locat
 	self:_setPlayersFrozen(session,true)
 	self:_syncPositions(session)
 	self:_checkQueuedPause(session)
+end
+
+function Service:_allReplayAcks(session:any):boolean
+	local hasActiveParticipant=false
+	for _,participant in session.Players or{}do
+		if participant.Parent==Players then
+			hasActiveParticipant=true
+			if not session.ReplayRestartAcks or session.ReplayRestartAcks[participant]~=true then
+				return false
+			end
+		end
+	end
+	return hasActiveParticipant
+end
+
+function Service:_queueReplayRestart(session:any,kind:string,restartTeam:string,location:Vector3)
+	session.PendingReplayRestart={Kind=kind,Team=restartTeam,Location=location,Ready=false,TimeoutAt=os.clock()+GOAL_REPLAY_RESTART_TIMEOUT}
+	session.ReplayRestartAcks={}
+	debugKickoff("replay restart hold queued","kind",kind,"team",restartTeam)
+end
+
+function Service:_resumeReplayRestart(session:any,reason:string)
+	local pending=session.PendingReplayRestart
+	if not pending or session.Ended or pending.Ready~=true then return end
+	session.PendingReplayRestart=nil
+	session.ReplayRestartAcks=nil
+	debugKickoff("replay restart released","reason",reason,"kind",pending.Kind,"team",pending.Team)
+	self:_startSetPiece(session,pending.Kind,pending.Team,pending.Location)
+end
+
+function Service:_markReplayRestartReady(session:any)
+	local pending=session.PendingReplayRestart
+	if not pending or session.Ended then return end
+	pending.Ready=true
+	pending.TimeoutAt=os.clock()+GOAL_REPLAY_RESTART_TIMEOUT
+	debugKickoff("replay restart ready","kind",pending.Kind,"team",pending.Team,"allAcked",self:_allReplayAcks(session))
+	if self:_allReplayAcks(session)then self:_resumeReplayRestart(session,"client ack")end
+end
+
+function Service:_ackReplayFinished(session:any,player:Player)
+	local pending=session.PendingReplayRestart
+	if not pending or session.Ended then return end
+	session.ReplayRestartAcks=session.ReplayRestartAcks or{}
+	session.ReplayRestartAcks[player]=true
+	debugKickoff("replay finished ack","player",player.Name,"ready",pending.Ready==true,"allAcked",self:_allReplayAcks(session))
+	if pending.Ready==true and self:_allReplayAcks(session)then self:_resumeReplayRestart(session,"client ack")end
 end
 
 function Service:_goal(session:any,team:string)
@@ -687,6 +744,7 @@ function Service:_goal(session:any,team:string)
 	if penaltyGoal then task.delay(1.1,function()if session.World and session.World.Ball then session.World.Ball:SetAttribute("VTRPenaltyShotActive",nil)end end)end
 	self:_checkQueuedPause(session)
 	local restartTeam=team=="Home"and"Away"or"Home"
+	self:_queueReplayRestart(session,"Kickoff",restartTeam,session.World.PitchCFrame.Position)
 	task.spawn(function()
 		local started=os.clock()
 		local lastSpeed=goalVelocity.Magnitude
@@ -718,7 +776,7 @@ function Service:_goal(session:any,team:string)
 		end
 		if session.World and session.World.Ball then BallCollisionService.ApplyBall(session.World.Ball);session.World.Ball:SetAttribute("VTRPostGoalPhysicsUntil",nil);session.World.Ball:SetAttribute("VTRPostGoalVelocity",nil);session.World.Ball:SetAttribute("VTRPostGoalAngularVelocity",nil);session.World.Ball:SetAttribute("VTRGoalCalledAt",nil);session.World.Ball:SetAttribute("VTRGoalEntryVelocity",nil);session.World.Ball:SetAttribute("VTRGoalEntryAngularVelocity",nil)end
 		if session.Ended then return end
-		self:_startSetPiece(session,"Kickoff",restartTeam,session.World.PitchCFrame.Position)
+		self:_markReplayRestartReady(session)
 	end)
 end
 
@@ -799,44 +857,59 @@ function Service:_releaseAIFieldRestart(session:any)
 	local mode=setPieces.RestartMode
 	local goalSign=tonumber(setPieces.RestartGoalSign)or(tostring(taker:GetAttribute("VTRTeam"))=="Home"and-1 or 1)
 	local released=false
-	if mode=="DirectShotFreeKick"then
-		taker:SetAttribute("VTRFreeKickLift",.55)
-		local target=session.World.PitchCFrame:PointToWorldSpace(Vector3.new(0,4.4,goalSign*session.World.Length*.5))
-		released=session.BallService:Kick(taker,"Shot",target-takerRoot.Position,.58,nil,nil,nil,target)
-	else
-		local team=tostring(taker:GetAttribute("VTRTeam")or"Home")
-		local opponents=session.Teams[team=="Home"and"Away"or"Home"]or{}
-		local bestReceiver:Model?=nil
-		local bestScore=-math.huge
-		for _,candidate in session.Teams[team]or{}do
-			if candidate~=taker and candidate:GetAttribute("VTRSentOff")~=true and tostring(candidate:GetAttribute("position")or"")~="GK"then
-				local candidateRoot=modelRoot(candidate)
-				if candidateRoot then
-					local localPoint=session.World.PitchCFrame:PointToObjectSpace(candidateRoot.Position)
-					local distance=(candidateRoot.Position-takerRoot.Position).Magnitude
-					local forwardGain=goalSign*localPoint.Z
-					local nearestOpponent=math.huge
-					for _,opponent in opponents do
-						local opponentRoot=modelRoot(opponent)
-						if opponentRoot then nearestOpponent=math.min(nearestOpponent,(opponentRoot.Position-candidateRoot.Position).Magnitude)end
-					end
-					local openBonus=math.clamp((nearestOpponent-8)/22,0,1)*28
-					local score=forwardGain*.012-math.abs(distance-58)*.035+(tonumber(candidate:GetAttribute("overall"))or 60)*.01+openBonus
-					if distance>22 and distance<128 and nearestOpponent>9 and score>bestScore then
-						bestScore=score
-						bestReceiver=candidate
-					end
+	local team=tostring(taker:GetAttribute("VTRTeam")or"Home")
+	local opponents=session.Teams[team=="Home"and"Away"or"Home"]or{}
+	local bestReceiver:Model?=nil
+	local bestScore=-math.huge
+	local fallbackReceiver:Model?=nil
+	local fallbackDistance=math.huge
+	for _,candidate in session.Teams[team]or{}do
+		if candidate~=taker and candidate:GetAttribute("VTRSentOff")~=true and tostring(candidate:GetAttribute("position")or"")~="GK"then
+			local candidateRoot=modelRoot(candidate)
+			if candidateRoot then
+				local localCandidate=session.World.PitchCFrame:PointToObjectSpace(candidateRoot.Position)
+				local localTaker=session.World.PitchCFrame:PointToObjectSpace(takerRoot.Position)
+				local distance=(candidateRoot.Position-takerRoot.Position).Magnitude
+				local forwardGain=goalSign*(localCandidate.Z-localTaker.Z)
+				local nearestOpponent=math.huge
+				for _,opponent in opponents do
+					local opponentRoot=modelRoot(opponent)
+					if opponentRoot then nearestOpponent=math.min(nearestOpponent,(opponentRoot.Position-candidateRoot.Position).Magnitude)end
+				end
+				local openBonus=math.clamp((nearestOpponent-7)/24,0,1)*34
+				local role=tostring(candidate:GetAttribute("position")or"")
+				local roleBonus=(role=="ST"or role=="CAM"or role=="CM"or role=="W"or role=="LW"or role=="RW")and 10 or 0
+				local shortFreeKickBonus=mode=="DirectShotFreeKick" and distance<58 and 18 or 0
+				local score=forwardGain*.18-math.abs(distance-(mode=="DirectShotFreeKick"and 32 or 62))*.22+(tonumber(candidate:GetAttribute("overall"))or 60)*.08+openBonus+roleBonus+shortFreeKickBonus
+				if distance>10 and distance<fallbackDistance then
+					fallbackDistance=distance
+					fallbackReceiver=candidate
+				end
+				if distance>12 and distance<132 and nearestOpponent>6 and score>bestScore then
+					bestScore=score
+					bestReceiver=candidate
 				end
 			end
 		end
-		local receiverRoot=bestReceiver and modelRoot(bestReceiver)
-		local target=receiverRoot and (receiverRoot.Position+session.World.PitchCFrame.LookVector*goalSign*5) or session.World.PitchCFrame:PointToWorldSpace(Vector3.new(math.clamp((takerRoot.Position-session.World.PitchCFrame.Position).X,-session.World.Width*.28,session.World.Width*.28),.15,goalSign*(session.World.Length*.5-36)))
+	end
+	bestReceiver=bestReceiver or fallbackReceiver
+	local receiverRoot=bestReceiver and modelRoot(bestReceiver)
+	if receiverRoot then
+		local receiverLocal=session.World.PitchCFrame:PointToObjectSpace(receiverRoot.Position)
+		local lead=math.clamp((receiverRoot.Position-takerRoot.Position).Magnitude*.08,3,10)
+		local targetLocal=Vector3.new(receiverLocal.X,.15,receiverLocal.Z+goalSign*lead)
+		targetLocal=Vector3.new(math.clamp(targetLocal.X,-session.World.Width*.5+8,session.World.Width*.5-8),targetLocal.Y,math.clamp(targetLocal.Z,-session.World.Length*.5+10,session.World.Length*.5-10))
+		local target=session.World.PitchCFrame:PointToWorldSpace(targetLocal)
 		local offset=target-takerRoot.Position
 		local distance=math.max(offset.Magnitude,1)
-		released=session.BallService:Kick(taker,"Pass",offset,math.clamp(distance/118,.42,.66),bestReceiver,"Lofted",distance,target)
+		local passKind=distance>72 and"Lofted"or"Ground"
+		released=session.BallService:Kick(taker,"Pass",offset,math.clamp(distance/(passKind=="Lofted"and 118 or 95),.24,.66),bestReceiver,passKind,distance,target)
 		if not released then
 			if session.BallService and session.BallService.Last then session.BallService.Last[taker]={}end
-			released=session.BallService:Kick(taker,"Pass",offset,.48,bestReceiver,"Lofted",distance,target)
+			released=session.BallService:Kick(taker,"Pass",offset,.42,bestReceiver,passKind,distance,target)
+		end
+		if released then
+			bestReceiver:SetAttribute("VTRPendingFreeKickReceiveTarget",target)
 		end
 	end
 	if not released then
@@ -844,10 +917,20 @@ function Service:_releaseAIFieldRestart(session:any)
 		released=session.BallService:Clearance(taker,session.World.PitchCFrame:VectorToWorldSpace(Vector3.new(0,0,goalSign)))
 	end
 	if setPieces.ReleaseRestartTaker then setPieces:ReleaseRestartTaker()end
-	session.OutOfBounds:Reset();session.Goals:Unlock();session.Phase="IN PLAY";session.AI:SetExternalPhase(nil);self:_setPlayersFrozen(session,session.Paused==true);if not session.Paused then self:_releasePlayersForLive(session);self:_stabilizePlayers(session)end;session.Running=true;self:_syncPositions(session);broadcast(self.State,session,{Type="Phase",Phase="IN PLAY",HoldCutscene=mode=="DirectShotFreeKick"})
-	task.delay(.35,function()
-		if not session.Ended and setPieces and setPieces.ReleaseRestartTaker then setPieces:ReleaseRestartTaker()end
-	end)
+	if bestReceiver and bestReceiver.Parent and bestReceiver:GetAttribute("VTRPendingFreeKickReceiveTarget")~=nil then
+		local target=bestReceiver:GetAttribute("VTRPendingFreeKickReceiveTarget")
+		if typeof(target)=="Vector3"then
+			bestReceiver:SetAttribute("VTRReceiveTarget",target)
+			bestReceiver:SetAttribute("VTRPreparingReceive",true)
+			bestReceiver:SetAttribute("VTRReceiveUntil",os.clock()+4.8)
+			bestReceiver:SetAttribute("VTRReceiveLockedAt",os.clock())
+			bestReceiver:SetAttribute("AIDebugExpectedPass",true)
+			bestReceiver:SetAttribute("AIDebugPassTarget",target)
+			bestReceiver:SetAttribute("AIDebugPassKind","FreeKick")
+		end
+		bestReceiver:SetAttribute("VTRPendingFreeKickReceiveTarget",nil)
+	end
+	session.OutOfBounds:Reset();session.Goals:Unlock();session.Phase="IN PLAY";session.AI:SetExternalPhase(nil);self:_setPlayersFrozen(session,session.Paused==true);if not session.Paused then self:_releasePlayersForLive(session);self:_stabilizePlayers(session)end;session.Running=true;self:_syncPositions(session);broadcast(self.State,session,{Type="Phase",Phase="IN PLAY",HoldCutscene=false})
 end
 
 function Service:_releaseGoalKickClearance(session:any,player:Player?)
@@ -863,10 +946,12 @@ function Service:_releaseGoalKickClearance(session:any,player:Player?)
 	session.Possession:ForcePickup(taker)
 	local localTaker=session.World.PitchCFrame:PointToObjectSpace(takerRoot.Position)
 	local goalSign=localTaker.Z>=0 and 1 or -1
-	local target=session.World.PitchCFrame:PointToWorldSpace(Vector3.new(math.clamp(localTaker.X*.25,-18,18),3,-goalSign*math.min(session.World.Length*.12,28)))
+	local lane=(tonumber(taker:GetAttribute("VTRIndex"))or 1)%3-1
+	local target=session.World.PitchCFrame:PointToWorldSpace(Vector3.new(lane*session.World.Width*.16,3,0))
 	local direction=target-takerRoot.Position
 	if direction.Magnitude<1 then direction=session.World.PitchCFrame:VectorToWorldSpace(Vector3.new(0,0,-goalSign))end
-	session.BallService:Clearance(taker,direction)
+	local distance=Vector3.new(direction.X,0,direction.Z).Magnitude
+	session.BallService:Kick(taker,"Pass",direction,math.clamp(distance/360,.55,.92),nil,"Lofted",distance,target)
 	if setPieces and setPieces.ReleaseRestartTaker then setPieces:ReleaseRestartTaker()end
 	session.OutOfBounds:Reset();session.Goals:Unlock();session.Phase="IN PLAY";session.AI:SetExternalPhase(nil);self:_setPlayersFrozen(session,session.Paused==true);if not session.Paused then self:_releasePlayersForLive(session);self:_stabilizePlayers(session)end;session.Running=true;self:_syncPositions(session);broadcast(self.State,session,{Type="Phase",Phase="IN PLAY"})
 	return true
@@ -904,6 +989,10 @@ end
 function Service:_action(player:Player,payload:any)
 	local session=self.Sessions[player]
 	if not session or type(payload)~="table"then return end
+	if payload.Type=="ReplayFinished"then
+		self:_ackReplayFinished(session,player)
+		return
+	end
 	if payload.Type=="PrematchSkip"then
 		if session.Phase~="PRE MATCH"or session.PrematchSkipped then return end
 		session.PrematchSkipVotes=session.PrematchSkipVotes or{}
@@ -1205,6 +1294,9 @@ function Service:_step(dt:number)
 				broadcast(self.State,session,{Type="HalfTimeTimer",Remaining=remaining})
 				if remaining<=0 then self:_resumeHalfTime(session)end
 			end
+		end
+		if session.PendingReplayRestart and session.PendingReplayRestart.Ready==true and os.clock()>=(tonumber(session.PendingReplayRestart.TimeoutAt)or math.huge)then
+			self:_resumeReplayRestart(session,"timeout")
 		end
 		if session.World and session.World.Ball and (tonumber(session.World.Ball:GetAttribute("VTRPostGoalPhysicsUntil"))or 0)>os.clock()then
 			local velocity=session.World.Ball:GetAttribute("VTRPostGoalVelocity")

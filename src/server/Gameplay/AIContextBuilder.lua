@@ -209,18 +209,18 @@ end
 
 function Service.IsOpen(context: any, info: any): (boolean, boolean, boolean)
 	local _, distance = Service.NearestOpponent(context, info)
-	return distance > 14, distance > 24, distance < 9
+	return distance > 20, distance > 30, distance <= 10
 end
 
 function Service.Pressure(context: any, info: any): any
-	local count18 = 0
+	local count20 = 0
 	local closest = math.huge
 	local under = false
 	for _, opponent in ipairs(context.Teams[info.OpponentSide].List) do
 		if opponent.Root and info.Root then
 			local distance = PitchConfig.GetDistanceStuds(opponent.World, info.World)
 			closest = math.min(closest, distance)
-			if distance <= 18 then
+			if distance <= 20 then
 				local toCarrier = flat(info.World - opponent.World)
 				local facing = flat(opponent.Root.CFrame.LookVector)
 				local moving = flat(opponent.Root.AssemblyLinearVelocity)
@@ -228,19 +228,66 @@ function Service.Pressure(context: any, info: any): any
 				local movingToward = moving.Magnitude > 0.5 and toCarrier.Magnitude > 0.01 and moving.Unit:Dot(toCarrier.Unit) > 0.1
 				if facingToward or movingToward then
 					under = true
-					count18 += 1
+					count20 += 1
 				end
 			end
 		end
 	end
 	return {
 		Under = under,
-		Heavy = closest <= 10 or count18 >= 2,
+		Heavy = closest <= 10,
 		Closest = closest,
-		Count18 = count18,
-		None = closest > 22,
-		Score = 1 - math.clamp((closest - 4) / 20, 0, 1),
+		Count18 = count20,
+		Count20 = count20,
+		None = closest > 20,
+		Score = 1 - math.clamp((closest - 10) / 10, 0, 1),
 	}
+end
+
+function Service.AttackStage(context: any, side: string): string
+	local ballPitch = context.BallTeam[side]
+	if PitchConfig.InZone(ballPitch, "OpponentBox") or ballPitch.Z >= 610 then
+		return "FinalChance"
+	elseif ballPitch.Z >= 495 then
+		if ballPitch.X < 90 or ballPitch.X > 334 then
+			return "WideAttack"
+		end
+		return "CentralAttack"
+	elseif ballPitch.Z >= 247 then
+		return "Progression"
+	end
+	return "BuildUp"
+end
+
+function Service.DefensiveMood(context: any, attackingSide: string, carrier: any?): string
+	local defendingSide = attackingSide == "Home" and "Away" or "Home"
+	local origin = carrier and carrier.World or context.BallWorld
+	local pressers = 0
+	local overcommitted = 0
+	local closest = math.huge
+	for _, defender in ipairs(context.Teams[defendingSide].List) do
+		if defender.Root then
+			local distance = PitchConfig.GetDistanceStuds(defender.World, origin)
+			closest = math.min(closest, distance)
+			local assignment = tostring(defender.Model:GetAttribute("currentAssignment") or "")
+			if distance <= 22 then
+				local velocity = flat(defender.Root.AssemblyLinearVelocity)
+				local toBall = flat(origin - defender.World)
+				if velocity.Magnitude > 3 and toBall.Magnitude > 0.01 and velocity.Unit:Dot(toBall.Unit) > 0.2 then
+					pressers += 1
+				end
+			end
+			if distance <= 12 and (assignment == "PressBallCarrier" or assignment == "ContainBallCarrier") then
+				overcommitted += 1
+			end
+		end
+	end
+	if closest <= 7 or pressers >= 3 or overcommitted >= 2 then
+		return "AggressiveRisk"
+	elseif closest <= 20 or pressers >= 1 then
+		return "Pressing"
+	end
+	return "Passive"
 end
 
 function Service.DefensiveLineZ(context: any, attackingSide: string): number

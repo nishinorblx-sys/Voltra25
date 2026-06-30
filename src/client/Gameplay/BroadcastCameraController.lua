@@ -105,11 +105,21 @@ function Controller:Start()
 	self.Camera.CameraType = Enum.CameraType.Scriptable
 	self.Camera.FieldOfView = PRESETS[self.Mode].Fov
 	local root = activeRoot(self.Active)
-	local initial = root and root.Position or self.Ball.Position
+	local presentationCenter = presentationGroupCenter({WalkForward = true, LineupIdle = true, KickoffReady = true})
+	local initial = presentationCenter or self.Ball.Position
+	if not presentationCenter and root then
+		local localRoot = self.PitchCFrame:PointToObjectSpace(root.Position)
+		if math.abs(localRoot.X) <= self.Width * 0.75 and math.abs(localRoot.Z) <= self.Length * 0.75 then
+			initial = root.Position
+		end
+	end
 	self.SmoothedTarget = self.PitchCFrame:PointToObjectSpace(initial)
 	self.SmoothedLookTarget = self.Ball.Position
 	self.Camera.CFrame = self:_desiredFrame(PRESETS[self.Mode], initial, 0, 0)
 	self.ReferenceBallDistance=(self.Camera.CFrame.Position-self.Ball.Position).Magnitude
+	if workspace:GetAttribute("VTRKickoffDebug") ~= false then
+		print("[VTR KICKOFF][Camera] broadcast camera started", "mode", self.Mode, "initial", initial, "ball", self.Ball.Position, "cameraType", self.Camera.CameraType.Name)
+	end
 end
 
 function Controller:SetMode(mode: string)

@@ -88,17 +88,23 @@ function Page.new(context:any):CanvasGroup
 			local tactic=TACTICS[((selectedIndex*2+squad-2)%#TACTICS)+1]
 			local teamId=tier.Id.."_"..squad
 			local beaten=progress.CompletedTeams and progress.CompletedTeams[teamId]==true
-			label(card,(beaten and"CHECK  "or"")..(opponent and string.upper(opponent.teamName) or("AI SQUAD "..squad)),UDim2.fromOffset(16,14),UDim2.new(1,-32,0,26),17,Theme.Colors.White,Theme.Fonts.Display)
+			if beaten then
+				card.BackgroundColor3=Color3.fromHex("16351A")
+				local stroke=card:FindFirstChildOfClass("UIStroke")
+				if stroke then stroke.Color=Theme.Colors.Electric;stroke.Transparency=.22 end
+			end
+			label(card,(beaten and"CLEARED  "or"")..(opponent and string.upper(opponent.teamName) or("AI SQUAD "..squad)),UDim2.fromOffset(16,14),UDim2.new(1,-32,0,26),17,Theme.Colors.White,Theme.Fonts.Display)
 			label(card,"OVR "..(opponent and opponent.overall or overall).."  /  "..formation.."  /  "..string.upper(tactic),UDim2.fromOffset(16,44),UDim2.new(1,-32,0,18),8,Theme.Colors.Electric,Theme.Fonts.Strong)
-			label(card,"WATCH MODE  AI VS AI\nSAVED PLAN  "..string.upper(tostring(savedTactics.Identity or"Balanced")).."\nOPPONENT  "..(opponent and string.upper(opponent.country or"ENGLAND")or"ENGLAND"),UDim2.fromOffset(16,70),UDim2.new(1,-32,0,42),8,Theme.Colors.Silver,Theme.Fonts.Body).TextWrapped=true
-			local play=Button.new({Text=beaten and"REWATCH"or"PLAY",Variant="Primary",Size=UDim2.fromOffset(118,34),OnActivated=function()
+			label(card,(beaten and"REPLAY RUN  NO REWARDS\n"or"WATCH MODE  AI VS AI\n").."SAVED PLAN  "..string.upper(tostring(savedTactics.Identity or"Balanced")).."\nOPPONENT  "..(opponent and string.upper(opponent.country or"ENGLAND")or"ENGLAND"),UDim2.fromOffset(16,70),UDim2.new(1,-32,0,42),8,Theme.Colors.Silver,Theme.Fonts.Body).TextWrapped=true
+			local play=Button.new({Text=beaten and"REPLAY"or"PLAY",Variant="Primary",Size=UDim2.fromOffset(118,34),OnActivated=function()
 				if not opponent or not homeTeam then context.Toast({Title="CAMPAIGN",Message="Campaign teams unavailable.",Kind="Error"});return end
 				local setup=table.clone(matchConfig.Setup)
 				setup.HomeTeamId=homeTeam.teamId;setup.AwayTeamId=opponent.teamId;setup.HomeKit="Home";setup.AwayKit=setup.HomeTeamId==setup.AwayTeamId and"Away"or"Away";setup.MatchType=setup.HomeTeamId==setup.AwayTeamId and"Friendly"or"Objective Match";setup.Difficulty=tier.Name=="Street Level"and"Amateur"or tier.Name=="Local League"and"Semi Pro"or tier.Name=="Regional Pro"and"Professional"or tier.Name=="National Class"and"World Class"or"Legendary"
+				setup.CampaignTeamId=teamId;setup.CampaignTier=selectedIndex;setup.CampaignReplay=beaten
 				local saved=MatchSetupService:Save(setup)
 				if not saved.Success then context.Toast({Title="CAMPAIGN",Message=saved.Message or"Could not save match setup.",Kind="Error"});return end
 				setup=saved.Data;setup.StadiumName="VOLTRA CAMPAIGN"
-				context.Toast({Title="CAMPAIGN",Message="Watch match starting vs "..opponent.teamName..".",Kind="Info"})
+				context.Toast({Title="CAMPAIGN",Message=(beaten and"Replay starting vs "or"Watch match starting vs ")..opponent.teamName..".",Kind="Info"})
 				MatchPresentation.play(context.Root or group,setup,displayHome,opponent,function()context.Navigate("Home")end,function(message:string,kind:string)context.Toast({Title="CAMPAIGN",Message=message,Kind=kind})end,true)
 			end})
 			play.Position=UDim2.fromOffset(16,112);play.Parent=card

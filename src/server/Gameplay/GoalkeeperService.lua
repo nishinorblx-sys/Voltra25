@@ -113,8 +113,25 @@ function Service:_monitorControlledHold(keeper:Model,rectangle:any,defendingSide
 	end)
 end
 
-local function saveProbability(keeper:Model,rectangle:any,target:Vector3,time:number,xg:number?):number
+local function shooterRating(shooter: Model?): number
+	if not shooter then
+		return 65
+	end
+	local overall = tonumber(shooter:GetAttribute("overall")) or tonumber(shooter:GetAttribute("OVR")) or 65
+	local shooting = tonumber(shooter:GetAttribute("SHO")) or tonumber(shooter:GetAttribute("Shooting")) or overall
+	local finishing = tonumber(shooter:GetAttribute("Finishing")) or shooting
+	local shotPower = tonumber(shooter:GetAttribute("ShotPower")) or shooting
+	return math.clamp(shooting * 0.42 + finishing * 0.42 + shotPower * 0.16, 1, 99)
+end
+
+local function saveProbability(keeper:Model,rectangle:any,target:Vector3,time:number,xg:number?,shooter:Model?):number
 	local rating=keeperRating(keeper)
+	if shooter and (tonumber(shooter:GetAttribute("VTRLongShotChanceUntil")) or 0) >= os.clock() then
+		local baseGoalChance = tonumber(shooter:GetAttribute("VTRLongShotGoalChance")) or 0.2
+		local differential = shooterRating(shooter) - rating
+		local goalChance = math.clamp(baseGoalChance + differential * 0.004, 0.04, 0.45)
+		return math.clamp(1 - goalChance, 0.55, 0.96)
+	end
 	local offset=target-rectangle.PlanePoint
 	local horizontal=math.abs(offset:Dot(rectangle.Right)-((rectangle.Left+rectangle.RightBound)*.5))
 	local vertical=offset:Dot(rectangle.Up)
@@ -124,7 +141,14 @@ local function saveProbability(keeper:Model,rectangle:any,target:Vector3,time:nu
 	local closePenalty=math.clamp((.95-time)/.95,0,1)*.22
 	local xgPenalty=math.clamp((xg or 0)-.12,0,.55)*.34
 	local ratingBoost=(rating-65)/34*.28
-	return math.clamp(.52+ratingBoost-cornerDifficulty-closePenalty-xgPenalty,.08,.96)
+	local baseSave=math.clamp(.52+ratingBoost-cornerDifficulty-closePenalty-xgPenalty,.08,.96)
+	local shotXG=xg or 0
+	if shotXG>=.24 then
+		local differential=rating-shooterRating(shooter)
+		local goalChance=math.clamp(.8-differential*.02+cornerDifficulty*.08+closePenalty*.05,.08,.96)
+		return math.clamp(1-goalChance,.04,.92)
+	end
+	return baseSave
 end
 
 function Service.new(ball: BasePart, teams: any, pitchCFrame: CFrame, width: number, length: number, ballService: any, animations: any, remote: RemoteEvent,aiService:any?)
@@ -195,7 +219,7 @@ function Service:_begin(attackingSide: string, shotId: number)
 	local keeper = goalkeeper(self.Teams[defendingSide])
 	local rectangle, target, time = self:_prediction(attackingSide)
 	if not keeper or not rectangle or not target or not time then return end
-	local chance=saveProbability(keeper,rectangle,target,time,self.BallService.LastShotXG)
+	local chance=saveProbability(keeper,rectangle,target,time,self.BallService.LastShotXG,self.BallService.LastShooter)
 	keeper:SetAttribute("VTRLastSaveChance",math.floor(chance*100+.5))
 	local willSave=self.Random:NextNumber()<=chance
 	local shotPlan=self.BallService.ShotPlan
@@ -470,7 +494,18 @@ function Service:Step(dt:number?)
 	end
 	local rectangle, target, time = self:_prediction(save.AttackingSide,save.EffectiveGravity)
 	if not rectangle or not target or not time then
-		if save.Launched and save.WillSave==false then self:_miss(save) end
+		if save.Launched then
+			if save.WillSave ~= false then
+				local keeperRoot = root(save.Keeper)
+				if keeperRoot and (self.Ball.Position - keeperRoot.Position).Magnitude <= CATCH_RADIUS + 1.25 then
+					self:_finish(save)
+				else
+					self:_miss(save)
+				end
+			else
+				self:_miss(save)
+			end
+		end
 		return
 	end
 	save.Rectangle = rectangle
@@ -487,6 +522,9 @@ function Service:Step(dt:number?)
 	local desiredDepth=(target-rectangle.PlanePoint):Dot(forward)
 	local currentDepth=(rootTarget-rectangle.PlanePoint):Dot(forward)
 	rootTarget+=forward*(desiredDepth-currentDepth)
+	local keeperDepth=(keeperRoot.Position-rectangle.PlanePoint):Dot(forward)
+	local rootDepth=(rootTarget-rectangle.PlanePoint):Dot(forward)
+	rootTarget+=forward*(keeperDepth-rootDepth)
 	local toEndpoint=rootTarget-keeperRoot.Position
 	local sideVector=toEndpoint-forward*toEndpoint:Dot(forward)-upAxis*toEndpoint:Dot(upAxis)
 	local fallbackAxis=self.PitchCFrame.RightVector
@@ -499,7 +537,9 @@ function Service:Step(dt:number?)
 		local endVertical=(rootTarget-rectangle.PlanePoint):Dot(upAxis)
 		local control=save.StartPosition:Lerp(rootTarget,.48)
 		local controlVertical=(control-rectangle.PlanePoint):Dot(upAxis)
-		save.ApexPosition=control+upAxis*(endVertical-controlVertical)
+		local startVertical=(save.StartPosition-rectangle.PlanePoint):Dot(upAxis)
+		local jumpHeight=math.max(4, math.abs(endVertical-startVertical)*0.55+2.5)
+		save.ApexPosition=control+upAxis*(math.max(startVertical,endVertical)+jumpHeight-controlVertical)
 	end
 	local travel=math.abs((rootTarget-keeperRoot.Position):Dot(lateralAxis))
 	local rise=math.max(0,(rootTarget-keeperRoot.Position):Dot(upAxis))
@@ -528,6 +568,7 @@ function Service:Step(dt:number?)
 		save.Progress=0
 		save.StartPosition=keeperRoot.Position
 		save.RootTarget=rootTarget
+		save.FixedDiveDepth=(keeperRoot.Position-rectangle.PlanePoint):Dot(forward)
 		save.LateralAxis=candidateAxis
 		lateralAxis=candidateAxis
 		local facing=self.LineFacing[save.Keeper];if facing then facing.Align.Enabled=false end
@@ -537,9 +578,8 @@ function Service:Step(dt:number?)
 		local endVertical=(rootTarget-rectangle.PlanePoint):Dot(upAxis)
 		local control=save.StartPosition:Lerp(rootTarget,.48)
 		local controlVertical=(control-rectangle.PlanePoint):Dot(upAxis)
-		-- The interception point is the vertical peak: the control point shares
-		-- its height with the endpoint, producing zero upward tangent at contact.
-		save.ApexPosition=control+upAxis*(endVertical-controlVertical)
+		local jumpHeight=math.max(4, math.abs(endVertical-startVertical)*0.55+2.5)
+		save.ApexPosition=control+upAxis*(math.max(startVertical,endVertical)+jumpHeight-controlVertical)
 		keeperRoot.Anchored=true
 		self.Animations:PlayActionTimed(save.Keeper,"GoalkeeperDive",flightTime+.08)
 		save.Keeper:SetAttribute("VTRDiveLateralDistance",lateralDistance)
@@ -553,7 +593,8 @@ function Service:Step(dt:number?)
 		local apexPosition:Vector3=save.ApexPosition
 		local endPosition:Vector3=save.RootTarget
 		local arrivalProgress=math.clamp(1-time/math.max(save.InitialInterceptTime,.01),0,1)
-		local desiredProgress=arrivalProgress
+		local elapsedProgress=math.clamp((os.clock()-(save.DiveStartedAt or os.clock()))/math.max(save.DiveDuration or .35,.05),0,1)
+		local desiredProgress=math.max(arrivalProgress,elapsedProgress)
 		save.Progress=math.max(save.Progress or 0,desiredProgress)
 		local progress=math.clamp(save.Progress,0,1)
 		local inverse=1-progress

@@ -27,6 +27,16 @@ local function receiverAssistMode(value: any): string
 	return value == "Off" and "Off" or value == "Assisted" and "Assisted" or "Light"
 end
 
+local function debugEnabled(): boolean
+	return workspace:GetAttribute("VTRKickoffDebug") ~= false
+end
+
+local function debugKickoff(message: string, ...: any)
+	if debugEnabled() then
+		print("[VTR KICKOFF][TeamControl] " .. message, ...)
+	end
+end
+
 function Service.new(remote: RemoteEvent, teams: any, ball: BasePart, possession: any, ballService: any, pitchCFrame: CFrame, width: number, length: number)
 	local targeting = PassTargetingService.new(teams, pitchCFrame)
 	return setmetatable({
@@ -162,6 +172,13 @@ function Service:Handle(player: Player, payload: any)
 			if(tonumber(active:GetAttribute("VTRStunnedUntil"))or 0)>os.clock()then humanoid:Move(Vector3.zero,false);return end
 			local raw = Vector3.new(payload.Direction.X, 0, payload.Direction.Z)
 			local magnitude = math.clamp(raw.Magnitude, 0, 1)
+			if debugEnabled() and self.Possession:GetOwner()==active and (tonumber(active:GetAttribute("VTRKickoffReturnUntil")) or 0)>os.clock() then
+				local last=tonumber(active:GetAttribute("VTRKickoffMoveDebugAt"))or 0
+				if os.clock()-last>.25 then
+					active:SetAttribute("VTRKickoffMoveDebugAt",os.clock())
+					debugKickoff("owner move input","player",player.Name,"owner",active.Name,"magnitude",math.floor(magnitude*100)/100,"direction",raw)
+				end
+			end
 			if magnitude > 0.08 and self.ReceiverAssist[player] then active:SetAttribute("VTRReceiverAssist", nil);self.ReceiverAssist[player] = nil end
 			local ownsBall = self.Possession:GetOwner() == active
 			local sprinting = active:GetAttribute("VTRSprinting") == true
@@ -252,7 +269,12 @@ function Service:Step()
 		if currentOwner then
 			-- Possession always transfers control to the actual collector before AI
 			-- gets a chance to chain an automatic pass.
-			currentOwner:SetAttribute("VTRNoAutoPassUntil",os.clock()+1.2)
+			if (tonumber(currentOwner:GetAttribute("VTRKickoffReturnUntil")) or 0) <= os.clock() then
+				currentOwner:SetAttribute("VTRNoAutoPassUntil",os.clock()+1.2)
+			else
+				currentOwner:SetAttribute("VTRNoAutoPassUntil",nil)
+			end
+			debugKickoff("possession changed", "owner", currentOwner.Name, "team", currentOwner:GetAttribute("VTRTeam"), "aiControlled", currentOwner:GetAttribute("aiControlled"), "controlledByUser", currentOwner:GetAttribute("controlledByUser"), "kickoffReturnUntil", currentOwner:GetAttribute("VTRKickoffReturnUntil"), "noAutoPassUntil", currentOwner:GetAttribute("VTRNoAutoPassUntil"))
 			for player,active in self.Active do
 				local manuallyAway=(self.ManualSwitchAwayUntil[player]or 0)>os.clock()
 				if self.PlayerSides[player]==currentOwner:GetAttribute("VTRTeam")and active~=currentOwner and not manuallyAway then self:_set(player,currentOwner,"PossessionWon")end

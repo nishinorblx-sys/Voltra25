@@ -15,6 +15,22 @@ local function passType(fromZ: number, toZ: number): string
 end
 
 local function passTarget(context: any, passer: any, receiver: any, kind: string): Vector3
+	if kind == "LowCross" then
+		local nearX = passer.Pitch.X < PitchConfig.HALF_WIDTH and 176 or 248
+		local targetPitch = Vector3.new(nearX, 3, math.clamp(math.max(receiver.Pitch.Z, 624), 610, 666))
+		return PitchConfig.TeamPitchPositionToWorld(targetPitch, passer.Side, context.Options)
+	elseif kind == "FarPostCross" then
+		local farX = passer.Pitch.X < PitchConfig.HALF_WIDTH and 306 or 118
+		local targetPitch = Vector3.new(farX, 3, math.clamp(math.max(receiver.Pitch.Z, 640), 622, 676))
+		return PitchConfig.TeamPitchPositionToWorld(targetPitch, passer.Side, context.Options)
+	elseif kind == "Cutback" then
+		local z = receiver.Role == "CM" and 548 or 584
+		local x = receiver.Role == "CM" and receiver.Pitch.X + (PitchConfig.HALF_WIDTH - receiver.Pitch.X) * 0.55 or PitchConfig.HALF_WIDTH
+		return PitchConfig.TeamPitchPositionToWorld(Vector3.new(x, 3, z), passer.Side, context.Options)
+	elseif kind == "BackPass" then
+		local targetPitch = Vector3.new(receiver.Pitch.X, 3, math.min(receiver.Pitch.Z, passer.Pitch.Z - 28))
+		return PitchConfig.TeamPitchPositionToWorld(PitchConfig.ClampInsidePitch(targetPitch), passer.Side, context.Options)
+	end
 	if kind == "Through" then
 		local defensiveLine = AIContextBuilder.DefensiveLineZ(context, passer.Side)
 		local laneX = receiver.Pitch.X
@@ -30,6 +46,75 @@ local function passTarget(context: any, passer: any, receiver: any, kind: string
 	return Vector3.new(target.X, receiver.World.Y, target.Z)
 end
 
+local function isWideWinger(passer: any): boolean
+	return passer.Role == "Winger" and (passer.Pitch.X < 100 or passer.Pitch.X > 324)
+end
+
+local function sameSide(a: any, b: any): boolean
+	return (a.Pitch.X < PitchConfig.HALF_WIDTH and b.Pitch.X < PitchConfig.HALF_WIDTH)
+		or (a.Pitch.X > PitchConfig.HALF_WIDTH and b.Pitch.X > PitchConfig.HALF_WIDTH)
+end
+
+local function wingerPassKind(passer: any, receiver: any, pressure: any): (string?, number)
+	local z = passer.Pitch.Z
+	if z > 675 then
+		if receiver.Role == "CAM" or receiver.Role == "CM" then return "Cutback", 600 end
+		if receiver.Role == "ST" and receiver.Pitch.Z >= 590 then return "LowCross", 560 end
+		if receiver.Role == "Winger" and not sameSide(passer, receiver) then return "FarPostCross", 530 end
+		if receiver.Role == "Fullback" or receiver.Role == "CM" then return "BackPass", 500 end
+	elseif z >= 610 then
+		if receiver.Role == "ST" and receiver.Pitch.Z >= 585 then return "LowCross", 520 end
+		if receiver.Role == "Winger" and not sameSide(passer, receiver) and receiver.Pitch.Z >= 565 then return "FarPostCross", 500 end
+		if receiver.Role == "CAM" or receiver.Role == "CM" then return "Cutback", 480 end
+		if receiver.Role == "Fullback" and sameSide(passer, receiver) then return "BackPass", 430 end
+	elseif z >= 495 then
+		if receiver.Role == "ST" and receiver.Pitch.Z >= 585 then return "LowCross", 430 end
+		if receiver.Role == "CAM" or receiver.Role == "CM" then return "Ground", 410 end
+		if receiver.Role == "Fullback" and sameSide(passer, receiver) and receiver.Pitch.Z >= passer.Pitch.Z - 65 then return "Ground", 390 end
+		if receiver.Role == "Winger" and not sameSide(passer, receiver) and receiver.Pitch.Z > passer.Pitch.Z + 10 then return "Lofted", 370 end
+	else
+		if pressure.Under and (receiver.Role == "CM" or receiver.Role == "CAM") then return "Ground", 340 end
+		if pressure.Heavy and receiver.Role == "Fullback" and sameSide(passer, receiver) then return "BackPass", 330 end
+		if (receiver.Role == "ST" or receiver.Role == "Winger") and receiver.Pitch.Z > passer.Pitch.Z + 35 then return "Through", 300 end
+	end
+	return nil, 0
+end
+
+local function routeBias(stage: string, mood: string, receiver: any, scoredKind: string, forwardGain: number): number
+	local bias = 0
+	if stage == "BuildUp" then
+		if receiver.Role == "Winger" or receiver.Role == "ST" then
+			bias += 28
+		elseif receiver.Role == "CAM" or receiver.Role == "CM" or receiver.Role == "Fullback" then
+			bias += 14
+		elseif receiver.Role == "GK" or receiver.Role == "CB" then
+			bias -= 10
+		end
+		if forwardGain > 20 then bias += 18 end
+	elseif stage == "Progression" then
+		if receiver.Role == "CM" or receiver.Role == "CAM" or receiver.Role == "Winger" or receiver.Role == "Fullback" then bias += 15 end
+		if scoredKind == "Forward" then bias += 8 end
+	elseif stage == "WideAttack" then
+		if receiver.Role == "ST" or receiver.Role == "CAM" or receiver.Role == "CM" then bias += 14 end
+		if scoredKind == "Back" then bias += 6 end
+	elseif stage == "CentralAttack" then
+		if receiver.Role == "ST" or receiver.Role == "Winger" or receiver.Role == "CAM" then bias += 16 end
+	elseif stage == "FinalChance" then
+		if receiver.Role == "ST" or receiver.Role == "Winger" or receiver.Role == "CAM" then bias += 18 end
+		if forwardGain < -30 then bias += 10 end
+	end
+	if mood == "Pressing" then
+		bias += scoredKind == "Side" and 16 or scoredKind == "Back" and 10 or forwardGain > 24 and 12 or 0
+		if receiver.Role == "Winger" or receiver.Role == "Fullback" or receiver.Role == "CM" then bias += 8 end
+	elseif mood == "AggressiveRisk" then
+		bias += forwardGain > 18 and 24 or scoredKind == "Side" and 8 or 0
+		if receiver.Role == "ST" or receiver.Role == "Winger" or receiver.Role == "CAM" then bias += 10 end
+	elseif mood == "Passive" then
+		bias += scoredKind == "Forward" and 18 or scoredKind == "Side" and 6 or scoredKind == "Back" and -8 or 0
+	end
+	return bias
+end
+
 function Service.ScoreReceiver(context: any, passer: any, receiver: any, style: any, difficulty: any): any
 	local distance = PitchConfig.GetDistanceStuds(passer.World, receiver.World)
 	if distance < 7 or distance > 135 then
@@ -39,7 +124,14 @@ function Service.ScoreReceiver(context: any, passer: any, receiver: any, style: 
 	local open, veryOpen, tight = AIContextBuilder.IsOpen(context, receiver)
 	local kind = passType(passer.Pitch.Z, receiver.Pitch.Z)
 	local forwardGain = receiver.Pitch.Z - passer.Pitch.Z
+	local stage = AIContextBuilder.AttackStage(context, passer.Side)
+	local mood = AIContextBuilder.DefensiveMood(context, passer.Side, passer)
 	local defensiveLine = AIContextBuilder.DefensiveLineZ(context, passer.Side)
+	local timedStrikerRun = receiver.Role == "ST"
+		and (passer.Role == "CM" or passer.Role == "CAM" or passer.Role == "CDM")
+		and defensiveLine > 90
+		and receiver.Pitch.Z >= defensiveLine - 34
+		and receiver.Pitch.Z <= defensiveLine - 3
 	if defensiveLine > 90 and forwardGain > 1 and receiver.Pitch.Z > defensiveLine - 3 then
 		return nil
 	end
@@ -51,8 +143,14 @@ function Service.ScoreReceiver(context: any, passer: any, receiver: any, style: 
 	local throughFrequency = style:Ratio("ThroughBallFrequency")
 	local passRisk = style:Ratio("PassRisk")
 	local targetKind = "Ground"
-	if dangerous and forwardGain > 35 and directness + risk + throughFrequency > 1.15 then
+	if timedStrikerRun and forwardGain > 12 then
 		targetKind = "Through"
+	elseif mood == "AggressiveRisk" and forwardGain > 16 and distance > 22 then
+		targetKind = "Through"
+	elseif dangerous and forwardGain > 35 and directness + risk + throughFrequency > 1.15 then
+		targetKind = "Through"
+	elseif mood == "Pressing" and distance > 44 and (math.abs(receiver.Pitch.X - passer.Pitch.X) > 78 or forwardGain > 20) then
+		targetKind = math.abs(receiver.Pitch.X - passer.Pitch.X) > 78 and "Lofted" or "Through"
 	elseif distance > 62 and forwardGain > 12 and directness + style:Ratio("FreeKickLongPass") + style:Ratio("SwitchPlayFrequency") > 1.18 then
 		targetKind = "Lofted"
 	end
@@ -74,9 +172,20 @@ function Service.ScoreReceiver(context: any, passer: any, receiver: any, style: 
 	score += dangerous and (10 + risk * 10 + passRisk * 10) or 0
 	score -= math.abs(distance - (directness > 0.55 and 48 or 28)) * 0.22
 	score += (receiver.Stats.overall or 60) * 0.08 + (receiver.Stats.pace or 60) * 0.05
+	score += routeBias(stage, mood, receiver, kind, forwardGain)
+	if timedStrikerRun then
+		score += 46
+	end
 	score -= pressure.Score * 18
 	score += difficulty.PassRisk * 10
-	if not safe and math.max(risk, passRisk) < 0.45 then
+	if mood == "Passive" and forwardGain > 34 then
+		score -= 14
+	elseif mood == "Pressing" and targetKind ~= "Ground" then
+		score += 10
+	elseif mood == "AggressiveRisk" and targetKind == "Through" then
+		score += 18
+	end
+	if not safe and math.max(risk, passRisk) < 0.45 and mood ~= "AggressiveRisk" then
 		score -= 18
 	end
 	if not laneClear then
@@ -93,7 +202,81 @@ function Service.ScoreReceiver(context: any, passer: any, receiver: any, style: 
 		LaneClear = laneClear,
 		Safe = safe,
 		ForwardGain = forwardGain,
+		Stage = stage,
+		DefensiveMood = mood,
 	}
+end
+
+function Service.ChooseKickoffReturn(context: any, passer: any, style: any, difficulty: any): any?
+	local best = nil
+	for _, receiver in ipairs(context.Teams[passer.Side].List) do
+		if receiver.Model ~= passer.Model and receiver.Root then
+			local gain = receiver.Pitch.Z - passer.Pitch.Z
+			local distance = PitchConfig.GetDistanceStuds(passer.World, receiver.World)
+			if distance >= 8 and distance <= 70 and gain <= 12 then
+				local scored = Service.ScoreReceiver(context, passer, receiver, style, difficulty)
+				if scored and scored.LaneClear then
+					scored.Score += math.max(0, 30 - math.abs(gain + 12)) + math.max(0, 36 - math.abs(distance - 24))
+					scored.PassKind = "Ground"
+					scored.Target = passTarget(context, passer, receiver, "Ground")
+					if not best or scored.Score > best.Score then best = scored end
+				end
+			end
+		end
+	end
+	return best
+end
+
+function Service.ChooseWingerWide(context: any, passer: any, style: any, difficulty: any): any?
+	if not isWideWinger(passer) then
+		return nil
+	end
+	local pressure = AIContextBuilder.Pressure(context, passer)
+	if passer.Pitch.Z < 495 and not pressure.Under and not pressure.Heavy then
+		return nil
+	end
+	local best = nil
+	for _, receiver in ipairs(context.Teams[passer.Side].List) do
+		if receiver.Model ~= passer.Model and receiver.Root and not receiver.IsGoalkeeper then
+			local kind, priority = wingerPassKind(passer, receiver, pressure)
+			if kind then
+				local distance = PitchConfig.GetDistanceStuds(passer.World, receiver.World)
+				if distance >= 8 and distance <= 155 then
+					local target = passTarget(context, passer, receiver, kind)
+					local laneKind = (kind == "FarPostCross" or kind == "Lofted") and "Lobbed" or kind == "Through" and "Driven" or "Ground"
+					local laneClear = AIContextBuilder.PassingLaneClear(context, passer, target, laneKind)
+					local open, veryOpen, tight = AIContextBuilder.IsOpen(context, receiver)
+					local receiverPressure = AIContextBuilder.Pressure(context, receiver)
+					local score = priority
+					score += laneClear and 42 or -90
+					score += veryOpen and 26 or open and 16 or tight and -24 or 0
+					score += receiver.Role == "ST" and 10 or receiver.Role == "CAM" and 9 or receiver.Role == "CM" and 7 or receiver.Role == "Fullback" and 4 or 0
+					score -= receiverPressure.Score * 18
+					score -= math.abs(distance - (kind == "BackPass" and 32 or kind == "Cutback" and 46 or 62)) * 0.12
+					score += difficulty.PassRisk * 5
+					if passer.Pitch.Z > 675 and (kind == "Cutback" or kind == "LowCross" or kind == "FarPostCross") then
+						score += 50
+					end
+					if laneClear and (not best or score > best.Score) then
+						best = {
+							Receiver = receiver,
+							Score = score,
+							Kind = receiver.Pitch.Z > passer.Pitch.Z and "Forward" or receiver.Pitch.Z < passer.Pitch.Z - 20 and "Back" or "Side",
+							PassKind = kind,
+							Target = target,
+							Distance = distance,
+							LaneClear = laneClear,
+							Safe = laneClear and (open or veryOpen or kind == "BackPass"),
+							ForwardGain = receiver.Pitch.Z - passer.Pitch.Z,
+							Stage = AIContextBuilder.AttackStage(context, passer.Side),
+							DefensiveMood = AIContextBuilder.DefensiveMood(context, passer.Side, passer),
+						}
+					end
+				end
+			end
+		end
+	end
+	return best
 end
 
 function Service.Choose(context: any, passer: any, style: any, difficulty: any, forcedSafe: boolean?): any?
