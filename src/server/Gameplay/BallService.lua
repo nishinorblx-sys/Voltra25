@@ -200,7 +200,8 @@ function Service:Kick(model: Model, kind: string, direction: Vector3, charge: nu
 		local consistency = 0.94 + passing / 1650 + weakFoot / 500 + balance / 3300
 		local variation = self.Random:NextNumber(-1, 1) * (1 - passing / 100) * 0.018
 		local throughScale = passType == "Through" and 0.94 or 1
-		local finalSpeed = math.clamp(baseSpeed * consistency * (1 + variation) * throughScale, 40, PassingPower.AbsoluteMaxSpeed)
+		local speedBias = passType == "BackPass" and 0.96 or passType == "Ground" and 1.12 or passType == "Through" and 1.1 or passType == "Lofted" and 1.06 or 1.08
+		local finalSpeed = math.clamp(baseSpeed * consistency * (1 + variation) * throughScale * speedBias, 40, PassingPower.AbsoluteMaxSpeed)
 		local modelRoot = self:_root(model)
 		if passType=="Lofted"then
 			local destination=targetPoint or(modelRoot and modelRoot.Position+direction)or(self.Ball.Position+direction)

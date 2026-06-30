@@ -41,7 +41,7 @@ function Service.new(teams: any, formations: any, pitchCFrame: CFrame, width: nu
 			Away = AIPlayerBrain.new(ballService, awayStyle, difficulty),
 		},
 		Debug = AIDebugService.new(),
-		Accum = {Phase = 0.05, Assignment = 0.05, OnBall = 0.04, Movement = 0.04, Debug = 0.25},
+		Accum = {Phase = 0.035, Assignment = 0.035, OnBall = 0.03, Movement = 0.03, Debug = 0.25},
 		Phases = {Home = "LooseBall", Away = "LooseBall"},
 		CurrentAssignments = {Home = {}, Away = {}},
 		LastContext = nil,
@@ -224,13 +224,13 @@ function Service:Step(dt: number)
 	end
 
 	self.Accum.Phase += dt
-	if self.Accum.Phase >= 0.05 then
+	if self.Accum.Phase >= 0.035 then
 		self.Accum.Phase = 0
 		self.Phases = self.Phase:Update(context, true)
 	end
 
 	self.Accum.Assignment += dt
-	if self.Accum.Assignment >= 0.05 or not next(self.CurrentAssignments.Home) then
+	if self.Accum.Assignment >= 0.035 or not next(self.CurrentAssignments.Home) then
 		self.Accum.Assignment = 0
 		self.CurrentAssignments = {
 			Home = self.Assignments.Home:BuildSide(context, "Home", self.Phases.Home or "LooseBall"),
@@ -252,14 +252,14 @@ function Service:Step(dt: number)
 	end
 
 	self.Accum.OnBall += dt
-	if self.Accum.OnBall >= 0.04 then
+	if self.Accum.OnBall >= 0.03 then
 		self.Accum.OnBall = 0
 		self.Brain.Home:StepSide(context, self.CurrentAssignments, "Home")
 		self.Brain.Away:StepSide(context, self.CurrentAssignments, "Away")
 	end
 
 	self.Accum.Movement += dt
-	if self.Accum.Movement >= 0.04 then
+	if self.Accum.Movement >= 0.03 then
 		self.Accum.Movement = 0
 		for _, side in ipairs({"Home", "Away"}) do
 			for model, assignment in pairs(self.CurrentAssignments[side]) do

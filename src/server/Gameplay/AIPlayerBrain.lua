@@ -241,7 +241,7 @@ function Service:_carrierDecision(context: any, carrier: any, assignment: any)
 	local wingerChanceZone = wingerWide and carrier.Pitch.Z >= 610
 	local passTempo = self.Style:Ratio("PassTempo")
 	local firstTouchDirectness = self.Style:Ratio("FirstTouchDirectness")
-	local holdLimit = pressure.Under and (0.72 - passTempo * 0.42) or (1.65 - passTempo * 0.75 - firstTouchDirectness * 0.28)
+	local holdLimit = pressure.Under and (0.38 - passTempo * 0.2) or (1.05 - passTempo * 0.52 - firstTouchDirectness * 0.22)
 	if defensiveMood == "Passive" then
 		holdLimit += 0.45
 	elseif defensiveMood == "Pressing" then
@@ -323,18 +323,19 @@ function Service:_carrierDecision(context: any, carrier: any, assignment: any)
 		self.CarrySince[carrier.Model] = nil
 		return
 	end
-	local closeToDanger = carrier.Pitch.Z >= 590 or PitchConfig.InZone(carrier.Pitch, "OpponentBox") or PitchConfig.InZone(carrier.Pitch, "CentralShootingZone")
-	local enoughBoxSpace = attackStage == "FinalChance" and PitchConfig.InZone(carrier.Pitch, "OpponentBox") and pressure.Closest > 10
-	local openDangerShot = closeToDanger and pressure.Closest > 10
+	local dangerZone = PitchConfig.Zones.OpponentBox
+	local closeToDanger = carrier.Pitch.X >= dangerZone.XMin - 5 and carrier.Pitch.X <= dangerZone.XMax + 5 and carrier.Pitch.Z >= dangerZone.ZMin - 5
+	local enoughBoxSpace = attackStage == "FinalChance" and PitchConfig.InZone(carrier.Pitch, "OpponentBox") and pressure.Closest > 9
+	local openDangerShot = closeToDanger and pressure.Closest > 9
 	local strikerShootBias = carrier.Role == "ST" and shot.Good and (PitchConfig.InZone(carrier.Pitch, "OpponentBox") or PitchConfig.InZone(carrier.Pitch, "CentralShootingZone"))
 	if openDangerShot then
-		carrier.Model:SetAttribute("VTROpenDangerShotChance", 0.8)
+		carrier.Model:SetAttribute("VTROpenDangerShotChance", 0.84)
 		carrier.Model:SetAttribute("VTROpenDangerShotChanceUntil", context.Now + 2.8)
 	else
 		carrier.Model:SetAttribute("VTROpenDangerShotChance", nil)
 		carrier.Model:SetAttribute("VTROpenDangerShotChanceUntil", nil)
 	end
-	if (shot.Good or openDangerShot) and (openDangerShot or strikerShootBias or shot.Score > 26 or enoughBoxSpace) and (not pressure.Heavy or enoughBoxSpace or strikerShootBias or openDangerShot) then
+	if (shot.Good or openDangerShot) and (openDangerShot or strikerShootBias or shot.Score > 22 or enoughBoxSpace) and (not pressure.Heavy or enoughBoxSpace or strikerShootBias or openDangerShot) then
 		if self:_shoot(context, carrier, shot) then
 			self.CarrySince[carrier.Model] = nil
 			return
@@ -342,7 +343,7 @@ function Service:_carrierDecision(context: any, carrier: any, assignment: any)
 	end
 
 
-	local forcedSafe = wingerEndLine or (defensiveMood ~= "AggressiveRisk" and (pressure.Heavy or pressure.Under or carriedFor >= holdLimit * 0.65 or self.Style:Risk() < 0.38))
+	local forcedSafe = wingerEndLine or (defensiveMood ~= "AggressiveRisk" and (pressure.Heavy or carriedFor >= holdLimit * 0.45 or self.Style:Risk() < 0.3))
 	local pass = AIPassingDecisionService.Choose(context, carrier, self.Style, self.Difficulty, forcedSafe)
 	local inOpponentHalf = carrier.Pitch.Z >= PitchConfig.HALF_LENGTH
 	local passIsBackwards = pass ~= nil and pass.Kind == "Back" and (pass.ForwardGain or 0) < -8
@@ -362,7 +363,7 @@ function Service:_carrierDecision(context: any, carrier: any, assignment: any)
 	carrier.Model:SetAttribute("AIPassReceiver", pass and pass.Receiver and pass.Receiver.Model.Name or "")
 	carrier.Model:SetAttribute("AIPassKind", pass and pass.PassKind or "")
 	carrier.Model:SetAttribute("AIPassLaneClear", pass and pass.LaneClear or false)
-	if pass and (forcedSafe or pass.Kind ~= "Back" and pass.Score > (2 - passTempo * 22) or pass.Kind == "Back" and pass.Score > 36 or carriedFor > math.max(0.05, 0.24 - passTempo * 0.16)) then
+	if pass and (forcedSafe or pass.Kind ~= "Back" and pass.Score > (-8 - passTempo * 18) or pass.Kind == "Back" and pass.Score > 58 or carriedFor > math.max(0.025, 0.16 - passTempo * 0.1)) then
 		if self:_kickPass(context, carrier, pass) then
 			self.CarrySince[carrier.Model] = nil
 			return

@@ -97,7 +97,7 @@ local function wingerPassKind(passer: any, receiver: any, pressure: any): (strin
 	return nil, 0
 end
 
-local function routeBias(stage: string, mood: string, receiver: any, scoredKind: string, forwardGain: number): number
+local function routeBias(stage: string, mood: string, receiver: any, kind: string, forwardGain: number): number
 	local bias = 0
 	if stage == "BuildUp" then
 		if receiver.Role == "Winger" or receiver.Role == "ST" then
@@ -189,14 +189,32 @@ function Service.ScoreReceiver(context: any, passer: any, receiver: any, style: 
 
 	local score = 0
 	score += (veryOpen and 24 or open and 14 or tight and -20 or 0)
-	score += laneClear and 26 or -34
-	score += kind == "Forward" and (30 + directness * 24 + forwardPriority * 24) or kind == "Side" and (8 - directness * 5) or (-16 + backPassSafety * 8 - directness * 24)
+	score += laneClear and 38 or -86
+	score += kind == "Forward" and (42 + directness * 28 + forwardPriority * 28) or kind == "Side" and (26 - directness * 3) or (-42 + backPassSafety * 4 - directness * 30)
 	score += targetKind == "Through" and (12 + throughFrequency * 22) or targetKind == "Lofted" and (directness * 14 + style:Ratio("FreeKickLongPass") * 8) or 0
 	score += forwardGain > 45 and 16 or forwardGain > 24 and 10 or forwardGain > 8 and 5 or 0
 	score += dangerous and (10 + risk * 10 + passRisk * 10) or 0
 	score -= math.abs(distance - (directness > 0.55 and 48 or 28)) * 0.22
 	score += (receiver.Stats.overall or 60) * 0.08 + (receiver.Stats.pace or 60) * 0.05
 	score += routeBias(stage, mood, receiver, kind, forwardGain)
+	local fastDistributionBias = true
+	if kind == "Back" then
+		score -= passer.Pitch.Z >= PitchConfig.HALF_LENGTH and 58 or 34
+		if forwardGain < -38 then
+			score -= 20
+		end
+	elseif kind == "Side" then
+		score += laneClear and 24 or -28
+		if passerPressure.Under or passerPressure.Heavy then
+			score += open or veryOpen and 20 or 8
+		end
+	elseif kind == "Forward" then
+		score += laneClear and 28 or -42
+		score += math.clamp(forwardGain, 0, 70) * 0.36
+		if open or veryOpen then
+			score += 16
+		end
+	end
 	if kind == "Back" then
 		local backPenalty = passer.Pitch.Z >= PitchConfig.HALF_LENGTH and 42 or 24
 		if passerPressure.Heavy then
@@ -237,7 +255,7 @@ function Service.ScoreReceiver(context: any, passer: any, receiver: any, style: 
 		score -= 18
 	end
 	if not laneClear then
-		score -= 38
+		score -= 72
 	end
 	if kind == "Back" and not passerPressure.Heavy then
 		score -= passerPressure.Under and 8 or 24
@@ -337,6 +355,7 @@ function Service.Choose(context: any, passer: any, style: any, difficulty: any, 
 	local trailing = nil
 	local alternate = nil
 	local progressive = nil
+	local sideways = nil
 	for _, receiver in ipairs(context.Teams[passer.Side].List) do
 		if receiver.Model ~= passer.Model and receiver.Root and not receiver.IsGoalkeeper then
 			local scored = Service.ScoreReceiver(context, passer, receiver, style, difficulty)
@@ -351,6 +370,9 @@ function Service.Choose(context: any, passer: any, style: any, difficulty: any, 
 				end
 				if scored.LaneClear and scored.ForwardGain > 8 and scored.Kind ~= "Back" and scored.Score > -8 and (scored.Safe or scored.ForwardGain > 22) and (not progressive or scored.Score > progressive.Score) then
 					progressive = scored
+				end
+				if scored.LaneClear and scored.Kind == "Side" and scored.Score > -12 and (scored.Safe or scored.Distance <= 70) and (not sideways or scored.Score > sideways.Score) then
+					sideways = scored
 				end
 				if scored.LaneClear and scored.Score > 2 and (not forcedSafe or scored.Safe) and (not best or scored.Score > best.Score) then
 					best = scored
@@ -369,6 +391,9 @@ function Service.Choose(context: any, passer: any, style: any, difficulty: any, 
 	if passerPressure.Heavy or passerPressure.Under then
 		if progressive then
 			return progressive
+		end
+		if sideways and (not best or best.Kind == "Back" or sideways.Score >= best.Score - 18) then
+			return sideways
 		end
 		if best and best.Kind ~= "Back" then
 			return best
