@@ -282,22 +282,46 @@ function Service:_carrierDecision(context: any, carrier: any, assignment: any)
 
 	local forcedSafe = wingerEndLine or (defensiveMood ~= "AggressiveRisk" and (pressure.Heavy or pressure.Under or carriedFor >= holdLimit * 0.65 or self.Style:Risk() < 0.38))
 	local pass = AIPassingDecisionService.Choose(context, carrier, self.Style, self.Difficulty, forcedSafe)
+	local inOpponentHalf = carrier.Pitch.Z >= PitchConfig.HALF_LENGTH
+	local passIsBackwards = pass ~= nil and pass.Kind == "Back" and (pass.ForwardGain or 0) < -8
+	local forwardCarryPitch = PitchConfig.ClampInsidePitch(Vector3.new(carrier.Pitch.X, 3, carrier.Pitch.Z + (attackStage == "FinalChance" and 18 or 38)))
+	local forwardSpace = AIContextBuilder.SpaceAt(context, carrier.Side, forwardCarryPitch, pressure.Under and 16 or 22)
+	local takeOnPress = inOpponentHalf and passIsBackwards and forwardSpace and not pressure.Heavy
+	if takeOnPress then
+		pass = nil
+		forcedSafe = false
+		carrier.Model:SetAttribute("AIAvoidBackPass", true)
+	else
+		carrier.Model:SetAttribute("AIAvoidBackPass", false)
+	end
+	carrier.Model:SetAttribute("AIForwardSpace", forwardSpace)
 	carrier.Model:SetAttribute("AIForcedSafe", forcedSafe)
 	carrier.Model:SetAttribute("AIPassScore", pass and pass.Score or -999)
 	carrier.Model:SetAttribute("AIPassReceiver", pass and pass.Receiver and pass.Receiver.Model.Name or "")
 	carrier.Model:SetAttribute("AIPassKind", pass and pass.PassKind or "")
 	carrier.Model:SetAttribute("AIPassLaneClear", pass and pass.LaneClear or false)
-	if pass and (forcedSafe or pass.Score > (8 - passTempo * 20) or carriedFor > math.max(0.06, 0.28 - passTempo * 0.18)) then
+	if pass and (forcedSafe or pass.Kind ~= "Back" and pass.Score > (2 - passTempo * 22) or pass.Kind == "Back" and pass.Score > 36 or carriedFor > math.max(0.05, 0.24 - passTempo * 0.16)) then
 		if self:_kickPass(context, carrier, pass) then
 			self.CarrySince[carrier.Model] = nil
 			return
 		end
 	end
 
+	if forwardSpace and (pressure.None or takeOnPress or (inOpponentHalf and pressure.Under and not pass)) then
+		local target = PitchConfig.TeamPitchPositionToWorld(forwardCarryPitch, carrier.Side, context.Options)
+		assignment.TargetWorld = target
+		assignment.MovementTarget = target
+		assignment.PrimaryAssignment = takeOnPress and "TakeOnPressForward" or "CarryForwardSpace"
+		assignment.MovementUrgency = 1
+		assignment.SprintAllowed = true
+		self.LastAction[carrier.Model] = assignment.PrimaryAssignment
+		return
+	end
+
 	local dribble = AIDribblingDecisionService.Evaluate(context, carrier, self.Style)
 	carrier.Model:SetAttribute("AIDribbleScore", dribble.Score)
 	carrier.Model:SetAttribute("AIDribbleAvailable", dribble.CanDribble)
-	local dribbleThreshold = defensiveMood == "AggressiveRisk" and -6 or defensiveMood == "Pressing" and 3 or pressure.Heavy and 22 or 5
+	local dribbleThreshold = takeOnPress and -12 or defensiveMood == "AggressiveRisk" and -6 or defensiveMood == "Pressing" and 3 or pressure.Heavy and 22 or 5
 	if wingerChanceZone then
 		dribbleThreshold += 16
 	end

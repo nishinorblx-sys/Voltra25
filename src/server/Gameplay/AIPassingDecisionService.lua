@@ -94,10 +94,10 @@ local function routeBias(stage: string, mood: string, receiver: any, scoredKind:
 		if forwardGain > 20 then bias += 18 end
 	elseif stage == "Progression" then
 		if receiver.Role == "CM" or receiver.Role == "CAM" or receiver.Role == "Winger" or receiver.Role == "Fullback" then bias += 15 end
-		if scoredKind == "Forward" then bias += 8 end
+		if kind == "Forward" then bias += 8 end
 	elseif stage == "WideAttack" then
 		if receiver.Role == "ST" or receiver.Role == "CAM" or receiver.Role == "CM" then bias += 14 end
-		if scoredKind == "Back" then bias += 6 end
+		if kind == "Back" then bias += 6 end
 	elseif stage == "CentralAttack" then
 		if receiver.Role == "ST" or receiver.Role == "Winger" or receiver.Role == "CAM" then bias += 16 end
 	elseif stage == "FinalChance" then
@@ -105,13 +105,13 @@ local function routeBias(stage: string, mood: string, receiver: any, scoredKind:
 		if forwardGain < -30 then bias += 10 end
 	end
 	if mood == "Pressing" then
-		bias += scoredKind == "Side" and 16 or scoredKind == "Back" and 10 or forwardGain > 24 and 12 or 0
+		bias += kind == "Side" and 16 or kind == "Back" and 10 or forwardGain > 24 and 12 or 0
 		if receiver.Role == "Winger" or receiver.Role == "Fullback" or receiver.Role == "CM" then bias += 8 end
 	elseif mood == "AggressiveRisk" then
-		bias += forwardGain > 18 and 24 or scoredKind == "Side" and 8 or 0
+		bias += forwardGain > 18 and 24 or kind == "Side" and 8 or 0
 		if receiver.Role == "ST" or receiver.Role == "Winger" or receiver.Role == "CAM" then bias += 10 end
 	elseif mood == "Passive" then
-		bias += scoredKind == "Forward" and 18 or scoredKind == "Side" and 6 or scoredKind == "Back" and -8 or 0
+		bias += kind == "Forward" and 18 or kind == "Side" and 6 or kind == "Back" and -8 or 0
 	end
 	return bias
 end
@@ -181,6 +181,25 @@ function Service.ScoreReceiver(context: any, passer: any, receiver: any, style: 
 	score -= math.abs(distance - (directness > 0.55 and 48 or 28)) * 0.22
 	score += (receiver.Stats.overall or 60) * 0.08 + (receiver.Stats.pace or 60) * 0.05
 	score += routeBias(stage, mood, receiver, kind, forwardGain)
+	if kind == "Back" then
+		local backPenalty = passer.Pitch.Z >= PitchConfig.HALF_LENGTH and 42 or 24
+		if passerPressure.Heavy then
+			backPenalty -= 12
+		elseif not passerPressure.Under then
+			backPenalty += 10
+		end
+		if forwardGain < -48 then
+			backPenalty += 18
+		end
+		score -= backPenalty
+	elseif forwardGain > 6 then
+		score += math.clamp(forwardGain, 0, 58) * 0.42
+		if passerPressure.Under or passerPressure.Heavy then
+			score += laneClear and (open or veryOpen) and 24 or 0
+		end
+	elseif kind == "Side" and (passerPressure.Under or passerPressure.Heavy) and laneClear and (open or veryOpen) then
+		score += 18
+	end
 	if trailingCover and kind == "Back" then
 		score += (passerPressure.Heavy and 18 or passerPressure.Under and 8 or -18) + backPassSafety * 6
 	elseif trailingCover then
@@ -301,6 +320,7 @@ function Service.Choose(context: any, passer: any, style: any, difficulty: any, 
 	local fallback = nil
 	local trailing = nil
 	local alternate = nil
+	local progressive = nil
 	for _, receiver in ipairs(context.Teams[passer.Side].List) do
 		if receiver.Model ~= passer.Model and receiver.Root and not receiver.IsGoalkeeper then
 			local scored = Service.ScoreReceiver(context, passer, receiver, style, difficulty)
@@ -312,6 +332,9 @@ function Service.Choose(context: any, passer: any, style: any, difficulty: any, 
 				end
 				if scored.Safe and (not bestSafe or scored.Score > bestSafe.Score) then
 					bestSafe = scored
+				end
+				if scored.LaneClear and scored.ForwardGain > 8 and scored.Kind ~= "Back" and scored.Score > -8 and (scored.Safe or scored.ForwardGain > 22) and (not progressive or scored.Score > progressive.Score) then
+					progressive = scored
 				end
 				if scored.LaneClear and scored.Score > 2 and (not forcedSafe or scored.Safe) and (not best or scored.Score > best.Score) then
 					best = scored
@@ -327,8 +350,25 @@ function Service.Choose(context: any, passer: any, style: any, difficulty: any, 
 		end
 	end
 	local passerPressure = AIContextBuilder.Pressure(context, passer)
+	if passerPressure.Heavy or passerPressure.Under then
+		if progressive then
+			return progressive
+		end
+		if best and best.Kind ~= "Back" then
+			return best
+		end
+		if passer.Pitch.Z >= PitchConfig.HALF_LENGTH and not passerPressure.Heavy then
+			if alternate and alternate.Kind ~= "Back" then
+				return alternate
+			end
+			return nil
+		end
+	end
+	if passer.Pitch.Z >= PitchConfig.HALF_LENGTH and best and best.Kind == "Back" and alternate and alternate.Kind ~= "Back" then
+		return alternate
+	end
 	if trailing and alternate and passerPressure.Under and math.abs(trailing.Score - alternate.Score) <= 18 then
-		return Randomizer:NextNumber() < 0.5 and trailing or alternate
+		return alternate.Kind ~= "Back" and alternate or trailing
 	end
 	return best or bestSafe or fallback
 end
