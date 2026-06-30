@@ -698,6 +698,21 @@ local function depthStep(currentZ: number, desiredZ: number, maxStep: number): n
 	return currentZ + delta
 end
 
+local function shapeMotion(context: any, info: any, target: Vector3, depth: number?, width: number?): Vector3
+	local seed = 0
+	local name = info.Model and info.Model.Name or tostring(info.Role or "")
+	for i = 1, #name do
+		seed += string.byte(name, i) or 0
+	end
+	local now = context.Now or os.clock()
+	local depthAmount = depth or 14
+	local widthAmount = width or 5
+	local waveA = math.sin(now * (0.82 + (seed % 7) * 0.035) + seed * 0.19)
+	local waveB = math.cos(now * (0.58 + (seed % 5) * 0.04) + seed * 0.13)
+	local stagger = ((seed % 7) - 3) * 3
+	return PitchConfig.ClampInsidePitch(Vector3.new(target.X + waveB * widthAmount, target.Y, target.Z + waveA * depthAmount + stagger))
+end
+
 local function simpleDefensiveShapeTarget(info: any, ballPitch: Vector3, base: Vector3, style: any): Vector3
 	local depth = style:Ratio("DefensiveDepth")
 	local lineZ = AIDefensiveDecisionService.LineHeight(ballPitch, depth)
@@ -752,7 +767,7 @@ local function simpleDefensiveRoleTarget(context: any, info: any, ballPitch: Vec
 	local ownerPitch = ownerInfo and PitchConfig.WorldToTeamPitchPosition(ownerInfo.World, info.Side, context.Options) or ballPitch
 	local faceModel = ownerInfo and ownerInfo.Model or nil
 	local shadow = pressState and pressState.Shadow and pressState.Shadow[info.Model]
-	local ballInDefensiveThird = ballPitch.Z <= PitchConfig.Zones.DefensiveThird.ZMax
+	local ballInOwnHalf = ballPitch.Z <= PitchConfig.HALF_LENGTH
 
 	if shadow and shadow.Target and context.Players[shadow.Target] then
 		local oldInfo = context.Players[shadow.Target]
@@ -766,12 +781,23 @@ local function simpleDefensiveRoleTarget(context: any, info: any, ballPitch: Vec
 		return "PostPressShadow", target, 0.86, true, oldInfo.Model
 	end
 
-	if ownerInfo and ballInDefensiveThird then
-		if info.Role == "CB" and ownerInfo.Role == "ST" then
+	if ownerInfo and ballInOwnHalf then
+		local carrierDistance = PitchConfig.GetDistanceStuds(info.World, ownerInfo.World)
+		local ownerMidfielder = ownerInfo.Role == "CDM" or ownerInfo.Role == "CM" or ownerInfo.Role == "CAM"
+		local infoMidfielder = info.Role == "CDM" or info.Role == "CM" or info.Role == "CAM"
+		if info.Role == "CB" and (ownerInfo.Role == "ST" or ownerInfo.Role == "CAM") and carrierDistance <= 125 then
 			return "CenterBackPressureStriker", AIDefensiveDecisionService.ContainTarget(ownerPitch), 1, true, faceModel
 		end
-		if info.Role == "Fullback" and ownerInfo.Role == "Winger" and sameWideSide(info, ownerPitch) then
+		if info.Role == "Fullback" and ownerInfo.Role == "Winger" and sameWideSide(info, ownerPitch) and carrierDistance <= 115 then
 			return "FullbackPressureWinger", AIDefensiveDecisionService.ContainTarget(ownerPitch), 0.98, true, faceModel
+		end
+		if infoMidfielder and ownerMidfielder and carrierDistance <= 120 then
+			local rank = midfieldPressRank(context, info, ownerInfo)
+			if rank == 1 then
+				return "MidfielderPressureMidfielder", AIDefensiveDecisionService.ContainTarget(ownerPitch), 1, true, faceModel
+			elseif rank == 2 then
+				return "MidfielderPressureCover", AIDefensiveDecisionService.CoverPresserTarget(ownerPitch), 0.94, true, faceModel
+			end
 		end
 	end
 
@@ -785,7 +811,8 @@ local function simpleDefensiveRoleTarget(context: any, info: any, ballPitch: Vec
 		return "DefensiveRestBlock", defensiveRestBlockTarget(info), 0.72, false, nil
 	end
 
-	return "DefensiveShape", simpleDefensiveShapeTarget(info, ballPitch, base, style), 0.82, false, nil
+	local shapeTarget = shapeMotion(context, info, simpleDefensiveShapeTarget(info, ballPitch, base, style), 18, 6)
+	return "DefensiveShape", shapeTarget, 0.86, true, nil
 end
 
 function Service.new(style: any)
