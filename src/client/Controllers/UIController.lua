@@ -23,6 +23,7 @@ local ProgressionService = require(script.Parent.Parent.Services.ProgressionServ
 local LaunchService = require(script.Parent.Parent.Services.LaunchService)
 local PlayerDatabaseService = require(script.Parent.Parent.Services.PlayerDatabaseService)
 local MatchSetupService = require(script.Parent.Parent.Services.MatchSetupService)
+local SettingsRuntimeService = require(script.Parent.Parent.Services.SettingsRuntimeService)
 local PlayerDetailsModal = require(script.Parent.Parent.Components.PlayerDetailsModal)
 local FlowController = require(script.Parent.FlowController)
 local LoadingScreen = require(script.Parent.Parent.Components.LoadingScreen)
@@ -135,6 +136,7 @@ function UIController:Start()
 		return
 	end
 	self.Data = data
+	SettingsRuntimeService.Apply(data.UIState.Settings)
 
 	local scale = Instance.new("UIScale")
 	scale.Parent = root
@@ -432,7 +434,8 @@ function UIController:_bindDataUpdates()
 	end)
 	UIStateService:Observe(function(value)
 		self.Data.UIState = value
-		for _, id in {"Inventory"} do self:_replacePage(id) end
+		SettingsRuntimeService.Apply(value.Settings)
+		for _, id in {"Inventory","Settings"} do self:_replacePage(id) end
 	end)
 	ProgressionService:Observe(function(value)
 		self.Data.Progression = value

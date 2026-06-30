@@ -10,7 +10,7 @@ local FreeKickTrajectory = require(ReplicatedStorage.VTR.Shared.FreeKickTrajecto
 
 local Service = {}
 Service.__index = Service
-local TARGETED_SHOT_GRAVITY=59
+local TARGETED_SHOT_GRAVITY=29.5
 local ballisticVelocity: (Vector3, Vector3, number, number?) -> Vector3?
 
 local function flat(vector: Vector3): Vector3
@@ -101,6 +101,7 @@ function Service:GoalkeeperSave(keeper: Model, savePoint: Vector3): boolean
 	if catchPart then local weld=Instance.new("WeldConstraint");weld.Name="VTRGoalkeeperCatchWeld";weld.Part0=self.Ball;weld.Part1=catchPart;weld.Parent=self.Ball end
 	self:_touch(keeper)
 	self.Possession:ForcePickup(keeper)
+	self.Remote:FireAllClients({Type="GoalkeeperSave",Actor=keeper,SavePoint=savePoint})
 	return true
 end
 
@@ -158,7 +159,7 @@ function Service:_shotVelocity(model: Model, direction: Vector3, charge: number,
 	if targetPoint then
 		if model:GetAttribute("VTRSetPieceTaker")==true and tostring(model:GetAttribute("VTRSetPieceKind") or "")=="FreeKick" then
 			local origin=self.Ball.Position
-			local lift=math.clamp(tonumber(model:GetAttribute("VTRFreeKickLift")) or 0,-2.5,2.5)
+			local lift=math.clamp(tonumber(model:GetAttribute("VTRFreeKickLift")) or 0,-2.5,2.5)*0.5
 			local curve=math.clamp(tonumber(model:GetAttribute("VTRFreeKickCurve")) or 0,-2.5,2.5)
 			local solved=FreeKickTrajectory.Compute(origin,targetPoint,curve,lift)
 			model:SetAttribute("VTRFreeKickTarget",targetPoint)
@@ -174,11 +175,11 @@ function Service:_shotVelocity(model: Model, direction: Vector3, charge: number,
 	local powerRisk = math.max(0, charge - 0.72) * 0.055
 	local angleError = (1 - quality) * 0.13 + pressure * 0.018 + powerRisk
 	horizontal = CFrame.fromAxisAngle(Vector3.yAxis, self.Random:NextNumber(-angleError, angleError)):VectorToWorldSpace(horizontal)
-	local chargedLift = 0.0125 + charge * 0.1275
-	local targetLift = math.clamp(raw.Y, 0, 0.17)
+	local chargedLift = (0.0125 + charge * 0.1275) * 0.5
+	local targetLift = math.clamp(raw.Y, 0, 0.17) * 0.5
 	local lift = math.max(chargedLift, targetLift * (0.36 + charge * 0.14))
-	lift += self.Random:NextNumber(-1, 1) * (1 - quality) * (0.009 + charge * 0.0125)
-	lift = math.clamp(lift, 0.009, 0.18)
+	lift += self.Random:NextNumber(-1, 1) * (1 - quality) * (0.009 + charge * 0.0125) * 0.5
+	lift = math.clamp(lift, 0.0045, 0.09)
 	return (horizontal + Vector3.new(0, lift, 0)).Unit * shotSpeed
 end
 

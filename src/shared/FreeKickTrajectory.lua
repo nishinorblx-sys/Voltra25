@@ -2,7 +2,7 @@
 
 local Trajectory = {}
 
-local GRAVITY = 118
+local GRAVITY = 59
 local BASE_SPEED = 104
 
 local function clampNumber(value: any, fallback: number, minValue: number, maxValue: number): number

@@ -28,7 +28,7 @@ function Service:StartShot(model:Model,direction:Vector3,flightTime:number):Vect
 	local footSign=model:GetAttribute("PreferredFoot")=="Left"and-1 or 1
 	if userCurve and math.abs(userCurve)>.01 then
 		local target=model:GetAttribute("VTRFreeKickTarget")
-		local solved=typeof(target)=="Vector3" and FreeKickTrajectory.Compute(self.Ball.Position,target,userCurve,tonumber(model:GetAttribute("VTRFreeKickLift"))or 0) or nil
+		local solved=typeof(target)=="Vector3" and FreeKickTrajectory.Compute(self.Ball.Position,target,userCurve,(tonumber(model:GetAttribute("VTRFreeKickLift"))or 0)*0.5) or nil
 		if solved then
 			self.Active={Lateral=solved.Lateral,Strength=solved.Strength,Remaining=solved.FlightTime,Decay=0}
 			self.Ball.AssemblyAngularVelocity+=Vector3.new(0,(userCurve>=0 and -1 or 1)*math.max(solved.Strength,1)*1.6,0)

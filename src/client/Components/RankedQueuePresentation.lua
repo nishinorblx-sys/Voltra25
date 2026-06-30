@@ -34,16 +34,16 @@ end
 function Presentation.StartSearching(root:Instance)
 	local overlay=base(root);overlay.GroupTransparency=1;TweenService:Create(overlay,TweenInfo.new(.28),{GroupTransparency=0}):Play()
 	local title=text(overlay,"SEARCHING FOR OPPONENT",UDim2.fromScale(.15,.25),UDim2.fromScale(.7,.09),Theme.Fonts.Display,30,Theme.Colors.White,246)
-	local subtitle=text(overlay,"SAME-SERVER MATCHMAKING",UDim2.fromScale(.2,.345),UDim2.fromScale(.6,.035),Theme.Fonts.Strong,9,Theme.Colors.Muted,246)
+	local subtitle=text(overlay,"GLOBAL WATCH QUEUE",UDim2.fromScale(.2,.345),UDim2.fromScale(.6,.035),Theme.Fonts.Strong,9,Theme.Colors.Muted,246)
 	local scanner=Instance.new("Frame");scanner.AnchorPoint=Vector2.new(.5,.5);scanner.BackgroundColor3=Theme.Colors.Electric;scanner.BorderSizePixel=0;scanner.Position=UDim2.fromScale(.5,.47);scanner.Size=UDim2.fromOffset(250,2);scanner.ZIndex=246;scanner.Parent=overlay
 	local glow=Instance.new("UIStroke");glow.Color=Theme.Colors.Electric;glow.Thickness=5;glow.Transparency=.65;glow.Parent=scanner
 	local core=Instance.new("Frame");core.AnchorPoint=Vector2.new(.5,.5);core.BackgroundColor3=Theme.Colors.Black;core.BorderSizePixel=0;core.Position=UDim2.fromScale(.5,.47);core.Size=UDim2.fromOffset(74,74);core.Rotation=45;core.ZIndex=247;core.Parent=overlay;local coreStroke=Instance.new("UIStroke");coreStroke.Color=Theme.Colors.Electric;coreStroke.Thickness=2;coreStroke.Parent=core
 	local mark=text(core,"V",UDim2.fromScale(0,0),UDim2.fromScale(1,1),Theme.Fonts.Display,32,Theme.Colors.Electric,248);mark.Rotation=-45
 	local elapsed=text(overlay,"00:00",UDim2.fromScale(.4,.565),UDim2.fromScale(.2,.05),Theme.Fonts.Display,18,Theme.Colors.White,246)
-	local status=text(overlay,"SCANNING ACTIVE PLAYERS IN THIS SERVER",UDim2.fromScale(.22,.625),UDim2.fromScale(.56,.04),Theme.Fonts.Strong,8,Theme.Colors.Muted,246)
+	local status=text(overlay,"SCANNING FOR A RANKED WATCH OPPONENT",UDim2.fromScale(.22,.625),UDim2.fromScale(.56,.04),Theme.Fonts.Strong,8,Theme.Colors.Muted,246)
 	local cancel=Button.new({Text="CANCEL SEARCH",Variant="Secondary",Size=UDim2.fromOffset(190,42),OnActivated=function()local result=MatchSetupService:LeaveRankedQueue();if result.Success then Presentation.Cancel(root)else status.Text=result.Message or"Unable to cancel search.";status.TextColor3=Color3.fromHex("FF655E")end end});cancel.AnchorPoint=Vector2.new(.5,.5);cancel.Position=UDim2.fromScale(.5,.74);cancel.ZIndex=247;cancel.Parent=overlay
 	TweenService:Create(scanner,TweenInfo.new(.9,Enum.EasingStyle.Sine,Enum.EasingDirection.InOut,-1,true),{Size=UDim2.fromOffset(520,2),BackgroundTransparency=.25}):Play();TweenService:Create(core,TweenInfo.new(1.1,Enum.EasingStyle.Sine,Enum.EasingDirection.InOut,-1,true),{Rotation=225}):Play();TweenService:Create(title,TweenInfo.new(.85,Enum.EasingStyle.Sine,Enum.EasingDirection.InOut,-1,true),{TextColor3=Theme.Colors.Electric}):Play()
-	local started=os.clock();local connection:RBXScriptConnection?;connection=RunService.RenderStepped:Connect(function()if not overlay.Parent then if connection then connection:Disconnect()end;return end;local seconds=math.floor(os.clock()-started);elapsed.Text=string.format("%02d:%02d",math.floor(seconds/60),seconds%60);subtitle.Text="SAME-SERVER MATCHMAKING  •  "..string.rep("•",seconds%4+1)end)
+	local started=os.clock();local connection:RBXScriptConnection?;connection=RunService.RenderStepped:Connect(function()if not overlay.Parent then if connection then connection:Disconnect()end;return end;local seconds=math.floor(os.clock()-started);elapsed.Text=string.format("%02d:%02d",math.floor(seconds/60),seconds%60);subtitle.Text="GLOBAL WATCH QUEUE  /  "..string.rep(".",seconds%4+1)end)
 end
 
 local function teamPanel(overlay:CanvasGroup,summary:any,side:string,controlledSide:string):Frame
@@ -64,7 +64,7 @@ function Presentation.ShowMatchFound(root:Instance,data:any,onComplete:()->())
 	for _,child in overlay:GetChildren()do if child:IsA("GuiObject")then child:Destroy()end end
 	overlay.GroupTransparency=0;overlay.BackgroundColor3=Theme.Colors.Black
 	text(overlay,"OPPONENT FOUND",UDim2.fromScale(.15,.08),UDim2.fromScale(.7,.07),Theme.Fonts.Display,29,Theme.Colors.Electric,246)
-	text(overlay,"RANKED 1V1  •  SYNCHRONIZING MATCH",UDim2.fromScale(.2,.15),UDim2.fromScale(.6,.035),Theme.Fonts.Strong,9,Theme.Colors.Muted,246)
+	text(overlay,"RANKED WATCH VS WATCH  /  SYNCHRONIZING MATCH",UDim2.fromScale(.2,.15),UDim2.fromScale(.6,.035),Theme.Fonts.Strong,9,Theme.Colors.Muted,246)
 	local controlled=data.ControlledSide or"Home";local home=teamPanel(overlay,data.HomeSummary or{teamName=data.Home,logo=data.HomeLogo},"Home",controlled);local away=teamPanel(overlay,data.AwaySummary or{teamName=data.Away,logo=data.AwayLogo},"Away",controlled)
 	local vs=text(overlay,"VS",UDim2.fromScale(.44,.42),UDim2.fromScale(.12,.12),Theme.Fonts.Display,31,Theme.Colors.Electric,248);vs.TextTransparency=1
 	TweenService:Create(home,TweenInfo.new(.65,Enum.EasingStyle.Quart,Enum.EasingDirection.Out),{Position=UDim2.fromScale(.1,.29)}):Play();TweenService:Create(away,TweenInfo.new(.65,Enum.EasingStyle.Quart,Enum.EasingDirection.Out),{Position=UDim2.fromScale(.56,.29)}):Play();task.delay(.42,function()if vs.Parent then TweenService:Create(vs,TweenInfo.new(.25),{TextTransparency=0}):Play()end end)

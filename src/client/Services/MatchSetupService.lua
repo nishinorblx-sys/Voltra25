@@ -1,5 +1,6 @@
 --!strict
 local ReplicatedStorage=game:GetService("ReplicatedStorage")
+local UserInputService=game:GetService("UserInputService")
 local NetworkConfig=require(ReplicatedStorage.VTR.Shared.NetworkConfig)
 local remote=ReplicatedStorage.VTR:WaitForChild(NetworkConfig.FolderName):WaitForChild(NetworkConfig.MatchFunction)::RemoteFunction
 local Service={}
@@ -10,7 +11,12 @@ function Service:GetTeams(country:string,league:string):any return request("GetT
 function Service:Save(setup:any):any return request("SaveSetup",setup)end
 function Service:StartMatch():any return request("StartMatch")end
 function Service:WatchMatch():any return request("WatchMatch")end
-function Service:JoinRankedQueue():any return request("JoinRankedQueue")end
+local function deviceType():string
+	if UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled then return"Touch"end
+	if UserInputService.GamepadEnabled and not UserInputService.KeyboardEnabled then return"Gamepad"end
+	return"KeyboardMouse"
+end
+function Service:JoinRankedQueue():any return request("JoinRankedQueue",{DeviceType=deviceType()})end
 function Service:LeaveRankedQueue():any return request("LeaveRankedQueue")end
 function Service:GetRankedQueue():any return request("GetRankedQueue")end
 function Service:ReturnToMenu():any return request("ReturnToMenu")end

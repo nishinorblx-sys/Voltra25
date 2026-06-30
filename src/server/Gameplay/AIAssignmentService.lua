@@ -254,6 +254,35 @@ local function capBehindStriker(context: any, side: string, target: Vector3, min
 	return Vector3.new(target.X, target.Y, math.min(target.Z, strikerZ - gap))
 end
 
+local function attackingTrailCover(context: any, info: any, ballPitch: Vector3): (string, Vector3)
+	local best: any? = nil
+	local bestScore = -math.huge
+	for _, teammate in ipairs(context.Teams[info.Side].List) do
+		if teammate.Model ~= info.Model and teammate.Root and (teammate.Role == "ST" or teammate.Role == "CAM" or teammate.Role == "CM") then
+			local ahead = teammate.Pitch.Z - ballPitch.Z
+			local roleBonus = teammate.Role == "ST" and 38 or teammate.Role == "CAM" and 24 or 14
+			local sidePenalty = math.abs(teammate.Pitch.X - info.Pitch.X) * 0.06
+			local score = roleBonus + math.max(ahead, -20) * 0.18 - sidePenalty
+			if teammate.Pitch.Z >= ballPitch.Z - 18 and score > bestScore then
+				best = teammate
+				bestScore = score
+			end
+		end
+	end
+	if best then
+		local behind = best.Role == "ST" and 30 or 24
+		local lateral = best.Pitch.X < PitchConfig.HALF_WIDTH and 18 or -18
+		local target = Vector3.new(
+			math.clamp(best.Pitch.X + lateral, 112, 312),
+			3,
+			math.clamp(best.Pitch.Z - behind, math.max(175, ballPitch.Z - 44), math.max(230, ballPitch.Z + 42))
+		)
+		return best.Role == "ST" and "TrailStrikerCover" or "TrailMidfielderCover", target
+	end
+	local fallbackX = PitchConfig.HALF_WIDTH + (info.BasePitch.X < PitchConfig.HALF_WIDTH and -28 or 28)
+	return "TrailingPassBack", Vector3.new(fallbackX, 3, math.max(190, ballPitch.Z - 28))
+end
+
 local function cdmTarget(context: any, info: any, ballPitch: Vector3, pressed: boolean, safe: boolean): (string, Vector3, number, boolean)
 	local doublePivot = hasDoublePivot(context, info.Side)
 	local offset = doublePivot and pivotOffset(info) or 0
@@ -266,7 +295,8 @@ local function cdmTarget(context: any, info: any, ballPitch: Vector3, pressed: b
 	elseif isBallSide and (pressed or ballPitch.Z >= PitchConfig.HALF_LENGTH) then
 		return "BallSidePivotSupport", Vector3.new(x, 3, math.max(210, ballPitch.Z - 38)), 0.84, false
 	elseif doublePivot then
-		return "CoverPivot", Vector3.new(x, 3, math.max(165, ballPitch.Z - 86)), 0.78, false
+		local name, target = attackingTrailCover(context, info, ballPitch)
+		return name, target, 0.8, false
 	elseif safe then
 		return "SlightAdvanceReset", Vector3.new(x, 3, math.max(info.BasePitch.Z, ballPitch.Z - 28)), 0.76, false
 	end
@@ -457,17 +487,17 @@ local function attackingRoleTarget(context: any, info: any, ballPitch: Vector3, 
 		return cdmTarget(context, info, ballPitch, pressed or wingerHasBallWide, safe)
 	elseif info.Role == "CM" then
 		if wingerHasBallWide and infoSide == ballSide then
-			return "InsideTriangleSupport", Vector3.new(math.clamp(ballSideSupportX, 125, 299), 3, math.clamp(ballPitch.Z - 18, 420, 582)), 0.92, true
+			return "InsideTriangleSupport", Vector3.new(math.clamp(ballSideSupportX, 125, 299), 3, math.clamp(ballPitch.Z + 4, 440, 594)), 0.94, true
 		elseif wingerHasBallWide then
-			return "FarSideSwitchOption", Vector3.new(math.clamp(info.BasePitch.X + (PitchConfig.HALF_WIDTH - info.BasePitch.X) * 0.5, 145, 279), 3, math.clamp(ballPitch.Z - 6, 430, 566)), 0.82, false
+			return "FarSideSwitchOption", Vector3.new(math.clamp(info.BasePitch.X + (PitchConfig.HALF_WIDTH - info.BasePitch.X) * 0.5, 145, 279), 3, math.clamp(ballPitch.Z + 16, 450, 584)), 0.86, true
 		elseif ballWideNearGoal then
 			return "HoldEdgeOfBox", Vector3.new(info.BasePitch.X + (PitchConfig.HALF_WIDTH - info.BasePitch.X) * 0.45, 3, 548), 0.8, false
 		elseif pressed then
 			return "ComeShort", shortSupportTarget(info, ballPitch, style), 0.86, info.Stamina > 42
 		elseif facingForward then
-			return "ForwardMidfieldRun", Vector3.new(PitchConfig.GetLaneCenter(info.Lane), 3, onsideZ(context, info.Side, ballPitch.Z + 58)), 0.88, true
+			return "ForwardMidfieldRun", Vector3.new(PitchConfig.GetLaneCenter(info.Lane), 3, onsideZ(context, info.Side, ballPitch.Z + 78)), 0.92, true
 		end
-		return "MidfieldSupport", Vector3.new(base.X, 3, math.max(base.Z, ballPitch.Z + 20)), 0.76, false
+		return "MidfieldSupport", Vector3.new(base.X, 3, math.max(base.Z, ballPitch.Z + 38)), 0.82, true
 	elseif info.Role == "CAM" then
 		if wingerHasBallWide then
 			local cutbackZ = ballInsideAttackingBox and 584 or 552
@@ -496,9 +526,10 @@ local function attackingRoleTarget(context: any, info: any, ballPitch: Vector3, 
 		elseif pressed then
 			return "ComeShortWide", Vector3.new(sideLaneX(info, true), 3, math.max(210, ballPitch.Z - 24)), 0.86, info.Stamina > 38
 		elseif ballIsCentral(ballPitch) then
-			return "StayWide", Vector3.new(sideLaneX(info, true), 3, onsideZ(context, info.Side, math.max(base.Z, ballPitch.Z + 38))), 0.78, false
+			return "StayWide", Vector3.new(sideLaneX(info, true), 3, onsideZ(context, info.Side, math.max(base.Z, ballPitch.Z + 58))), 0.86, true
 		end
-		return "WideOutlet", wideOutletTarget(context, info, ballPitch, style), 0.78, info.Stamina > 35
+		local outlet = wideOutletTarget(context, info, ballPitch, style)
+		return "WideOutlet", Vector3.new(outlet.X, 3, math.max(outlet.Z, ballPitch.Z + 48)), 0.86, info.Stamina > 35
 	elseif info.Role == "ST" then
 		if wingerHasBallWide or ballWideNearGoal then
 			local nearPostX = ballPitch.X < PitchConfig.HALF_WIDTH and 176 or 248
@@ -512,7 +543,7 @@ local function attackingRoleTarget(context: any, info: any, ballPitch: Vector3, 
 		elseif tightlyMarked or not facingForward then
 			return "ComeShort", Vector3.new(PitchConfig.HALF_WIDTH, 3, math.max(340, ballPitch.Z - 30)), 0.84, false
 		end
-		return "PinCenterBacks", Vector3.new(PitchConfig.HALF_WIDTH, 3, onsideZ(context, info.Side, math.max(base.Z, ballPitch.Z + 42))), 0.82, false
+		return "PinCenterBacks", Vector3.new(PitchConfig.HALF_WIDTH, 3, onsideZ(context, info.Side, math.max(base.Z, ballPitch.Z + 62))), 0.88, true
 	end
 
 	return "HoldShape", baseWithPhase(info, "OwnPossession_BuildUp", ballPitch, style), 0.72, false
@@ -624,6 +655,101 @@ local function defensiveRoleTarget(context: any, info: any, ballPitch: Vector3, 
 	return "RecoverShape", base, 0.74, false, nil
 end
 
+local function depthStep(currentZ: number, desiredZ: number, maxStep: number): number
+	local delta = math.clamp(desiredZ - currentZ, -maxStep, maxStep)
+	return currentZ + delta
+end
+
+local function simpleDefensiveShapeTarget(info: any, ballPitch: Vector3, base: Vector3, style: any): Vector3
+	local depth = style:Ratio("DefensiveDepth")
+	local lineZ = AIDefensiveDecisionService.LineHeight(ballPitch, depth)
+	if info.Role == "ST" then
+		local desiredZ = math.clamp(ballPitch.Z + 95, 330, 560)
+		return Vector3.new(PitchConfig.HALF_WIDTH, 3, depthStep(info.Pitch.Z, desiredZ, 28))
+	elseif info.Role == "Winger" then
+		local desiredZ = math.clamp(ballPitch.Z + 105, 180, 520)
+		return Vector3.new(sideLaneX(info, true), 3, depthStep(info.Pitch.Z, desiredZ, 30))
+	elseif info.Role == "CAM" then
+		local desiredZ = math.clamp(ballPitch.Z + 58, 210, 430)
+		return Vector3.new(PitchConfig.HALF_WIDTH, 3, depthStep(info.Pitch.Z, desiredZ, 26))
+	elseif info.Role == "CM" then
+		local desiredZ = math.clamp(lineZ + 86, 130, 405)
+		return Vector3.new(info.BasePitch.X + (ballPitch.X - info.BasePitch.X) * 0.32, 3, depthStep(info.Pitch.Z, desiredZ, 24))
+	elseif info.Role == "CDM" then
+		local desiredZ = math.clamp(lineZ + 50, 88, 335)
+		return Vector3.new(info.BasePitch.X + (PitchConfig.HALF_WIDTH - info.BasePitch.X) * 0.18, 3, depthStep(info.Pitch.Z, desiredZ, 22))
+	elseif info.Role == "Fullback" then
+		local tuckedX = info.BasePitch.X + (PitchConfig.HALF_WIDTH - info.BasePitch.X) * 0.18
+		local desiredZ = math.clamp(lineZ + 18, 48, 292)
+		return Vector3.new(tuckedX, 3, depthStep(info.Pitch.Z, desiredZ, 22))
+	elseif info.Role == "CB" then
+		local desiredZ = math.clamp(lineZ, 34, 255)
+		return Vector3.new(info.BasePitch.X, 3, depthStep(info.Pitch.Z, desiredZ, 20))
+	end
+	return base
+end
+
+local function defensiveRestBlockTarget(info: any): Vector3
+	if info.Role == "ST" then
+		return Vector3.new(PitchConfig.HALF_WIDTH, 3, 555)
+	elseif info.Role == "Winger" then
+		return Vector3.new(sideLaneX(info, true), 3, 505)
+	elseif info.Role == "CAM" then
+		return Vector3.new(PitchConfig.HALF_WIDTH, 3, 465)
+	elseif info.Role == "CM" then
+		return Vector3.new(info.BasePitch.X + (PitchConfig.HALF_WIDTH - info.BasePitch.X) * 0.18, 3, 390)
+	elseif info.Role == "CDM" then
+		return Vector3.new(info.BasePitch.X + (PitchConfig.HALF_WIDTH - info.BasePitch.X) * 0.2, 3, 330)
+	elseif info.Role == "Fullback" then
+		return Vector3.new(info.BasePitch.X + (PitchConfig.HALF_WIDTH - info.BasePitch.X) * 0.16, 3, 285)
+	elseif info.Role == "CB" then
+		return Vector3.new(info.BasePitch.X, 3, 245)
+	end
+	return info.BasePitch
+end
+
+local function simpleDefensiveRoleTarget(context: any, info: any, ballPitch: Vector3, ownerInfo: any?, style: any): (string, Vector3, number, boolean, Model?)
+	local base = defendingBase(info, ballPitch, style)
+	local pressState = context.DefensivePress and context.DefensivePress[info.Side] or nil
+	local ownerPitch = ownerInfo and PitchConfig.WorldToTeamPitchPosition(ownerInfo.World, info.Side, context.Options) or ballPitch
+	local faceModel = ownerInfo and ownerInfo.Model or nil
+	local shadow = pressState and pressState.Shadow and pressState.Shadow[info.Model]
+	local ballInDefensiveThird = ballPitch.Z <= PitchConfig.Zones.DefensiveThird.ZMax
+
+	if shadow and shadow.Target and context.Players[shadow.Target] then
+		local oldInfo = context.Players[shadow.Target]
+		local oldPitch = PitchConfig.WorldToTeamPitchPosition(oldInfo.World, info.Side, context.Options)
+		local sideOffset = info.Pitch.X < oldPitch.X and -10 or 10
+		local target = Vector3.new(
+			math.clamp(oldPitch.X + sideOffset, 0, PitchConfig.PITCH_WIDTH),
+			3,
+			math.clamp(oldPitch.Z - 8, 34, 520)
+		)
+		return "PostPressShadow", target, 0.86, true, oldInfo.Model
+	end
+
+	if ownerInfo and ballInDefensiveThird then
+		if info.Role == "CB" and ownerInfo.Role == "ST" then
+			return "CenterBackPressureStriker", AIDefensiveDecisionService.ContainTarget(ownerPitch), 1, true, faceModel
+		end
+		if info.Role == "Fullback" and ownerInfo.Role == "Winger" and sameWideSide(info, ownerPitch) then
+			return "FullbackPressureWinger", AIDefensiveDecisionService.ContainTarget(ownerPitch), 0.98, true, faceModel
+		end
+	end
+
+	if pressState and pressState.Active and pressState.Primary == info.Model and ownerInfo then
+		local distance = PitchConfig.GetDistanceStuds(info.World, ownerInfo.World)
+		local target = distance <= 10 and ownerPitch or AIDefensiveDecisionService.ContainTarget(ownerPitch)
+		return "PrimaryPressRotation", target, 1, true, faceModel
+	end
+
+	if ballPitch.Z >= PitchConfig.PITCH_LENGTH * (2 / 3) then
+		return "DefensiveRestBlock", defensiveRestBlockTarget(info), 0.72, false, nil
+	end
+
+	return "DefensiveShape", simpleDefensiveShapeTarget(info, ballPitch, base, style), 0.82, false, nil
+end
+
 function Service.new(style: any)
 	return setmetatable({Style = style}, Service)
 end
@@ -690,7 +816,7 @@ function Service:_assignDefense(context: any, side: string, phase: string, assig
 			local target = PitchConfig.WorldToTeamPitchPosition(AIGoalkeeperService.PositionTarget(context, info), side, context.Options)
 			assignment = makeAssignment(context, info, "GoalkeeperPosition", target, 0.72, false)
 		else
-			local name, target, urgency, sprint, mark = defensiveRoleTarget(context, info, ballPitch, ownerInfo, self.Style)
+			local name, target, urgency, sprint, mark = simpleDefensiveRoleTarget(context, info, ballPitch, ownerInfo, self.Style)
 			assignment = makeAssignment(context, info, name, target, urgency, sprint, ownerInfo and ownerInfo.World or context.BallWorld)
 			if mark then
 				assignment.MarkTarget = mark

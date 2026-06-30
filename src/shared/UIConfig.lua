@@ -5,9 +5,9 @@ local UIConfig = {}
 UIConfig.Navigation = {
 	{ Id = "Home", Label = "HOME", Icon = "H", Order = 1 },
 	{ Id = "UltimateTeam", Label = "SQUAD BUILDER", Icon = "XI", Order = 2 },
-	{ Id = "Play", Label = "CAMPAIGN", Icon = "AI", Order = 3 },
-	{ Id = "Ranked", Label = "RANKED", Icon = "7", Order = 4 },
-	{ Id = "Inventory", Label = "INVENTORY", Icon = "PK", Order = 5 },
+	{ Id = "Play", Label = "CAMPAIGN", Icon = "C", Order = 3 },
+	{ Id = "Ranked", Label = "RANKED", Icon = "R", Order = 4 },
+	{ Id = "Inventory", Label = "INVENTORY", Icon = "I", Order = 5 },
 }
 
 UIConfig.Home = {

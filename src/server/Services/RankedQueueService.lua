@@ -5,30 +5,53 @@ local Service={}
 Service.__index=Service
 
 function Service.new(profiles:any,runtime:any,rankedProfiles:any,notifications:any,rankedSquads:any)
-	return setmetatable({Profiles=profiles,Runtime=runtime,RankedProfiles=rankedProfiles,Notifications=notifications,RankedSquads=rankedSquads,Queue={},QueuedAt={},QueueSetup={},QueueRoster={},Random=Random.new()},Service)
+	return setmetatable({Profiles=profiles,Runtime=runtime,RankedProfiles=rankedProfiles,Notifications=notifications,RankedSquads=rankedSquads,Queue={},QueuedAt={},QueueSetup={},QueueRoster={},QueueDevice={},Random=Random.new()},Service)
 end
 
 function Service:_rankedSetup(player:Player,profile:any,roster:any):any
 	local saved=profile.MatchSetup or{}
-	return{MatchLength=8,Difficulty="World Class",MatchType="Ranked",HomeTeamId=roster.Team.teamId,AwayTeamId=roster.Team.teamId,HomeKit="Home",AwayKit="Away",StadiumId=type(saved.StadiumId)=="string"and saved.StadiumId or"voltra_arena",Weather=({"Clear","Cloudy","Rain"})[self.Random:NextInteger(1,3)],Time=({"Day","Evening","Night"})[self.Random:NextInteger(1,3)],Completed=true,SavedAt=os.time(),KitConflict=false}
+	return{MatchLength=8,Difficulty="World Class",MatchType="Ranked",WatchMode=true,HomeTeamId=roster.Team.teamId,AwayTeamId=roster.Team.teamId,HomeKit="Home",AwayKit="Away",StadiumId=type(saved.StadiumId)=="string"and saved.StadiumId or"voltra_arena",Weather=({"Clear","Cloudy","Rain"})[self.Random:NextInteger(1,3)],Time=({"Day","Evening","Night"})[self.Random:NextInteger(1,3)],Completed=true,SavedAt=os.time(),KitConflict=false}
 end
 
 function Service:_remove(player:Player)
 	local index=table.find(self.Queue,player);if index then table.remove(self.Queue,index)end
-	self.QueuedAt[player]=nil;self.QueueSetup[player]=nil;self.QueueRoster[player]=nil;player:SetAttribute("VTRRankedQueued",nil)
+	self.QueuedAt[player]=nil;self.QueueSetup[player]=nil;self.QueueRoster[player]=nil;self.QueueDevice[player]=nil;player:SetAttribute("VTRRankedQueued",nil)
 end
 
 function Service:_valid(player:Player):boolean
 	return player.Parent==Players and self.Profiles:GetProfile(player)~=nil and player:GetAttribute("VTRInMatch")~=true
 end
 
+function Service:_compatible(home:Player,away:Player):boolean
+	local homeProfile=self.Profiles:GetProfile(home);local awayProfile=self.Profiles:GetProfile(away)
+	local homeCross=not homeProfile or not homeProfile.UIState or not homeProfile.UIState.Settings or homeProfile.UIState.Settings.Crossplay~=false
+	local awayCross=not awayProfile or not awayProfile.UIState or not awayProfile.UIState.Settings or awayProfile.UIState.Settings.Crossplay~=false
+	if homeCross and awayCross then return true end
+	return (self.QueueDevice[home]or"KeyboardMouse")==(self.QueueDevice[away]or"KeyboardMouse")
+end
+
+function Service:_nextPair(): (Player?, Player?)
+	for firstIndex=1,#self.Queue do
+		local first=self.Queue[firstIndex]
+		for secondIndex=firstIndex+1,#self.Queue do
+			local second=self.Queue[secondIndex]
+			if self:_compatible(first,second)then
+				table.remove(self.Queue,secondIndex)
+				table.remove(self.Queue,firstIndex)
+				return first,second
+			end
+		end
+	end
+	return nil,nil
+end
+
 function Service:_pair()
 	while #self.Queue>=2 do
-		local home=table.remove(self.Queue,1);local away=table.remove(self.Queue,1);self.QueuedAt[home]=nil;self.QueuedAt[away]=nil;home:SetAttribute("VTRRankedQueued",nil);away:SetAttribute("VTRRankedQueued",nil)
+		local home,away=self:_nextPair();if not home or not away then break end;self.QueuedAt[home]=nil;self.QueuedAt[away]=nil;home:SetAttribute("VTRRankedQueued",nil);away:SetAttribute("VTRRankedQueued",nil)
 		if not self:_valid(home)or not self:_valid(away)then if self:_valid(home)then table.insert(self.Queue,home)end;if self:_valid(away)then table.insert(self.Queue,away)end;continue end
-		local homeProfile=self.Profiles:GetProfile(home);local awayProfile=self.Profiles:GetProfile(away);local homeRoster=self.QueueRoster[home];local awayRoster=self.QueueRoster[away];local homeSetup=self.QueueSetup[home]or(homeProfile and homeRoster and self:_rankedSetup(home,homeProfile,homeRoster));local awaySetup=self.QueueSetup[away]or(awayProfile and awayRoster and self:_rankedSetup(away,awayProfile,awayRoster));self.QueueSetup[home]=nil;self.QueueSetup[away]=nil;self.QueueRoster[home]=nil;self.QueueRoster[away]=nil
+		local homeProfile=self.Profiles:GetProfile(home);local awayProfile=self.Profiles:GetProfile(away);local homeRoster=self.QueueRoster[home];local awayRoster=self.QueueRoster[away];local homeSetup=self.QueueSetup[home]or(homeProfile and homeRoster and self:_rankedSetup(home,homeProfile,homeRoster));local awaySetup=self.QueueSetup[away]or(awayProfile and awayRoster and self:_rankedSetup(away,awayProfile,awayRoster));self.QueueSetup[home]=nil;self.QueueSetup[away]=nil;self.QueueRoster[home]=nil;self.QueueRoster[away]=nil;self.QueueDevice[home]=nil;self.QueueDevice[away]=nil
 		if not homeSetup or not awaySetup or not homeRoster or not awayRoster then self.Notifications:Send(home,"RANKED QUEUE","Ultimate Team lineup unavailable.","Error");self.Notifications:Send(away,"RANKED QUEUE","Ultimate Team lineup unavailable.","Error");continue end
-		self.Notifications:Send(home,"OPPONENT FOUND",away.Name.." is ready. Entering the match.","Info");self.Notifications:Send(away,"OPPONENT FOUND",home.Name.." is ready. Entering the match.","Info")
+		self.Notifications:Send(home,"OPPONENT FOUND",away.Name.." is ready. Starting watch match.","Info");self.Notifications:Send(away,"OPPONENT FOUND",home.Name.." is ready. Starting watch match.","Info")
 		task.defer(function()
 			local success,message=self.Runtime:StartRankedMatch(home,away,homeSetup,awaySetup,homeRoster,awayRoster)
 			if not success then self.Notifications:Send(home,"MATCH FAILED",message,"Error");self.Notifications:Send(away,"MATCH FAILED",message,"Error");return end
@@ -44,13 +67,14 @@ function Service:_pair()
 	end
 end
 
-function Service:Join(player:Player):(boolean,string,any?)
+function Service:Join(player:Player,payload:any?):(boolean,string,any?)
 	if player:GetAttribute("VTRInMatch")==true then return false,"You are already in a match.",nil end
 	if self.QueuedAt[player]then return true,"Already searching for an opponent.",{Status="Searching",Position=table.find(self.Queue,player)or 1}end
 	local profile=self.Profiles:GetProfile(player);if not profile then return false,"Profile unavailable.",nil end
 	local squadReady,squadMessage,roster=self.RankedSquads:GetRoster(player);if not squadReady or not roster then return false,squadMessage,nil end
-	self.QueueRoster[player]=roster;self.QueueSetup[player]=self:_rankedSetup(player,profile,roster);table.insert(self.Queue,player);self.QueuedAt[player]=os.clock();player:SetAttribute("VTRRankedQueued",true);self.Notifications:Send(player,"RANKED QUEUE",roster.Team.teamName.." • OVR "..roster.Team.overall.." • Searching…","Info");self:_pair()
-	return true,#self.Queue==0 and"Opponent found. Match starting."or"Searching for another player in this server.",{Status=#self.Queue==0 and"Matched"or"Searching",Position=table.find(self.Queue,player)or 0}
+	local device=type(payload)=="table"and tostring(payload.DeviceType or"")or"";if device~="Touch"and device~="Gamepad"and device~="KeyboardMouse"then device="KeyboardMouse"end
+	self.QueueDevice[player]=device;self.QueueRoster[player]=roster;self.QueueSetup[player]=self:_rankedSetup(player,profile,roster);table.insert(self.Queue,player);self.QueuedAt[player]=os.clock();player:SetAttribute("VTRRankedQueued",true);self.Notifications:Send(player,"RANKED QUEUE",roster.Team.teamName.." / OVR "..roster.Team.overall.." / Searching watch queue.","Info");self:_pair()
+	return true,#self.Queue==0 and"Opponent found. Watch match starting."or"Searching for a ranked opponent.",{Status=#self.Queue==0 and"Matched"or"Searching",Position=table.find(self.Queue,player)or 0}
 end
 
 function Service:Leave(player:Player):(boolean,string,any?)

@@ -7,6 +7,8 @@ local AIShootingDecisionService = require(script.Parent.AIShootingDecisionServic
 local AIDribblingDecisionService = require(script.Parent.AIDribblingDecisionService)
 local AITacklingDecisionService = require(script.Parent.AITacklingDecisionService)
 local AIGoalkeeperService = require(script.Parent.AIGoalkeeperService)
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local GoalModelResolver = require(ReplicatedStorage.VTR.Shared.GoalModelResolver)
 
 local Service = {}
 Service.__index = Service
@@ -125,20 +127,24 @@ function Service:_shoot(context: any, shooter: any, shot: any): boolean
 end
 
 function Service:_tryMidfieldLongShot(context: any, carrier: any, pressure: any): boolean
-	if not carrier.Root or pressure.Heavy or pressure.Closest <= 18 then
+	if not carrier.Root or pressure.Heavy or pressure.Closest <= 24 then
 		return false
 	end
 	if carrier.Role ~= "CM" and carrier.Role ~= "CAM" and carrier.Role ~= "CDM" then
 		return false
 	end
-	if carrier.Pitch.Z < 445 or carrier.Pitch.Z > 610 or carrier.Pitch.X < 95 or carrier.Pitch.X > 329 then
+	if carrier.Pitch.Z < 540 or carrier.Pitch.Z > 610 or carrier.Pitch.X < 125 or carrier.Pitch.X > 299 then
 		return false
 	end
-	if self.Random:NextNumber() > 0.05 then
+	if self.Random:NextNumber() > 0.03 then
 		return false
 	end
-	local targetX = self.Random:NextNumber() < 0.5 and 156 or 268
-	local target = PitchConfig.TeamPitchPositionToWorld(Vector3.new(targetX, 5.2, PitchConfig.PITCH_LENGTH), carrier.Side, context.Options)
+	local attackSign = context.AttackSigns and context.AttackSigns[carrier.Side] or PitchConfig.GetAttackDirection(carrier.Side, context.Options)
+	local rectangle = GoalModelResolver.ResolveByAttackSign(attackSign, context.PitchCFrame, context.Width, context.Length)
+	local width = math.max(1, rectangle.RightBound - rectangle.Left)
+	local height = math.max(1, rectangle.Top - rectangle.Bottom)
+	local side = self.Random:NextNumber() < 0.5 and rectangle.Left + width * 0.28 or rectangle.RightBound - width * 0.28
+	local target = GoalModelResolver.Point(rectangle, side, rectangle.Bottom + height * 0.48)
 	carrier.Model:SetAttribute("VTRLongShotGoalChance", 0.1)
 	carrier.Model:SetAttribute("VTRLongShotChanceUntil", context.Now + 2.8)
 	local shot = {

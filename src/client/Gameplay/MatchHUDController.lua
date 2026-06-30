@@ -287,8 +287,6 @@ function Controller.new(data: any)
 	help.TextXAlignment = Enum.TextXAlignment.Center
 	help.TextColor3 = Theme.Colors.Silver
 	help.Visible = false
-	local testCorner=Instance.new("TextButton");testCorner.Name="TestCorner";testCorner.AnchorPoint=Vector2.new(1,0);testCorner.Position=UDim2.new(1,-18,0,18);testCorner.Size=UDim2.fromOffset(126,32);testCorner.BackgroundColor3=Theme.Colors.Gunmetal;testCorner.BackgroundTransparency=.08;testCorner.BorderSizePixel=0;testCorner.AutoButtonColor=false;testCorner.Selectable=false;testCorner.Text="TEST CORNER";testCorner.TextColor3=Theme.Colors.Electric;testCorner.TextSize=10;testCorner.Font=Theme.Fonts.Display;testCorner.ZIndex=12;testCorner.Parent=gui;corner(testCorner,5);stroke(testCorner,Theme.Colors.Electric,.45)
-
 	local result=setmetatable({
 		Gui = gui,
 		Board = board,
@@ -338,13 +336,10 @@ function Controller.new(data: any)
 		AwayCode = shortCode(data.Away),
 		PitchWidth = data.PitchWidth or 80,
 		PitchLength = data.PitchLength or 120,
-		TestCorner=testCorner,
 	}, Controller)
-	testCorner.Activated:Connect(function()if result.CornerTestCallback then result.CornerTestCallback();result:Flash("Loading test corner",.7)end end)
 	return result
 end
 
-function Controller:SetCornerTestCallback(callback:()->())self.CornerTestCallback=callback end
 function Controller:SetPauseButtonCallback(callback:()->())self.PauseButtonCallback=callback end
 
 function Controller:_lineupEntryForModel(model: Model?): any?
@@ -1258,6 +1253,155 @@ function Controller:RequestResume()
 	end
 end
 
+local function showPackRewardScreen(parent: Instance, rewardData: any)
+	local qty = math.max(1, tonumber(rewardData.Packs) or 1)
+	local packName = string.upper(tostring(rewardData.Pack or "MATCH REWARD PACK"))
+	local screen = Instance.new("Frame")
+	screen.Name = "PostMatchPackReward"
+	screen.Size = UDim2.fromScale(1, 1)
+	screen.BackgroundColor3 = Theme.Colors.Black
+	screen.BackgroundTransparency = 1
+	screen.BorderSizePixel = 0
+	screen.ZIndex = 190
+	screen.Active = true
+	screen.Parent = parent
+
+	local title = label(screen, "PACK EARNED", UDim2.new(.25, 0, .12, 0), UDim2.new(.5, 0, 0, 40), 28)
+	title.TextXAlignment = Enum.TextXAlignment.Center
+	title.TextColor3 = Theme.Colors.Electric
+	title.TextTransparency = 1
+	title.ZIndex = 194
+	local subtitle = label(screen, "ADDED TO YOUR INVENTORY", UDim2.new(.25, 0, .18, 0), UDim2.new(.5, 0, 0, 22), 10)
+	subtitle.TextXAlignment = Enum.TextXAlignment.Center
+	subtitle.TextColor3 = Theme.Colors.Silver
+	subtitle.TextTransparency = 1
+	subtitle.ZIndex = 194
+
+	local glow = Instance.new("Frame")
+	glow.Name = "PackGlow"
+	glow.AnchorPoint = Vector2.new(.5, .5)
+	glow.Position = UDim2.fromScale(.5, .45)
+	glow.Size = UDim2.fromOffset(360, 230)
+	glow.BackgroundColor3 = Theme.Colors.Electric
+	glow.BackgroundTransparency = 1
+	glow.BorderSizePixel = 0
+	glow.ZIndex = 191
+	glow.Parent = screen
+	corner(glow, 115)
+
+	local pack = Instance.new("Frame")
+	pack.Name = "RewardPackCard"
+	pack.AnchorPoint = Vector2.new(.5, .5)
+	pack.Position = UDim2.fromScale(.5, .47)
+	pack.Size = UDim2.fromOffset(218, 286)
+	pack.BackgroundColor3 = Theme.Colors.Gunmetal
+	pack.BackgroundTransparency = .02
+	pack.BorderSizePixel = 0
+	pack.Rotation = -4
+	pack.ZIndex = 195
+	pack.Parent = screen
+	corner(pack, 10)
+	stroke(pack, Theme.Colors.Electric, .15)
+	local packScale = Instance.new("UIScale")
+	packScale.Scale = .28
+	packScale.Parent = pack
+
+	local stripe = Instance.new("Frame")
+	stripe.BackgroundColor3 = Theme.Colors.Electric
+	stripe.BorderSizePixel = 0
+	stripe.Position = UDim2.fromOffset(0, 0)
+	stripe.Size = UDim2.new(1, 0, 0, 40)
+	stripe.ZIndex = 196
+	stripe.Parent = pack
+	corner(stripe, 10)
+	local seal = label(pack, "VTR LITE", UDim2.fromOffset(0, 12), UDim2.new(1, 0, 0, 20), 12)
+	seal.TextXAlignment = Enum.TextXAlignment.Center
+	seal.TextColor3 = Theme.Colors.Black
+	seal.ZIndex = 197
+	local packTitle = label(pack, packName, UDim2.fromOffset(20, 72), UDim2.new(1, -40, 0, 62), 18)
+	packTitle.TextWrapped = true
+	packTitle.TextXAlignment = Enum.TextXAlignment.Center
+	packTitle.TextColor3 = Theme.Colors.White
+	packTitle.ZIndex = 197
+	local packMeta = label(pack, qty > 1 and ("SEALED PACK  x" .. tostring(qty)) or "SEALED PACK", UDim2.fromOffset(20, 158), UDim2.new(1, -40, 0, 22), 10)
+	packMeta.TextXAlignment = Enum.TextXAlignment.Center
+	packMeta.TextColor3 = Theme.Colors.Electric
+	packMeta.ZIndex = 197
+	local shine = Instance.new("Frame")
+	shine.BackgroundColor3 = Theme.Colors.White
+	shine.BackgroundTransparency = .58
+	shine.BorderSizePixel = 0
+	shine.Position = UDim2.new(-.4, 0, 0, 0)
+	shine.Size = UDim2.new(.18, 0, 1, 0)
+	shine.Rotation = 14
+	shine.ZIndex = 198
+	shine.Parent = pack
+
+	local inventory = panel(screen, UDim2.new(.68, 0, .70, 0), UDim2.fromOffset(210, 58))
+	inventory.Name = "InventoryTray"
+	inventory.ZIndex = 193
+	inventory.BackgroundTransparency = 1
+	local inventoryText = label(inventory, "INVENTORY", UDim2.fromOffset(16, 9), UDim2.new(1, -32, 0, 18), 11)
+	inventoryText.TextColor3 = Theme.Colors.Electric
+	inventoryText.TextXAlignment = Enum.TextXAlignment.Center
+	local inventoryHint = label(inventory, "PACK STORED", UDim2.fromOffset(16, 30), UDim2.new(1, -32, 0, 16), 8)
+	inventoryHint.TextColor3 = Theme.Colors.Silver
+	inventoryHint.TextXAlignment = Enum.TextXAlignment.Center
+
+	TweenService:Create(screen, TweenInfo.new(.2), {BackgroundTransparency = .18}):Play()
+	TweenService:Create(title, TweenInfo.new(.24), {TextTransparency = 0}):Play()
+	TweenService:Create(subtitle, TweenInfo.new(.28), {TextTransparency = 0}):Play()
+	TweenService:Create(glow, TweenInfo.new(.42, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundTransparency = .76, Size = UDim2.fromOffset(460, 280)}):Play()
+	TweenService:Create(packScale, TweenInfo.new(.48, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Scale = 1}):Play()
+	TweenService:Create(pack, TweenInfo.new(.5, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Rotation = 0}):Play()
+	TweenService:Create(shine, TweenInfo.new(.72, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {Position = UDim2.new(1.18, 0, 0, 0), BackgroundTransparency = 1}):Play()
+
+	for i = 1, 16 do
+		local spark = Instance.new("Frame")
+		spark.AnchorPoint = Vector2.new(.5, .5)
+		spark.Position = UDim2.fromScale(.5, .46)
+		spark.Size = UDim2.fromOffset(math.random(5, 10), math.random(12, 26))
+		spark.BackgroundColor3 = i % 2 == 0 and Theme.Colors.Electric or Theme.Colors.White
+		spark.BackgroundTransparency = .08
+		spark.BorderSizePixel = 0
+		spark.Rotation = math.random(-40, 40)
+		spark.ZIndex = 194
+		spark.Parent = screen
+		corner(spark, 2)
+		local angle = (i / 16) * math.pi * 2
+		local radius = math.random(95, 205)
+		TweenService:Create(spark, TweenInfo.new(.72, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {Position = UDim2.new(.5, math.cos(angle) * radius, .46, math.sin(angle) * radius * .55), BackgroundTransparency = 1, Rotation = spark.Rotation + math.random(-120, 120)}):Play()
+		task.delay(.82, function() if spark.Parent then spark:Destroy() end end)
+	end
+
+	task.delay(1.35, function()
+		if not screen.Parent then return end
+		TweenService:Create(pack, TweenInfo.new(.72, Enum.EasingStyle.Quart, Enum.EasingDirection.InOut), {Position = UDim2.new(.68, 105, .70, 29), Size = UDim2.fromOffset(72, 94), Rotation = 8}):Play()
+		TweenService:Create(packScale, TweenInfo.new(.72, Enum.EasingStyle.Quart, Enum.EasingDirection.InOut), {Scale = .74}):Play()
+		TweenService:Create(inventory, TweenInfo.new(.24), {BackgroundTransparency = .08}):Play()
+	end)
+
+	task.delay(2.22, function()
+		if not screen.Parent then return end
+		TweenService:Create(pack, TweenInfo.new(.22), {BackgroundTransparency = 1}):Play()
+		TweenService:Create(stripe, TweenInfo.new(.22), {BackgroundTransparency = 1}):Play()
+		TweenService:Create(inventory, TweenInfo.new(.28, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Size = UDim2.fromOffset(230, 64)}):Play()
+	end)
+
+	task.delay(3.15, function()
+		if not screen.Parent then return end
+		TweenService:Create(screen, TweenInfo.new(.35), {BackgroundTransparency = 1}):Play()
+		for _, child in screen:GetDescendants() do
+			if child:IsA("TextLabel") then
+				TweenService:Create(child, TweenInfo.new(.25), {TextTransparency = 1}):Play()
+			elseif child:IsA("Frame") then
+				TweenService:Create(child, TweenInfo.new(.25), {BackgroundTransparency = 1}):Play()
+			end
+		end
+		task.delay(.38, function() if screen.Parent then screen:Destroy() end end)
+	end)
+end
+
 function Controller:ShowResult(payload: any, onReturn: () -> ())
 	self:ClearPause()
 	local overlay = Instance.new("Frame")
@@ -1450,7 +1594,27 @@ function Controller:ShowResult(payload: any, onReturn: () -> ())
 	local teamButton=actionButton(tabs,"TEAM STATS",1,function()teamStats.Visible=true;ratings.Visible=false end);teamButton.Size=UDim2.fromOffset(205,38);teamButton.ZIndex=182
 	local ratingButton=actionButton(tabs,"MATCH RATINGS",2,function()teamStats.Visible=false;ratings.Visible=true end);ratingButton.Size=UDim2.fromOffset(205,38);ratingButton.ZIndex=182
 	for _,tab in tabs:GetDescendants()do if tab:IsA("GuiObject")then tab.ZIndex=182 end end
-	if payload.Reward then local reward=panel(overlay,UDim2.new(.5,-150,.79,0),UDim2.fromOffset(300,48));reward.ZIndex=43;local rewardScale=Instance.new("UIScale");rewardScale.Scale=.4;rewardScale.Parent=reward;local rewardText=label(reward,"★  "..string.upper(payload.Reward.Title).."   +"..payload.Reward.Coins.." COINS   +"..payload.Reward.XP.." XP",UDim2.fromOffset(8,7),UDim2.new(1,-16,1,-14),9);rewardText.TextColor3=Theme.Colors.Electric;rewardText.TextXAlignment=Enum.TextXAlignment.Center;TweenService:Create(rewardScale,TweenInfo.new(.45,Enum.EasingStyle.Back,Enum.EasingDirection.Out),{Scale=1}):Play()end
+	if payload.Reward then
+		local hasPack=payload.Reward.Pack~=nil or tonumber(payload.Reward.Packs)~=nil
+		local reward=panel(overlay,hasPack and UDim2.new(.5,-190,.755,0)or UDim2.new(.5,-150,.79,0),hasPack and UDim2.fromOffset(380,78)or UDim2.fromOffset(300,48));reward.ZIndex=43
+		local rewardScale=Instance.new("UIScale");rewardScale.Scale=.4;rewardScale.Parent=reward
+		local rewardText=label(reward,"*  "..string.upper(payload.Reward.Title).."   +"..tostring(payload.Reward.Coins or 0).." COINS   +"..tostring(payload.Reward.XP or 0).." XP",UDim2.fromOffset(8,7),UDim2.new(1,-16,0,22),9);rewardText.TextColor3=Theme.Colors.Electric;rewardText.TextXAlignment=Enum.TextXAlignment.Center
+		if hasPack then
+			local pack=Instance.new("Frame");pack.Name="PackRewardReveal";pack.AnchorPoint=Vector2.new(.5,0);pack.Position=UDim2.new(.5,0,0,35);pack.Size=UDim2.fromOffset(242,32);pack.BackgroundColor3=Theme.Colors.Gunmetal;pack.BackgroundTransparency=.08;pack.BorderSizePixel=0;pack.ZIndex=44;pack.Parent=reward;corner(pack,5);stroke(pack,Theme.Colors.Electric,.42)
+			local stripe=Instance.new("Frame");stripe.BackgroundColor3=Theme.Colors.Electric;stripe.BorderSizePixel=0;stripe.Position=UDim2.fromOffset(0,0);stripe.Size=UDim2.fromOffset(5,32);stripe.ZIndex=45;stripe.Parent=pack
+			local qty=math.max(1,tonumber(payload.Reward.Packs)or 1)
+			local packText=label(pack,(qty>1 and(tostring(qty).."x ")or"")..string.upper(tostring(payload.Reward.Pack or"PACK REWARD")),UDim2.fromOffset(16,6),UDim2.new(1,-26,0,18),8);packText.TextColor3=Theme.Colors.White;packText.TextXAlignment=Enum.TextXAlignment.Center
+			local packScale=Instance.new("UIScale");packScale.Scale=.72;packScale.Parent=pack
+			task.delay(.18,function()
+				if packScale.Parent then TweenService:Create(packScale,TweenInfo.new(.42,Enum.EasingStyle.Back,Enum.EasingDirection.Out),{Scale=1}):Play()end
+				if stripe.Parent then TweenService:Create(stripe,TweenInfo.new(.62,Enum.EasingStyle.Quad,Enum.EasingDirection.Out),{Size=UDim2.fromOffset(242,32),BackgroundTransparency=.82}):Play()end
+			end)
+			task.delay(.55,function()
+				if overlay.Parent then showPackRewardScreen(overlay,payload.Reward)end
+			end)
+		end
+		TweenService:Create(rewardScale,TweenInfo.new(.45,Enum.EasingStyle.Back,Enum.EasingDirection.Out),{Scale=1}):Play()
+	end
 	local button = actionButton(overlay, "RETURN TO MENU", 1, function()
 		MatchSetupService:ReturnToMenu()
 		onReturn()

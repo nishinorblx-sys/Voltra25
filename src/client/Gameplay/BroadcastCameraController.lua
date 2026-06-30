@@ -22,6 +22,7 @@ local GOAL_LOOK_MAX_BLEND = 0.44
 local PRESETS = {
 	Broadcast = {Height = 128, Side = 160, Fov = 37, Smooth = 0.11},
 	["Wide Broadcast"] = {Height = BROADCAST_HEIGHT, Side = BROADCAST_SIDE_OFFSET, Fov = BROADCAST_FOV, Smooth = 0.12},
+	["End to End"] = {Height = 174, Side = 0, Fov = 42, Smooth = 0.12},
 	["Co-op"] = {Height = BROADCAST_HEIGHT, Side = BROADCAST_SIDE_OFFSET, Fov = BROADCAST_FOV, Smooth = 0.12},
 	Tactical = {Height = 208, Side = 252, Fov = 53, Smooth = 0.14},
 	Pro = {Height = 115, Side = 145, Fov = 34, Smooth = 0.10},
@@ -123,6 +124,7 @@ function Controller:Start()
 end
 
 function Controller:SetMode(mode: string)
+	if mode == "Wide Broadcast" then mode = "Broadcast" end
 	if PRESETS[mode] then
 		self.Mode = mode
 	end
@@ -276,6 +278,22 @@ function Controller:EndCutscene()
 end
 
 function Controller:_desiredFrame(preset: any, targetWorld: Vector3, dynamicZoom: number, longitudinalVelocity: number): CFrame
+	if self.Mode == "Pro" then
+		local root = activeRoot(self.Active)
+		if root then
+			local side = tostring(self.Active:GetAttribute("VTRTeam") or "Home")
+			local goalZ = side == "Home" and -self.Length * 0.5 or self.Length * 0.5
+			local localRoot = self.PitchCFrame:PointToObjectSpace(root.Position)
+			local lookLocal = Vector3.new(math.clamp(localRoot.X * 0.35, -self.Width * 0.18, self.Width * 0.18), 4.5, goalZ * 0.72)
+			local forward = self.PitchCFrame:VectorToObjectSpace(root.CFrame.LookVector)
+			local flatForward = Vector3.new(forward.X, 0, forward.Z)
+			if flatForward.Magnitude < .1 then flatForward = Vector3.new(0, 0, side == "Home" and -1 or 1) end
+			local cameraLocal = localRoot - flatForward.Unit * 28 + Vector3.new(0, 38, 0)
+			local cameraWorld = self.PitchCFrame:PointToWorldSpace(cameraLocal)
+			local lookWorld = self.PitchCFrame:PointToWorldSpace(lookLocal)
+			return CFrame.lookAt(cameraWorld, lookWorld, self.PitchCFrame.UpVector)
+		end
+	end
 	if self.CameraPoint and self.CameraPoint.Parent then
 		local anchorLocal=self.PitchCFrame:PointToObjectSpace(self.CameraPoint.Position)
 		-- The stadium marker owns height and distance from the touchline. The
@@ -287,6 +305,9 @@ function Controller:_desiredFrame(preset: any, targetWorld: Vector3, dynamicZoom
 	end
 	local height = math.clamp(preset.Height + self.HeightOffset + dynamicZoom * 0.45, 108, 220)
 	local side = math.clamp(preset.Side + self.SideOffset + dynamicZoom * 1.2, 132, 260) * self.SideSign
+	if self.Mode == "End to End" then
+		side = self.SmoothedTarget.X * 0.12
+	end
 	local cameraX = side + self.SmoothedTarget.X * 0.38
 	local cameraZ = self.SmoothedTarget.Z * 0.92 - longitudinalVelocity * 0.05
 	local cameraLocal = Vector3.new(cameraX, height, math.clamp(cameraZ, -self.Length * 0.43, self.Length * 0.43))

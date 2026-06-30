@@ -76,7 +76,7 @@ function Service.ThrowIn(teams: any, restartTeam: string, location: Vector3, pit
 	return taker
 end
 
-function Service.GoalKick(teams: any, restartTeam: string, location: Vector3, pitchCFrame: CFrame, width: number, length: number): Model
+function Service.GoalKick(teams: any, formation: any, restartTeam: string, location: Vector3, pitchCFrame: CFrame, width: number, length: number): Model
 	local localExit = pitchCFrame:PointToObjectSpace(location)
 	local goalSign = localExit.Z >= 0 and 1 or -1
 	local ballX = math.clamp(localExit.X, -8, 8)
@@ -85,22 +85,24 @@ function Service.GoalKick(teams: any, restartTeam: string, location: Vector3, pi
 	local ballSpot = world(pitchCFrame, ballX, ballZ)
 	local goalkeeper = teams[restartTeam][1]
 	move(goalkeeper, spot, world(pitchCFrame, 0, 0))
-	local ownTargets = {
-		[2] = Vector2.new(-width * 0.40, goalSign * (length / 2 - 86)), [3] = Vector2.new(-24, goalSign * (length / 2 - 88)),
-		[4] = Vector2.new(24, goalSign * (length / 2 - 88)), [5] = Vector2.new(width * 0.40, goalSign * (length / 2 - 86)),
-		[6] = Vector2.new(-34, goalSign * (length / 2 - 112)), [7] = Vector2.new(0, goalSign * (length / 2 - 116)), [8] = Vector2.new(34, goalSign * (length / 2 - 112)),
-		[9] = Vector2.new(-width * 0.34, goalSign * 28), [10] = Vector2.new(0, goalSign * 18), [11] = Vector2.new(width * 0.34, goalSign * 28),
-	}
-	for index = 2, #teams[restartTeam] do local target = ownTargets[index]; if target then move(teams[restartTeam][index], world(pitchCFrame, target.X, target.Y), ballSpot) end end
-	local opponent = restartTeam == "Home" and "Away" or "Home"
-	for index, model in teams[opponent] do
-		if index >= 9 and index < 9 + Spacing.GoalKick.Pressers then
-			local pressIndex = index - 8
-			move(model, world(pitchCFrame, (pressIndex - 2) * 18, goalSign * (length / 2 - 106 - pressIndex * 5)), ballSpot)
+	local restartFormation = formation and (formation[restartTeam] or formation) or {}
+	for index = 2, #teams[restartTeam] do
+		local point = restartFormation[index] or Vector2.new(((index - 1) % 5 - 2) * width * 0.16, 0)
+		local targetZ: number
+		if index >= 6 then
+			targetZ = goalSign * math.clamp(math.abs(point.Y) * 0.14 + (index >= 9 and 18 or 8), 12, 58)
 		else
-			local lane = ((index - 1) % 5 - 2) * width * 0.19
-			move(model, world(pitchCFrame, lane, -goalSign * (34 + math.floor((index - 1) / 5) * 26)), ballSpot)
+			targetZ = goalSign * math.clamp(math.abs(point.Y), 84, length / 2 - 150)
 		end
+		move(teams[restartTeam][index], world(pitchCFrame, point.X, targetZ), ballSpot)
+	end
+	local opponent = restartTeam == "Home" and "Away" or "Home"
+	local opponentFormation = formation and (formation[opponent] or formation) or {}
+	for index, model in teams[opponent] do
+		local point = opponentFormation[index] or Vector2.new(((index - 1) % 5 - 2) * width * 0.16, 0)
+		local normalZ = -goalSign * math.abs(point.Y)
+		local targetZ = index >= 6 and -goalSign * math.clamp(math.abs(point.Y) * 0.12 + (index >= 9 and 28 or 14), 18, 70) or math.clamp(normalZ, -length / 2 + 150, length / 2 - 150)
+		move(model, world(pitchCFrame, point.X, targetZ), ballSpot)
 	end
 	return goalkeeper
 end

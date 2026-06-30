@@ -305,7 +305,7 @@ function Service:Start(player: Player, kind: string, restartTeam: string, locati
 	elseif kind == "Corner" then
 		local cornerData=CornerPositioningService.Position(self.Teams,restartTeam,location,self.World.PitchCFrame,self.World.Width,self.World.Length,self.World.Ball.Size.X*.5);cornerData.PitchCFrame=self.World.PitchCFrame;cornerData.Width=self.World.Width;cornerData.Length=self.World.Length;cornerData.Team=restartTeam;taker=cornerData.Taker;self.ActiveCorner={Player=player,Data=cornerData,OnReady=onReady,Sequence=sequence}
 	elseif kind == "GoalKick" then
-		taker = FormationPositionService.GoalKick(self.Teams, restartTeam, location, self.World.PitchCFrame, self.World.Width, self.World.Length)
+		taker = FormationPositionService.GoalKick(self.Teams, self.Formation, restartTeam, location, self.World.PitchCFrame, self.World.Width, self.World.Length)
 	elseif kind=="Penalty"then
 		local goalSign=setPieceGoalSign(restartTeam)
 		if (self.Half or 1)>=2 then goalSign=-goalSign end

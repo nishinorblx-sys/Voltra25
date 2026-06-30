@@ -51,8 +51,9 @@ function Service.new(teams: any, formations: any, pitchCFrame: CFrame, width: nu
 		PressState = {
 			LastOwner = nil,
 			LastOwnerSide = nil,
-			Chains = {Home = 0, Away = 0},
-			CooldownUntil = {Home = 0, Away = 0},
+			Primary = {Home = nil, Away = nil},
+			PrimaryOwner = {Home = nil, Away = nil},
+			Shadow = {},
 		},
 	}, Service)
 end
@@ -108,39 +109,62 @@ end
 function Service:_updatePressState(context: any)
 	local owner = context.Owner
 	local side = context.OwnerSide
-	if owner and side and owner ~= self.PressState.LastOwner then
-		local passTeam = tostring(self.Ball:GetAttribute("VTRPassTeam") or "")
-		if self.PressState.LastOwnerSide == side and passTeam == side then
-			self.PressState.Chains[side] = math.clamp((self.PressState.Chains[side] or 0) + 1, 0, 10)
-		else
-			self.PressState.Chains[side] = 0
+	context.DefensivePress = {Home = {}, Away = {}}
+	context.PressPaused = {Home = false, Away = false}
+	local now = context.Now
+	for model, shadow in pairs(self.PressState.Shadow) do
+		if not model.Parent or (shadow.Until or 0) <= now then
+			self.PressState.Shadow[model] = nil
 		end
-		if (self.PressState.Chains[side] or 0) >= 3 then
-			local defendingSide = side == "Home" and "Away" or "Home"
-			self.PressState.CooldownUntil[defendingSide] = context.Now + 2.8
-			for _, model in ipairs(self.Teams[defendingSide] or {}) do
-				model:SetAttribute("AIPressPausedUntil", self.PressState.CooldownUntil[defendingSide])
-			end
-		end
-		self.PressState.LastOwner = owner
-		self.PressState.LastOwnerSide = side
-	elseif not owner then
-		self.PressState.LastOwner = nil
-		self.PressState.LastOwnerSide = nil
 	end
 	for _, defendingSide in ipairs({"Home", "Away"}) do
-		local paused = (self.PressState.CooldownUntil[defendingSide] or 0) > context.Now
-		if paused then
-			local ballPitch = context.BallTeam[defendingSide]
-			local ownerInfo = owner and context.Players[owner]
-			local pressureSituation = ballPitch.Z < 210 or (ownerInfo and ownerInfo.Role == "ST" and ballPitch.Z < 300)
-			if pressureSituation then
-				self.PressState.CooldownUntil[defendingSide] = 0
-				paused = false
-			end
+		local press = context.DefensivePress[defendingSide]
+		local defending = owner and side and side ~= defendingSide
+		local ballPitch = context.BallTeam[defendingSide]
+		local ownerInfo = owner and context.Players[owner] or nil
+		local strikerInDefensiveThird = ownerInfo and ownerInfo.Role == "ST" and ownerInfo.Pitch.Z <= (742 / 3)
+		local trigger = defending and (ballPitch.Z <= 192 or strikerInDefensiveThird)
+		if not trigger then
+			self.PressState.Primary[defendingSide] = nil
+			self.PressState.PrimaryOwner[defendingSide] = nil
+			continue
 		end
-		context.PressPaused = context.PressPaused or {}
-		context.PressPaused[defendingSide] = paused
+		if not ownerInfo then
+			continue
+		end
+		local current = self.PressState.Primary[defendingSide]
+		local currentOwner = self.PressState.PrimaryOwner[defendingSide]
+		if current and currentOwner and currentOwner ~= owner then
+			self.PressState.Shadow[current] = {Target = currentOwner, Until = now + 1}
+			current = nil
+		end
+		if not current or not current.Parent or current:GetAttribute("VTRSentOff") == true or current:GetAttribute("VTRRedCard") == true then
+			local bestMidfielder, bestMidDistance = nil, math.huge
+			local bestDefender, bestDefDistance = nil, math.huge
+			for _, info in ipairs(context.Teams[defendingSide].List) do
+				if info.Root and not info.IsGoalkeeper and self.PressState.Shadow[info.Model] == nil then
+					local role = info.Role
+					local eligibleMid = role == "CDM" or role == "CM" or role == "CAM"
+					local eligibleDef = role == "Fullback" or role == "CB"
+					if eligibleMid or eligibleDef then
+						local delta = info.World - ownerInfo.World
+						local distance = Vector3.new(delta.X, 0, delta.Z).Magnitude
+						if eligibleMid and distance < bestMidDistance then
+							bestMidfielder, bestMidDistance = info.Model, distance
+						elseif eligibleDef and distance < bestDefDistance then
+							bestDefender, bestDefDistance = info.Model, distance
+						end
+					end
+				end
+			end
+			current = bestMidfielder or bestDefender
+			self.PressState.Primary[defendingSide] = current
+			self.PressState.PrimaryOwner[defendingSide] = owner
+		end
+		press.Active = current ~= nil
+		press.Primary = current
+		press.Owner = owner
+		press.Shadow = self.PressState.Shadow
 	end
 end
 

@@ -1,0 +1,194 @@
+[
+    {
+        "Action": "MatchStart",
+        "File": "generated/commentary_audio/match_start_01.wav",
+        "Text": "And we are underway.",
+        "Voice": "Microsoft Zira Desktop - English (United States), pitch-shifted lower for male-style commentary",
+        "RobloxSoundId": "",
+        "PitchShiftFactor": 0.74
+    },
+    {
+        "Action": "MatchStart",
+        "File": "generated/commentary_audio/match_start_02.wav",
+        "Text": "The match begins, and both teams settle into shape.",
+        "Voice": "Microsoft Zira Desktop - English (United States), pitch-shifted lower for male-style commentary",
+        "RobloxSoundId": "",
+        "PitchShiftFactor": 0.74
+    },
+    {
+        "Action": "Goal",
+        "File": "generated/commentary_audio/goal_01.wav",
+        "Text": "Goal! A huge finish.",
+        "Voice": "Microsoft Zira Desktop - English (United States), pitch-shifted lower for male-style commentary",
+        "RobloxSoundId": "",
+        "PitchShiftFactor": 0.74
+    },
+    {
+        "Action": "Goal",
+        "File": "generated/commentary_audio/goal_02.wav",
+        "Text": "That one is in, and the stadium erupts.",
+        "Voice": "Microsoft Zira Desktop - English (United States), pitch-shifted lower for male-style commentary",
+        "RobloxSoundId": "",
+        "PitchShiftFactor": 0.74
+    },
+    {
+        "Action": "Shot",
+        "File": "generated/commentary_audio/shot_01.wav",
+        "Text": "He takes the shot.",
+        "Voice": "Microsoft Zira Desktop - English (United States), pitch-shifted lower for male-style commentary",
+        "RobloxSoundId": "",
+        "PitchShiftFactor": 0.74
+    },
+    {
+        "Action": "Shot",
+        "File": "generated/commentary_audio/shot_02.wav",
+        "Text": "The chance opens up, and he lets it fly.",
+        "Voice": "Microsoft Zira Desktop - English (United States), pitch-shifted lower for male-style commentary",
+        "RobloxSoundId": "",
+        "PitchShiftFactor": 0.74
+    },
+    {
+        "Action": "ShotSaved",
+        "File": "generated/commentary_audio/shot_saved_01.wav",
+        "Text": "The keeper makes the save.",
+        "Voice": "Microsoft Zira Desktop - English (United States), pitch-shifted lower for male-style commentary",
+        "RobloxSoundId": "",
+        "PitchShiftFactor": 0.74
+    },
+    {
+        "Action": "ShotSaved",
+        "File": "generated/commentary_audio/shot_saved_02.wav",
+        "Text": "Denied by the goalkeeper.",
+        "Voice": "Microsoft Zira Desktop - English (United States), pitch-shifted lower for male-style commentary",
+        "RobloxSoundId": "",
+        "PitchShiftFactor": 0.74
+    },
+    {
+        "Action": "ShotBlocked",
+        "File": "generated/commentary_audio/shot_blocked_01.wav",
+        "Text": "The defender gets in the way.",
+        "Voice": "Microsoft Zira Desktop - English (United States), pitch-shifted lower for male-style commentary",
+        "RobloxSoundId": "",
+        "PitchShiftFactor": 0.74
+    },
+    {
+        "Action": "ShotBlocked",
+        "File": "generated/commentary_audio/shot_blocked_02.wav",
+        "Text": "Blocked before it can trouble the keeper.",
+        "Voice": "Microsoft Zira Desktop - English (United States), pitch-shifted lower for male-style commentary",
+        "RobloxSoundId": "",
+        "PitchShiftFactor": 0.74
+    },
+    {
+        "Action": "Tackle",
+        "File": "generated/commentary_audio/tackle_01.wav",
+        "Text": "Strong challenge there.",
+        "Voice": "Microsoft Zira Desktop - English (United States), pitch-shifted lower for male-style commentary",
+        "RobloxSoundId": "",
+        "PitchShiftFactor": 0.74
+    },
+    {
+        "Action": "Tackle",
+        "File": "generated/commentary_audio/tackle_02.wav",
+        "Text": "He steps in and wins the duel.",
+        "Voice": "Microsoft Zira Desktop - English (United States), pitch-shifted lower for male-style commentary",
+        "RobloxSoundId": "",
+        "PitchShiftFactor": 0.74
+    },
+    {
+        "Action": "PossessionWon",
+        "File": "generated/commentary_audio/possession_won_01.wav",
+        "Text": "Possession changes hands.",
+        "Voice": "Microsoft Zira Desktop - English (United States), pitch-shifted lower for male-style commentary",
+        "RobloxSoundId": "",
+        "PitchShiftFactor": 0.74
+    },
+    {
+        "Action": "PossessionWon",
+        "File": "generated/commentary_audio/possession_won_02.wav",
+        "Text": "They win it back and look to build.",
+        "Voice": "Microsoft Zira Desktop - English (United States), pitch-shifted lower for male-style commentary",
+        "RobloxSoundId": "",
+        "PitchShiftFactor": 0.74
+    },
+    {
+        "Action": "Corner",
+        "File": "generated/commentary_audio/corner_01.wav",
+        "Text": "Corner kick, a chance to load the box.",
+        "Voice": "Microsoft Zira Desktop - English (United States), pitch-shifted lower for male-style commentary",
+        "RobloxSoundId": "",
+        "PitchShiftFactor": 0.74
+    },
+    {
+        "Action": "Corner",
+        "File": "generated/commentary_audio/corner_02.wav",
+        "Text": "They will send bodies forward for this corner.",
+        "Voice": "Microsoft Zira Desktop - English (United States), pitch-shifted lower for male-style commentary",
+        "RobloxSoundId": "",
+        "PitchShiftFactor": 0.74
+    },
+    {
+        "Action": "FreeKick",
+        "File": "generated/commentary_audio/free_kick_01.wav",
+        "Text": "Free kick in a useful position.",
+        "Voice": "Microsoft Zira Desktop - English (United States), pitch-shifted lower for male-style commentary",
+        "RobloxSoundId": "",
+        "PitchShiftFactor": 0.74
+    },
+    {
+        "Action": "FreeKick",
+        "File": "generated/commentary_audio/free_kick_02.wav",
+        "Text": "The referee gives the foul, and they can deliver now.",
+        "Voice": "Microsoft Zira Desktop - English (United States), pitch-shifted lower for male-style commentary",
+        "RobloxSoundId": "",
+        "PitchShiftFactor": 0.74
+    },
+    {
+        "Action": "Penalty",
+        "File": "generated/commentary_audio/penalty_01.wav",
+        "Text": "Penalty awarded.",
+        "Voice": "Microsoft Zira Desktop - English (United States), pitch-shifted lower for male-style commentary",
+        "RobloxSoundId": "",
+        "PitchShiftFactor": 0.74
+    },
+    {
+        "Action": "Penalty",
+        "File": "generated/commentary_audio/penalty_02.wav",
+        "Text": "A massive moment from the spot.",
+        "Voice": "Microsoft Zira Desktop - English (United States), pitch-shifted lower for male-style commentary",
+        "RobloxSoundId": "",
+        "PitchShiftFactor": 0.74
+    },
+    {
+        "Action": "HalfTime",
+        "File": "generated/commentary_audio/half_time_01.wav",
+        "Text": "That is half time.",
+        "Voice": "Microsoft Zira Desktop - English (United States), pitch-shifted lower for male-style commentary",
+        "RobloxSoundId": "",
+        "PitchShiftFactor": 0.74
+    },
+    {
+        "Action": "HalfTime",
+        "File": "generated/commentary_audio/half_time_02.wav",
+        "Text": "The whistle goes, and the teams head in.",
+        "Voice": "Microsoft Zira Desktop - English (United States), pitch-shifted lower for male-style commentary",
+        "RobloxSoundId": "",
+        "PitchShiftFactor": 0.74
+    },
+    {
+        "Action": "MatchEnded",
+        "File": "generated/commentary_audio/match_ended_01.wav",
+        "Text": "Full time, and the match is complete.",
+        "Voice": "Microsoft Zira Desktop - English (United States), pitch-shifted lower for male-style commentary",
+        "RobloxSoundId": "",
+        "PitchShiftFactor": 0.74
+    },
+    {
+        "Action": "MatchEnded",
+        "File": "generated/commentary_audio/match_ended_02.wav",
+        "Text": "The final whistle confirms the result.",
+        "Voice": "Microsoft Zira Desktop - English (United States), pitch-shifted lower for male-style commentary",
+        "RobloxSoundId": "",
+        "PitchShiftFactor": 0.74
+    }
+]

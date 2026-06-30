@@ -128,6 +128,14 @@ function Service:Step(dt: number)
 		model:SetAttribute("lastMoveCommandTime", command.LastCommandAt)
 		model:SetAttribute("VTRMoveDirection", direction)
 		model:SetAttribute("executingMovement", true)
+		if not moving then
+			humanoid:Move(Vector3.zero, false)
+			if now - command.LastCommandAt >= 0.45 then
+				humanoid:MoveTo(modelRoot.Position)
+				command.LastCommandAt = now
+			end
+			continue
+		end
 		-- Direct steering is issued every heartbeat. MoveTo is reissued at a
 		-- lower rate so the Humanoid has both a persistent destination and a
 		-- reliable fallback direction on simple football pitches.

@@ -10,9 +10,9 @@ return table.freeze({
 		Clubs={Start=true,Dashboard=true,Members=true,Roles=true,Fixtures=true,League=true,Trophies=true,Settings=true},
 		Career={Choose=true,CreatePlayer=true,CreateManager=true,Dashboard=true,Calendar=true,Training=true,Contracts=true,Transfers=true,Stats=true,Saves=true},
 		Store={Featured=true,Packs=true,Cosmetics=true,Stadium=true,Kits=true,Currency=true},
-		Settings={Controls=true,Audio=true,Graphics=true,Camera=true,Accessibility=true,Account=true},
+		Settings={Controls=true,Audio=true,Camera=true,Accessibility=true,Account=true},
 	}),
-	Settings = table.freeze({ TimedFinishing="boolean",MenuMusic="boolean",MotionEffects="boolean",PerformanceMode="boolean",InvertY="boolean",HighContrast="boolean",ReducedMotion="boolean",Crossplay="boolean",ControlPreset="string",MasterVolume="string",Commentary="string",Graphics="string",CameraPreset="string",CameraShake="string",CameraZoomMode="string",BroadcastHeight="string",BroadcastZoom="string",CameraSpeed="string",CameraSide="string",PlayerNames="string",Trainer="string",PassReceiverAutoSwitch="string",ReceiverAssist="string",Minimap="string",MinimapOrientation="string",TextScale="string" }),
+	Settings = table.freeze({ TimedFinishing="boolean",MenuMusic="boolean",MotionEffects="boolean",PerformanceMode="boolean",InvertY="boolean",HighContrast="boolean",ReducedMotion="boolean",Crossplay="boolean",ControlPreset="string",MasterVolume="number",Commentary="string",CommentaryLanguage="string",CommentaryVolume="number",Graphics="string",CameraPreset="string",CameraShake="string",CameraZoomMode="string",BroadcastHeight="string",BroadcastZoom="string",CameraSpeed="string",CameraSide="string",PlayerNames="string",Trainer="string",PassReceiverAutoSwitch="string",ReceiverAssist="string",Minimap="string",MinimapOrientation="string",TextScale="string",PauseKey="string",SkipKey="string" }),
 	SquadSlots = table.freeze({ GK=true,LB=true,CB1=true,CB2=true,RB=true,CDM=true,CM1=true,CM2=true,LW=true,ST=true,RW=true }),
 	CosmeticSlots = table.freeze({ ActiveKit=true,Walkout=true,ClubKit=true,StadiumTheme=true,ProfileFrame=true,Crest=true }),
 })

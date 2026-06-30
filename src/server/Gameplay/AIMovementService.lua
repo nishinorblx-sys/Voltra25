@@ -39,15 +39,20 @@ function Service:Apply(info: any, assignment: any, context: any, dt: number)
 
 	local target = assignment.TargetWorld or info.World
 	local targetDistance = PitchConfig.GetDistanceStuds(info.World, target)
+	local closeHoldAssignment = assignmentName == "DefensiveShape" or assignmentName == "DefensiveRestBlock" or assignmentName == "PostPressShadow"
 	if (target - state.Target).Magnitude >= 6 then
 		state.Target = target
 		state.StuckSince = nil
 		state.LastPosition = info.World
 		state.LastMovedAt = now
 	elseif targetDistance < 4 then
-		local teamForward = context.PitchCFrame.LookVector * (context.AttackSigns[info.Side] or 1)
-		local laneSign = info.Pitch.X >= PitchConfig.HALF_WIDTH and 1 or -1
-		state.Target = info.World + (teamForward + context.PitchCFrame.RightVector * laneSign * 0.18).Unit * 8
+		if closeHoldAssignment then
+			state.Target = info.World
+		else
+			local teamForward = context.PitchCFrame.LookVector * (context.AttackSigns[info.Side] or 1)
+			local laneSign = info.Pitch.X >= PitchConfig.HALF_WIDTH and 1 or -1
+			state.Target = info.World + (teamForward + context.PitchCFrame.RightVector * laneSign * 0.18).Unit * 8
+		end
 	end
 
 	local moved = PitchConfig.GetDistanceStuds(info.World, state.LastPosition)
@@ -65,7 +70,7 @@ function Service:Apply(info: any, assignment: any, context: any, dt: number)
 	end
 
 	local distance = PitchConfig.GetDistanceStuds(info.World, state.Target)
-	local pressureAssignment = assignmentName == "PressBallCarrier" or assignmentName == "ContainBallCarrier" or assignmentName == "CloseLongCarryGap" or assignmentName == "TrackRunner"
+	local pressureAssignment = assignmentName == "PressBallCarrier" or assignmentName == "ContainBallCarrier" or assignmentName == "CloseLongCarryGap" or assignmentName == "TrackRunner" or assignmentName == "PrimaryPressRotation" or assignmentName == "CenterBackPressureStriker" or assignmentName == "FullbackPressureWinger"
 	local mode = "Jog"
 	if pressureAssignment and distance <= 18 then
 		mode = "Jockey"
@@ -76,7 +81,7 @@ function Service:Apply(info: any, assignment: any, context: any, dt: number)
 	end
 	local stamina = info.Stamina or 60
 	local urgency = math.clamp(assignment.MovementUrgency or 0.72, 0.1, 1)
-	if mode == "Sprint" and stamina < 30 and not (assignmentName == "ChaseLooseBall" or assignmentName == "CounterSprint" or assignmentName == "PressBallCarrier" or assignmentName == "CloseLongCarryGap") then
+	if mode == "Sprint" and stamina < 30 and not (assignmentName == "ChaseLooseBall" or assignmentName == "CounterSprint" or assignmentName == "PressBallCarrier" or assignmentName == "CloseLongCarryGap" or assignmentName == "PrimaryPressRotation" or assignmentName == "CenterBackPressureStriker" or assignmentName == "FullbackPressureWinger") then
 		urgency = math.min(urgency, 0.62)
 	end
 	if assignmentName ~= "GoalkeeperPosition" then
@@ -84,6 +89,10 @@ function Service:Apply(info: any, assignment: any, context: any, dt: number)
 	end
 	if urgentRun then
 		urgency = math.max(urgency, 0.92)
+	end
+	if closeHoldAssignment and distance < 5 then
+		urgency = math.min(urgency, 0.2)
+		mode = "Idle"
 	end
 
 	model:SetAttribute("currentAssignment", assignmentName)
@@ -95,7 +104,7 @@ function Service:Apply(info: any, assignment: any, context: any, dt: number)
 	model:SetAttribute("TeamPhase", assignment.Phase or "")
 	model:SetAttribute("MovementTarget", state.Target)
 	model:SetAttribute("Urgency", urgency)
-	model:SetAttribute("PressAssignment", (assignmentName == "PressBallCarrier" or assignmentName == "CloseLongCarryGap") and "Primary" or assignmentName == "CoverPresser" and "Secondary" or "Hold")
+	model:SetAttribute("PressAssignment", (assignmentName == "PressBallCarrier" or assignmentName == "CloseLongCarryGap" or assignmentName == "PrimaryPressRotation" or assignmentName == "CenterBackPressureStriker" or assignmentName == "FullbackPressureWinger") and "Primary" or assignmentName == "CoverPresser" and "Secondary" or "Hold")
 	model:SetAttribute("SupportRole", assignmentName)
 	model:SetAttribute("AttackAssignment", assignmentName)
 	model:SetAttribute("MarkTarget", assignment.MarkTarget and assignment.MarkTarget.Name or "")

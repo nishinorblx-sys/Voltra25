@@ -3,6 +3,7 @@ local PitchConfig = require(script.Parent.PitchConfig)
 local AIContextBuilder = require(script.Parent.AIContextBuilder)
 
 local Service = {}
+local Randomizer = Random.new()
 
 local function passType(fromZ: number, toZ: number): string
 	local dz = toZ - fromZ
@@ -154,6 +155,11 @@ function Service.ScoreReceiver(context: any, passer: any, receiver: any, style: 
 	elseif distance > 62 and forwardGain > 12 and directness + style:Ratio("FreeKickLongPass") + style:Ratio("SwitchPlayFrequency") > 1.18 then
 		targetKind = "Lofted"
 	end
+	local receiverAssignment = tostring(receiver.Model:GetAttribute("SupportRole") or receiver.Model:GetAttribute("currentAssignment") or "")
+	local trailingCover = receiverAssignment == "TrailStrikerCover" or receiverAssignment == "TrailMidfielderCover" or receiverAssignment == "TrailingPassBack"
+	if trailingCover and forwardGain <= -8 then
+		targetKind = "BackPass"
+	end
 	local target = passTarget(context, passer, receiver, targetKind)
 	local groundLaneClear = AIContextBuilder.PassingLaneClear(context, passer, target, targetKind == "Through" and "Driven" or "Ground")
 	if targetKind == "Ground" and not groundLaneClear and distance > 48 and forwardGain > 6 and directness + passRisk > 0.85 then
@@ -163,16 +169,23 @@ function Service.ScoreReceiver(context: any, passer: any, receiver: any, style: 
 	local laneClear = targetKind == "Lofted" and AIContextBuilder.PassingLaneClear(context, passer, target, "Lobbed") or AIContextBuilder.PassingLaneClear(context, passer, target, targetKind == "Through" and "Driven" or "Ground")
 	local pressure = AIContextBuilder.Pressure(context, receiver)
 	local safe = (open or veryOpen) and laneClear and distance < 115 and not (pressure.Under and kind == "Back")
+	local passerPressure = AIContextBuilder.Pressure(context, passer)
 
 	local score = 0
 	score += (veryOpen and 24 or open and 14 or tight and -20 or 0)
 	score += laneClear and 26 or -34
-	score += kind == "Forward" and (18 + directness * 18 + forwardPriority * 18) or kind == "Side" and (12 - directness * 2) or (5 + backPassSafety * 16 - directness * 16)
-	score += targetKind == "Through" and throughFrequency * 18 or targetKind == "Lofted" and (directness * 10 + style:Ratio("FreeKickLongPass") * 8) or 0
+	score += kind == "Forward" and (30 + directness * 24 + forwardPriority * 24) or kind == "Side" and (8 - directness * 5) or (-16 + backPassSafety * 8 - directness * 24)
+	score += targetKind == "Through" and (12 + throughFrequency * 22) or targetKind == "Lofted" and (directness * 14 + style:Ratio("FreeKickLongPass") * 8) or 0
+	score += forwardGain > 45 and 16 or forwardGain > 24 and 10 or forwardGain > 8 and 5 or 0
 	score += dangerous and (10 + risk * 10 + passRisk * 10) or 0
 	score -= math.abs(distance - (directness > 0.55 and 48 or 28)) * 0.22
 	score += (receiver.Stats.overall or 60) * 0.08 + (receiver.Stats.pace or 60) * 0.05
 	score += routeBias(stage, mood, receiver, kind, forwardGain)
+	if trailingCover and kind == "Back" then
+		score += (passerPressure.Heavy and 18 or passerPressure.Under and 8 or -18) + backPassSafety * 6
+	elseif trailingCover then
+		score += 8
+	end
 	if timedStrikerRun then
 		score += 46
 	end
@@ -190,6 +203,9 @@ function Service.ScoreReceiver(context: any, passer: any, receiver: any, style: 
 	end
 	if not laneClear then
 		score -= 38
+	end
+	if kind == "Back" and not passerPressure.Heavy then
+		score -= passerPressure.Under and 8 or 24
 	end
 
 	return {
@@ -283,10 +299,14 @@ function Service.Choose(context: any, passer: any, style: any, difficulty: any, 
 	local best = nil
 	local bestSafe = nil
 	local fallback = nil
+	local trailing = nil
+	local alternate = nil
 	for _, receiver in ipairs(context.Teams[passer.Side].List) do
 		if receiver.Model ~= passer.Model and receiver.Root and not receiver.IsGoalkeeper then
 			local scored = Service.ScoreReceiver(context, passer, receiver, style, difficulty)
 			if scored then
+				local assignment = tostring(receiver.Model:GetAttribute("SupportRole") or receiver.Model:GetAttribute("currentAssignment") or "")
+				local isTrailing = assignment == "TrailStrikerCover" or assignment == "TrailMidfielderCover" or assignment == "TrailingPassBack"
 				if scored.LaneClear and scored.Score > -4 and (not fallback or scored.Score > fallback.Score) then
 					fallback = scored
 				end
@@ -296,8 +316,19 @@ function Service.Choose(context: any, passer: any, style: any, difficulty: any, 
 				if scored.LaneClear and scored.Score > 2 and (not forcedSafe or scored.Safe) and (not best or scored.Score > best.Score) then
 					best = scored
 				end
+				if scored.LaneClear and scored.Safe and scored.Score > 2 then
+					if isTrailing and scored.Kind == "Back" and (not trailing or scored.Score > trailing.Score) then
+						trailing = scored
+					elseif not isTrailing and (not alternate or scored.Score > alternate.Score) then
+						alternate = scored
+					end
+				end
 			end
 		end
+	end
+	local passerPressure = AIContextBuilder.Pressure(context, passer)
+	if trailing and alternate and passerPressure.Under and math.abs(trailing.Score - alternate.Score) <= 18 then
+		return Randomizer:NextNumber() < 0.5 and trailing or alternate
 	end
 	return best or bestSafe or fallback
 end

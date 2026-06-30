@@ -5,8 +5,19 @@ local function move(model: Model, position: Vector3, facing: Vector3)
 	model:PivotTo(CFrame.lookAt(position, Vector3.new(facing.X, position.Y, facing.Z)))
 	local humanoid = model:FindFirstChildOfClass("Humanoid")
 	local root = model:FindFirstChild("HumanoidRootPart") :: BasePart?
-	if humanoid then humanoid:Move(Vector3.zero, false) end
-	if root then root.AssemblyLinearVelocity = Vector3.zero; root.AssemblyAngularVelocity = Vector3.zero end
+	if humanoid then
+		for _,state in {Enum.HumanoidStateType.FallingDown, Enum.HumanoidStateType.Ragdoll, Enum.HumanoidStateType.Physics, Enum.HumanoidStateType.PlatformStanding} do
+			humanoid:SetStateEnabled(state, false)
+		end
+		humanoid.PlatformStand = false
+		humanoid.Sit = false
+		humanoid:Move(Vector3.zero, false)
+		humanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
+	end
+	if root then
+		root.AssemblyLinearVelocity = Vector3.zero
+		root.AssemblyAngularVelocity = Vector3.zero
+	end
 end
 
 function Service.Position(teams: any, formation: any, pitchCFrame: CFrame, restartTeam: string, half: number?): (Model, Model?)
