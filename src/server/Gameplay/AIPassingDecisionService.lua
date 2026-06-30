@@ -32,6 +32,47 @@ local function leadRunTarget(context: any, passer: any, receiver: any, targetPit
 	return PitchConfig.ClampInsidePitch(Vector3.new(targetPitch.X + velocityLead.X * 0.65, 3, math.max(targetPitch.Z, receiver.Pitch.Z + extraForward + math.max(0, velocityLead.Z * 0.65))))
 end
 
+local function flatPass(vector: Vector3): Vector3
+	return Vector3.new(vector.X, 0, vector.Z)
+end
+
+local function laneInterceptionRisk(context: any, passer: any, target: Vector3, passKind: string): number
+	if passKind == "Lofted" or passKind == "FarPostCross" or passKind == "LowCross" then
+		return 0
+	end
+	local start = passer.World
+	local segment = flatPass(target - start)
+	local length = segment.Magnitude
+	if length < 8 then
+		return 0
+	end
+	local direction = segment.Unit
+	local risk = 0
+	for _, defender in ipairs(context.Teams[passer.OpponentSide].List) do
+		if defender.Root and not defender.IsGoalkeeper then
+			local defenderOffset = flatPass(defender.World - start)
+			local along = defenderOffset:Dot(direction)
+			if along > 6 and along < length - 4 then
+				local closest = start + direction * along
+				local lateral = PitchConfig.GetDistanceStuds(defender.World, closest)
+				local pace = defender.Stats and defender.Stats.pace or 60
+				local interceptions = defender.Stats and defender.Stats.interceptions or defender.Stats and defender.Stats.defending or 60
+				local reach = 7.5 + math.clamp((pace - 55) * 0.045, -1.2, 2.2) + math.clamp((interceptions - 55) * 0.07, -1.4, 3)
+				if passKind == "Through" then
+					reach += 2
+				end
+				if lateral <= reach + 4 then
+					local laneCut = math.clamp((reach + 4 - lateral) / (reach + 4), 0, 1)
+					local defenderQuality = math.clamp((pace * 0.45 + interceptions * 0.55) / 100, 0.35, 1)
+					local centrality = 1 - math.abs((along / length) - 0.5) * 0.5
+					risk = math.max(risk, laneCut * defenderQuality * centrality)
+				end
+			end
+		end
+	end
+	return math.clamp(risk, 0, 1)
+end
+
 local function passTarget(context: any, passer: any, receiver: any, kind: string): Vector3
 	if kind == "LowCross" then
 		local nearX = passer.Pitch.X < PitchConfig.HALF_WIDTH and 176 or 248
@@ -183,8 +224,19 @@ function Service.ScoreReceiver(context: any, passer: any, receiver: any, style: 
 		target = passTarget(context, passer, receiver, targetKind)
 	end
 	local laneClear = targetKind == "Lofted" and AIContextBuilder.PassingLaneClear(context, passer, target, "Lobbed") or AIContextBuilder.PassingLaneClear(context, passer, target, targetKind == "Through" and "Driven" or "Ground")
+	local laneRisk = laneInterceptionRisk(context, passer, target, targetKind)
+	if laneRisk >= 0.54 and targetKind ~= "Lofted" then
+		if Randomizer:NextNumber() < 0.2 and distance >= 24 and forwardGain >= -8 then
+			targetKind = "Lofted"
+			target = passTarget(context, passer, receiver, targetKind)
+			laneClear = AIContextBuilder.PassingLaneClear(context, passer, target, "Lobbed")
+			laneRisk = laneInterceptionRisk(context, passer, target, targetKind)
+		else
+			laneClear = false
+		end
+	end
 	local pressure = AIContextBuilder.Pressure(context, receiver)
-	local safe = (open or veryOpen) and laneClear and distance < 115 and not (pressure.Under and kind == "Back")
+	local safe = (open or veryOpen) and laneClear and laneRisk < 0.46 and distance < 115 and not (pressure.Under and kind == "Back")
 	local passerPressure = AIContextBuilder.Pressure(context, passer)
 
 	local score = 0
@@ -243,6 +295,15 @@ function Service.ScoreReceiver(context: any, passer: any, receiver: any, style: 
 		score += 46
 	end
 	score -= pressure.Score * 18
+	score -= laneRisk * 96
+	if laneRisk >= 0.54 then
+		score -= 42
+	elseif laneRisk >= 0.36 then
+		score -= 20
+	end
+	if targetKind == "Lofted" and laneRisk < 0.26 and forwardGain >= -4 then
+		score += 10
+	end
 	score += difficulty.PassRisk * 10
 	if mood == "Passive" and forwardGain > 34 then
 		score -= 14
@@ -269,6 +330,7 @@ function Service.ScoreReceiver(context: any, passer: any, receiver: any, style: 
 		Target = target,
 		Distance = distance,
 		LaneClear = laneClear,
+		LaneRisk = laneRisk,
 		Safe = safe,
 		ForwardGain = forwardGain,
 		Stage = stage,

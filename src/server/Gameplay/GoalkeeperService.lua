@@ -1,6 +1,7 @@
 --!strict
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local GoalModelResolver = require(ReplicatedStorage.VTR.Shared.GoalModelResolver)
+local PitchConfig = require(script.Parent.PitchConfig)
 
 local Service = {}
 Service.__index = Service
@@ -127,6 +128,11 @@ end
 local function saveProbability(keeper:Model,rectangle:any,target:Vector3,time:number,xg:number?,shooter:Model?):number
 	local rating=keeperRating(keeper)
 	local shooterStat=shooterRating(shooter)
+	local shooterRoot = root(shooter)
+	if shooterRoot and PitchConfig.GetDistanceStuds(shooterRoot.Position, target) <= 70 then
+		local goalChance = math.clamp(0.95 + (shooterStat - rating) / 160, 0.65, 0.99)
+		return 1 - goalChance
+	end
 	if shooter and (tonumber(shooter:GetAttribute("VTRLongShotChanceUntil")) or 0) >= os.clock() then
 		local goalChance = tonumber(shooter:GetAttribute("VTRLongShotGoalChance")) or 0.18
 		goalChance = math.clamp(goalChance + (shooterStat - rating) / 140, 0.08, 0.38)

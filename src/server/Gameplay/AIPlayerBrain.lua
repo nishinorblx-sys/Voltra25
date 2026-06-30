@@ -343,7 +343,7 @@ function Service:_carrierDecision(context: any, carrier: any, assignment: any)
 	end
 
 
-	local runningIntoSpaceDanger = (carrier.Model:GetAttribute("AICarryIntoSpace") == true or self.LastAction[carrier.Model] == "CarryForwardSpace" or self.LastAction[carrier.Model] == "TakeOnPressForward") and pressure.Closest <= 10
+	local runningIntoSpaceDanger = pressure.Closest <= 25 or ((carrier.Model:GetAttribute("AICarryIntoSpace") == true or self.LastAction[carrier.Model] == "CarryForwardSpace" or self.LastAction[carrier.Model] == "TakeOnPressForward") and pressure.Closest <= 25)
 	local forcedSafe = wingerEndLine or runningIntoSpaceDanger or (defensiveMood ~= "AggressiveRisk" and (pressure.Heavy or carriedFor >= holdLimit * 0.45 or self.Style:Risk() < 0.3))
 	local pass = AIPassingDecisionService.Choose(context, carrier, self.Style, self.Difficulty, forcedSafe)
 	local inOpponentHalf = carrier.Pitch.Z >= PitchConfig.HALF_LENGTH
@@ -360,6 +360,7 @@ function Service:_carrierDecision(context: any, carrier: any, assignment: any)
 	end
 	carrier.Model:SetAttribute("AIForwardSpace", forwardSpace)
 	carrier.Model:SetAttribute("AIRunningIntoSpaceDanger", runningIntoSpaceDanger)
+	carrier.Model:SetAttribute("AIForcePassPressure25", pressure.Closest <= 25)
 	carrier.Model:SetAttribute("AIForcedSafe", forcedSafe)
 	carrier.Model:SetAttribute("AIPassScore", pass and pass.Score or -999)
 	carrier.Model:SetAttribute("AIPassReceiver", pass and pass.Receiver and pass.Receiver.Model.Name or "")
