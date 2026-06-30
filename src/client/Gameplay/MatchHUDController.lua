@@ -1269,9 +1269,58 @@ function Controller:ShowResult(payload: any, onReturn: () -> ())
 	overlay.Selectable = false
 	overlay.Parent = self.Gui
 	local outcome = payload.Home > payload.Away and "VICTORY" or payload.Home < payload.Away and "DEFEAT" or "DRAW"
+	local won = outcome == "VICTORY"
+	local rewardGlow = Instance.new("Frame")
+	rewardGlow.Name = "RewardGlow"
+	rewardGlow.AnchorPoint = Vector2.new(.5,.5)
+	rewardGlow.Position = UDim2.fromScale(.5,.22)
+	rewardGlow.Size = UDim2.fromOffset(520,160)
+	rewardGlow.BackgroundColor3 = won and Theme.Colors.Electric or Theme.Colors.Gunmetal
+	rewardGlow.BackgroundTransparency = won and .72 or 1
+	rewardGlow.BorderSizePixel = 0
+	rewardGlow.ZIndex = 41
+	rewardGlow.Parent = overlay
+	corner(rewardGlow,80)
+	local glowScale = Instance.new("UIScale")
+	glowScale.Scale = .74
+	glowScale.Parent = rewardGlow
+	if won then
+		TweenService:Create(glowScale,TweenInfo.new(.55,Enum.EasingStyle.Back,Enum.EasingDirection.Out),{Scale=1.12}):Play()
+		TweenService:Create(rewardGlow,TweenInfo.new(.7,Enum.EasingStyle.Quad,Enum.EasingDirection.Out),{BackgroundTransparency=.86}):Play()
+		for i=1,18 do
+			local shard=Instance.new("Frame")
+			shard.AnchorPoint=Vector2.new(.5,.5)
+			shard.Position=UDim2.fromScale(.5,.23)
+			shard.Size=UDim2.fromOffset(math.random(8,18),math.random(22,46))
+			shard.BackgroundColor3=i%3==0 and Theme.Colors.White or Theme.Colors.Electric
+			shard.BackgroundTransparency=.08
+			shard.BorderSizePixel=0
+			shard.Rotation=math.random(-24,24)
+			shard.ZIndex=42
+			shard.Parent=overlay
+			corner(shard,3)
+			local angle=(i/18)*math.pi*2
+			local radius=math.random(150,330)
+			TweenService:Create(shard,TweenInfo.new(.72+math.random()*0.35,Enum.EasingStyle.Quart,Enum.EasingDirection.Out),{Position=UDim2.new(.5,math.cos(angle)*radius,.23,math.sin(angle)*radius*.38),Rotation=shard.Rotation+math.random(-160,160),BackgroundTransparency=1}):Play()
+			task.delay(1.2,function()if shard.Parent then shard:Destroy()end end)
+		end
+	end
 	local title = label(overlay, outcome, UDim2.new(0.2, 0, 0.08, 0), UDim2.new(0.6, 0, 0, 55), 34)
 	title.TextXAlignment = Enum.TextXAlignment.Center
-	title.TextColor3 = Theme.Colors.Electric
+	title.TextColor3 = won and Theme.Colors.Electric or Theme.Colors.White
+	local titleScale = Instance.new("UIScale")
+	titleScale.Scale = won and .72 or 1
+	titleScale.Parent = title
+	if won then
+		TweenService:Create(titleScale,TweenInfo.new(.44,Enum.EasingStyle.Back,Enum.EasingDirection.Out),{Scale=1.18}):Play()
+		task.delay(.46,function()if titleScale.Parent then TweenService:Create(titleScale,TweenInfo.new(.18,Enum.EasingStyle.Quad,Enum.EasingDirection.Out),{Scale=1}):Play()end end)
+		local reward = label(overlay,"+750 COINS   +125 XP   WIN BONUS UNLOCKED",UDim2.new(.2,0,.17,0),UDim2.new(.6,0,0,28),15)
+		reward.TextXAlignment=Enum.TextXAlignment.Center
+		reward.TextColor3=Theme.Colors.Electric
+		reward.TextTransparency=1
+	reward.ZIndex=44
+		TweenService:Create(reward,TweenInfo.new(.38,Enum.EasingStyle.Quart,Enum.EasingDirection.Out),{TextTransparency=0,Position=UDim2.new(.2,0,.155,0)}):Play()
+	end
 	local result = label(overlay, self.Home .. "   " .. payload.Home .. " - " .. payload.Away .. "   " .. self.Away, UDim2.new(0.15, 0, 0.18, 0), UDim2.new(0.7, 0, 0, 52), 23)
 	result.TextXAlignment = Enum.TextXAlignment.Center
 	local stats = payload.Stats or {}

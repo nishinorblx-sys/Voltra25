@@ -229,6 +229,31 @@ function Service.new(remote: RemoteEvent, world: any, teams: any, formation: any
 	return setmetatable({Remote = remote, World = world, Teams = teams, Formation = formation, Possession = possession, TeamControl = teamControl,BallService=ballService, Sequence = 0,ActiveCorner=nil,RestartMode=nil}, Service)
 end
 
+local function cornerDangerReceiver(data:any,teams:any,restartTeam:string): Model?
+	local best: Model? = nil
+	local bestScore = -math.huge
+	local goalSign = tonumber(data.GoalSign) or 1
+	for _,candidate in teams[restartTeam] or {} do
+		if candidate ~= data.Taker and not isKeeper(candidate) and candidate:GetAttribute("VTRSentOff") ~= true then
+			local candidateRoot = root(candidate)
+			if candidateRoot then
+				local localPosition = data.PitchCFrame:PointToObjectSpace(candidateRoot.Position)
+				local inDangerZ = goalSign > 0 and localPosition.Z >= data.Length * 0.5 - 115 or localPosition.Z <= -data.Length * 0.5 + 115
+				local central = math.abs(localPosition.X) <= data.Width * 0.32
+				if inDangerZ and central then
+					local role = tostring(candidate:GetAttribute("position") or "")
+					local score = (tonumber(candidate:GetAttribute("overall")) or 60) + ((role == "ST" or role == "CB") and 16 or role == "CAM" and 10 or 0) - math.abs(localPosition.X) * 0.04
+					if score > bestScore then
+						best = candidate
+						bestScore = score
+					end
+				end
+			end
+		end
+	end
+	return best
+end
+
 function Service:_releaseCorner(player:Player,payload:any)
 	local active=self.ActiveCorner;if not active or active.Player~=player then return false end
 	if payload.ServerAI~=true and active.Player~=player then return false end
@@ -237,10 +262,18 @@ function Service:_releaseCorner(player:Player,payload:any)
 	if typeof(target)~="Vector3"then return false end
 	if delivery=="Short"then local shortRoot=active.Data.ShortOption and active.Data.ShortOption:FindFirstChild("HumanoidRootPart")::BasePart?;if shortRoot then target=shortRoot.Position end end
 	if delivery~="Short"then
-		local goalSign=tonumber(active.Data.GoalSign)or 1
-		target=self.World.PitchCFrame:PointToWorldSpace(Vector3.new(0,.15,goalSign*(self.World.Length*.5-18)))
+		local receiver = cornerDangerReceiver(active.Data,self.Teams,active.Data.Team or tostring(active.Data.Taker:GetAttribute("VTRTeam") or "Home"))
+		local receiverRoot = receiver and root(receiver)
+		if receiverRoot then
+			target = receiverRoot.Position
+			delivery = "Lob"
+		else
+			local goalSign=tonumber(active.Data.GoalSign)or 1
+			target=self.World.PitchCFrame:PointToWorldSpace(Vector3.new(0,.15,goalSign*(self.World.Length*.5-58)))
+			delivery = "Lob"
+		end
 		local distance=(Vector3.new(target.X,0,target.Z)-Vector3.new(self.World.Ball.Position.X,0,self.World.Ball.Position.Z)).Magnitude
-		power=math.clamp((distance-48)/95,.42,.86)
+		power=math.clamp((distance-34)/92,.46,.82)
 	end
 	local takerRoot=active.Data.Taker:FindFirstChild("HumanoidRootPart")::BasePart?;if takerRoot then takerRoot.Anchored=false;takerRoot.AssemblyLinearVelocity=Vector3.zero;takerRoot.AssemblyAngularVelocity=Vector3.zero end
 	active.Data.Taker:SetAttribute("VTRForceIdle",nil)
@@ -270,7 +303,7 @@ function Service:Start(player: Player, kind: string, restartTeam: string, locati
 	if kind == "ThrowIn" then
 		taker = FormationPositionService.ThrowIn(self.Teams, restartTeam, location, self.World.PitchCFrame, self.World.Width, self.World.Length)
 	elseif kind == "Corner" then
-		local cornerData=CornerPositioningService.Position(self.Teams,restartTeam,location,self.World.PitchCFrame,self.World.Width,self.World.Length,self.World.Ball.Size.X*.5);cornerData.PitchCFrame=self.World.PitchCFrame;taker=cornerData.Taker;self.ActiveCorner={Player=player,Data=cornerData,OnReady=onReady,Sequence=sequence}
+		local cornerData=CornerPositioningService.Position(self.Teams,restartTeam,location,self.World.PitchCFrame,self.World.Width,self.World.Length,self.World.Ball.Size.X*.5);cornerData.PitchCFrame=self.World.PitchCFrame;cornerData.Width=self.World.Width;cornerData.Length=self.World.Length;cornerData.Team=restartTeam;taker=cornerData.Taker;self.ActiveCorner={Player=player,Data=cornerData,OnReady=onReady,Sequence=sequence}
 	elseif kind == "GoalKick" then
 		taker = FormationPositionService.GoalKick(self.Teams, restartTeam, location, self.World.PitchCFrame, self.World.Width, self.World.Length)
 	elseif kind=="Penalty"then
@@ -326,7 +359,7 @@ function Service:Start(player: Player, kind: string, restartTeam: string, locati
 	if kind=="Corner"then
 		local data=self.ActiveCorner.Data
 		if userControlled==true and player and player.Parent then self.Remote:FireClient(player,{Type="CornerMode",Team=restartTeam,Taker=taker,Ball=self.World.Ball,Location=ballPosition,CornerSign=data.CornerSign,GoalSign=data.GoalSign,PitchCFrame=self.World.PitchCFrame,PitchWidth=self.World.Width,PitchLength=self.World.Length})
-		else task.delay(1.25,function()if self.ActiveCorner and self.ActiveCorner.Sequence==sequence then local target=self.World.PitchCFrame:PointToWorldSpace(Vector3.new(0,.15,data.GoalSign*(self.World.Length*.5-18)));self:_releaseCorner(player,{Delivery="Cross",Power=.65,Target=target,ServerAI=true})end end)end
+		else task.delay(1.25,function()if self.ActiveCorner and self.ActiveCorner.Sequence==sequence then local target=self.World.PitchCFrame:PointToWorldSpace(Vector3.new(0,.15,data.GoalSign*(self.World.Length*.5-58)));self:_releaseCorner(player,{Delivery="Lob",Power=.65,Target=target,ServerAI=true})end end)end
 		return
 	end
 	if kind=="FreeKick"or kind=="Penalty"or kind=="GoalKick"or kind=="ThrowIn"then

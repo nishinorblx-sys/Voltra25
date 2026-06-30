@@ -357,6 +357,20 @@ local function pressureRank(context: any, info: any, ownerInfo: any): number
 	return rank
 end
 
+local function midfieldPressRank(context: any, info: any, ownerInfo: any): number
+	local rank = 1
+	local distance = PitchConfig.GetDistanceStuds(info.World, ownerInfo.World)
+	for _, teammate in ipairs(context.Teams[info.Side].List) do
+		if teammate.Model ~= info.Model and teammate.Root and (teammate.Role == "CDM" or teammate.Role == "CM" or teammate.Role == "CAM") then
+			local teammateDistance = PitchConfig.GetDistanceStuds(teammate.World, ownerInfo.World)
+			if teammateDistance < distance then
+				rank += 1
+			end
+		end
+	end
+	return rank
+end
+
 local function attackingRoleTarget(context: any, info: any, ballPitch: Vector3, ownerInfo: any?, style: any): (string, Vector3, number, boolean)
 	local pressed = carrierIsPressed(context, ownerInfo)
 	local safe = not pressed
@@ -486,6 +500,18 @@ local function defensiveRoleTarget(context: any, info: any, ballPitch: Vector3, 
 	local ballNearDefensiveBox = PenaltyBoxService.IsNearDefensiveBox(info.Side, context.BallWorld, context.Options, 36)
 	local pressPaused = context.PressPaused and context.PressPaused[info.Side] == true
 	local carrierHasCarriedIntoSpace = ownerInfo and ownerInfo.Model:GetAttribute("AICarryIntoSpace") == true and (tonumber(ownerInfo.Model:GetAttribute("AICarriedFor")) or 0) >= 2
+	if ownerInfo and not pressPaused and not boxThreat and (info.Role == "CDM" or info.Role == "CM" or info.Role == "CAM") then
+		local rank = midfieldPressRank(context, info, ownerInfo)
+		local distance = PitchConfig.GetDistanceStuds(info.World, ownerInfo.World)
+		if rank == 1 and distance <= 70 then
+			return "MidfieldPressRotation", AIDefensiveDecisionService.ContainTarget(ownerPitch), 1, true, faceModel
+		elseif rank == 2 and distance <= 92 then
+			return "SecondMidfielderCover", AIDefensiveDecisionService.CoverPresserTarget(ownerPitch), 0.9, true, faceModel
+		else
+			local screenX = info.BasePitch.X + (ballPitch.X - info.BasePitch.X) * 0.28
+			return "OrganizeMidfieldPress", Vector3.new(screenX, 3, math.clamp(ballPitch.Z + 26, 155, 430)), 0.84, true, faceModel
+		end
+	end
 	if ownerInfo and not pressPaused and not boxThreat and carrierHasCarriedIntoSpace and closestDefenderToCarrier(context, info, ownerInfo) then
 		return "CloseLongCarryGap", AIDefensiveDecisionService.ContainTarget(ownerPitch), 1, true, faceModel
 	end

@@ -7,12 +7,16 @@ local Service = {}
 Service.__index = Service
 
 function Service.new(ball: BasePart, pitchCFrame: CFrame, width: number, length: number, ballService: any, onRestart: (string, string, Vector3) -> ())
-	return setmetatable({Ball = ball, PitchCFrame = pitchCFrame, Width = width, Length = length, BallService = ballService, OnRestart = onRestart, Locked = false,Pending=nil}, Service)
+	return setmetatable({Ball = ball, PitchCFrame = pitchCFrame, Width = width, Length = length, BallService = ballService, OnRestart = onRestart, Locked = false, Pending = nil, Half = 1, Half = 1}, Service)
 end
 
 function Service:Reset()
 	self.Locked = false
 	self.Pending=nil
+end
+
+function Service:SetHalf(half: number?)
+	self.Half = half or 1
 end
 
 function Service:GetLastExit(): any
@@ -44,7 +48,12 @@ function Service:Step()
 		self.Locked = false
 		return
 	end
-	local attacking = localPosition.Z < 0 and "Home" or "Away"
+	local attacking
+	if (self.Half or 1) >= 2 then
+		attacking = localPosition.Z < 0 and "Away" or "Home"
+	else
+		attacking = localPosition.Z < 0 and "Home" or "Away"
+	end
 	local defending = attacking == "Home" and "Away" or "Home"
 	if lastTeam == defending then
 		self.Pending={Kind="Corner",Team=attacking,Location=self.Ball.Position,At=os.clock()+2}

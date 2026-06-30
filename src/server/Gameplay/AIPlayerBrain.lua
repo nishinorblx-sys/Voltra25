@@ -134,7 +134,7 @@ function Service:_tryMidfieldLongShot(context: any, carrier: any, pressure: any)
 	if carrier.Pitch.Z < 445 or carrier.Pitch.Z > 610 or carrier.Pitch.X < 95 or carrier.Pitch.X > 329 then
 		return false
 	end
-	if self.Random:NextNumber() > 0.1 then
+	if self.Random:NextNumber() > 0.05 then
 		return false
 	end
 	local targetX = self.Random:NextNumber() < 0.5 and 156 or 268
