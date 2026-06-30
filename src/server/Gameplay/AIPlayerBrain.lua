@@ -343,7 +343,8 @@ function Service:_carrierDecision(context: any, carrier: any, assignment: any)
 	end
 
 
-	local forcedSafe = wingerEndLine or (defensiveMood ~= "AggressiveRisk" and (pressure.Heavy or carriedFor >= holdLimit * 0.45 or self.Style:Risk() < 0.3))
+	local runningIntoSpaceDanger = (carrier.Model:GetAttribute("AICarryIntoSpace") == true or self.LastAction[carrier.Model] == "CarryForwardSpace" or self.LastAction[carrier.Model] == "TakeOnPressForward") and pressure.Closest <= 10
+	local forcedSafe = wingerEndLine or runningIntoSpaceDanger or (defensiveMood ~= "AggressiveRisk" and (pressure.Heavy or carriedFor >= holdLimit * 0.45 or self.Style:Risk() < 0.3))
 	local pass = AIPassingDecisionService.Choose(context, carrier, self.Style, self.Difficulty, forcedSafe)
 	local inOpponentHalf = carrier.Pitch.Z >= PitchConfig.HALF_LENGTH
 	local passIsBackwards = pass ~= nil and pass.Kind == "Back" and (pass.ForwardGain or 0) < -8
@@ -358,19 +359,20 @@ function Service:_carrierDecision(context: any, carrier: any, assignment: any)
 		carrier.Model:SetAttribute("AIAvoidBackPass", false)
 	end
 	carrier.Model:SetAttribute("AIForwardSpace", forwardSpace)
+	carrier.Model:SetAttribute("AIRunningIntoSpaceDanger", runningIntoSpaceDanger)
 	carrier.Model:SetAttribute("AIForcedSafe", forcedSafe)
 	carrier.Model:SetAttribute("AIPassScore", pass and pass.Score or -999)
 	carrier.Model:SetAttribute("AIPassReceiver", pass and pass.Receiver and pass.Receiver.Model.Name or "")
 	carrier.Model:SetAttribute("AIPassKind", pass and pass.PassKind or "")
 	carrier.Model:SetAttribute("AIPassLaneClear", pass and pass.LaneClear or false)
-	if pass and (forcedSafe or pass.Kind ~= "Back" and pass.Score > (-8 - passTempo * 18) or pass.Kind == "Back" and pass.Score > 58 or carriedFor > math.max(0.025, 0.16 - passTempo * 0.1)) then
+	if pass and (runningIntoSpaceDanger or forcedSafe or pass.Kind ~= "Back" and pass.Score > (-8 - passTempo * 18) or pass.Kind == "Back" and pass.Score > 58 or carriedFor > math.max(0.025, 0.16 - passTempo * 0.1)) then
 		if self:_kickPass(context, carrier, pass) then
 			self.CarrySince[carrier.Model] = nil
 			return
 		end
 	end
 
-	if forwardSpace and (pressure.None or takeOnPress or (inOpponentHalf and pressure.Under and not pass)) then
+	if forwardSpace and not runningIntoSpaceDanger and (pressure.None or takeOnPress or (inOpponentHalf and pressure.Under and not pass)) then
 		local target = PitchConfig.TeamPitchPositionToWorld(forwardCarryPitch, carrier.Side, context.Options)
 		assignment.TargetWorld = target
 		assignment.MovementTarget = target
