@@ -70,7 +70,7 @@ function Service:Apply(info: any, assignment: any, context: any, dt: number)
 	end
 
 	local distance = PitchConfig.GetDistanceStuds(info.World, state.Target)
-	local pressureAssignment = assignmentName == "PressBallCarrier" or assignmentName == "ContainBallCarrier" or assignmentName == "CloseLongCarryGap" or assignmentName == "TrackRunner" or assignmentName == "PrimaryPressRotation" or assignmentName == "CenterBackPressureStriker" or assignmentName == "FullbackPressureWinger"
+	local pressureAssignment = assignmentName == "PressBallCarrier" or assignmentName == "ContainBallCarrier" or assignmentName == "CloseLongCarryGap" or assignmentName == "TrackRunner" or assignmentName == "PrimaryPressRotation" or assignmentName == "CenterBackPressureStriker" or assignmentName == "FullbackPressureWinger" or assignmentName == "AggressiveCBPressStriker" or assignmentName == "AggressiveFullbackPressWinger" or assignmentName == "AggressiveMidfieldPress" or assignmentName == "AggressiveMidfieldCover" or assignmentName == "AggressiveCBStepOut" or assignmentName == "AggressiveFullbackStepOut"
 	local mode = "Jog"
 	if pressureAssignment and distance <= 18 then
 		mode = "Jockey"
@@ -81,7 +81,7 @@ function Service:Apply(info: any, assignment: any, context: any, dt: number)
 	end
 	local stamina = info.Stamina or 60
 	local urgency = math.clamp(assignment.MovementUrgency or 0.72, 0.1, 1)
-	if mode == "Sprint" and stamina < 30 and not (assignmentName == "ChaseLooseBall" or assignmentName == "CounterSprint" or assignmentName == "PressBallCarrier" or assignmentName == "CloseLongCarryGap" or assignmentName == "PrimaryPressRotation" or assignmentName == "CenterBackPressureStriker" or assignmentName == "FullbackPressureWinger") then
+	if mode == "Sprint" and stamina < 30 and not pressureAssignment and not (assignmentName == "ChaseLooseBall" or assignmentName == "CounterSprint") then
 		urgency = math.min(urgency, 0.62)
 	end
 	if assignmentName ~= "GoalkeeperPosition" then
@@ -104,7 +104,7 @@ function Service:Apply(info: any, assignment: any, context: any, dt: number)
 	model:SetAttribute("TeamPhase", assignment.Phase or "")
 	model:SetAttribute("MovementTarget", state.Target)
 	model:SetAttribute("Urgency", urgency)
-	model:SetAttribute("PressAssignment", (assignmentName == "PressBallCarrier" or assignmentName == "CloseLongCarryGap" or assignmentName == "PrimaryPressRotation" or assignmentName == "CenterBackPressureStriker" or assignmentName == "FullbackPressureWinger") and "Primary" or assignmentName == "CoverPresser" and "Secondary" or "Hold")
+	model:SetAttribute("PressAssignment", pressureAssignment and "Primary" or (assignmentName == "CoverPresser" or assignmentName == "AggressiveMidfieldCover") and "Secondary" or "Hold")
 	model:SetAttribute("SupportRole", assignmentName)
 	model:SetAttribute("AttackAssignment", assignmentName)
 	model:SetAttribute("MarkTarget", assignment.MarkTarget and assignment.MarkTarget.Name or "")

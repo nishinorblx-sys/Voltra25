@@ -560,6 +560,23 @@ local function defensiveRoleTarget(context: any, info: any, ballPitch: Vector3, 
 	local ballNearDefensiveBox = PenaltyBoxService.IsNearDefensiveBox(info.Side, context.BallWorld, context.Options, 60)
 	local pressPaused = context.PressPaused and context.PressPaused[info.Side] == true
 	local carrierHasCarriedIntoSpace = ownerInfo and ownerInfo.Model:GetAttribute("AICarryIntoSpace") == true and (tonumber(ownerInfo.Model:GetAttribute("AICarriedFor")) or 0) >= 2
+	local carrierDistance = ownerInfo and PitchConfig.GetDistanceStuds(info.World, ownerInfo.World) or math.huge
+	local defensiveHalfPressure = ownerInfo ~= nil and ballPitch.Z <= PitchConfig.HALF_LENGTH
+	local defensiveThirdPressure = ownerInfo ~= nil and ballPitch.Z <= 285
+	if ownerInfo and not pressPaused and defensiveHalfPressure then
+		if info.Role == "CB" and (ownerRole == "ST" or ownerRole == "CAM") and carrierDistance <= 95 then
+			return "AggressiveCBPressStriker", AIDefensiveDecisionService.ContainTarget(ownerPitch), 1, true, faceModel
+		elseif info.Role == "Fullback" and (ownerRole == "Winger" or ownerRole == "LW" or ownerRole == "RW") and sameSide and carrierDistance <= 85 then
+			return "AggressiveFullbackPressWinger", AIDefensiveDecisionService.ContainTarget(ownerPitch), 1, true, faceModel
+		elseif defensiveThirdPressure and (info.Role == "CDM" or info.Role == "CM" or info.Role == "CAM") and carrierDistance <= 90 then
+			local rank = midfieldPressRank(context, info, ownerInfo)
+			if rank == 1 then
+				return "AggressiveMidfieldPress", AIDefensiveDecisionService.ContainTarget(ownerPitch), 1, true, faceModel
+			elseif rank == 2 and carrierDistance <= 105 then
+				return "AggressiveMidfieldCover", AIDefensiveDecisionService.CoverPresserTarget(ownerPitch), 0.94, true, faceModel
+			end
+		end
+	end
 	local defensiveThird = ownerInfo ~= nil and ballPitch.Z <= 245
 	if ownerInfo and not pressPaused and defensiveThird then
 		if info.Role == "CB" and (ownerRole == "ST" or ownerRole == "CAM") then
@@ -647,6 +664,9 @@ local function defensiveRoleTarget(context: any, info: any, ballPitch: Vector3, 
 		elseif ballSide ~= "Center" then
 			return "TuckInside", Vector3.new(sideLaneX(info, false), 3, base.Z), 0.78, false, nil
 		end
+		if ownerInfo and ballSide ~= "Center" and sameSide and carrierDistance <= 95 then
+			return "AggressiveFullbackStepOut", AIDefensiveDecisionService.ContainTarget(ownerPitch), 0.96, true, faceModel
+		end
 		return "HoldFullbackLine", base, 0.74, false, nil
 	elseif info.Role == "CB" then
 		if boxThreat and (ballNearDefensiveBox or context.Owner == boxThreat.Model) then
@@ -663,6 +683,9 @@ local function defensiveRoleTarget(context: any, info: any, ballPitch: Vector3, 
 			return "StepToStrikerFeet", AIDefensiveDecisionService.ContainTarget(ownerPitch), 1, true, faceModel
 		elseif ownerPitch.Z < info.Pitch.Z - 12 then
 			return "RunBackWithAttacker", Vector3.new(info.BasePitch.X, 3, math.max(36, ownerPitch.Z - 18)), 0.96, true, faceModel
+		end
+		if ownerInfo and ownerRole ~= "" and ballPitch.Z <= 285 and carrierDistance <= 110 then
+			return "AggressiveCBStepOut", AIDefensiveDecisionService.ContainTarget(ownerPitch), 0.96, true, faceModel
 		end
 		return "HoldCenterBackLine", Vector3.new(info.BasePitch.X, 3, base.Z), 0.76, false, nil
 	end
