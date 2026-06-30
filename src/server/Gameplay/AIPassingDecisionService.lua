@@ -206,7 +206,7 @@ function Service.ScoreReceiver(context: any, passer: any, receiver: any, style: 
 	elseif kind == "Side" then
 		score += laneClear and 24 or -28
 		if passerPressure.Under or passerPressure.Heavy then
-			score += open or veryOpen and 20 or 8
+			score += (open or veryOpen) and 20 or 8
 		end
 	elseif kind == "Forward" then
 		score += laneClear and 28 or -42
@@ -229,7 +229,7 @@ function Service.ScoreReceiver(context: any, passer: any, receiver: any, style: 
 	elseif forwardGain > 6 then
 		score += math.clamp(forwardGain, 0, 58) * 0.42
 		if passerPressure.Under or passerPressure.Heavy then
-			score += laneClear and (open or veryOpen) and 24 or 0
+			score += (laneClear and (open or veryOpen)) and 24 or 0
 		end
 	elseif kind == "Side" and (passerPressure.Under or passerPressure.Heavy) and laneClear and (open or veryOpen) then
 		score += 18
