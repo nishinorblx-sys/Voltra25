@@ -554,12 +554,27 @@ local function defensiveRoleTarget(context: any, info: any, ballPitch: Vector3, 
 	local ballSide = sideOf(ballPitch)
 	local sameSide = sameWideSide(info, ballPitch)
 	local ownerRole = ownerInfo and ownerInfo.Role or ""
-	local ownerPitch = ownerInfo and ownerInfo.Pitch or ballPitch
+	local ownerPitch = ballPitch
 	local faceModel = ownerInfo and ownerInfo.Model or nil
 	local boxThreat = boxStrikerThreat(context, info.Side)
 	local ballNearDefensiveBox = PenaltyBoxService.IsNearDefensiveBox(info.Side, context.BallWorld, context.Options, 60)
 	local pressPaused = context.PressPaused and context.PressPaused[info.Side] == true
 	local carrierHasCarriedIntoSpace = ownerInfo and ownerInfo.Model:GetAttribute("AICarryIntoSpace") == true and (tonumber(ownerInfo.Model:GetAttribute("AICarriedFor")) or 0) >= 2
+	local defensiveThird = ownerInfo ~= nil and ballPitch.Z <= 245
+	if ownerInfo and not pressPaused and defensiveThird then
+		if info.Role == "CB" and (ownerRole == "ST" or ownerRole == "CAM") then
+			return "AttackStrikerInDefensiveThird", AIDefensiveDecisionService.ContainTarget(ownerPitch), 1, true, faceModel
+		elseif info.Role == "Fullback" and (ownerRole == "Winger" or ownerRole == "LW" or ownerRole == "RW") and sameSide then
+			return "PressWingerInDefensiveThird", AIDefensiveDecisionService.ContainTarget(ownerPitch), 1, true, faceModel
+		elseif (info.Role == "CDM" or info.Role == "CM" or info.Role == "CAM") then
+			local rank = midfieldPressRank(context, info, ownerInfo)
+			if rank == 1 then
+				return "MidfielderDefensiveThirdPress", AIDefensiveDecisionService.ContainTarget(ownerPitch), 1, true, faceModel
+			elseif rank == 2 then
+				return "MidfielderDefensiveThirdCover", AIDefensiveDecisionService.CoverPresserTarget(ownerPitch), 0.92, true, faceModel
+			end
+		end
+	end
 	if ownerInfo and not pressPaused and boxThreat and (info.Role == "CDM" or info.Role == "CM" or info.Role == "CAM") then
 		local rank = midfieldPressRank(context, info, ownerInfo)
 		if rank == 1 then
@@ -644,8 +659,8 @@ local function defensiveRoleTarget(context: any, info: any, ballPitch: Vector3, 
 				return "CollapseOnStriker", markBetweenGoalAndThreat(threatPitch, 14), 0.94, true, boxThreat.Model
 			end
 			return "ProtectGoalCenter", Vector3.new(PitchConfig.HALF_WIDTH, 3, math.max(38, threatPitch.Z - 22)), 0.86, false, boxThreat.Model
-		elseif ownerRole == "ST" and PitchConfig.GetDistanceStuds(info.World, ownerInfo.World) <= 34 and ownerPitch.Z < info.Pitch.Z + 28 then
-			return "StepToStrikerFeet", Vector3.new(info.BasePitch.X, 3, math.max(45, ownerPitch.Z - 8)), 0.88, true, faceModel
+		elseif ownerRole == "ST" and ballPitch.Z <= 285 then
+			return "StepToStrikerFeet", AIDefensiveDecisionService.ContainTarget(ownerPitch), 1, true, faceModel
 		elseif ownerPitch.Z < info.Pitch.Z - 12 then
 			return "RunBackWithAttacker", Vector3.new(info.BasePitch.X, 3, math.max(36, ownerPitch.Z - 18)), 0.96, true, faceModel
 		end
