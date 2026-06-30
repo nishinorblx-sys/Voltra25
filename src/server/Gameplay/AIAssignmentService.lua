@@ -562,13 +562,13 @@ local function defensiveRoleTarget(context: any, info: any, ballPitch: Vector3, 
 	local carrierHasCarriedIntoSpace = ownerInfo and ownerInfo.Model:GetAttribute("AICarryIntoSpace") == true and (tonumber(ownerInfo.Model:GetAttribute("AICarriedFor")) or 0) >= 2
 	local carrierDistance = ownerInfo and PitchConfig.GetDistanceStuds(info.World, ownerInfo.World) or math.huge
 	local defensiveHalfPressure = ownerInfo ~= nil and ballPitch.Z <= PitchConfig.HALF_LENGTH
-	local defensiveThirdPressure = ownerInfo ~= nil and ballPitch.Z <= 285
+	local defensiveThirdPressure = ownerInfo ~= nil and ballPitch.Z <= PitchConfig.HALF_LENGTH
 	if ownerInfo and not pressPaused and defensiveHalfPressure then
-		if info.Role == "CB" and (ownerRole == "ST" or ownerRole == "CAM") and carrierDistance <= 95 then
+		if info.Role == "CB" and (ownerRole == "ST" or ownerRole == "CAM") and carrierDistance <= 115 then
 			return "AggressiveCBPressStriker", AIDefensiveDecisionService.ContainTarget(ownerPitch), 1, true, faceModel
-		elseif info.Role == "Fullback" and (ownerRole == "Winger" or ownerRole == "LW" or ownerRole == "RW") and sameSide and carrierDistance <= 85 then
+		elseif info.Role == "Fullback" and (ownerRole == "Winger" or ownerRole == "LW" or ownerRole == "RW") and sameSide and carrierDistance <= 105 then
 			return "AggressiveFullbackPressWinger", AIDefensiveDecisionService.ContainTarget(ownerPitch), 1, true, faceModel
-		elseif defensiveThirdPressure and (info.Role == "CDM" or info.Role == "CM" or info.Role == "CAM") and carrierDistance <= 90 then
+		elseif defensiveThirdPressure and (info.Role == "CDM" or info.Role == "CM" or info.Role == "CAM") and carrierDistance <= 110 then
 			local rank = midfieldPressRank(context, info, ownerInfo)
 			if rank == 1 then
 				return "AggressiveMidfieldPress", AIDefensiveDecisionService.ContainTarget(ownerPitch), 1, true, faceModel

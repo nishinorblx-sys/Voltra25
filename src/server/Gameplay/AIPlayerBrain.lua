@@ -222,7 +222,7 @@ function Service:_carrierDecision(context: any, carrier: any, assignment: any)
 		end
 	end
 	if carrier.IsGoalkeeper then
-		local waitDone = carriedFor >= 0.65 or pressure.Under
+		local waitDone = carriedFor >= 0.35 or pressure.Under or pressure.Heavy
 		if not waitDone then
 			assignment.TargetWorld = AIGoalkeeperService.PositionTarget(context, carrier)
 			assignment.MovementTarget = assignment.TargetWorld
@@ -241,7 +241,7 @@ function Service:_carrierDecision(context: any, carrier: any, assignment: any)
 			return
 		end
 	end
-	if now < nextDecision and carriedFor < holdLimit then
+	if now < nextDecision and carriedFor < holdLimit and not pressure.Under and not pressure.Heavy then
 		local dribble = AIDribblingDecisionService.Evaluate(context, carrier, self.Style)
 		assignment.TargetWorld = dribble.Target
 		assignment.MovementTarget = dribble.Target
@@ -252,7 +252,7 @@ function Service:_carrierDecision(context: any, carrier: any, assignment: any)
 		return
 	end
 
-	self.NextDecision[carrier.Model] = now + math.max(0.08, math.min(AIDifficultyService.NextDecisionDelay(self.Difficulty) * (1.12 - passTempo * 0.55), holdLimit))
+	self.NextDecision[carrier.Model] = now + math.max(0.04, math.min(AIDifficultyService.NextDecisionDelay(self.Difficulty) * (0.72 - passTempo * 0.42), holdLimit * 0.65))
 
 	local wingerPass = AIPassingDecisionService.ChooseWingerWide(context, carrier, self.Style, self.Difficulty)
 	carrier.Model:SetAttribute("AIWingerWideDecision", wingerPass and wingerPass.PassKind or "")
@@ -280,14 +280,14 @@ function Service:_carrierDecision(context: any, carrier: any, assignment: any)
 	end
 
 
-	local forcedSafe = wingerEndLine or (defensiveMood ~= "AggressiveRisk" and (pressure.Heavy or carriedFor >= holdLimit or self.Style:Risk() < 0.38 or (pressure.Under and passTempo > 0.55)))
+	local forcedSafe = wingerEndLine or (defensiveMood ~= "AggressiveRisk" and (pressure.Heavy or pressure.Under or carriedFor >= holdLimit * 0.65 or self.Style:Risk() < 0.38))
 	local pass = AIPassingDecisionService.Choose(context, carrier, self.Style, self.Difficulty, forcedSafe)
 	carrier.Model:SetAttribute("AIForcedSafe", forcedSafe)
 	carrier.Model:SetAttribute("AIPassScore", pass and pass.Score or -999)
 	carrier.Model:SetAttribute("AIPassReceiver", pass and pass.Receiver and pass.Receiver.Model.Name or "")
 	carrier.Model:SetAttribute("AIPassKind", pass and pass.PassKind or "")
 	carrier.Model:SetAttribute("AIPassLaneClear", pass and pass.LaneClear or false)
-	if pass and (forcedSafe or pass.Score > (18 - passTempo * 16) or carriedFor > math.max(0.14, 0.46 - passTempo * 0.28)) then
+	if pass and (forcedSafe or pass.Score > (8 - passTempo * 20) or carriedFor > math.max(0.06, 0.28 - passTempo * 0.18)) then
 		if self:_kickPass(context, carrier, pass) then
 			self.CarrySince[carrier.Model] = nil
 			return
