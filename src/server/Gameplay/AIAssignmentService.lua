@@ -761,6 +761,45 @@ local function defensiveRestBlockTarget(info: any): Vector3
 	return info.BasePitch
 end
 
+local function incomingPassThreat(context: any, defendingSide: string): (any?, Vector3?)
+	local ball = context.Ball
+	if not ball then
+		return nil, nil
+	end
+	local passTeam = tostring(ball:GetAttribute("VTRPassTeam") or ball:GetAttribute("LastTouchTeam") or "")
+	if passTeam == "" or passTeam == defendingSide then
+		return nil, nil
+	end
+	local receiverName = tostring(ball:GetAttribute("VTRPassReceiver") or "")
+	local target = ball:GetAttribute("VTRPassTarget") or ball:GetAttribute("VTRLobTarget")
+	if receiverName == "" then
+		return nil, typeof(target) == "Vector3" and PitchConfig.WorldToTeamPitchPosition(target, defendingSide, context.Options) or nil
+	end
+	local attackingSide = defendingSide == "Home" and "Away" or "Home"
+	for _, attacker in ipairs(context.Teams[attackingSide].List) do
+		if attacker.Model.Name == receiverName then
+			local pitchTarget = typeof(target) == "Vector3" and PitchConfig.WorldToTeamPitchPosition(target, defendingSide, context.Options) or PitchConfig.WorldToTeamPitchPosition(attacker.World, defendingSide, context.Options)
+			return attacker, pitchTarget
+		end
+	end
+	return nil, typeof(target) == "Vector3" and PitchConfig.WorldToTeamPitchPosition(target, defendingSide, context.Options) or nil
+end
+
+local function incomingPressRank(context: any, info: any, targetPitch: Vector3, roles: {[string]: boolean}): number
+	local rank = 1
+	local targetWorld = PitchConfig.TeamPitchPositionToWorld(targetPitch, info.Side, context.Options)
+	local distance = PitchConfig.GetDistanceStuds(info.World, targetWorld)
+	for _, teammate in ipairs(context.Teams[info.Side].List) do
+		if teammate.Model ~= info.Model and teammate.Root and roles[teammate.Role] == true then
+			local teammateDistance = PitchConfig.GetDistanceStuds(teammate.World, targetWorld)
+			if teammateDistance < distance then
+				rank += 1
+			end
+		end
+	end
+	return rank
+end
+
 local function simpleDefensiveRoleTarget(context: any, info: any, ballPitch: Vector3, ownerInfo: any?, style: any): (string, Vector3, number, boolean, Model?)
 	local base = defendingBase(info, ballPitch, style)
 	local pressState = context.DefensivePress and context.DefensivePress[info.Side] or nil
@@ -779,6 +818,30 @@ local function simpleDefensiveRoleTarget(context: any, info: any, ballPitch: Vec
 			math.clamp(oldPitch.Z - 8, 34, 520)
 		)
 		return "PostPressShadow", target, 0.86, true, oldInfo.Model
+	end
+
+	local incomingReceiver, incomingTarget = incomingPassThreat(context, info.Side)
+	if incomingTarget then
+		local receiverRole = incomingReceiver and incomingReceiver.Role or ""
+		local target = PitchConfig.ClampInsidePitch(Vector3.new(incomingTarget.X, 3, incomingTarget.Z - 4))
+		local distanceToTarget = PitchConfig.GetDistanceStuds(info.World, PitchConfig.TeamPitchPositionToWorld(target, info.Side, context.Options))
+		if info.Role == "CB" and (receiverRole == "ST" or receiverRole == "CAM") and distanceToTarget <= 155 then
+			local rank = incomingPressRank(context, info, target, {CB = true})
+			if rank == 1 then
+				return "EarlyCBPressPassTarget", target, 1, true, incomingReceiver and incomingReceiver.Model or nil
+			end
+		elseif info.Role == "Fullback" and receiverRole == "Winger" and sameWideSide(info, incomingTarget) and distanceToTarget <= 145 then
+			return "EarlyFullbackPressPassTarget", target, 1, true, incomingReceiver and incomingReceiver.Model or nil
+		elseif (info.Role == "CDM" or info.Role == "CM" or info.Role == "CAM") and (receiverRole == "CDM" or receiverRole == "CM" or receiverRole == "CAM") and distanceToTarget <= 145 then
+			local rank = incomingPressRank(context, info, target, {CDM = true, CM = true, CAM = true})
+			if rank == 1 then
+				return "EarlyMidfielderPressPassTarget", target, 1, true, incomingReceiver and incomingReceiver.Model or nil
+			elseif rank == 2 then
+				return "EarlyMidfielderCoverPassTarget", AIDefensiveDecisionService.CoverPresserTarget(target), 0.94, true, incomingReceiver and incomingReceiver.Model or nil
+			end
+		elseif distanceToTarget <= 78 and not info.IsGoalkeeper then
+			return "EarlyClosePassTargetPressure", target, 0.96, true, incomingReceiver and incomingReceiver.Model or nil
+		end
 	end
 
 	if ownerInfo and ballInOwnHalf then

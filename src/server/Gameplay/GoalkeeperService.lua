@@ -132,6 +132,11 @@ local function saveProbability(keeper:Model,rectangle:any,target:Vector3,time:nu
 
 	local rating=keeperRating(keeper)
 	local shooterStat=shooterRating(shooter)
+	if shooter and (tonumber(shooter:GetAttribute("VTROpenDangerShotChanceUntil")) or 0) >= os.clock() then
+		local baseGoalChance = tonumber(shooter:GetAttribute("VTROpenDangerShotChance")) or 0.8
+		local goalChance = math.clamp(baseGoalChance + (shooterStat - rating) / 100, 0.08, 0.96)
+		return 1 - goalChance
+	end
 	local goalChance=math.clamp(.5+(shooterStat-rating)/100,.05,.95)
 	return 1-goalChance
 end

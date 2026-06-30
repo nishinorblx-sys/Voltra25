@@ -15,6 +15,23 @@ local function passType(fromZ: number, toZ: number): string
 	return "Side"
 end
 
+local function leadRunTarget(context: any, passer: any, receiver: any, targetPitch: Vector3, kind: string): Vector3
+	local receiverRoot = receiver.Root
+	local runnerVelocity = receiverRoot and Vector3.new(receiverRoot.AssemblyLinearVelocity.X, 0, receiverRoot.AssemblyLinearVelocity.Z) or Vector3.zero
+	local forwardLead = math.clamp(receiver.Pitch.Z - passer.Pitch.Z, -8, 48) * 0.18
+	local velocityLead = Vector3.zero
+	if runnerVelocity.Magnitude > 1.5 then
+		local aheadWorld = receiver.World + runnerVelocity.Unit * math.clamp(runnerVelocity.Magnitude * (kind == "Through" and 0.38 or kind == "Lofted" and 0.42 or 0.28), 5, 24)
+		velocityLead = PitchConfig.WorldToTeamPitchPosition(aheadWorld, passer.Side, context.Options) - receiver.Pitch
+	end
+	local extraForward = (receiver.Role == "Winger" or receiver.Role == "ST") and math.max(8, forwardLead) or math.max(2, forwardLead * 0.55)
+	if kind == "BackPass" then
+		extraForward = 0
+		velocityLead = Vector3.zero
+	end
+	return PitchConfig.ClampInsidePitch(Vector3.new(targetPitch.X + velocityLead.X * 0.65, 3, math.max(targetPitch.Z, receiver.Pitch.Z + extraForward + math.max(0, velocityLead.Z * 0.65))))
+end
+
 local function passTarget(context: any, passer: any, receiver: any, kind: string): Vector3
 	if kind == "LowCross" then
 		local nearX = passer.Pitch.X < PitchConfig.HALF_WIDTH and 176 or 248
@@ -38,11 +55,10 @@ local function passTarget(context: any, passer: any, receiver: any, kind: string
 		local receiverLead = math.clamp(receiver.Pitch.Z - passer.Pitch.Z, 12, 42) * 0.22
 		local lineLead = math.clamp(defensiveLine - receiver.Pitch.Z, -12, 28) * 0.16
 		local targetZ = receiver.Pitch.Z + math.clamp(5 + receiverLead + lineLead, 5, 16)
-		local targetPitch = PitchConfig.ClampInsidePitch(Vector3.new(laneX, 3, math.clamp(targetZ, 0, 704)))
+		local targetPitch = leadRunTarget(context, passer, receiver, Vector3.new(laneX, 3, math.clamp(targetZ, 0, 704)), kind)
 		return PitchConfig.TeamPitchPositionToWorld(targetPitch, passer.Side, context.Options)
 	end
-	local forwardLead = math.clamp(receiver.Pitch.Z - passer.Pitch.Z, -8, 28) * 0.14
-	local targetPitch = PitchConfig.ClampInsidePitch(Vector3.new(receiver.Pitch.X, 3, receiver.Pitch.Z + math.max(2, forwardLead)))
+	local targetPitch = leadRunTarget(context, passer, receiver, Vector3.new(receiver.Pitch.X, 3, receiver.Pitch.Z), kind)
 	local target = PitchConfig.TeamPitchPositionToWorld(targetPitch, passer.Side, context.Options)
 	return Vector3.new(target.X, receiver.World.Y, target.Z)
 end
@@ -60,11 +76,11 @@ local function wingerPassKind(passer: any, receiver: any, pressure: any): (strin
 	local z = passer.Pitch.Z
 	if z > 675 then
 		if receiver.Role == "CAM" or receiver.Role == "CM" then return "Cutback", 600 end
-		if receiver.Role == "ST" and receiver.Pitch.Z >= 590 then return "LowCross", 560 end
+		if receiver.Role == "ST" and receiver.Pitch.Z >= 590 then return "Lofted", 640 end
 		if receiver.Role == "Winger" and not sameSide(passer, receiver) then return "FarPostCross", 530 end
 		if receiver.Role == "Fullback" or receiver.Role == "CM" then return "BackPass", 500 end
 	elseif z >= 610 then
-		if receiver.Role == "ST" and receiver.Pitch.Z >= 585 then return "LowCross", 520 end
+		if receiver.Role == "ST" and receiver.Pitch.Z >= 585 then return "Lofted", 610 end
 		if receiver.Role == "Winger" and not sameSide(passer, receiver) and receiver.Pitch.Z >= 565 then return "FarPostCross", 500 end
 		if receiver.Role == "CAM" or receiver.Role == "CM" then return "Cutback", 480 end
 		if receiver.Role == "Fullback" and sameSide(passer, receiver) then return "BackPass", 430 end

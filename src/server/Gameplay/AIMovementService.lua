@@ -70,7 +70,7 @@ function Service:Apply(info: any, assignment: any, context: any, dt: number)
 	end
 
 	local distance = PitchConfig.GetDistanceStuds(info.World, state.Target)
-	local pressureAssignment = assignmentName == "PressBallCarrier" or assignmentName == "ContainBallCarrier" or assignmentName == "CloseLongCarryGap" or assignmentName == "TrackRunner" or assignmentName == "PrimaryPressRotation" or assignmentName == "CenterBackPressureStriker" or assignmentName == "FullbackPressureWinger" or assignmentName == "AggressiveCBPressStriker" or assignmentName == "AggressiveFullbackPressWinger" or assignmentName == "AggressiveMidfieldPress" or assignmentName == "AggressiveMidfieldCover" or assignmentName == "AggressiveCBStepOut" or assignmentName == "AggressiveFullbackStepOut" or assignmentName == "MidfielderPressureMidfielder" or assignmentName == "MidfielderPressureCover"
+	local pressureAssignment = assignmentName == "PressBallCarrier" or assignmentName == "ContainBallCarrier" or assignmentName == "CloseLongCarryGap" or assignmentName == "TrackRunner" or assignmentName == "PrimaryPressRotation" or assignmentName == "CenterBackPressureStriker" or assignmentName == "FullbackPressureWinger" or assignmentName == "AggressiveCBPressStriker" or assignmentName == "AggressiveFullbackPressWinger" or assignmentName == "AggressiveMidfieldPress" or assignmentName == "AggressiveMidfieldCover" or assignmentName == "AggressiveCBStepOut" or assignmentName == "AggressiveFullbackStepOut" or assignmentName == "MidfielderPressureMidfielder" or assignmentName == "MidfielderPressureCover" or assignmentName == "EarlyCBPressPassTarget" or assignmentName == "EarlyFullbackPressPassTarget" or assignmentName == "EarlyMidfielderPressPassTarget" or assignmentName == "EarlyMidfielderCoverPassTarget" or assignmentName == "EarlyClosePassTargetPressure"
 	local mode = "Jog"
 	if pressureAssignment and distance <= 18 then
 		mode = "Jockey"
@@ -104,7 +104,7 @@ function Service:Apply(info: any, assignment: any, context: any, dt: number)
 	model:SetAttribute("TeamPhase", assignment.Phase or "")
 	model:SetAttribute("MovementTarget", state.Target)
 	model:SetAttribute("Urgency", urgency)
-	local pressTag = pressureAssignment and ((assignmentName == "CoverPresser" or assignmentName == "AggressiveMidfieldCover" or assignmentName == "MidfielderPressureCover") and "Secondary" or "Primary") or "Hold"
+	local pressTag = pressureAssignment and ((assignmentName == "CoverPresser" or assignmentName == "AggressiveMidfieldCover" or assignmentName == "MidfielderPressureCover" or assignmentName == "EarlyMidfielderCoverPassTarget") and "Secondary" or "Primary") or "Hold"
 	model:SetAttribute("PressAssignment", pressTag)
 	model:SetAttribute("SupportRole", assignmentName)
 	model:SetAttribute("AttackAssignment", assignmentName)
