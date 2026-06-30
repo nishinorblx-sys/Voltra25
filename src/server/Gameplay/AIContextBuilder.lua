@@ -81,7 +81,7 @@ function Service.Build(teams: any, formations: any, pitchCFrame: CFrame, width: 
 		end
 	end
 	local passInFlight = owner == nil
-		and motionKind == "Pass"
+		and (motionKind == "Pass" or motionKind == "Corner")
 		and (lastTouchTeam == "Home" or lastTouchTeam == "Away")
 		and (typeof(passTarget) == "Vector3" or ball:GetAttribute("VTRLobPassActive") == true)
 		and ((passReceiver ~= "" and passAge < 4.2) or (receiveLocked and passAge < 5.8) or passAge < 0.45)
