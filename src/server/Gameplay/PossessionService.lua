@@ -1,0 +1,13 @@
+--!strict
+local ReplicatedStorage=game:GetService("ReplicatedStorage")
+local Config=require(ReplicatedStorage.VTR.Shared.GameplayConfig)
+local Service={};Service.__index=Service
+function Service.new(ball:BasePart,stateRemote:RemoteEvent)return setmetatable({Ball=ball,Remote=stateRemote,Owner=nil,Blocked={}},Service)end
+function Service:GetOwner():Model?return self.Owner end
+function Service:CanPickup(model:Model):boolean local root=model:FindFirstChild("HumanoidRootPart");local hum=model:FindFirstChildOfClass("Humanoid");return self.Owner==nil and root~=nil and hum~=nil and hum.Health>0 and(self.Blocked[model]or 0)<=os.clock()and(root.Position-self.Ball.Position).Magnitude<=Config.Ball.PossessionRange end
+function Service:Pickup(model:Model):boolean if not self:CanPickup(model)then return false end;self.Owner=model;model:SetAttribute("VTRHasBall",true);local displayName=model:GetAttribute("DisplayName")or model.Name;self.Ball:SetAttribute("OwnerModel",model.Name);self.Ball:SetAttribute("OwnerUserId",model:GetAttribute("VTRUserId")or 0);self.Remote:FireAllClients({Type="Possession",Owner=displayName,OwnerUserId=model:GetAttribute("VTRUserId")or 0,Model=model});return true end
+function Service:ForcePickup(model:Model):boolean if self.Owner and self.Owner~=model then self.Owner:SetAttribute("VTRHasBall",false)end;self.Owner=model;model:SetAttribute("VTRHasBall",true);table.clear(self.Blocked);local displayName=model:GetAttribute("DisplayName")or model.Name;self.Ball:SetAttribute("OwnerModel",model.Name);self.Ball:SetAttribute("OwnerUserId",model:GetAttribute("VTRUserId")or 0);self.Remote:FireAllClients({Type="Possession",Owner=displayName,OwnerUserId=model:GetAttribute("VTRUserId")or 0,Model=model});return true end
+function Service:Block(model:Model,duration:number)self.Blocked[model]=os.clock()+math.clamp(duration,0,2)end
+function Service:Release(velocity:Vector3?,duration:number?)local old=self.Owner;self.Owner=nil;if old then old:SetAttribute("VTRHasBall",false)end;self.Ball:SetAttribute("OwnerModel","");self.Ball:SetAttribute("OwnerUserId",0);if old then self:Block(old,duration or Config.Ball.PickupCooldown)end;if velocity then self.Ball.AssemblyLinearVelocity=velocity end;self.Remote:FireAllClients({Type="Possession",Owner="",OwnerUserId=0,Model=nil})end
+function Service:Reset()if self.Owner then self.Owner:SetAttribute("VTRHasBall",false)end;self.Owner=nil;table.clear(self.Blocked);self.Ball:SetAttribute("OwnerModel","");self.Ball:SetAttribute("OwnerUserId",0);self.Remote:FireAllClients({Type="Possession",Owner="",OwnerUserId=0,Model=nil})end
+return Service

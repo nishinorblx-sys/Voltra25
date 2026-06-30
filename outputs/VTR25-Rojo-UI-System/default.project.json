@@ -1,0 +1,18 @@
+{
+  "name": "VTR25",
+  "tree": {
+    "$className": "DataModel",
+    "ReplicatedStorage": {
+      "VTR25": {
+        "$path": "src/shared"
+      }
+    },
+    "StarterPlayer": {
+      "StarterPlayerScripts": {
+        "VTR25Client": {
+          "$path": "src/client"
+        }
+      }
+    }
+  }
+}

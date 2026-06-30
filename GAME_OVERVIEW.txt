@@ -1,0 +1,146 @@
+VTR 25 / Voltra - Game Overview
+================================
+
+VTR 25, also called Voltra, is a Roblox football game built as a premium football
+experience with a full menu hub, Ultimate Team-style progression, ranked modes,
+and an active playable match prototype. The project is Rojo-ready and written in
+Luau, with the server owning the important gameplay state and the client handling
+presentation, prediction, input, and UI.
+
+
+Current Core Gameplay
+---------------------
+
+- Playable football matches with server-owned ball physics, possession, goals,
+  scores, stamina, AI, and set pieces.
+- Player controls for movement, sprinting, shooting, passing, tackling, sliding,
+  skill touches, close control, and player switching.
+- Ball physics for shots, passes, lobs, clearances, corners, free kicks, and
+  penalty kicks.
+- Penalty system with slot-based aiming, goalkeeper guessing, goalkeeper dives,
+  and post-goal ball physics.
+- Goal detection using goal hitboxes/goal-line volumes.
+- Post-goal ball behavior where scored shots keep their direction, continue
+  physics, collide with the back net, rebound softly, and roll on the pitch.
+- Net collision support for parts named Net, HomeNet, or AwayNet.
+- Pitch grounding support for Pitch and PitchSurface so the ball rolls on the
+  ground instead of phasing through.
+- Goalkeepers that position on the line, predict shots, dive, save, catch, miss,
+  and distribute the ball.
+- AI teammates/opponents with passing, shooting, tackling, positioning, attacking
+  runs, support options, and goalkeeper distribution.
+- Match flow for kickoff, corners, goal kicks, throw-ins, free kicks, penalties,
+  half-time, full-time, pauses, substitutions, and forfeits.
+- Match stats and ratings including goals, shots, xG, passes, saves, tackles,
+  corners, fouls, offsides, blocks, clearances, and match ratings.
+
+
+Current Presentation Features
+-----------------------------
+
+- Broadcast-style camera with different set-piece and penalty camera behavior.
+- Smooth predicted client ball visual with shot trails, flight markers, ball
+  shadow, and rolling visuals.
+- HUD with score, clock, stamina/endurance, charge bar, possession state, pause
+  menus, substitutions, trainer prompts, and match messages.
+- Minimap support with match-active toggles.
+- Goal, half-time, stadium intro, and set-piece cutscene handling.
+- Aim indicators, pass target markers, goal reticle, and free-kick/corner aiming
+  helpers.
+- Player indicators and name labels.
+- R6 footballer animation support for idle, movement, sprinting, dribbling,
+  passing, shooting, tackles, goalkeeper dives, saves, and celebrations.
+
+
+Current Menu / Progression Features
+-----------------------------------
+
+- Full frontend hub framework with pages for Home, Play, Ranked, Ultimate Team,
+  Inventory, Store, Clubs, Career, Settings, and Match Setup.
+- Ultimate Team-style player cards with rarities, card types, stats, portraits,
+  and squad-building systems.
+- Pack system with multiple pack types, odds, guaranteed rarities, premium reveal
+  flow, pack history, and store integration.
+- Inventory system for cards, packs, kits, cosmetics, currencies, and stadium
+  themes.
+- Squad service and squad UI for managing lineups.
+- Club identity editing, kit preview, badge/crest systems, and club templates.
+- Economy with coins and bolts.
+- Objectives, season progress, rewards, ranked profile, ranked queue, and match
+  history foundations.
+- Player database and generated player roster data.
+- Settings for camera, controls, graphics/presentation preferences, trainer,
+  minimap, text scale, and accessibility-style options.
+
+
+Important Technical Notes
+-------------------------
+
+- Server authority is used for possession, ball physics, scoring, stamina,
+  set pieces, match stats, and profile/economy mutation.
+- Client-side systems predict and smooth the ball visual, but do not own the
+  true match result or ball authority.
+- The project uses ReplicatedStorage/VTR/Shared for shared configs and types,
+  ServerScriptService/VTRServer for authoritative services, and StarterPlayer
+  scripts for client controllers/UI.
+- The game can run in an empty Roblox place with generated fallback pitch/stadium
+  elements, while also supporting existing stadium analysis.
+- Current recent focus has been penalty behavior, scored-ball physics, net
+  collision, PitchSurface grounding, and smooth post-goal visual movement.
+
+
+Potential Features / Roadmap Ideas
+----------------------------------
+
+- More realistic net physics with multiple net zones: soft catch, side netting,
+  roof netting, and back-net rebound tuning.
+- Better ball spin and curve after collisions, including side spin off posts and
+  net deflections.
+- Full post/woodwork collision behavior with realistic rebounds and sound effects.
+- Penalty shootout mode with best-of-five rules, sudden death, keeper mind games,
+  pressure UI, and cinematic replays.
+- Replay system for goals, saves, fouls, and close offsides.
+- VAR-style goal-line and offside presentation for dramatic moments.
+- More free-kick tools: wall placement, run-up selection, knuckle shots, dipped
+  shots, driven low shots, and custom set-piece routines.
+- More goalkeeper animations: parries, low dives, one-handed saves, punches,
+  catches, recoveries, and distribution throws.
+- Stronger tactical AI with formations, pressing styles, defensive line height,
+  build-up patterns, and player roles.
+- Deeper player attributes affecting animations and match outcomes, such as
+  composure, weak foot, curve, reactions, first touch, aggression, and balance.
+- Career mode with seasons, transfers, training, injuries, contracts, and club
+  progression.
+- Ranked seasons with divisions, rewards, leaderboards, anti-cheat checks, and
+  matchmaking polish.
+- Live events, limited-time cards, Team of the Week, tournaments, and rotating
+  objectives.
+- Trading or transfer market systems for cards and cosmetics.
+- More stadium customization: pitch patterns, weather, crowds, banners, goal
+  nets, lighting, walkouts, chants, and camera packages.
+- Pro Clubs-style custom player progression with build paths, perks, playstyles,
+  cosmetics, and skill trees.
+- Full mobile/controller control schemes.
+- Training modes for shooting, penalties, free kicks, passing, dribbling,
+  defending, and goalkeeper practice.
+- Audio pass: crowd reactions, ball kicks, net hits, post hits, referee whistle,
+  stadium ambience, menu music, and commentary stingers.
+- Better onboarding/tutorial flow for new players.
+- Analytics/debug tools for ball physics, AI decisions, possession, xG, and
+  collision events.
+
+
+Current Priority Polish Suggestions
+-----------------------------------
+
+1. Finish penalty and post-goal physics tuning until the ball, net, and pitch
+   feel natural in every camera angle.
+2. Verify all stadium goal parts use consistent names and collision groups:
+   Goal, Net, PitchSurface, Pitch, HomeGoal, AwayGoal.
+3. Add sound/visual feedback for net hits and goal rebounds.
+4. Test the same scoring behavior in normal shots, free kicks, corners, and
+   penalties so every goal path feels consistent.
+5. Add a lightweight replay or slow-motion camera after penalties and big goals.
+6. Continue improving goalkeeper saves and misses so they look intentional,
+   readable, and fair.
+

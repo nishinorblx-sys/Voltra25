@@ -1,0 +1,648 @@
+--!nonstrict
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local TweenService = game:GetService("TweenService")
+
+local Theme = require(ReplicatedStorage.VTR.Shared.Theme)
+local PlayerPortraitService = require(script.Parent.Parent.Services.PlayerPortraitService)
+
+local Presentation = {}
+local TOTAL_DURATION = 66.0
+
+local function shortCode(name: string): string
+	local words = string.split(string.upper(name), " ")
+	if #words >= 2 then
+		return string.sub(words[1], 1, 1) .. string.sub(words[2], 1, 2)
+	end
+	return string.sub(string.upper(name), 1, 3)
+end
+
+local function color(value: any, fallback: Color3): Color3
+	return typeof(value) == "Color3" and value or fallback
+end
+
+local function label(parent: Instance, text: string, pos: UDim2, size: UDim2, textSize: number, textColor: Color3?, font: Enum.Font?): TextLabel
+	local item = Instance.new("TextLabel")
+	item.BackgroundTransparency = 1
+	item.Position = pos
+	item.Size = size
+	item.Text = text
+	item.TextColor3 = textColor or Theme.Colors.White
+	item.TextSize = textSize
+	item.Font = font or Theme.Fonts.Display
+	item.TextXAlignment = Enum.TextXAlignment.Left
+	item.TextYAlignment = Enum.TextYAlignment.Center
+	item.TextWrapped = true
+	item.ZIndex = parent:IsA("GuiObject") and parent.ZIndex + 1 or 201
+	item.Parent = parent
+	return item
+end
+
+local function panel(parent: Instance, name: string, pos: UDim2, size: UDim2): CanvasGroup
+	local item = Instance.new("CanvasGroup")
+	item.Name = name
+	item.Position = pos
+	item.Size = size
+	item.BackgroundColor3 = Theme.Colors.Black
+	item.BackgroundTransparency = 0.1
+	item.BorderSizePixel = 0
+	item.GroupTransparency = 1
+	item.Visible = false
+	item.ZIndex = 202
+	item.Parent = parent
+	local stroke = Instance.new("UIStroke")
+	stroke.Color = Theme.Colors.Electric
+	stroke.Transparency = 0.4
+	stroke.Thickness = 1
+	stroke.Parent = item
+	return item
+end
+
+local function slideIn(item: GuiObject, pos: UDim2, from: UDim2, duration: number?)
+	item.Position = from
+	item.Visible = true
+	TweenService:Create(item, TweenInfo.new(duration or 0.36, Theme.Animation.EasingStyle, Theme.Animation.EasingDirection), {Position = pos}):Play()
+	if item:IsA("CanvasGroup") then
+		TweenService:Create(item, TweenInfo.new(0.18), {GroupTransparency = 0}):Play()
+	end
+end
+
+local function slideOut(item: GuiObject, to: UDim2, duration: number?)
+	TweenService:Create(item, TweenInfo.new(duration or 0.28, Enum.EasingStyle.Quart, Enum.EasingDirection.In), {Position = to}):Play()
+	if item:IsA("CanvasGroup") then
+		TweenService:Create(item, TweenInfo.new(0.18), {GroupTransparency = 1}):Play()
+	end
+	task.delay(duration or 0.28, function()
+		if item.Parent then item.Visible = false end
+	end)
+end
+
+local function sortedModels(data: any, side: string): {Model}
+	local result = {}
+	for _, model in data.TeamModels and data.TeamModels[side] or {} do
+		if typeof(model) == "Instance" and model:IsA("Model") then
+			table.insert(result, model)
+		end
+	end
+	table.sort(result, function(a, b)
+		return (tonumber(a:GetAttribute("VTRIndex")) or 99) < (tonumber(b:GetAttribute("VTRIndex")) or 99)
+	end)
+	return result
+end
+
+local function playerName(model: Model?): string
+	return model and tostring(model:GetAttribute("DisplayName") or model.Name) or "-"
+end
+
+local function playerLine(model: Model?, fallback: number): string
+	if not model then return tostring(fallback) .. "   -" end
+	return string.format("%2s   %s", tostring(model:GetAttribute("ShirtNumber") or fallback), string.upper(playerName(model)))
+end
+
+local function teamSheet(data: any, side: string): string
+	local lines = {}
+	for index, model in sortedModels(data, side) do
+		table.insert(lines, playerLine(model, index))
+	end
+	return table.concat(lines, "\n")
+end
+
+local function playerDataLine(entry: any, fallback: number): string
+	if type(entry) ~= "table" then
+		return tostring(fallback) .. "   -"
+	end
+	local number = entry.shirtNumber or entry.number or entry.ShirtNumber or fallback
+	local name = entry.displayName or entry.shortName or entry.name or entry.Name or "PLAYER"
+	return string.format("%2s   %s", tostring(number), string.upper(tostring(name)))
+end
+
+local function teamSheetFromPlayers(players: {any}, fallbackText: string): string
+	if #players == 0 then return fallbackText end
+	local lines = {}
+	for index, entry in players do
+		table.insert(lines, playerDataLine(entry, index))
+		if #lines >= 11 then break end
+	end
+	return table.concat(lines, "\n")
+end
+
+local function benchSheet(data: any, side: string): string
+	local bench = side == "Home" and data.HomeBench or data.AwayBench
+	local lines = {}
+	for index, entry in bench or {} do
+		local number = entry.shirtNumber or entry.number or entry.ShirtNumber or (11 + index)
+		local name = entry.displayName or entry.name or entry.Name or entry.playerName or "SUBSTITUTE"
+		table.insert(lines, string.format("%2s   %s", tostring(number), string.upper(tostring(name))))
+		if #lines >= 9 then break end
+	end
+	return #lines > 0 and table.concat(lines, "\n") or "12   RESERVE GK\n13   RESERVE DEF\n14   RESERVE MID\n15   RESERVE ATT"
+end
+
+local function benchSheetFromPlayers(players: {any}, fallbackText: string): string
+	if #players == 0 then return fallbackText end
+	local lines = {}
+	for index, entry in players do
+		table.insert(lines, playerDataLine(entry, index + 11))
+		if #lines >= 7 then break end
+	end
+	return table.concat(lines, "\n")
+end
+
+local function teamLogoText(data: any, side: string, fallback: string): string
+	local value = side == "Home" and data.HomeLogo or data.AwayLogo
+	return tostring(value or fallback)
+end
+
+local FORMATION_COORDS = {
+	[1] = Vector2.new(0.50, 0.86),
+	[2] = Vector2.new(0.18, 0.68),
+	[3] = Vector2.new(0.39, 0.64),
+	[4] = Vector2.new(0.61, 0.64),
+	[5] = Vector2.new(0.82, 0.68),
+	[6] = Vector2.new(0.31, 0.47),
+	[7] = Vector2.new(0.50, 0.40),
+	[8] = Vector2.new(0.69, 0.47),
+	[9] = Vector2.new(0.22, 0.24),
+	[10] = Vector2.new(0.50, 0.18),
+	[11] = Vector2.new(0.78, 0.24),
+}
+
+local function formationDots(parent: Instance)
+	local dots = {}
+	for index = 1, 11 do
+		local coord = FORMATION_COORDS[index]
+		local dot = Instance.new("Frame")
+		dot.AnchorPoint = Vector2.new(0.5, 0.5)
+		dot.Position = UDim2.fromScale(coord.X, coord.Y)
+		dot.Size = UDim2.fromOffset(11, 11)
+		dot.BackgroundColor3 = Theme.Colors.White
+		dot.BorderSizePixel = 0
+		dot.ZIndex = 207
+		dot.Parent = parent
+		local corner = Instance.new("UICorner")
+		corner.CornerRadius = UDim.new(1, 0)
+		corner.Parent = dot
+		local stroke = Instance.new("UIStroke")
+		stroke.Color = Theme.Colors.Electric
+		stroke.Transparency = 0.55
+		stroke.Thickness = 1
+		stroke.Parent = dot
+		table.insert(dots, dot)
+	end
+	return dots
+end
+
+local function setLineHighlight(dots: {Frame}, first: number, last: number)
+	for index, dot in dots do
+		local active = index >= first and index <= last
+		TweenService:Create(dot, TweenInfo.new(0.22), {
+			BackgroundColor3 = active and Theme.Colors.Electric or Theme.Colors.White,
+			Size = active and UDim2.fromOffset(16, 16) or UDim2.fromOffset(11, 11),
+		}):Play()
+	end
+end
+
+local function makePitchLine(parent: Instance, pos: UDim2, size: UDim2)
+	local line = Instance.new("Frame")
+	line.BackgroundColor3 = Theme.Colors.White
+	line.BackgroundTransparency = 0.35
+	line.BorderSizePixel = 0
+	line.Position = pos
+	line.Size = size
+	line.ZIndex = 206
+	line.Parent = parent
+	return line
+end
+
+local function makePitchBox(parent: Instance, pos: UDim2, size: UDim2)
+	local box = Instance.new("Frame")
+	box.BackgroundTransparency = 1
+	box.Position = pos
+	box.Size = size
+	box.ZIndex = 206
+	box.Parent = parent
+	local stroke = Instance.new("UIStroke")
+	stroke.Color = Theme.Colors.White
+	stroke.Transparency = 0.48
+	stroke.Thickness = 1
+	stroke.Parent = box
+	return box
+end
+
+local function setPreviewPartPhysics(inst: Instance)
+	if not inst:IsA("BasePart") then return end
+	inst.Anchored = true
+	inst.CanCollide = false
+	inst.CanTouch = false
+	inst.CanQuery = false
+	inst.Massless = true
+end
+
+local function colorBrightness(c: Color3): number
+	return c.R * 0.2126 + c.G * 0.7152 + c.B * 0.0722
+end
+
+local function brightenCloneForPreview(clone: Model)
+	for _, desc in clone:GetDescendants() do
+		if desc:IsA("BasePart") then
+			desc.CastShadow = false
+			if desc.Name == "Torso" and colorBrightness(desc.Color) < 0.08 then
+				desc.Color = Color3.fromHex("1E2519")
+			elseif (desc.Name == "Left Arm" or desc.Name == "Right Arm" or desc.Name == "Head") and colorBrightness(desc.Color) < 0.08 then
+				desc.Color = Color3.fromHex("8B5F45")
+			end
+		end
+	end
+end
+
+local function addPreviewKitGeometry(clone: Model)
+	local torso = clone:FindFirstChild("Torso")
+	if not torso or not torso:IsA("BasePart") then return end
+	local pattern = torso:FindFirstChild("VTRKitPattern")
+	local root = pattern and pattern:FindFirstChildWhichIsA("Frame")
+	if not root then return end
+	local function frontPatch(name: string, pos: UDim2, size: UDim2, colorValue: Color3, rotation: number?)
+		local patch = Instance.new("Part")
+		patch.Name = "PreviewKit_" .. name
+		patch.Anchored = true
+		patch.CanCollide = false
+		patch.CanTouch = false
+		patch.CanQuery = false
+		patch.CastShadow = false
+		patch.Material = Enum.Material.SmoothPlastic
+		patch.Color = colorValue
+		patch.Size = Vector3.new(math.max(0.035, torso.Size.X * size.X.Scale), math.max(0.035, torso.Size.Y * size.Y.Scale), 0.025)
+		local x = (pos.X.Scale - 0.5) * torso.Size.X
+		local y = (0.5 - pos.Y.Scale) * torso.Size.Y
+		patch.CFrame = torso.CFrame * CFrame.new(x, y, -torso.Size.Z * 0.5 - 0.018) * CFrame.Angles(0, 0, math.rad(rotation or 0))
+		patch.Parent = clone
+	end
+	for _, child in root:GetChildren() do
+		if child:IsA("Frame") then
+			frontPatch(child.Name, child.Position, child.Size, child.BackgroundColor3, child.Rotation)
+		end
+	end
+end
+
+local function showPlayerPreview(viewport: ViewportFrame, model: Model?)
+	viewport:ClearAllChildren()
+	local world = Instance.new("WorldModel")
+	world.Parent = viewport
+	local camera = Instance.new("Camera")
+	camera.FieldOfView = 27
+	camera.Parent = viewport
+	viewport.CurrentCamera = camera
+	if not model then return end
+
+	local oldArchivable = {}
+	oldArchivable[model] = model.Archivable
+	model.Archivable = true
+	for _, desc in model:GetDescendants() do
+		oldArchivable[desc] = desc.Archivable
+		desc.Archivable = true
+	end
+	local clone = model:Clone()
+	for inst, value in oldArchivable do
+		if inst.Parent then
+			inst.Archivable = value
+		end
+	end
+	if not clone then return end
+	for _, desc in clone:GetDescendants() do
+		setPreviewPartPhysics(desc)
+	end
+	brightenCloneForPreview(clone)
+	addPreviewKitGeometry(clone)
+	clone.Parent = world
+	clone:PivotTo(CFrame.new(0, 0, 0))
+	local center, size = clone:GetBoundingBox()
+	local height = math.max(size.Y, 5)
+	camera.CFrame = CFrame.lookAt(center.Position + Vector3.new(0, height * 0.03, -7.1), center.Position + Vector3.new(0, height * 0.08, 0))
+end
+
+local function lineupData(data: any, side: string): {any}
+	return side == "Home" and (data.HomeLineup or {}) or (data.AwayLineup or {})
+end
+
+local function showPlayerGroupPreview(container: Frame, models: {Model}, players: {any}, firstIndex: number, lastIndex: number)
+	local function render()
+		container:ClearAllChildren()
+		local count = math.max(lastIndex - firstIndex + 1, 1)
+		local gap = count == 1 and 0 or 0.018
+		local slotWidth = count == 1 and 0.44 or (1 - gap * (count - 1)) / count
+		local startX = count == 1 and 0.28 or 0
+		for order = 1, count do
+			local playerIndex = firstIndex + order - 1
+			local model = models[playerIndex]
+			local playerData = players[playerIndex]
+			local slot = Instance.new("CanvasGroup")
+			slot.BackgroundTransparency = 1
+			local targetPosition = UDim2.fromScale(startX + (slotWidth + gap) * (order - 1), 0)
+			slot.Position = UDim2.fromScale(targetPosition.X.Scale + 0.08, 0)
+			slot.Size = UDim2.fromScale(slotWidth, 1)
+			slot.GroupTransparency = 1
+			slot.ZIndex = 207
+			slot.Parent = container
+
+			local shirtNumber = model and tostring(model:GetAttribute("ShirtNumber") or playerIndex) or tostring(playerIndex)
+			local watermark = label(slot, shirtNumber, UDim2.fromScale(0, -0.04), UDim2.fromScale(1, 0.55), count == 1 and 150 or 112, Theme.Colors.White, Theme.Fonts.Display)
+			watermark.TextTransparency = 0.72
+			watermark.TextXAlignment = Enum.TextXAlignment.Center
+			watermark.ZIndex = 207
+
+			if playerData and playerData.appearance then
+				local portrait = PlayerPortraitService.new(slot, playerData, UDim2.fromScale(1, 0.70), false)
+				portrait.Position = UDim2.fromScale(0, 0.07)
+				portrait.BackgroundTransparency = 1
+				portrait.ZIndex = 209
+			else
+				local viewport = Instance.new("ViewportFrame")
+				viewport.BackgroundTransparency = 1
+				viewport.Position = UDim2.fromScale(0, 0.08)
+				viewport.Size = UDim2.fromScale(1, 0.66)
+				viewport.Ambient = Color3.fromHex("D4E4BE")
+				viewport.LightColor = Color3.fromHex("F3F7EE")
+				viewport.LightDirection = Vector3.new(-0.7, -1, -0.8)
+				viewport.ZIndex = 209
+				viewport.Parent = slot
+				showPlayerPreview(viewport, model)
+			end
+
+			local numberLabel = label(slot, shirtNumber, UDim2.fromScale(0, 0.73), UDim2.fromScale(1, 0.08), count == 1 and 30 or 23, Theme.Colors.Electric, Theme.Fonts.Display)
+			numberLabel.TextXAlignment = Enum.TextXAlignment.Center
+			local nameLabel = label(slot, string.upper(playerName(model)), UDim2.fromScale(0.02, 0.82), UDim2.fromScale(0.96, 0.12), count == 1 and 22 or 15, Theme.Colors.White, Theme.Fonts.Strong)
+			nameLabel.TextXAlignment = Enum.TextXAlignment.Center
+			task.delay((order - 1) * 0.08, function()
+				if not slot.Parent then return end
+				TweenService:Create(slot, TweenInfo.new(0.36, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
+					Position = targetPosition,
+					GroupTransparency = 0,
+				}):Play()
+			end)
+		end
+	end
+
+	local oldChildren = container:GetChildren()
+	if #oldChildren == 0 then
+		render()
+		return
+	end
+	for _, child in oldChildren do
+		if child:IsA("CanvasGroup") then
+			TweenService:Create(child, TweenInfo.new(0.14, Enum.EasingStyle.Quart, Enum.EasingDirection.In), {
+				Position = child.Position - UDim2.fromScale(0.06, 0),
+				GroupTransparency = 1,
+			}):Play()
+		end
+	end
+	task.delay(0.15, function()
+		if container.Parent then render() end
+	end)
+end
+
+function Presentation.Duration(): number
+	return TOTAL_DURATION
+end
+
+function Presentation.Play(data: any, onComplete: (() -> ())?)
+	local playerGui = Players.LocalPlayer:WaitForChild("PlayerGui")
+	local old = playerGui:FindFirstChild("VTRPrematchBroadcast")
+	if old then old:Destroy() end
+
+	local gui = Instance.new("ScreenGui")
+	gui.Name = "VTRPrematchBroadcast"
+	gui.IgnoreGuiInset = true
+	gui.ResetOnSpawn = false
+	gui.DisplayOrder = 92
+	gui.Parent = playerGui
+
+	local root = Instance.new("Frame")
+	root.BackgroundTransparency = 1
+	root.Size = UDim2.fromScale(1, 1)
+	root.ZIndex = 200
+	root.Parent = gui
+
+	local home = tostring(data.Home or "HOME")
+	local away = tostring(data.Away or "AWAY")
+	local homeColor = color(data.HomeColor, Theme.Colors.Electric)
+	local awayColor = color(data.AwayColor, Theme.Colors.Silver)
+
+	local matchup = Instance.new("CanvasGroup")
+	matchup.Name = "Matchup"
+	matchup.Position = UDim2.fromScale(0.25, 0.16)
+	matchup.Size = UDim2.fromScale(0.50, 0.48)
+	matchup.BackgroundTransparency = 1
+	matchup.GroupTransparency = 1
+	matchup.Visible = false
+	matchup.ZIndex = 202
+	matchup.Parent = root
+	local leftPanel = Instance.new("Frame")
+	leftPanel.BackgroundColor3 = Theme.Colors.Black
+	leftPanel.BorderSizePixel = 0
+	leftPanel.Position = UDim2.fromScale(0.02, 0.09)
+	leftPanel.Size = UDim2.fromScale(0.47, 0.78)
+	leftPanel.ZIndex = 203
+	leftPanel.Parent = matchup
+	local rightPanel = Instance.new("Frame")
+	rightPanel.BackgroundColor3 = Color3.fromHex("101510")
+	rightPanel.BorderSizePixel = 0
+	rightPanel.Position = UDim2.fromScale(0.52, 0.09)
+	rightPanel.Size = UDim2.fromScale(0.46, 0.78)
+	rightPanel.ZIndex = 203
+	rightPanel.Parent = matchup
+	local logoTab = label(matchup, "VTR", UDim2.fromScale(-0.04, -0.04), UDim2.fromScale(0.12, 0.14), 18, Theme.Colors.Black, Theme.Fonts.Display)
+	logoTab.BackgroundColor3 = Theme.Colors.White
+	logoTab.BackgroundTransparency = 0
+	logoTab.TextXAlignment = Enum.TextXAlignment.Center
+	logoTab.ZIndex = 205
+	label(leftPanel, shortCode(home), UDim2.fromScale(0.11, 0.33), UDim2.fromScale(0.55, 0.12), 34).TextXAlignment = Enum.TextXAlignment.Left
+	label(leftPanel, string.upper(home), UDim2.fromScale(0.11, 0.45), UDim2.fromScale(0.65, 0.08), 13, Theme.Colors.White, Theme.Fonts.Strong)
+	label(leftPanel, "VS", UDim2.fromScale(0.11, 0.55), UDim2.fromScale(0.22, 0.08), 18, Theme.Colors.White, Theme.Fonts.Display)
+	label(leftPanel, shortCode(away), UDim2.fromScale(0.11, 0.65), UDim2.fromScale(0.55, 0.12), 34).TextXAlignment = Enum.TextXAlignment.Left
+	label(leftPanel, string.upper(away), UDim2.fromScale(0.11, 0.77), UDim2.fromScale(0.65, 0.08), 13, Theme.Colors.White, Theme.Fonts.Strong)
+	local techStrip = label(matchup, "POWERED BY VOLTRA TECHNOLOGY", UDim2.fromScale(0.02, 0.90), UDim2.fromScale(0.47, 0.12), 15, Theme.Colors.White, Theme.Fonts.Strong)
+	techStrip.BackgroundColor3 = Theme.Colors.Black
+	techStrip.BackgroundTransparency = 0
+	techStrip.TextXAlignment = Enum.TextXAlignment.Center
+	techStrip.ZIndex = 205
+	local homeBadge = label(rightPanel, tostring(data.HomeLogo or shortCode(home)), UDim2.fromScale(0.29, 0.22), UDim2.fromScale(0.42, 0.23), 24, Theme.Colors.White, Theme.Fonts.Display)
+	homeBadge.BackgroundColor3 = homeColor
+	homeBadge.BackgroundTransparency = 0
+	homeBadge.TextXAlignment = Enum.TextXAlignment.Center
+	local awayBadge = label(rightPanel, tostring(data.AwayLogo or shortCode(away)), UDim2.fromScale(0.29, 0.58), UDim2.fromScale(0.42, 0.23), 24, Theme.Colors.White, Theme.Fonts.Display)
+	awayBadge.BackgroundColor3 = awayColor
+	awayBadge.BackgroundTransparency = 0
+	awayBadge.TextXAlignment = Enum.TextXAlignment.Center
+	for _, spec in {
+		{UDim2.fromScale(0.47, 0.55), UDim2.fromScale(0.08, 0.01)},
+		{UDim2.fromScale(0.87, 0.55), UDim2.fromScale(0.13, 0.01)},
+		{UDim2.fromScale(0.98, 0.02), UDim2.fromScale(0.04, 0.06)},
+		{UDim2.fromScale(-0.02, 0.97), UDim2.fromScale(0.04, 0.06)},
+	} do
+		local accent = Instance.new("Frame")
+		accent.BackgroundColor3 = Theme.Colors.Electric
+		accent.BorderSizePixel = 0
+		accent.Position = spec[1]
+		accent.Size = spec[2]
+		accent.ZIndex = 206
+		accent.Parent = matchup
+	end
+	local centerLine = Instance.new("Frame")
+	centerLine.BackgroundColor3 = Theme.Colors.Electric
+	centerLine.BorderSizePixel = 0
+	centerLine.Position = UDim2.fromScale(0.49, 0.52)
+	centerLine.Size = UDim2.fromScale(0.03, 0.012)
+	centerLine.ZIndex = 206
+	centerLine.Parent = matchup
+
+	local commentators = panel(root, "Commentators", UDim2.fromScale(0.06, 0.74), UDim2.fromScale(0.34, 0.09))
+	label(commentators, "MATCH COMMENTATORS", UDim2.fromScale(0.05, 0.08), UDim2.fromScale(0.9, 0.26), 8, Theme.Colors.Electric, Theme.Fonts.Strong)
+	label(commentators, "NISHINO     |     FOALLOW", UDim2.fromScale(0.05, 0.38), UDim2.fromScale(0.9, 0.5), 15)
+
+	local formation = panel(root, "Formation", UDim2.fromScale(0.04, 0.13), UDim2.fromScale(0.30, 0.62))
+	local formationTitle = label(formation, shortCode(home), UDim2.fromScale(0.09, 0.03), UDim2.fromScale(0.82, 0.13), 34, Theme.Colors.Electric)
+	local pitch = Instance.new("Frame")
+	pitch.BackgroundColor3 = Color3.fromHex("071007")
+	pitch.BackgroundTransparency = 0.16
+	pitch.BorderSizePixel = 0
+	pitch.Position = UDim2.fromScale(0.09, 0.21)
+	pitch.Size = UDim2.fromScale(0.82, 0.70)
+	pitch.ZIndex = 206
+	pitch.Parent = formation
+	local pitchStroke = Instance.new("UIStroke")
+	pitchStroke.Color = Theme.Colors.White
+	pitchStroke.Transparency = 0.42
+	pitchStroke.Parent = pitch
+	makePitchLine(pitch, UDim2.fromScale(0.12, 0.50), UDim2.fromScale(0.76, 0.005))
+	makePitchLine(pitch, UDim2.fromScale(0.12, 0.14), UDim2.fromScale(0.76, 0.005))
+	makePitchLine(pitch, UDim2.fromScale(0.12, 0.86), UDim2.fromScale(0.76, 0.005))
+	makePitchBox(pitch, UDim2.fromScale(0.24, 0.72), UDim2.fromScale(0.52, 0.18))
+	makePitchBox(pitch, UDim2.fromScale(0.34, 0.80), UDim2.fromScale(0.32, 0.10))
+	makePitchBox(pitch, UDim2.fromScale(0.24, 0.10), UDim2.fromScale(0.52, 0.18))
+	local centerCircle = makePitchBox(pitch, UDim2.fromScale(0.42, 0.43), UDim2.fromScale(0.16, 0.14))
+	local centerCorner = Instance.new("UICorner")
+	centerCorner.CornerRadius = UDim.new(1, 0)
+	centerCorner.Parent = centerCircle
+	local dots = formationDots(pitch)
+
+	local playerCard = panel(root, "PlayerCard", UDim2.fromScale(0.37, 0.13), UDim2.fromScale(0.58, 0.62))
+	playerCard.BackgroundColor3 = Color3.fromHex("0A0F08")
+	local playerCardAccent = Instance.new("Frame")
+	playerCardAccent.BackgroundColor3 = Theme.Colors.Electric
+	playerCardAccent.BorderSizePixel = 0
+	playerCardAccent.Position = UDim2.fromScale(0, 0)
+	playerCardAccent.Size = UDim2.fromScale(0.012, 1)
+	playerCardAccent.ZIndex = 206
+	playerCardAccent.Parent = playerCard
+	local introTitle = label(playerCard, "HOME GOALKEEPER", UDim2.fromScale(0.07, 0.06), UDim2.fromScale(0.42, 0.08), 13, Theme.Colors.Electric, Theme.Fonts.Strong)
+	local groupPreview = Instance.new("Frame")
+	groupPreview.BackgroundTransparency = 1
+	groupPreview.Position = UDim2.fromScale(0.06, 0.12)
+	groupPreview.Size = UDim2.fromScale(0.88, 0.82)
+	groupPreview.ZIndex = 207
+	groupPreview.Parent = playerCard
+	showPlayerGroupPreview(groupPreview, sortedModels(data, "Home"), lineupData(data, "Home"), 1, 1)
+
+	local sheet = panel(root, "TeamSheet", UDim2.fromScale(0.09, 0.14), UDim2.fromScale(0.82, 0.68))
+	sheet.BackgroundColor3 = Color3.fromHex("090B07")
+	local sheetLogoPanel = Instance.new("Frame")
+	sheetLogoPanel.BackgroundColor3 = Theme.Colors.Electric
+	sheetLogoPanel.BorderSizePixel = 0
+	sheetLogoPanel.Position = UDim2.fromScale(0, 0)
+	sheetLogoPanel.Size = UDim2.fromScale(0.28, 1)
+	sheetLogoPanel.ZIndex = 203
+	sheetLogoPanel.Parent = sheet
+	local sheetLogo = label(sheetLogoPanel, teamLogoText(data, "Home", shortCode(home)), UDim2.fromScale(0.18, 0.36), UDim2.fromScale(0.64, 0.22), 28, Theme.Colors.Black, Theme.Fonts.Display)
+	sheetLogo.BackgroundColor3 = Theme.Colors.White
+	sheetLogo.BackgroundTransparency = 0
+	sheetLogo.TextXAlignment = Enum.TextXAlignment.Center
+	local sheetTeamCode = label(sheetLogoPanel, shortCode(home), UDim2.fromScale(0.12, 0.08), UDim2.fromScale(0.76, 0.12), 34, Theme.Colors.Black, Theme.Fonts.Display)
+	sheetTeamCode.TextXAlignment = Enum.TextXAlignment.Center
+	local sheetStartTitle = label(sheet, "STARTING 11", UDim2.fromScale(0.36, 0.12), UDim2.fromScale(0.25, 0.08), 25, Theme.Colors.White, Theme.Fonts.Display)
+	local sheetSubsTitle = label(sheet, "SUBS", UDim2.fromScale(0.70, 0.12), UDim2.fromScale(0.18, 0.08), 25, Theme.Colors.White, Theme.Fonts.Display)
+	local sheetStartList = label(sheet, teamSheet(data, "Home"), UDim2.fromScale(0.35, 0.25), UDim2.fromScale(0.28, 0.64), 15, Theme.Colors.White, Theme.Fonts.Strong)
+	local sheetSubsList = label(sheet, benchSheet(data, "Home"), UDim2.fromScale(0.70, 0.25), UDim2.fromScale(0.23, 0.64), 15, Theme.Colors.White, Theme.Fonts.Strong)
+	local function updateTeamSheet(side: string)
+		local teamName = side == "Home" and home or away
+		local teamColor = side == "Home" and homeColor or awayColor
+		sheetLogoPanel.BackgroundColor3 = teamColor
+		sheetLogo.Text = teamLogoText(data, side, shortCode(teamName))
+		sheetTeamCode.Text = shortCode(teamName)
+		sheetStartList.Text = teamSheetFromPlayers(lineupData(data, side), teamSheet(data, side))
+		sheetSubsList.Text = benchSheetFromPlayers(side == "Home" and (data.HomeBench or {}) or (data.AwayBench or {}), benchSheet(data, side))
+	end
+
+	local kickoff = panel(root, "KickoffScoreboard", UDim2.fromScale(0.18, 1.04), UDim2.fromScale(0.64, 0.12))
+	label(kickoff, shortCode(home) .. "   0       VTR       0   " .. shortCode(away), UDim2.fromScale(0.08, 0.16), UDim2.fromScale(0.84, 0.68), 26).TextXAlignment = Enum.TextXAlignment.Center
+
+	task.delay(0.4, function()
+		slideIn(matchup, UDim2.fromScale(0.25, 0.16), UDim2.fromScale(0.25, 1.05), 0.42)
+	end)
+	task.delay(4.8, function()
+		slideOut(matchup, UDim2.fromScale(0.25, -0.62))
+		slideIn(commentators, UDim2.fromScale(0.06, 0.74), UDim2.fromScale(-0.36, 0.74))
+	end)
+	task.delay(15.4, function()
+		slideOut(commentators, UDim2.fromScale(-0.36, 0.74))
+	end)
+	task.delay(16.0, function()
+		slideIn(formation, UDim2.fromScale(0.04, 0.13), UDim2.fromScale(-0.32, 0.13))
+		slideIn(playerCard, UDim2.fromScale(0.37, 0.13), UDim2.fromScale(0.37, 0.86))
+	end)
+	local lineGroups = {
+		{16.2, "HOME GOALKEEPER", "Home", 1, 1},
+		{20.1, "HOME DEFENDERS", "Home", 2, 5},
+		{24.0, "HOME MIDFIELDERS", "Home", 6, 8},
+		{27.9, "HOME ATTACKERS", "Home", 9, 11},
+		{36.0, "AWAY GOALKEEPER", "Away", 1, 1},
+		{39.9, "AWAY DEFENDERS", "Away", 2, 5},
+		{43.8, "AWAY MIDFIELDERS", "Away", 6, 8},
+		{47.7, "AWAY ATTACKERS", "Away", 9, 11},
+	}
+	for _, group in lineGroups do
+		task.delay(group[1], function()
+			local side = group[3]
+			if side == "Away" and formationTitle.Text ~= shortCode(away) then
+				formationTitle.Text = shortCode(away)
+			end
+			setLineHighlight(dots, group[4], group[5])
+			local list = sortedModels(data, side)
+			introTitle.Text = group[2]
+			showPlayerGroupPreview(groupPreview, list, lineupData(data, side), group[4], group[5])
+		end)
+	end
+	task.delay(31.0, function()
+		slideOut(playerCard, UDim2.fromScale(0.37, 0.86))
+		slideOut(formation, UDim2.fromScale(-0.32, 0.13))
+		updateTeamSheet("Home")
+		slideIn(sheet, UDim2.fromScale(0.09, 0.14), UDim2.fromScale(0.09, 1.04), 0.42)
+	end)
+	task.delay(35.1, function()
+		slideOut(sheet, UDim2.fromScale(0.09, 1.04), 0.3)
+		formationTitle.Text = shortCode(away)
+		slideIn(formation, UDim2.fromScale(0.04, 0.13), UDim2.fromScale(-0.32, 0.13))
+		slideIn(playerCard, UDim2.fromScale(0.37, 0.13), UDim2.fromScale(0.37, 0.86))
+	end)
+	task.delay(51.0, function()
+		slideOut(playerCard, UDim2.fromScale(0.37, 0.86))
+		slideOut(formation, UDim2.fromScale(-0.32, 0.13))
+		updateTeamSheet("Away")
+		slideIn(sheet, UDim2.fromScale(0.09, 0.14), UDim2.fromScale(0.09, 1.04), 0.42)
+	end)
+	task.delay(57.0, function()
+		slideOut(sheet, UDim2.fromScale(0.09, 1.04), 0.3)
+	end)
+	task.delay(60.0, function()
+		slideIn(kickoff, UDim2.fromScale(0.18, 0.82), UDim2.fromScale(0.18, 1.04), 0.36)
+	end)
+	task.delay(TOTAL_DURATION - 0.35, function()
+		slideOut(kickoff, UDim2.fromScale(0.18, 1.04), 0.28)
+	end)
+	task.delay(TOTAL_DURATION, function()
+		if gui.Parent then gui:Destroy() end
+		if onComplete then onComplete() end
+	end)
+	return gui
+end
+
+return Presentation

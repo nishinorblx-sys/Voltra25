@@ -1,0 +1,85 @@
+--!strict
+
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local TweenService = game:GetService("TweenService")
+
+local Theme = require(ReplicatedStorage.VTR.Shared.Theme)
+local C = Theme.Colors
+
+local Button = {}
+
+export type Props = {
+	Text: string,
+	Variant: string?,
+	Size: UDim2?,
+	OnActivated: (() -> ())?,
+}
+
+function Button.new(props: Props): TextButton
+	local primary = props.Variant == "Primary"
+	local instance = Instance.new("TextButton")
+	instance.Name = props.Text:gsub("%W", "") .. "Button"
+	instance.AutoButtonColor = false
+	instance.BackgroundColor3 = primary and C.Electric or C.Gunmetal
+	instance.BorderSizePixel = 0
+	instance.Size = props.Size or UDim2.fromOffset(primary and 176 or 144, 46)
+	instance.Text = string.upper(props.Text)
+	instance.TextColor3 = primary and C.Black or C.White
+	instance.TextSize = 12
+	instance.Font = Theme.Fonts.Strong
+	instance.Selectable = false
+	instance:SetAttribute("VTRPrimary", primary)
+
+	local corner = Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(0, Theme.Radius.Medium)
+	corner.Parent = instance
+
+	local stroke = Instance.new("UIStroke")
+	stroke.Color = primary and C.Electric or C.Border
+	stroke.Transparency = primary and 0.3 or 0
+	stroke.Thickness = 1
+	stroke.Parent = instance
+
+	local scale = Instance.new("UIScale")
+	scale.Parent = instance
+
+	local function tween(scaleValue: number, color: Color3)
+		TweenService:Create(scale, TweenInfo.new(Theme.Animation.Hover, Theme.Animation.EasingStyle, Theme.Animation.EasingDirection), { Scale = scaleValue }):Play()
+		TweenService:Create(instance, TweenInfo.new(Theme.Animation.Hover), { BackgroundColor3 = color }):Play()
+	end
+
+	local function focus()
+		local isPrimary = instance:GetAttribute("VTRPrimary") == true
+		tween(1.035, isPrimary and C.Neon or C.Raised)
+	end
+	local function unfocus()
+		local isPrimary = instance:GetAttribute("VTRPrimary") == true
+		tween(1, isPrimary and C.Electric or C.Gunmetal)
+		instance.TextColor3 = isPrimary and C.Black or C.White
+	end
+	instance.MouseEnter:Connect(focus)
+	instance.MouseLeave:Connect(unfocus)
+	instance.SelectionGained:Connect(focus)
+	instance.SelectionLost:Connect(unfocus)
+	instance.MouseButton1Down:Connect(function() tween(0.96, primary and C.Neon or C.Raised) end)
+	instance.MouseButton1Up:Connect(focus)
+	instance.Activated:Connect(function()
+		TweenService:Create(scale, TweenInfo.new(Theme.Animation.Press), { Scale = 0.94 }):Play()
+		task.delay(Theme.Animation.Press, function()
+			if instance.Parent then TweenService:Create(scale, TweenInfo.new(Theme.Animation.Hover), { Scale = 1.035 }):Play() end
+		end)
+		if props.OnActivated then props.OnActivated() end
+	end)
+
+	return instance
+end
+
+function Button.setPrimary(instance: TextButton, primary: boolean)
+	instance:SetAttribute("VTRPrimary", primary)
+	TweenService:Create(instance, TweenInfo.new(Theme.Animation.Standard), {
+		BackgroundColor3 = primary and C.Electric or C.Gunmetal,
+		TextColor3 = primary and C.Black or C.White,
+	}):Play()
+end
+
+return Button
