@@ -5,6 +5,7 @@ local AILooseBallService = require(script.Parent.AILooseBallService)
 local AIGoalkeeperService = require(script.Parent.AIGoalkeeperService)
 local AIDefensiveDecisionService = require(script.Parent.AIDefensiveDecisionService)
 local PenaltyBoxService = require(script.Parent.PenaltyBoxService)
+local Workspace = game:GetService("Workspace")
 
 local Service = {}
 Service.__index = Service
@@ -272,7 +273,35 @@ local function cdmTarget(context: any, info: any, ballPitch: Vector3, pressed: b
 	return "ResetOption", Vector3.new(x, 3, math.max(120, ballPitch.Z - 48)), 0.82, false
 end
 
+local function stadiumAnalysisFolder(): Instance?
+	return Workspace:FindFirstChild("VTRStadiumAnalysis", true)
+end
+
+local function defensiveBoxPart(defendingSide: string): BasePart?
+	local analysis = stadiumAnalysisFolder()
+	local name = defendingSide == "Home" and "HomeBox" or "AwayBox"
+	local found = analysis and analysis:FindFirstChild(name, true) or Workspace:FindFirstChild(name, true)
+	return found and found:IsA("BasePart") and found or nil
+end
+
 local function inFrontOfDefensiveDangerZone(context: any, defendingSide: string, attacker: any): boolean
+	local box = defensiveBoxPart(defendingSide)
+	if box then
+		local boxLocal = context.PitchCFrame:PointToObjectSpace(box.Position)
+		local threatLocal = context.PitchCFrame:PointToObjectSpace(attacker.World)
+		local halfWidth = math.max(box.Size.X, box.Size.Z) * 0.5
+		local halfDepth = math.min(box.Size.X, box.Size.Z) * 0.5
+		local xMargin = 32
+		local zMargin = 60
+		local xInside = threatLocal.X >= boxLocal.X - halfWidth - xMargin and threatLocal.X <= boxLocal.X + halfWidth + xMargin
+		local zInside
+		if boxLocal.Z >= 0 then
+			zInside = threatLocal.Z <= boxLocal.Z - halfDepth and threatLocal.Z >= boxLocal.Z - halfDepth - zMargin
+		else
+			zInside = threatLocal.Z >= boxLocal.Z + halfDepth and threatLocal.Z <= boxLocal.Z + halfDepth + zMargin
+		end
+		return xInside and zInside
+	end
 	local zone = PitchConfig.Zones.OwnBox
 	local threatPitch = PitchConfig.WorldToTeamPitchPosition(attacker.World, defendingSide, context.Options)
 	local xMargin = 24
@@ -497,9 +526,17 @@ local function defensiveRoleTarget(context: any, info: any, ballPitch: Vector3, 
 	local ownerPitch = ownerInfo and ownerInfo.Pitch or ballPitch
 	local faceModel = ownerInfo and ownerInfo.Model or nil
 	local boxThreat = boxStrikerThreat(context, info.Side)
-	local ballNearDefensiveBox = PenaltyBoxService.IsNearDefensiveBox(info.Side, context.BallWorld, context.Options, 36)
+	local ballNearDefensiveBox = PenaltyBoxService.IsNearDefensiveBox(info.Side, context.BallWorld, context.Options, 60)
 	local pressPaused = context.PressPaused and context.PressPaused[info.Side] == true
 	local carrierHasCarriedIntoSpace = ownerInfo and ownerInfo.Model:GetAttribute("AICarryIntoSpace") == true and (tonumber(ownerInfo.Model:GetAttribute("AICarriedFor")) or 0) >= 2
+	if ownerInfo and not pressPaused and boxThreat and (info.Role == "CDM" or info.Role == "CM" or info.Role == "CAM") then
+		local rank = midfieldPressRank(context, info, ownerInfo)
+		if rank == 1 then
+			return "MidfieldBoxPress", AIDefensiveDecisionService.ContainTarget(ownerPitch), 1, true, faceModel
+		elseif rank == 2 then
+			return "SecondMidfielderBoxCover", AIDefensiveDecisionService.CoverPresserTarget(ownerPitch), 0.92, true, faceModel
+		end
+	end
 	if ownerInfo and not pressPaused and not boxThreat and (info.Role == "CDM" or info.Role == "CM" or info.Role == "CAM") then
 		local rank = midfieldPressRank(context, info, ownerInfo)
 		local distance = PitchConfig.GetDistanceStuds(info.World, ownerInfo.World)
@@ -558,13 +595,15 @@ local function defensiveRoleTarget(context: any, info: any, ballPitch: Vector3, 
 			if ballPitch.Z < info.Pitch.Z - 12 then
 				return "RecoverRunnerBehind", Vector3.new(sideLaneX(info, true), 3, math.max(42, ballPitch.Z - 20)), 0.96, true, faceModel
 			end
-			return "StepToWinger", Vector3.new(sideLaneX(info, true), 3, math.clamp(ballPitch.Z - 8, 58, 310)), 0.88, true, faceModel
+			local containZ = math.clamp(ownerPitch.Z - 16, 58, 320)
+			local containX = sideLaneX(info, true) + (PitchConfig.HALF_WIDTH - sideLaneX(info, true)) * 0.14
+			return "ShadowWingerForcePass", Vector3.new(containX, 3, containZ), 0.86, true, faceModel
 		elseif ballSide ~= "Center" then
 			return "TuckInside", Vector3.new(sideLaneX(info, false), 3, base.Z), 0.78, false, nil
 		end
 		return "HoldFullbackLine", base, 0.74, false, nil
 	elseif info.Role == "CB" then
-		if boxThreat and ballNearDefensiveBox then
+		if boxThreat and (ballNearDefensiveBox or context.Owner == boxThreat.Model) then
 			local rank = centerBackRankToThreat(context, info, boxThreat)
 			local threatPitch = PitchConfig.WorldToTeamPitchPosition(boxThreat.World, info.Side, context.Options)
 			local dangerous = strikerThreatVeryDangerous(context, info.Side, boxThreat)
