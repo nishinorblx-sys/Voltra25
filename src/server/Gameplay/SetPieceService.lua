@@ -429,7 +429,9 @@ function Service:Start(player: Player, kind: string, restartTeam: string, locati
 		self.World.Ball:SetAttribute("VTRPenaltyGoalSign",nil)
 	end
 	local goalPosition=payloadGoalSign and self.World.PitchCFrame:PointToWorldSpace(Vector3.new(0,3,payloadGoalSign*self.World.Length*.5))or nil
-	self.Remote:FireClient(player, {Type = "SetPiece", Kind = kind, Team = restartTeam, Location = ballPosition, Taker = taker, Duration = duration, GoalSign=payloadGoalSign, GoalPosition=goalPosition, Cutscene=kind=="Penalty"or(kind=="FreeKick"and setPieceCutscene), Mode=self.RestartMode, FouledPlayerName=tostring(taker:GetAttribute("DisplayName") or taker.Name)})
+	local displayKind=tostring(self.World.Ball:GetAttribute("VTRRestartDisplayKind") or kind)
+	self.World.Ball:SetAttribute("VTRRestartDisplayKind",nil)
+	self.Remote:FireClient(player, {Type = "SetPiece", Kind = displayKind, ActualKind = kind, Team = restartTeam, Location = ballPosition, Taker = taker, Duration = duration, GoalSign=payloadGoalSign, GoalPosition=goalPosition, Cutscene=kind=="Penalty"or(kind=="FreeKick"and setPieceCutscene), Mode=self.RestartMode, FouledPlayerName=tostring(taker:GetAttribute("DisplayName") or taker.Name)})
 	if kind=="Corner"then
 		local data=self.ActiveCorner.Data
 		if userControlled==true and player and player.Parent then self.Remote:FireClient(player,{Type="CornerMode",Team=restartTeam,Taker=taker,Ball=self.World.Ball,Location=ballPosition,CornerSign=data.CornerSign,GoalSign=data.GoalSign,PitchCFrame=self.World.PitchCFrame,PitchWidth=self.World.Width,PitchLength=self.World.Length})

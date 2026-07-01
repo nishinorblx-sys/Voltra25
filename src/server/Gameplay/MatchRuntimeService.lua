@@ -141,7 +141,7 @@ function Service:StartMatch(player:Player,setup:any,opponent:Player?,opponentSet
 	for _,model in models do local modelRoot=model:FindFirstChild("HumanoidRootPart")::BasePart?;if modelRoot then session.LastPositions[model]=modelRoot.Position end end
 	session.Goals=GoalService.new(world.Ball,world.PitchCFrame,world.Width,world.Length,function(team)self:_goal(session,team)end);session.AI=AIService.new(teams,formation,world.PitchCFrame,world.Width,world.Length,finalSetup.Difficulty,world.Ball,possession,ballService,finalSetup.TeamTactics);session.Goalkeepers=GoalkeeperService.new(world.Ball,teams,world.PitchCFrame,world.Width,world.Length,ballService,animations,self.State,session.AI);session.SetPieces=SetPieceService.new(self.State,world,teams,formation,possession,teamControl,ballService);session.OutOfBounds=OutOfBoundsService.new(world.Ball,world.PitchCFrame,world.Width,world.Length,ballService,function(kind,restartTeam,location)self:_startSetPiece(session,kind,restartTeam,location)end)
 	session.Referee=RefereeService.new(self.State,stats,function(restartTeam:string,location:Vector3,restartKind:string?,forcedTaker:Model?)if not session.Ended then self:_startSetPiece(session,restartKind or "FreeKick",restartTeam,location,forcedTaker)end end,world.PitchCFrame,world.Width,world.Length);ballService:SetReferee(session.Referee)
-	session.Offside=OffsideService.new(self.State,stats,teams,world.PitchCFrame,function(restartTeam:string,location:Vector3)if not session.Ended then self:_startSetPiece(session,"FreeKick",restartTeam,location)end end);ballService:SetOffsideService(session.Offside)
+	session.Offside=OffsideService.new(self.State,stats,teams,world.PitchCFrame,function(restartTeam:string,location:Vector3)if not session.Ended then session.World.Ball:SetAttribute("VTRRestartDisplayKind","Offside");self:_startSetPiece(session,"FreeKick",restartTeam,location)end end);ballService:SetOffsideService(session.Offside)
 	local homeSummary=TeamDatabase.Summary(home.Team);local awaySummary=TeamDatabase.Summary(away.Team);local watchMode=finalSetup.WatchMode==true
 	if watchMode then
 		for _,model in models do
@@ -649,6 +649,7 @@ function Service:_startSetPiece(session:any,kind:string,restartTeam:string,locat
 	end
 	local currentHalf=session.Clock and session.Clock:Payload().Half or 1
 	if session.AI and session.AI.SetHalf then session.AI:SetHalf(currentHalf)end
+	if session.Referee and session.Referee.SetHalf then session.Referee:SetHalf(currentHalf)end
 	if session.Offside and session.Offside.SetHalf then session.Offside:SetHalf(currentHalf)end
 	if session.Goalkeepers and session.Goalkeepers.SetHalf then session.Goalkeepers:SetHalf(currentHalf)end
 	session.SetPieces:Start(controller,kind,restartTeam,location,function()
@@ -816,7 +817,7 @@ function Service:_resumeHalfTime(session:any)
 	session.HalfTimeBreak=false
 	session.HalfTimeBreakEndsAt=nil
 	broadcast(self.State,session,{Type="HalfTimeResume"})
-	session.Clock:StartSecondHalf();if session.AI and session.AI.SetHalf then session.AI:SetHalf(2)end;if session.Offside and session.Offside.SetHalf then session.Offside:SetHalf(2)end;if session.Goalkeepers and session.Goalkeepers.SetHalf then session.Goalkeepers:SetHalf(2)end;if session.OutOfBounds and session.OutOfBounds.SetHalf then session.OutOfBounds:SetHalf(2)end;self:_startSetPiece(session,"Kickoff","Away",session.World.PitchCFrame.Position)
+	session.Clock:StartSecondHalf();if session.AI and session.AI.SetHalf then session.AI:SetHalf(2)end;if session.Referee and session.Referee.SetHalf then session.Referee:SetHalf(2)end;if session.Offside and session.Offside.SetHalf then session.Offside:SetHalf(2)end;if session.Goalkeepers and session.Goalkeepers.SetHalf then session.Goalkeepers:SetHalf(2)end;if session.OutOfBounds and session.OutOfBounds.SetHalf then session.OutOfBounds:SetHalf(2)end;self:_startSetPiece(session,"Kickoff","Away",session.World.PitchCFrame.Position)
 end
 
 function Service:_penaltyTarget(session:any,shooter:Model,payload:any):(Vector3,string,number)

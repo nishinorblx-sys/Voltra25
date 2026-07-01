@@ -620,6 +620,19 @@ function Service:Step(dt: number)
 	end
 	if nearest and (forcedReceiverPickup or self.Possession:Pickup(nearest)) then
 		local team = nearest:GetAttribute("VTRTeam")
+		local previousTeam=tostring(self.Ball:GetAttribute("VTRLastPossessionTeam") or "")
+		local pickupReason="LooseRecovery"
+		if self.LastPassTeam then
+			if self.LastPassTeam==team then
+				pickupReason=forcedReceiverPickup and "PassReceived" or "TeamPassRecovered"
+			else
+				pickupReason="Turnover"
+			end
+		elseif previousTeam~="" and previousTeam~=team then
+			pickupReason="Turnover"
+		end
+		self.Ball:SetAttribute("VTRLastPossessionTeam",team)
+		self.Remote:FireAllClients({Type="PossessionContext",Owner=nearest:GetAttribute("DisplayName")or nearest.Name,Model=nearest,Team=team,Reason=pickupReason})
 		if self.OffsideCandidate and nearest==self.OffsideCandidate and self.Offside then self.Offside:Call(nearest);self.OffsideCandidate=nil;self.LastPassTeam=nil;self.LastPasser=nil;self.LastPassOrigin=nil;self.ExpectedReceiver=nil;self.PassPlan=nil;self.Ball:SetAttribute("VTRPassTarget",nil);self.Ball:SetAttribute("VTRPassStartedAt",nil);self.Ball:SetAttribute("VTRPassTeam",nil);self.Ball:SetAttribute("VTRPassReceiver",nil);return end
 		if self.LastPassTeam then
 			if self.LastPassTeam==team and self.LastPasser then

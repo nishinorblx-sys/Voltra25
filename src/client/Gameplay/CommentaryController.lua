@@ -149,6 +149,13 @@ local CommentaryLines = {
 		"A good opportunity from this dead-ball situation."
 	},
 
+	Offside = {
+		"Offside.",
+		"The flag is up. Offside.",
+		"Offside called by the assistant.",
+		"The attack stops for offside."
+	},
+
 	Penalty = {
 		"Penalty! A massive chance from the spot!",
 		"The referee points to the spot!",
@@ -212,6 +219,7 @@ local CommentaryCooldowns = {
 	Goal = 0,
 	Corner = 2,
 	FreeKick = 2,
+	Offside = 1.2,
 	Penalty = 0,
 	HalfTime = 1,
 	MatchEnded = 1,
@@ -353,6 +361,11 @@ function Controller:HandleState(payload: any)
 				Team = getTeam(payload.Team),
 				PlayerName = getName(payload.Actor)
 			})
+		elseif setPieceKind == "Offside" then
+			self:Say("Offside", {
+				Team = getTeam(payload.Team),
+				PlayerName = getName(payload.Actor)
+			})
 		elseif setPieceKind == "FreeKick" then
 			self:Say("FreeKick", {
 				Team = getTeam(payload.Team),
@@ -382,10 +395,15 @@ function Controller:HandleState(payload: any)
 	elseif kind == "MatchEnded" then
 		self:Say("MatchEnded")
 
+	elseif kind == "PossessionContext" and payload.Owner and payload.Owner ~= "" then
+		local reason = tostring(payload.Reason or "")
+		if reason == "Turnover" or reason == "LooseRecovery" then
+			self:Say("PossessionWon", {
+				PlayerName = getName(payload.Owner)
+			})
+		end
+
 	elseif kind == "Possession" and payload.Owner and payload.Owner ~= "" then
-		self:Say("PossessionWon", {
-			PlayerName = getName(payload.Owner)
-		})
 
 	elseif kind == "Shot" then
 		self:Say("Shot", {

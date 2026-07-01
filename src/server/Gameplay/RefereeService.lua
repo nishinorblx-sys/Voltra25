@@ -1,15 +1,20 @@
 --!strict
 local Service={};Service.__index=Service
 function Service.new(remote:RemoteEvent,stats:any,onRestart:any,pitchCFrame:CFrame?,width:number?,length:number?)
-	return setmetatable({Remote=remote,Stats=stats,OnRestart=onRestart,Fouls={},Yellows={},Random=Random.new(),PitchCFrame=pitchCFrame,Width=width or 0,Length=length or 0},Service)
+	return setmetatable({Remote=remote,Stats=stats,OnRestart=onRestart,Fouls={},Yellows={},Random=Random.new(),PitchCFrame=pitchCFrame,Width=width or 0,Length=length or 0,Half=1},Service)
 end
-function Service:_isInsidePenaltyArea(team:string,location:Vector3):boolean
-	if not self.PitchCFrame or self.Width<=0 or self.Length<=0 then return false end
+function Service:SetHalf(half:number?)self.Half=half or 1 end
+function Service:_penaltyBoxOwner(location:Vector3):string?
+	if not self.PitchCFrame or self.Width<=0 or self.Length<=0 then return nil end
 	local localPoint=self.PitchCFrame:PointToObjectSpace(location)
 	local inWidth=math.abs(localPoint.X)<=22
-	local nearHomeBox=math.abs((self.Length*.5)-localPoint.Z)<=18
-	local nearAwayBox=math.abs((-self.Length*.5)-localPoint.Z)<=18
-	return inWidth and (nearHomeBox or nearAwayBox)
+	if not inWidth then return nil end
+	local nearPositive=math.abs((self.Length*.5)-localPoint.Z)<=18
+	local nearNegative=math.abs((-self.Length*.5)-localPoint.Z)<=18
+	if not nearPositive and not nearNegative then return nil end
+	local positiveOwner=(self.Half or 1)>=2 and "Away" or "Home"
+	local negativeOwner=(self.Half or 1)>=2 and "Home" or "Away"
+	return nearPositive and positiveOwner or negativeOwner
 end
 function Service:CallFoul(offender:Model,victim:Model,kind:string,location:Vector3,forceCard:boolean?,redChance:number?):(boolean,string?)
 	local team=tostring(offender:GetAttribute("VTRTeam")or"Home");local restartTeam=team=="Home"and"Away"or"Home"
@@ -30,7 +35,9 @@ function Service:CallFoul(offender:Model,victim:Model,kind:string,location:Vecto
 			self.Stats:Add(team,"YellowCards");self.Stats:Event(offender,"YellowCard");offender:SetAttribute("VTRYellowCard",true)
 		end
 	end
-	local restartKind=self:_isInsidePenaltyArea(team,location)and"Penalty"or"FreeKick"
+	local victimTeam=tostring(victim:GetAttribute("VTRTeam")or restartTeam)
+	local boxOwner=self:_penaltyBoxOwner(location)
+	local restartKind=(boxOwner~=nil and boxOwner==team and victimTeam==restartTeam)and"Penalty"or"FreeKick"
 	self.Remote:FireAllClients({
 		Type="Foul",
 		Actor=offender,
