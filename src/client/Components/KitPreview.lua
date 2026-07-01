@@ -135,7 +135,7 @@ end
 
 function KitPreview.new(parent, identity, size)
 	identity = identity or {}
-	local primary = resolveColor(identity.PrimaryColor or identity.primaryColor, Color3.fromRGB(255, 255, 255))
+	local primary = resolveColor(identity.PrimaryColor or identity.primaryColor, Color3.fromRGB(183, 255, 26))
 	local secondary = resolveColor(identity.SecondaryColor or identity.secondaryColor, Color3.fromRGB(17, 17, 17))
 	local accent = resolveColor(identity.AccentColor or identity.accentColor, Color3.fromRGB(217, 217, 217))
 	local style = identity.KitStyle or identity.kitStyle or "Solid"

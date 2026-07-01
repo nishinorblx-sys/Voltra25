@@ -28,7 +28,7 @@ function Controller.new(teams: any, ball: BasePart)
 	beam.Name = "VTRAimLine"
 	beam.Attachment0 = startAttachment
 	beam.Attachment1 = endAttachment
-	beam.Color = ColorSequence.new(Color3.fromHex("FFFFFF"))
+	beam.Color = ColorSequence.new(Color3.fromHex("B7FF1A"))
 	beam.LightEmission = 0.75
 	beam.FaceCamera = true
 	beam.Width0 = 0.075
@@ -46,7 +46,7 @@ function Controller.new(teams: any, ball: BasePart)
 	marker.CanQuery = false
 	marker.CastShadow = false
 	marker.Material = Enum.Material.Neon
-	marker.Color = Color3.fromHex("FFFFFF")
+	marker.Color = Color3.fromHex("B7FF1A")
 	marker.Transparency = 0.3
 	marker.Parent = workspace
 	local trajectoryParts = {}

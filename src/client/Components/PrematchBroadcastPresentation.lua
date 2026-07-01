@@ -177,7 +177,7 @@ local function panel(parent: Instance, name: string, pos: UDim2, size: UDim2): C
 	item.ZIndex = 202
 	item.Parent = parent
 	local stroke = Instance.new("UIStroke")
-	stroke.Color = Theme.Colors.White
+	stroke.Color = Theme.Colors.Electric
 	stroke.Transparency = 0.4
 	stroke.Thickness = 1
 	stroke.Parent = item
@@ -698,7 +698,7 @@ local function formationDots(parent: Instance, data: any, side: string)
 		corner.CornerRadius = UDim.new(1, 0)
 		corner.Parent = dot
 		local stroke = Instance.new("UIStroke")
-		stroke.Color = Theme.Colors.White
+		stroke.Color = Theme.Colors.Electric
 		stroke.Transparency = 0.55
 		stroke.Thickness = 1
 		stroke.Parent = dot
@@ -715,7 +715,7 @@ local function setLineHighlight(dots: {Frame}, groupName: string, first: number,
 			active = index >= first and index <= last
 		end
 		TweenService:Create(dot, TweenInfo.new(0.22), {
-			BackgroundColor3 = active and Theme.Colors.White or Theme.Colors.White,
+			BackgroundColor3 = active and Theme.Colors.Electric or Theme.Colors.White,
 			Size = active and UDim2.fromOffset(16, 16) or UDim2.fromOffset(11, 11),
 		}):Play()
 	end
@@ -741,7 +741,7 @@ local function makePitchBox(parent: Instance, pos: UDim2, size: UDim2)
 	box.ZIndex = 206
 	box.Parent = parent
 	local stroke = Instance.new("UIStroke")
-	stroke.Color = Theme.Colors.White
+	stroke.Color = Theme.Colors.Electric
 	stroke.Transparency = 0.48
 	stroke.Thickness = 1
 	stroke.Parent = box
@@ -887,7 +887,7 @@ local function showPlayerGroupPreview(container: Frame, models: {Model}, players
 				showPlayerPreview(viewport, model)
 			end
 
-			local numberLabel = label(slot, shirtNumber, UDim2.fromScale(0, 0.73), UDim2.fromScale(1, 0.08), count == 1 and 30 or 23, Theme.Colors.White, Theme.Fonts.Display)
+			local numberLabel = label(slot, shirtNumber, UDim2.fromScale(0, 0.73), UDim2.fromScale(1, 0.08), count == 1 and 30 or 23, Theme.Colors.Electric, Theme.Fonts.Display)
 			numberLabel.TextXAlignment = Enum.TextXAlignment.Center
 			local nameLabel = label(slot, string.upper(playerName(model)), UDim2.fromScale(0.02, 0.82), UDim2.fromScale(0.96, 0.12), count == 1 and 22 or 15, Theme.Colors.White, Theme.Fonts.Strong)
 			nameLabel.TextXAlignment = Enum.TextXAlignment.Center
@@ -962,7 +962,7 @@ function Presentation.Play(data: any, onComplete: (() -> ())?)
 
 	local home = tostring(data.Home or "HOME")
 	local away = tostring(data.Away or "AWAY")
-	local homeColor = color(data.HomeColor, Theme.Colors.White)
+	local homeColor = color(data.HomeColor, Theme.Colors.Electric)
 	local awayColor = color(data.AwayColor, Theme.Colors.Silver)
 
 	local matchup = Instance.new("CanvasGroup")
@@ -1020,7 +1020,7 @@ function Presentation.Play(data: any, onComplete: (() -> ())?)
 		{UDim2.fromScale(-0.02, 0.97), UDim2.fromScale(0.04, 0.06)},
 	} do
 		local accent = Instance.new("Frame")
-		accent.BackgroundColor3 = Theme.Colors.White
+		accent.BackgroundColor3 = Theme.Colors.Electric
 		accent.BorderSizePixel = 0
 		accent.Position = spec[1]
 		accent.Size = spec[2]
@@ -1028,7 +1028,7 @@ function Presentation.Play(data: any, onComplete: (() -> ())?)
 		accent.Parent = matchup
 	end
 	local centerLine = Instance.new("Frame")
-	centerLine.BackgroundColor3 = Theme.Colors.White
+	centerLine.BackgroundColor3 = Theme.Colors.Electric
 	centerLine.BorderSizePixel = 0
 	centerLine.Position = UDim2.fromScale(0.49, 0.52)
 	centerLine.Size = UDim2.fromScale(0.03, 0.012)
@@ -1036,11 +1036,11 @@ function Presentation.Play(data: any, onComplete: (() -> ())?)
 	centerLine.Parent = matchup
 
 	local commentators = panel(root, "Commentators", UDim2.fromScale(0.06, 0.74), UDim2.fromScale(0.34, 0.09))
-	label(commentators, "MATCH COMMENTATORS", UDim2.fromScale(0.05, 0.08), UDim2.fromScale(0.9, 0.26), 8, Theme.Colors.White, Theme.Fonts.Strong)
+	label(commentators, "MATCH COMMENTATORS", UDim2.fromScale(0.05, 0.08), UDim2.fromScale(0.9, 0.26), 8, Theme.Colors.Electric, Theme.Fonts.Strong)
 	label(commentators, "NISHINO     |     FOALLOW", UDim2.fromScale(0.05, 0.38), UDim2.fromScale(0.9, 0.5), 15)
 
 	local formation = panel(root, "Formation", UDim2.fromScale(0.04, 0.13), UDim2.fromScale(0.30, 0.62))
-	local formationTitle = label(formation, shortCode(home), UDim2.fromScale(0.09, 0.03), UDim2.fromScale(0.82, 0.13), 34, Theme.Colors.White)
+	local formationTitle = label(formation, shortCode(home), UDim2.fromScale(0.09, 0.03), UDim2.fromScale(0.82, 0.13), 34, Theme.Colors.Electric)
 	local pitch = Instance.new("Frame")
 	pitch.BackgroundColor3 = Color3.fromHex("071007")
 	pitch.BackgroundTransparency = 0.16
@@ -1068,13 +1068,13 @@ function Presentation.Play(data: any, onComplete: (() -> ())?)
 	local playerCard = panel(root, "PlayerCard", UDim2.fromScale(0.37, 0.13), UDim2.fromScale(0.58, 0.62))
 	playerCard.BackgroundColor3 = Color3.fromHex("0A0F08")
 	local playerCardAccent = Instance.new("Frame")
-	playerCardAccent.BackgroundColor3 = Theme.Colors.White
+	playerCardAccent.BackgroundColor3 = Theme.Colors.Electric
 	playerCardAccent.BorderSizePixel = 0
 	playerCardAccent.Position = UDim2.fromScale(0, 0)
 	playerCardAccent.Size = UDim2.fromScale(0.012, 1)
 	playerCardAccent.ZIndex = 206
 	playerCardAccent.Parent = playerCard
-	local introTitle = label(playerCard, "HOME GOALKEEPER", UDim2.fromScale(0.07, 0.06), UDim2.fromScale(0.42, 0.08), 13, Theme.Colors.White, Theme.Fonts.Strong)
+	local introTitle = label(playerCard, "HOME GOALKEEPER", UDim2.fromScale(0.07, 0.06), UDim2.fromScale(0.42, 0.08), 13, Theme.Colors.Electric, Theme.Fonts.Strong)
 	local groupPreview = Instance.new("Frame")
 	groupPreview.BackgroundTransparency = 1
 	groupPreview.Position = UDim2.fromScale(0.06, 0.12)
@@ -1086,7 +1086,7 @@ function Presentation.Play(data: any, onComplete: (() -> ())?)
 	local sheet = panel(root, "TeamSheet", UDim2.fromScale(0.09, 0.14), UDim2.fromScale(0.82, 0.68))
 	sheet.BackgroundColor3 = Color3.fromHex("090B07")
 	local sheetLogoPanel = Instance.new("Frame")
-	sheetLogoPanel.BackgroundColor3 = Theme.Colors.White
+	sheetLogoPanel.BackgroundColor3 = Theme.Colors.Electric
 	sheetLogoPanel.BorderSizePixel = 0
 	sheetLogoPanel.Position = UDim2.fromScale(0, 0)
 	sheetLogoPanel.Size = UDim2.fromScale(0.28, 1)

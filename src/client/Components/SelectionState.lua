@@ -15,7 +15,7 @@ function SelectionState.decorate(target: GuiObject, showPlayerBadge: boolean?)
 	local glow = Instance.new("Frame")
 	glow.Name = "SelectionGlow"
 	glow.AnchorPoint = target.AnchorPoint
-	glow.BackgroundColor3 = Theme.Colors.White
+	glow.BackgroundColor3 = Theme.Colors.Electric
 	glow.BackgroundTransparency = 0.91
 	glow.BorderSizePixel = 0
 	glow.Position = target.Position
@@ -26,7 +26,7 @@ function SelectionState.decorate(target: GuiObject, showPlayerBadge: boolean?)
 	glowCorner.CornerRadius = UDim.new(0, 10)
 	glowCorner.Parent = glow
 	local glowStroke = Instance.new("UIStroke")
-	glowStroke.Color = Theme.Colors.White
+	glowStroke.Color = Theme.Colors.Electric
 	glowStroke.Thickness = 2
 	glowStroke.Transparency = 0.78
 	glowStroke.Parent = glow
@@ -36,7 +36,7 @@ function SelectionState.decorate(target: GuiObject, showPlayerBadge: boolean?)
 	local badge = Instance.new("TextLabel")
 	badge.Name = "SelectedCheck"
 	badge.AnchorPoint = Vector2.new(0.5, 0.5)
-	badge.BackgroundColor3 = Theme.Colors.White
+	badge.BackgroundColor3 = Theme.Colors.Electric
 	badge.BorderSizePixel = 0
 	-- Sit just outside the portrait bounds so the badge never obscures card data.
 	badge.Position = UDim2.new(1, 3, 0, -3)
@@ -65,7 +65,7 @@ function SelectionState.decorate(target: GuiObject, showPlayerBadge: boolean?)
 	selectedLabel.Position = UDim2.new(0.5, 0, 1, 4)
 	selectedLabel.Size = UDim2.fromOffset(66, 15)
 	selectedLabel.Text = "SELECTED"
-	selectedLabel.TextColor3 = Theme.Colors.White
+	selectedLabel.TextColor3 = Theme.Colors.Electric
 	selectedLabel.TextSize = 7
 	selectedLabel.Font = Theme.Fonts.Strong
 	selectedLabel.ZIndex = 4

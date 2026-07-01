@@ -3,10 +3,10 @@ local Controller = {}
 Controller.__index = Controller
 
 local COLORS = {
-	ActiveUser = Color3.fromHex("FFFFFF"),
+	ActiveUser = Color3.fromHex("B7FF1A"),
 	NextSwitch = Color3.fromHex("78A832"),
 	OpponentTarget = Color3.fromHex("FF4D5A"),
-	PassTarget = Color3.fromHex("FFFFFF"),
+	PassTarget = Color3.fromHex("B7FF1A"),
 	BallCarrier = Color3.fromHex("FFFFFF"),
 	OffsideWarning = Color3.fromHex("FFB020"),
 }

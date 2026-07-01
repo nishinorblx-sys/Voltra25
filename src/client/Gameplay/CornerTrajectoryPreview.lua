@@ -5,7 +5,7 @@ local function segment(parent:Instance):Part local p=Instance.new("Part");p.Anch
 function Preview.new()
 	local folder=Instance.new("Folder");folder.Name="VTRCornerTrajectory";folder.Parent=workspace
 	local parts={};for _=1,SEGMENTS do table.insert(parts,segment(folder))end
-	local marker=Instance.new("Part");marker.Name="CornerLandingCircle";marker.Shape=Enum.PartType.Cylinder;marker.Anchored=true;marker.CanCollide=false;marker.CanTouch=false;marker.CanQuery=false;marker.Material=Enum.Material.Neon;marker.Color=Color3.fromHex("FFFFFF");marker.Transparency=.42;marker.Size=Vector3.new(.08,4.2,4.2);marker.Parent=folder
+	local marker=Instance.new("Part");marker.Name="CornerLandingCircle";marker.Shape=Enum.PartType.Cylinder;marker.Anchored=true;marker.CanCollide=false;marker.CanTouch=false;marker.CanQuery=false;marker.Material=Enum.Material.Neon;marker.Color=Color3.fromHex("B7FF1A");marker.Transparency=.42;marker.Size=Vector3.new(.08,4.2,4.2);marker.Parent=folder
 	return setmetatable({Folder=folder,Parts=parts,Marker=marker},Preview)
 end
 function Preview:Update(origin:Vector3,target:Vector3,delivery:string,power:number,up:Vector3)

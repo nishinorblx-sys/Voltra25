@@ -164,7 +164,7 @@ function UIController:Start()
 	logo.Parent = sidebar
 	self.Logo = logo
 	local mark = label("V", 27, Theme.Colors.Black, Theme.Fonts.Display)
-	mark.BackgroundColor3 = Theme.Colors.White
+	mark.BackgroundColor3 = Theme.Colors.Electric
 	mark.BackgroundTransparency = 0
 	mark.Size = UDim2.fromOffset(42, 42)
 	mark.TextXAlignment = Enum.TextXAlignment.Center
@@ -174,7 +174,7 @@ function UIController:Start()
 	markCorner.CornerRadius = UDim.new(0, Theme.Radius.Medium)
 	markCorner.Parent = mark
 	local markGlow = Instance.new("UIStroke")
-	markGlow.Color = Theme.Colors.White
+	markGlow.Color = Theme.Colors.Electric
 	markGlow.Thickness = 2
 	markGlow.Transparency = 0.8
 	markGlow.Parent = mark
@@ -183,7 +183,7 @@ function UIController:Start()
 	logoTitle.Position = UDim2.fromOffset(54, 0)
 	logoTitle.Size = UDim2.new(1, -54, 0, 29)
 	logoTitle.Parent = logo
-	local logoSub = label("VOLTRA FOOTBALL", 8, Theme.Colors.White, Theme.Fonts.Strong)
+	local logoSub = label("VOLTRA FOOTBALL", 8, Theme.Colors.Electric, Theme.Fonts.Strong)
 	logoSub.Position = UDim2.fromOffset(55, 28)
 	logoSub.Size = UDim2.new(1, -55, 0, 17)
 	logoSub.Parent = logo
@@ -246,7 +246,7 @@ function UIController:Start()
 	local avatar = Instance.new("ImageLabel")
 	avatar.Name = "Avatar"
 	avatar.BackgroundTransparency = 0
-	avatar.BackgroundColor3 = Theme.Colors.White
+	avatar.BackgroundColor3 = Theme.Colors.Electric
 	avatar.Position = UDim2.fromOffset(6, 6)
 	avatar.Size = UDim2.fromOffset(32, 32)
 	avatar.Parent = profile
@@ -259,7 +259,7 @@ function UIController:Start()
 	profileName.Parent = profile
 	self.ProfileName = profileName
 	self.Avatar = avatar
-	local status = label("● ONLINE", 7, Theme.Colors.White, Theme.Fonts.Strong)
+	local status = label("● ONLINE", 7, Theme.Colors.Electric, Theme.Fonts.Strong)
 	status.Position = UDim2.fromOffset(44, 22)
 	status.Size = UDim2.fromOffset(50, 16)
 	status.Parent = profile
@@ -271,7 +271,7 @@ function UIController:Start()
 	settingsButton.Position = UDim2.new(1, -238, 0.5, 0)
 	settingsButton.Size = UDim2.fromOffset(38, 38)
 	settingsButton.Text = "SET"
-	settingsButton.TextColor3 = Theme.Colors.White
+	settingsButton.TextColor3 = Theme.Colors.Electric
 	settingsButton.TextSize = 9
 	settingsButton.Font = Theme.Fonts.Strong
 	settingsButton.Parent = topbar
@@ -459,7 +459,7 @@ function UIController:_createSeasonCard(seasonData: any): Frame
 	local stroke = Instance.new("UIStroke")
 	stroke.Color = Theme.Colors.Border
 	stroke.Parent = panel
-	local tag = label(seasonData.Name, 9, Theme.Colors.White, Theme.Fonts.Strong)
+	local tag = label(seasonData.Name, 9, Theme.Colors.Electric, Theme.Fonts.Strong)
 	tag.Position = UDim2.fromOffset(14, 10)
 	tag.Size = UDim2.new(1, -28, 0, 20)
 	tag.Parent = panel
@@ -500,7 +500,7 @@ function UIController:_showNotification(payload: any)
 	corner.CornerRadius = UDim.new(0, Theme.Radius.Large)
 	corner.Parent = toast
 	local stroke = Instance.new("UIStroke")
-	stroke.Color = payload.Kind == "Error" and Theme.Colors.Danger or Theme.Colors.White
+	stroke.Color = payload.Kind == "Error" and Theme.Colors.Danger or Theme.Colors.Electric
 	stroke.Thickness = 1
 	stroke.Parent = toast
 	local title = label(string.upper(payload.Title), 11, Theme.Colors.White, Theme.Fonts.Strong)

@@ -10,7 +10,7 @@ local function makeRing(): Part
 	part.Name = "VTRControlledPlayerRing"
 	part.Shape = Enum.PartType.Cylinder
 	part.Material = Enum.Material.Neon
-	part.Color = Color3.fromHex("FFFFFF")
+	part.Color = Color3.fromHex("B7FF1A")
 	part.Transparency = 0.14
 	part.Size = Vector3.new(0.18, 4.8, 4.8)
 	part.Anchored = true
@@ -50,7 +50,7 @@ local function makeBillboard(): BillboardGui
 	corner.CornerRadius = UDim.new(0, 8)
 	corner.Parent = text
 	local stroke = Instance.new("UIStroke")
-	stroke.Color = Color3.fromHex("FFFFFF")
+	stroke.Color = Color3.fromHex("B7FF1A")
 	stroke.Transparency = 0.08
 	stroke.Thickness = 1.6
 	stroke.Parent = text
@@ -60,7 +60,7 @@ local function makeBillboard(): BillboardGui
 	point.Position = UDim2.fromScale(0.5, 0.48)
 	point.Size = UDim2.fromOffset(30, 18)
 	point.Text = "▼"
-	point.TextColor3 = Color3.fromHex("FFFFFF")
+	point.TextColor3 = Color3.fromHex("B7FF1A")
 	point.TextSize = 18
 	point.Font = Enum.Font.GothamBlack
 	point.Parent = holder
@@ -74,7 +74,7 @@ function Indicator.new(modelGetter: () -> Model?)
 	self.Ring.Parent = workspace
 	self.Highlight = Instance.new("Highlight")
 	self.Highlight.Name = "VTRControlledPlayerHighlight"
-	self.Highlight.FillColor = Color3.fromHex("FFFFFF")
+	self.Highlight.FillColor = Color3.fromHex("B7FF1A")
 	self.Highlight.FillTransparency = 0.78
 	self.Highlight.OutlineColor = Color3.fromHex("F5F7F2")
 	self.Highlight.OutlineTransparency = 0.08

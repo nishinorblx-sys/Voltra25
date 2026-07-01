@@ -5,7 +5,7 @@ local Theme = require(game:GetService("ReplicatedStorage").VTR.Shared.Theme)
 local Presentation = {}
 
 local PACKS = {
-	{Name = "Voltra Spark Pack", Rarity = "Common", Color = Color3.fromHex("FFFFFF"), Accent = Color3.fromHex("050505"), Weight = 800},
+	{Name = "Voltra Spark Pack", Rarity = "Common", Color = Color3.fromHex("B7FF1A"), Accent = Color3.fromHex("050505"), Weight = 800},
 	{Name = "Street Pulse Pack", Rarity = "Rare", Color = Color3.fromHex("1FA2FF"), Accent = Color3.fromHex("F5F7F2"), Weight = 90},
 	{Name = "Neon Tactics Pack", Rarity = "Rare", Color = Color3.fromHex("24C6B8"), Accent = Color3.fromHex("050505"), Weight = 50},
 	{Name = "Elite Matchday Pack", Rarity = "Epic", Color = Color3.fromHex("8E00D6"), Accent = Color3.fromHex("F5F7F2"), Weight = 35},
@@ -66,7 +66,7 @@ local function rewardPack(payload: any): any
 		for _, pack in PACKS do
 			if string.upper(pack.Name) == string.upper(tostring(wanted)) then return pack end
 		end
-		return {Name = tostring(wanted), Rarity = tostring(reward.Rarity or ranked.Rarity or "Common"), Color = Color3.fromHex("FFFFFF"), Accent = Color3.fromHex("050505"), Weight = 1}
+		return {Name = tostring(wanted), Rarity = tostring(reward.Rarity or ranked.Rarity or "Common"), Color = Color3.fromHex("B7FF1A"), Accent = Color3.fromHex("050505"), Weight = 1}
 	end
 	return weightedPack()
 end
@@ -148,11 +148,11 @@ function Presentation.Play(gui: ScreenGui, payload: any, onComplete: () -> ())
 	pcall(function() blocker.Modal = true end)
 	blocker.Parent = overlay
 	TweenService:Create(overlay, TweenInfo.new(.28), {GroupTransparency = 0}):Play()
-	label(overlay, "YOU WON THE GAME", UDim2.fromScale(.12, .18), UDim2.fromScale(.76, .08), 42, Theme.Colors.White, 522)
+	label(overlay, "YOU WON THE GAME", UDim2.fromScale(.12, .18), UDim2.fromScale(.76, .08), 42, Theme.Colors.Electric, 522)
 	label(overlay, "RANKED VICTORY REWARD LOCKED", UDim2.fromScale(.18, .27), UDim2.fromScale(.64, .05), 13, Theme.Colors.White, 522)
 	task.wait(1.35)
 	if not overlay.Parent then return end
-	label(overlay, "RANKED WIN REWARD", UDim2.fromScale(.18, .07), UDim2.fromScale(.64, .05), 13, Theme.Colors.White, 522)
+	label(overlay, "RANKED WIN REWARD", UDim2.fromScale(.18, .07), UDim2.fromScale(.64, .05), 13, Theme.Colors.Electric, 522)
 	label(overlay, "VOLTRA PACK ROULETTE", UDim2.fromScale(.14, .12), UDim2.fromScale(.72, .08), 38, Theme.Colors.White, 522)
 	local rail = Instance.new("Frame")
 	rail.AnchorPoint = Vector2.new(.5, .5)
@@ -165,7 +165,7 @@ function Presentation.Play(gui: ScreenGui, payload: any, onComplete: () -> ())
 	rail.ZIndex = 522
 	rail.Parent = overlay
 	corner(rail, 14)
-	stroke(rail, Theme.Colors.White, 2, .28)
+	stroke(rail, Theme.Colors.Electric, 2, .28)
 	local topArrow = label(overlay, "▼", UDim2.fromScale(.475, .245), UDim2.fromScale(.05, .05), 34, Theme.Colors.White, 530)
 	local bottomArrow = label(overlay, "▲", UDim2.fromScale(.475, .575), UDim2.fromScale(.05, .05), 34, Theme.Colors.White, 530)
 	local strip = Instance.new("Frame")
@@ -196,7 +196,7 @@ function Presentation.Play(gui: ScreenGui, payload: any, onComplete: () -> ())
 	sparkLine.AnchorPoint = Vector2.new(.5, .5)
 	sparkLine.Position = UDim2.fromScale(.5, .43)
 	sparkLine.Size = UDim2.fromScale(.02, .28)
-	sparkLine.BackgroundColor3 = Theme.Colors.White
+	sparkLine.BackgroundColor3 = Theme.Colors.Electric
 	sparkLine.BackgroundTransparency = .3
 	sparkLine.BorderSizePixel = 0
 	sparkLine.ZIndex = 531

@@ -22,7 +22,7 @@ function BackgroundEffects.new(parent: Instance): Frame
 		local shape = Instance.new("Frame")
 		shape.Name = "EnergyShape" .. index
 		shape.AnchorPoint = Vector2.new(0.5, 0.5)
-		shape.BackgroundColor3 = Theme.Colors.White
+		shape.BackgroundColor3 = Theme.Colors.Electric
 		shape.BackgroundTransparency = info[4]
 		shape.BorderSizePixel = 0
 		shape.Position = info[1]

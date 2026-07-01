@@ -16,7 +16,7 @@ function EmptyState.new(titleText: string, descriptionText: string, iconText: st
 	layout.Padding = UDim.new(0, 6)
 	layout.Parent = frame
 	for index, data in {
-		{ iconText or "◇", 28, Theme.Colors.White, Theme.Fonts.Display },
+		{ iconText or "◇", 28, Theme.Colors.Electric, Theme.Fonts.Display },
 		{ string.upper(titleText), 11, Theme.Colors.White, Theme.Fonts.Strong },
 		{ descriptionText, 9, Theme.Colors.Muted, Theme.Fonts.Body },
 	} do

@@ -20,7 +20,7 @@ function ProgressBar.new(value: number, color: Color3?): Frame
 
 	local fill = Instance.new("Frame")
 	fill.Name = "Fill"
-	fill.BackgroundColor3 = color or Theme.Colors.White
+	fill.BackgroundColor3 = color or Theme.Colors.Electric
 	fill.BorderSizePixel = 0
 	fill.Size = UDim2.fromScale(0, 1)
 	fill.Parent = track

@@ -20,7 +20,7 @@ function Preview.open(parent:Instance,item:any,kind:string)
 		local camera=Instance.new("Camera");camera.FieldOfView=42;camera.Parent=viewport;viewport.CurrentCamera=camera;local center,size=model:GetBoundingBox();local radius=math.max(size.X,size.Y,size.Z);local yaw=0
 		local function update()local focus=center.Position;local offset=CFrame.Angles(0,yaw,0):VectorToWorldSpace(Vector3.new(radius*.95,radius*.55,radius*.95));camera.CFrame=CFrame.lookAt(focus+offset,focus)end;update()
 		local dragging=false;local lastX=0;viewport.InputBegan:Connect(function(input)if input.UserInputType==Enum.UserInputType.MouseButton1 then dragging=true;lastX=input.Position.X end end);viewport.InputEnded:Connect(function(input)if input.UserInputType==Enum.UserInputType.MouseButton1 then dragging=false end end);local connection=UserInputService.InputChanged:Connect(function(input)if dragging and input.UserInputType==Enum.UserInputType.MouseMovement then yaw+=(input.Position.X-lastX)*.008;lastX=input.Position.X;update()end end);overlay.Destroying:Connect(function()connection:Disconnect()end)
-		local hint=text(panel,"DRAG TO ROTATE STADIUM PREVIEW",UDim2.fromOffset(24,486),UDim2.new(1,-48,0,18),8);hint.TextColor3=Theme.Colors.White;hint.TextXAlignment=Enum.TextXAlignment.Center
+		local hint=text(panel,"DRAG TO ROTATE STADIUM PREVIEW",UDim2.fromOffset(24,486),UDim2.new(1,-48,0,18),8);hint.TextColor3=Theme.Colors.Electric;hint.TextXAlignment=Enum.TextXAlignment.Center
 	end
 	return overlay
 end

@@ -95,13 +95,13 @@ function Prompt.Choose(): string?
 	panel.ZIndex = 302
 	panel.Parent = overlay
 	corner(panel, 18)
-	stroke(panel, Theme.Colors.White, .18, 2)
+	stroke(panel, Theme.Colors.Electric, .18, 2)
 	local scale = Instance.new("UIScale")
 	scale.Scale = .86
 	scale.Parent = panel
-	label(panel, "AI CAMPAIGN MATCH", UDim2.fromScale(.12, .08), UDim2.fromScale(.76, .08), 12, Theme.Colors.White)
+	label(panel, "AI CAMPAIGN MATCH", UDim2.fromScale(.12, .08), UDim2.fromScale(.76, .08), 12, Theme.Colors.Electric)
 	label(panel, "CHOOSE HOW TO PLAY", UDim2.fromScale(.08, .16), UDim2.fromScale(.84, .15), 31, Theme.Colors.White)
-	local manual = button(panel, "ManualPlay", "MANUALLY PLAY", "Control your squad on the pitch", UDim2.fromScale(.06, .43), Theme.Colors.White)
+	local manual = button(panel, "ManualPlay", "MANUALLY PLAY", "Control your squad on the pitch", UDim2.fromScale(.06, .43), Theme.Colors.Electric)
 	local manage = button(panel, "ManageMatch", "MANAGE MATCH", "AI plays while you manage tactics", UDim2.fromScale(.52, .43), Color3.fromHex("D9D9D9"))
 	local cancel = Instance.new("TextButton")
 	cancel.Name = "Cancel"

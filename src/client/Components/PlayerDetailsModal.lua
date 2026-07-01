@@ -67,7 +67,7 @@ local function statGroup(parent: Instance, title: string, keys: { string }, stat
 	local group = Panel.new({ Name = title, Size = UDim2.new(0.5, -7, 0, 32 + #keys * 26) })
 	group.LayoutOrder = order
 	group.Parent = parent
-	label(group, title, UDim2.fromOffset(12, 6), UDim2.new(1, -24, 0, 20), 9, Theme.Colors.White, Theme.Fonts.Strong)
+	label(group, title, UDim2.fromOffset(12, 6), UDim2.new(1, -24, 0, 20), 9, Theme.Colors.Electric, Theme.Fonts.Strong)
 	for index, key in keys do
 		local value = stats[key] or 0
 		label(group, readable(key), UDim2.fromOffset(12, 27 + (index - 1) * 26), UDim2.new(1, -64, 0, 22), 8, Theme.Colors.Silver, Theme.Fonts.Body)
@@ -118,7 +118,7 @@ function PlayerDetailsModal.open(root: Frame, data: any)
 		GuiService.SelectedObject = nil
 	end
 
-	label(modal, "VTR PLAYER DATABASE  /  " .. string.upper(data.rarity), UDim2.fromOffset(24, 14), UDim2.new(1, -180, 0, 20), 8, Theme.Colors.White, Theme.Fonts.Strong)
+	label(modal, "VTR PLAYER DATABASE  /  " .. string.upper(data.rarity), UDim2.fromOffset(24, 14), UDim2.new(1, -180, 0, 20), 8, Theme.Colors.Electric, Theme.Fonts.Strong)
 	label(modal, data.displayName, UDim2.fromOffset(24, 34), UDim2.new(1, -180, 0, 38), 26, Theme.Colors.White, Theme.Fonts.Display)
 	label(modal, data.nationality .. "  /  " .. data.fictionalClub .. "  /  " .. table.concat(data.positions, " "), UDim2.fromOffset(24, 70), UDim2.new(1, -180, 0, 22), 9, Theme.Colors.Silver, Theme.Fonts.Strong)
 	local closeButton = Button.new({ Text = "CLOSE", Variant = "Secondary", Size = UDim2.fromOffset(120, 38), OnActivated = close })
@@ -135,11 +135,11 @@ function PlayerDetailsModal.open(root: Frame, data: any)
 	local portrait = AvatarPortraitGenerator.new(left, data, UDim2.fromOffset(300, 150), false)
 	portrait.Position = UDim2.fromOffset(0, 0)
 	label(left, data.overall .. " OVR", UDim2.fromOffset(16, 10), UDim2.fromOffset(100, 34), 22, Theme.Colors.White, Theme.Fonts.Display)
-	label(left, data.potential .. " POT", UDim2.new(1, -116, 0, 10), UDim2.fromOffset(100, 34), 16, Theme.Colors.White, Theme.Fonts.Display).TextXAlignment = Enum.TextXAlignment.Right
+	label(left, data.potential .. " POT", UDim2.new(1, -116, 0, 10), UDim2.fromOffset(100, 34), 16, Theme.Colors.Electric, Theme.Fonts.Display).TextXAlignment = Enum.TextXAlignment.Right
 	label(left, data.age .. " YEARS  /  " .. data.heightCm .. " CM  /  " .. data.weightKg .. " KG  /  " .. string.upper(data.preferredFoot), UDim2.fromOffset(0, 160), UDim2.new(1, 0, 0, 24), 8, Theme.Colors.Muted, Theme.Fonts.Strong)
 	local radarFrame = RadarChart.new(left, data.mainStats, Vector2.new(240, 240))
 	radarFrame.Position = UDim2.fromOffset(28, 184)
-	label(left, "POSITION MAP  /  FUTURE TACTICAL VIEW", UDim2.fromOffset(0, 430), UDim2.new(1, 0, 0, 22), 8, Theme.Colors.White, Theme.Fonts.Strong)
+	label(left, "POSITION MAP  /  FUTURE TACTICAL VIEW", UDim2.fromOffset(0, 430), UDim2.new(1, 0, 0, 22), 8, Theme.Colors.Electric, Theme.Fonts.Strong)
 	label(left, "BEST: " .. data.bestPosition .. "    WORK RATES: " .. data.workRates.Attack .. "/" .. data.workRates.Defense, UDim2.fromOffset(0, 452), UDim2.new(1, 0, 0, 22), 8, Theme.Colors.Silver, Theme.Fonts.Body)
 
 	local right = Instance.new("ScrollingFrame")
@@ -150,7 +150,7 @@ function PlayerDetailsModal.open(root: Frame, data: any)
 	right.AutomaticCanvasSize = Enum.AutomaticSize.Y
 	right.CanvasSize = UDim2.new()
 	right.ScrollBarThickness = 3
-	right.ScrollBarImageColor3 = Theme.Colors.White
+	right.ScrollBarImageColor3 = Theme.Colors.Electric
 	right.ZIndex = 142
 	right.Parent = modal
 	local profileMeta = Instance.new("Frame")

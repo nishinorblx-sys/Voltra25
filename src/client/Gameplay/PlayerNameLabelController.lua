@@ -37,7 +37,7 @@ local function createLabel(model: Model): BillboardGui?
 	local fill = Instance.new("Frame")
 	fill.Name = "StaminaFill"
 	fill.Size = UDim2.fromScale(1, 1)
-	fill.BackgroundColor3 = Color3.fromHex("FFFFFF")
+	fill.BackgroundColor3 = Color3.fromHex("B7FF1A")
 	fill.BorderSizePixel = 0
 	fill.Parent = stamina
 	gui.Parent = workspace.CurrentCamera
@@ -98,7 +98,7 @@ function Controller:Update(dt: number)
 			local ratio = math.clamp((tonumber(model:GetAttribute("VTRStamina")) or 100) / 100, 0, 1)
 			fill.Size = UDim2.fromScale(ratio, 1)
 			fill.BackgroundTransparency = current
-			fill.BackgroundColor3 = ratio < 0.2 and Color3.fromHex("FF594D") or ratio < 0.4 and Color3.fromHex("FFD84A") or Color3.fromHex("FFFFFF")
+			fill.BackgroundColor3 = ratio < 0.2 and Color3.fromHex("FF594D") or ratio < 0.4 and Color3.fromHex("FFD84A") or Color3.fromHex("B7FF1A")
 		end
 	end
 end

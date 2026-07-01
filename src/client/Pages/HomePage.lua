@@ -50,12 +50,12 @@ function HomePage.new(context: any): CanvasGroup
 	local hero = Panel.new({Name = "LiteDashboard", Position = UDim2.fromOffset(0, 96), Size = UDim2.new(1, 0, 0, 242)})
 	hero.Parent = scroll
 	text(hero, string.upper(squad.TeamName or progression.ClubMembership.Name or "YOUR CLUB"), UDim2.fromOffset(24, 20), UDim2.new(.55, 0, 0, 36), 28, Theme.Colors.White, Theme.Fonts.Display)
-	text(hero, "VTR LITE CLUB DASHBOARD", UDim2.fromOffset(26, 60), UDim2.new(.5, 0, 0, 18), 9, Theme.Colors.White, Theme.Fonts.Strong)
+	text(hero, "VTR LITE CLUB DASHBOARD", UDim2.fromOffset(26, 60), UDim2.new(.5, 0, 0, 18), 9, Theme.Colors.Electric, Theme.Fonts.Strong)
 	stat(hero, "TEAM OVR", tostring(squad.Rating or 0), UDim2.fromOffset(24, 100))
 	stat(hero, "CHEMISTRY", tostring(squad.Chemistry or 0), UDim2.new(.25, 24, 0, 100))
 	stat(hero, "CAMPAIGN", difficulty.Name, UDim2.new(.5, 24, 0, 100))
 	stat(hero, "PACKS", tostring(unopened), UDim2.new(.75, 24, 0, 100))
-	local ranked = text(hero, "RANKED RUN  " .. tostring(rankedRun.Wins or 0) .. "W - " .. tostring(rankedRun.Losses or 0) .. "L", UDim2.new(.62, 0, 0, 26), UDim2.new(.34, 0, 0, 24), 11, Theme.Colors.White, Theme.Fonts.Strong)
+	local ranked = text(hero, "RANKED RUN  " .. tostring(rankedRun.Wins or 0) .. "W - " .. tostring(rankedRun.Losses or 0) .. "L", UDim2.new(.62, 0, 0, 26), UDim2.new(.34, 0, 0, 24), 11, Theme.Colors.Electric, Theme.Fonts.Strong)
 	ranked.TextXAlignment = Enum.TextXAlignment.Right
 	local runBar = ProgressBar.new((tonumber(rankedRun.Wins) or 0) / 7)
 	runBar.Position = UDim2.new(.62, 0, 0, 58)
@@ -64,7 +64,7 @@ function HomePage.new(context: any): CanvasGroup
 
 	local quick = Panel.new({Name = "QuickButtons", Position = UDim2.fromOffset(0, 356), Size = UDim2.new(.46, -8, 0, 220)})
 	quick.Parent = scroll
-	text(quick, "QUICK START", UDim2.fromOffset(18, 14), UDim2.new(1, -36, 0, 22), 12, Theme.Colors.White, Theme.Fonts.Strong)
+	text(quick, "QUICK START", UDim2.fromOffset(18, 14), UDim2.new(1, -36, 0, 22), 12, Theme.Colors.Electric, Theme.Fonts.Strong)
 	local actions = {
 		{"CONTINUE CAMPAIGN", "Play"},
 		{"OPEN PACKS", "Inventory"},
@@ -82,7 +82,7 @@ function HomePage.new(context: any): CanvasGroup
 
 	local objectives = Panel.new({Name = "StarterObjectives", Position = UDim2.new(.46, 8, 0, 356), Size = UDim2.new(.54, -8, 0, 220)})
 	objectives.Parent = scroll
-	text(objectives, "STARTER OBJECTIVES", UDim2.fromOffset(18, 14), UDim2.new(1, -36, 0, 22), 12, Theme.Colors.White, Theme.Fonts.Strong)
+	text(objectives, "STARTER OBJECTIVES", UDim2.fromOffset(18, 14), UDim2.new(1, -36, 0, 22), 12, Theme.Colors.Electric, Theme.Fonts.Strong)
 	local y = 48
 	for _, objective in context.Data.Objectives do
 		if objective.groupId == "starter_journey" then

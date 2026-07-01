@@ -5,7 +5,7 @@ local UserInputService = game:GetService("UserInputService")
 local Controls = {}
 Controls.__index = Controls
 
-local GREEN = Color3.fromHex("FFFFFF")
+local GREEN = Color3.fromHex("B7FF1A")
 local WHITE = Color3.fromHex("F5F7F2")
 local BLACK = Color3.fromHex("061006")
 local RED = Color3.fromHex("FF4056")

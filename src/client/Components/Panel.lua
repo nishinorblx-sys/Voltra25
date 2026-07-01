@@ -42,7 +42,7 @@ function Panel.new(props: Props?): Frame
 	end)
 	local function glow(active: boolean)
 		TweenService:Create(stroke, TweenInfo.new(Theme.Animation.Hover), {
-			Color = active and Theme.Colors.White or Theme.Colors.Border,
+			Color = active and Theme.Colors.Electric or Theme.Colors.Border,
 			Transparency = active and 0.45 or 0.12,
 		}):Play()
 	end

@@ -37,6 +37,28 @@ local VoltraPackRoulette=require(script.Parent.Parent.Components.VoltraPackRoule
 local UIStateService=require(script.Parent.Parent.Services.UIStateService)
 local PenaltyConfig=require(ReplicatedStorage.VTR.Shared.PenaltyConfig)
 local Controller={};Controller.__index=Controller
+local function clearGreenScreenEffects()
+	for _, inst in ipairs(Lighting:GetChildren()) do
+		if inst:IsA("ColorCorrectionEffect") then
+			local tint = inst.TintColor
+			local greenTint = tint.G > tint.R + .08 and tint.G > tint.B + .08
+			local named = string.find(string.lower(inst.Name), "green") or string.find(string.lower(inst.Name), "setpiece") or string.find(string.lower(inst.Name), "vtr")
+			if greenTint or named then
+				inst.Enabled = false
+				inst.TintColor = Color3.new(1, 1, 1)
+				inst.Saturation = 0
+				inst.Contrast = 0
+				inst.Brightness = 0
+			end
+		end
+	end
+	if Lighting.ColorShift_Top.G > Lighting.ColorShift_Top.R + .08 and Lighting.ColorShift_Top.G > Lighting.ColorShift_Top.B + .08 then
+		Lighting.ColorShift_Top = Color3.new(0, 0, 0)
+	end
+	if Lighting.ColorShift_Bottom.G > Lighting.ColorShift_Bottom.R + .08 and Lighting.ColorShift_Bottom.G > Lighting.ColorShift_Bottom.B + .08 then
+		Lighting.ColorShift_Bottom = Color3.new(0, 0, 0)
+	end
+end
 local function setMenuVisible(visible:boolean)
 	local gui=Players.LocalPlayer.PlayerGui:FindFirstChild("VTR25");local root=gui and gui:FindFirstChild("Root");if not root or not root:IsA("Frame")then return end
 	root.BackgroundTransparency=visible and 0 or 1
@@ -169,7 +191,7 @@ function Controller:_createTacticalPanel()
 	if not self.HUD or not self.HUD.Gui then return end
 	local old=self.HUD.Gui:FindFirstChild("AITacticalTuner");if old then old:Destroy()end
 	local overlay=Instance.new("Frame");overlay.Name="AITacticalTuner";overlay.BackgroundTransparency=1;overlay.Size=UDim2.fromScale(1,1);overlay.Visible=false;overlay.ZIndex=180;overlay.Parent=self.HUD.Gui;self.TacticalOverlay=overlay
-	local hint=Instance.new("TextLabel");hint.BackgroundColor3=Color3.fromHex("0A0D08");hint.BackgroundTransparency=.12;hint.BorderSizePixel=0;hint.Position=UDim2.fromOffset(18,104);hint.Size=UDim2.fromOffset(300,28);hint.Text="AI TUNER  /  6 EXIT";hint.TextColor3=Color3.fromHex("FFFFFF");hint.TextSize=10;hint.Font=Enum.Font.GothamBlack;hint.TextXAlignment=Enum.TextXAlignment.Left;hint.ZIndex=181;hint.Parent=overlay;local pad=Instance.new("UIPadding");pad.PaddingLeft=UDim.new(0,12);pad.Parent=hint
+	local hint=Instance.new("TextLabel");hint.BackgroundColor3=Color3.fromHex("0A0D08");hint.BackgroundTransparency=.12;hint.BorderSizePixel=0;hint.Position=UDim2.fromOffset(18,104);hint.Size=UDim2.fromOffset(300,28);hint.Text="AI TUNER  /  6 EXIT";hint.TextColor3=Color3.fromHex("B7FF1A");hint.TextSize=10;hint.Font=Enum.Font.GothamBlack;hint.TextXAlignment=Enum.TextXAlignment.Left;hint.ZIndex=181;hint.Parent=overlay;local pad=Instance.new("UIPadding");pad.PaddingLeft=UDim.new(0,12);pad.Parent=hint
 	local toggle=Instance.new("TextButton");toggle.AnchorPoint=Vector2.new(1,0);toggle.BackgroundColor3=Color3.fromHex("FFFFFF");toggle.BorderSizePixel=0;toggle.Position=UDim2.new(1,-18,0,104);toggle.Size=UDim2.fromOffset(92,28);toggle.Text="HIDE";toggle.TextColor3=Color3.fromHex("111111");toggle.TextSize=10;toggle.Font=Enum.Font.GothamBlack;toggle.ZIndex=184;toggle.Parent=overlay
 	local panel=Instance.new("Frame");panel.AnchorPoint=Vector2.new(1,.5);panel.BackgroundColor3=Color3.fromHex("070A06");panel.BackgroundTransparency=.06;panel.BorderSizePixel=0;panel.Position=UDim2.new(1,-18,.5,16);panel.Size=UDim2.fromOffset(330,500);panel.ZIndex=182;panel.Parent=overlay;self.TacticalPanel=panel;local stroke=Instance.new("UIStroke");stroke.Color=Color3.fromHex("FFFFFF");stroke.Thickness=1;stroke.Transparency=.25;stroke.Parent=panel
 	toggle.Activated:Connect(function()self.TacticalPanelOpen=not self.TacticalPanelOpen;panel.Visible=self.TacticalPanelOpen;toggle.Text=self.TacticalPanelOpen and"HIDE"or"SHOW"end)
@@ -179,21 +201,21 @@ function Controller:_renderTacticalPanel()
 	local panel=self.TacticalPanel;if not panel then return end
 	for _,child in panel:GetChildren()do if child:IsA("GuiObject")then child:Destroy()end end
 	local title=Instance.new("TextLabel");title.BackgroundTransparency=1;title.Position=UDim2.fromOffset(14,10);title.Size=UDim2.new(1,-28,0,22);title.Text="LIVE AI";title.TextColor3=Color3.new(1,1,1);title.TextSize=15;title.Font=Enum.Font.GothamBlack;title.TextXAlignment=Enum.TextXAlignment.Left;title.ZIndex=183;title.Parent=panel
-	local status=Instance.new("TextLabel");status.BackgroundTransparency=1;status.Position=UDim2.fromOffset(14,32);status.Size=UDim2.new(1,-28,0,16);status.Text=self.TacticalSide.." SELECTED";status.TextColor3=Color3.fromHex("FFFFFF");status.TextSize=8;status.Font=Enum.Font.GothamBold;status.TextXAlignment=Enum.TextXAlignment.Left;status.ZIndex=183;status.Parent=panel;self.TacticalStatus=status
+	local status=Instance.new("TextLabel");status.BackgroundTransparency=1;status.Position=UDim2.fromOffset(14,32);status.Size=UDim2.new(1,-28,0,16);status.Text=self.TacticalSide.." SELECTED";status.TextColor3=Color3.fromHex("B7FF1A");status.TextSize=8;status.Font=Enum.Font.GothamBold;status.TextXAlignment=Enum.TextXAlignment.Left;status.ZIndex=183;status.Parent=panel;self.TacticalStatus=status
 	for index,side in ipairs({"Home","Away"})do local tab=Instance.new("TextButton");tab.BackgroundColor3=side==self.TacticalSide and Color3.fromHex("FFFFFF")or Color3.fromHex("1B2118");tab.BorderSizePixel=0;tab.Position=UDim2.fromOffset(14+(index-1)*82,56);tab.Size=UDim2.fromOffset(76,26);tab.Text=string.upper(side);tab.TextColor3=side==self.TacticalSide and Color3.fromHex("111111")or Color3.fromHex("F5F7F2");tab.TextSize=10;tab.Font=Enum.Font.GothamBlack;tab.ZIndex=184;tab.Parent=panel;tab.Activated:Connect(function()self.TacticalSide=side;self:_renderTacticalPanel()end)end
 	local output=Instance.new("TextButton");output.BackgroundColor3=Color3.fromHex("2A351F");output.BorderSizePixel=0;output.Position=UDim2.new(1,-100,0,56);output.Size=UDim2.fromOffset(86,26);output.Text="OUTPUT";output.TextColor3=Color3.fromHex("FFFFFF");output.TextSize=10;output.Font=Enum.Font.GothamBlack;output.ZIndex=184;output.Parent=panel
 	local box=Instance.new("TextBox");box.BackgroundColor3=Color3.fromHex("10140E");box.BackgroundTransparency=.1;box.BorderSizePixel=0;box.ClearTextOnFocus=false;box.MultiLine=true;box.Position=UDim2.fromOffset(14,90);box.Size=UDim2.new(1,-28,0,42);box.Text="OUTPUT copies current values here.";box.TextColor3=Color3.fromHex("D9D9D9");box.TextSize=7;box.Font=Enum.Font.Code;box.TextXAlignment=Enum.TextXAlignment.Left;box.TextYAlignment=Enum.TextYAlignment.Top;box.ZIndex=184;box.Parent=panel;self.TacticalOutput=box
 	output.Activated:Connect(function()local text=self:_formatRuntimeTactics();print("[VTR AI TUNER] "..text);box.Text=text;status.Text="OUTPUT PRINTED BELOW"end)
-	local list=Instance.new("ScrollingFrame");list.BackgroundTransparency=1;list.BorderSizePixel=0;list.Position=UDim2.fromOffset(14,142);list.Size=UDim2.new(1,-28,1,-154);list.CanvasSize=UDim2.new();list.AutomaticCanvasSize=Enum.AutomaticSize.Y;list.ScrollBarThickness=3;list.ScrollBarImageColor3=Color3.fromHex("FFFFFF");list.ZIndex=183;list.Parent=panel
+	local list=Instance.new("ScrollingFrame");list.BackgroundTransparency=1;list.BorderSizePixel=0;list.Position=UDim2.fromOffset(14,142);list.Size=UDim2.new(1,-28,1,-154);list.CanvasSize=UDim2.new();list.AutomaticCanvasSize=Enum.AutomaticSize.Y;list.ScrollBarThickness=3;list.ScrollBarImageColor3=Color3.fromHex("B7FF1A");list.ZIndex=183;list.Parent=panel
 	local y=0
 	for _,name in LiteConfig.TacticSliderNames do
 		local tactics=self.RuntimeTactics[self.TacticalSide];tactics.Sliders[name]=tonumber(tactics.Sliders[name])or 50;local value=math.floor(tactics.Sliders[name])
 		local row=Instance.new("Frame");row.BackgroundTransparency=1;row.Position=UDim2.fromOffset(0,y);row.Size=UDim2.new(1,-4,0,30);row.ZIndex=184;row.Parent=list
 		local group=TACTIC_DEBUG_GROUPS[name]or"Shape"
-		local check=Instance.new("TextButton");check.BackgroundColor3=self.TacticalDebugOptions[group]and Color3.fromHex("FFFFFF")or Color3.fromHex("171D14");check.BorderSizePixel=0;check.Position=UDim2.fromOffset(0,5);check.Size=UDim2.fromOffset(22,20);check.Text=self.TacticalDebugOptions[group]and"✓"or"";check.TextColor3=Color3.fromHex("111111");check.TextSize=13;check.Font=Enum.Font.GothamBlack;check.ZIndex=186;check.Parent=row
+		local check=Instance.new("TextButton");check.BackgroundColor3=self.TacticalDebugOptions[group]and Color3.fromHex("B7FF1A")or Color3.fromHex("171D14");check.BorderSizePixel=0;check.Position=UDim2.fromOffset(0,5);check.Size=UDim2.fromOffset(22,20);check.Text=self.TacticalDebugOptions[group]and"✓"or"";check.TextColor3=Color3.fromHex("111111");check.TextSize=13;check.Font=Enum.Font.GothamBlack;check.ZIndex=186;check.Parent=row
 		local label=Instance.new("TextLabel");label.BackgroundTransparency=1;label.Position=UDim2.fromOffset(28,0);label.Size=UDim2.new(1,-142,0,14);label.Text=string.upper(name:gsub("(%u)"," %1"));label.TextColor3=Color3.fromHex("E8E8E8");label.TextSize=7;label.Font=Enum.Font.GothamBold;label.TextXAlignment=Enum.TextXAlignment.Left;label.ZIndex=185;label.Parent=row
 		local groupLabel=Instance.new("TextLabel");groupLabel.BackgroundTransparency=1;groupLabel.Position=UDim2.fromOffset(28,13);groupLabel.Size=UDim2.fromOffset(54,12);groupLabel.Text=string.upper(group);groupLabel.TextColor3=Color3.fromHex("7F8D73");groupLabel.TextSize=6;groupLabel.Font=Enum.Font.GothamBold;groupLabel.TextXAlignment=Enum.TextXAlignment.Left;groupLabel.ZIndex=185;groupLabel.Parent=row
-		local bar=Instance.new("Frame");bar.BackgroundColor3=Color3.fromHex("20251C");bar.BorderSizePixel=0;bar.Position=UDim2.fromOffset(84,18);bar.Size=UDim2.new(1,-194,0,5);bar.ZIndex=185;bar.Parent=row;local fill=Instance.new("Frame");fill.BackgroundColor3=Color3.fromHex("FFFFFF");fill.BorderSizePixel=0;fill.Size=UDim2.fromScale(value/100,1);fill.ZIndex=186;fill.Parent=bar
+		local bar=Instance.new("Frame");bar.BackgroundColor3=Color3.fromHex("20251C");bar.BorderSizePixel=0;bar.Position=UDim2.fromOffset(84,18);bar.Size=UDim2.new(1,-194,0,5);bar.ZIndex=185;bar.Parent=row;local fill=Instance.new("Frame");fill.BackgroundColor3=Color3.fromHex("B7FF1A");fill.BorderSizePixel=0;fill.Size=UDim2.fromScale(value/100,1);fill.ZIndex=186;fill.Parent=bar
 		local number=Instance.new("TextLabel");number.BackgroundTransparency=1;number.Position=UDim2.new(1,-70,0,5);number.Size=UDim2.fromOffset(30,20);number.Text=tostring(value);number.TextColor3=Color3.fromHex("FFFFFF");number.TextSize=9;number.Font=Enum.Font.GothamBlack;number.ZIndex=186;number.Parent=row
 		local function bump(amount:number)
 			local current=tonumber(tactics.Sliders[name])or 50
@@ -263,6 +285,12 @@ function Controller:_activate(data:any)
 	if self.ReplayController then self.ReplayController:Destroy()end;self.ReplayController=ReplayController.new(data,ball)
 	self.HUD:SetResumeCallback(function()self:_setPaused(false)end);self.PauseConnection=UserInputService.InputBegan:Connect(function(input,processed)if not self.Active then return end;if input.KeyCode==Enum.KeyCode.Six and not processed then self:_toggleTacticalMode();return end;if input.KeyCode==Enum.KeyCode.ButtonStart or input.KeyCode==(self.PauseKey or Enum.KeyCode.M) then self:_setPaused(not self.Paused);return end;if input.KeyCode==Enum.KeyCode.Space and not processed and self.PrematchActive and not self.PrematchSkipRequested then self.PrematchSkipRequested=true;self.Action:FireServer({Type="PrematchSkip"});if self.HUD then self.HUD:Flash(self.Ranked and"SKIP QUEUED"or"SKIPPING INTRO",.9)end;return end end)
 	self.Camera:Start();if self.Camera.BeginStadiumIntro then self.Camera:BeginStadiumIntro(6.2)end;self.Cutscenes:StadiumIntro(data);self.InputLock:Start();self.Input:Start();if self.WatchMode then self.Input:SetSuppressed(true);if self.Input.MobileControls then self.Input.MobileControls:Destroy();self.Input.MobileControls=nil end end;self:_bindFootballer(active,active:GetAttribute("DisplayName"),active:GetAttribute("position"))
+	task.spawn(function()
+		while self.Active do
+			clearGreenScreenEffects()
+			task.wait(.35)
+		end
+	end)
 	RunService:BindToRenderStep("VTRMatchGameplay",Enum.RenderPriority.Camera.Value+1,function(dt)self:_update(dt)end)
 end
 function Controller:_setPaused(paused:boolean)

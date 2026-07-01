@@ -264,7 +264,7 @@ function Controller:_makeOverlay()
 	label.Size = UDim2.fromOffset(280, 34)
 	label.Font = Enum.Font.GothamBlack
 	label.Text = "INSTANT REPLAY"
-	label.TextColor3 = Color3.fromRGB(255, 255, 255)
+	label.TextColor3 = Color3.fromRGB(183, 255, 26)
 	label.TextSize = 18
 	label.TextXAlignment = Enum.TextXAlignment.Left
 	label.Parent = gui

@@ -29,7 +29,7 @@ function PageBase.new(name: string, canvasHeight: number?): (CanvasGroup, Scroll
 	scroll.ScrollingEnabled = true
 	scroll.ElasticBehavior = Enum.ElasticBehavior.WhenScrollable
 	scroll.ScrollBarThickness = 4
-	scroll.ScrollBarImageColor3 = Theme.Colors.White
+	scroll.ScrollBarImageColor3 = Theme.Colors.Electric
 	scroll.ScrollingDirection = Enum.ScrollingDirection.Y
 	scroll.Parent = group
 
@@ -61,7 +61,7 @@ function PageBase.heading(parent: Instance, kicker: string, titleText: string, s
 	block.BackgroundTransparency = 1
 	block.Size = UDim2.new(1, 0, 0, 86)
 	block.Parent = parent
-	local kick = PageBase.label(kicker, 9, Theme.Colors.White, Theme.Fonts.Strong)
+	local kick = PageBase.label(kicker, 9, Theme.Colors.Electric, Theme.Fonts.Strong)
 	kick.Size = UDim2.new(1, 0, 0, 18)
 	kick.Parent = block
 	local title = PageBase.label(titleText, 30, Theme.Colors.White, Theme.Fonts.Display)

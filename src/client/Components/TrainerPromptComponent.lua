@@ -48,7 +48,7 @@ function Component:SetPrompts(prompts: {{Label: string, Key: string}})
 		key.BackgroundColor3 = Color3.fromHex("050505")
 		key.BackgroundTransparency = 0.72
 		key.Text = prompt.Key
-		key.TextColor3 = Color3.fromHex("FFFFFF")
+		key.TextColor3 = Color3.fromHex("B7FF1A")
 		key.TextSize = 8
 		key.Font = Enum.Font.GothamBlack
 		key.ZIndex = 16

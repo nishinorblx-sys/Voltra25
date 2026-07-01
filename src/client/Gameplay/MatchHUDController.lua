@@ -139,7 +139,7 @@ local function actionButton(parent: Instance, text: string, order: number, callb
 	button.Name = text
 	button.LayoutOrder = order
 	button.Size = UDim2.new(1, 0, 0, 42)
-	button.BackgroundColor3 = order == 1 and Theme.Colors.White or Theme.Colors.Gunmetal
+	button.BackgroundColor3 = order == 1 and Theme.Colors.Electric or Theme.Colors.Gunmetal
 	button.BorderSizePixel = 0
 	button.AutoButtonColor = false
 	button.Selectable = false
@@ -189,7 +189,7 @@ function Controller.new(data: any)
 	scoreScale.Parent = board
 	local strip = Instance.new("Frame")
 	strip.Name = "BroadcastStrip"
-	strip.BackgroundColor3 = Theme.Colors.White
+	strip.BackgroundColor3 = Theme.Colors.Electric
 	strip.BorderSizePixel = 0
 	strip.Position = UDim2.fromOffset(0, 0)
 	strip.Size = UDim2.fromOffset(25, 56)
@@ -208,7 +208,7 @@ function Controller.new(data: any)
 	main.ZIndex = 11
 	main.Parent = board
 	local mainStroke = Instance.new("UIStroke")
-	mainStroke.Color = Theme.Colors.White
+	mainStroke.Color = Theme.Colors.Electric
 	mainStroke.Transparency = 0.58
 	mainStroke.Thickness = 1
 	mainStroke.Parent = main
@@ -221,7 +221,7 @@ function Controller.new(data: any)
 	clockPanel.ZIndex = 11
 	clockPanel.Parent = board
 	local clockAccent = Instance.new("Frame")
-	clockAccent.BackgroundColor3 = Theme.Colors.White
+	clockAccent.BackgroundColor3 = Theme.Colors.Electric
 	clockAccent.BorderSizePixel = 0
 	clockAccent.Position = UDim2.new(1, -18, 0, 0)
 	clockAccent.Size = UDim2.fromOffset(18, 18)
@@ -232,9 +232,9 @@ function Controller.new(data: any)
 	local awayCode = label(main, shortCode(data.Away), UDim2.fromOffset(5, 19), UDim2.fromOffset(34, 18), 12)
 	awayCode.TextColor3 = Theme.Colors.White
 	local homeBadge = label(main, string.sub(tostring(data.HomeLogo or shortCode(data.Home)), 1, 2), UDim2.fromOffset(41, 3), UDim2.fromOffset(14, 11), 6)
-	homeBadge.TextXAlignment = Enum.TextXAlignment.Center;homeBadge.BackgroundColor3=badgeColor(data.HomeColor,Theme.Colors.White);homeBadge.BackgroundTransparency=0;homeBadge.TextColor3=Theme.Colors.Black;applyBadgeArt(homeBadge,badgeColor(data.HomeColor,Theme.Colors.White),Theme.Colors.White)
+	homeBadge.TextXAlignment = Enum.TextXAlignment.Center;homeBadge.BackgroundColor3=badgeColor(data.HomeColor,Theme.Colors.Electric);homeBadge.BackgroundTransparency=0;homeBadge.TextColor3=Theme.Colors.Black;applyBadgeArt(homeBadge,badgeColor(data.HomeColor,Theme.Colors.Electric),Theme.Colors.White)
 	local awayBadge = label(main, string.sub(tostring(data.AwayLogo or shortCode(data.Away)), 1, 2), UDim2.fromOffset(41, 22), UDim2.fromOffset(14, 11), 6)
-	awayBadge.TextXAlignment = Enum.TextXAlignment.Center;awayBadge.BackgroundColor3=badgeColor(data.AwayColor,Theme.Colors.Silver);awayBadge.BackgroundTransparency=0;awayBadge.TextColor3=Theme.Colors.Black;applyBadgeArt(awayBadge,badgeColor(data.AwayColor,Theme.Colors.Silver),Theme.Colors.White)
+	awayBadge.TextXAlignment = Enum.TextXAlignment.Center;awayBadge.BackgroundColor3=badgeColor(data.AwayColor,Theme.Colors.Silver);awayBadge.BackgroundTransparency=0;awayBadge.TextColor3=Theme.Colors.Black;applyBadgeArt(awayBadge,badgeColor(data.AwayColor,Theme.Colors.Silver),Theme.Colors.Electric)
 	local homeScoreLabel = label(main, "0", UDim2.fromOffset(86, 0), UDim2.fromOffset(18, 18), 12)
 	homeScoreLabel.TextXAlignment = Enum.TextXAlignment.Center
 	local awayScoreLabel = label(main, "0", UDim2.fromOffset(86, 19), UDim2.fromOffset(18, 18), 12)
@@ -275,7 +275,7 @@ function Controller.new(data: any)
 	local phasePanel = panel(gui, UDim2.new(0.5, -95, 0, 58), UDim2.fromOffset(190, 31))
 	local phase = label(phasePanel, "PRE MATCH", UDim2.fromOffset(8, 4), UDim2.new(1, -16, 1, -8), 10)
 	phase.TextXAlignment = Enum.TextXAlignment.Center
-	phase.TextColor3 = Theme.Colors.White
+	phase.TextColor3 = Theme.Colors.Electric
 
 	local banner = label(gui, "KICK OFF", UDim2.new(0.5, -150, 0.13, 0), UDim2.fromOffset(300, 46), 21)
 	banner.BackgroundColor3 = Theme.Colors.Black
@@ -287,10 +287,10 @@ function Controller.new(data: any)
 	local activePanel = panel(gui, UDim2.new(0, 22, 1, -92), UDim2.fromOffset(270, 64))
 	activePanel.Visible = false
 	local activeBadge = label(activePanel,string.sub(tostring(data.HomeLogo or shortCode(data.Home)),1,2),UDim2.fromOffset(8,11),UDim2.fromOffset(42,42),13)
-	activeBadge.TextXAlignment=Enum.TextXAlignment.Center;activeBadge.BackgroundColor3=badgeColor(data.HomeColor,Theme.Colors.White);activeBadge.BackgroundTransparency=0.08;activeBadge.TextColor3=Theme.Colors.Black;corner(activeBadge,21);applyBadgeArt(activeBadge,badgeColor(data.HomeColor,Theme.Colors.White),Theme.Colors.White)
+	activeBadge.TextXAlignment=Enum.TextXAlignment.Center;activeBadge.BackgroundColor3=badgeColor(data.HomeColor,Theme.Colors.Electric);activeBadge.BackgroundTransparency=0.08;activeBadge.TextColor3=Theme.Colors.Black;corner(activeBadge,21);applyBadgeArt(activeBadge,badgeColor(data.HomeColor,Theme.Colors.Electric),Theme.Colors.White)
 	local activeName = label(activePanel, "ACTIVE PLAYER", UDim2.fromOffset(60, 34), UDim2.new(1, -70, 0, 20), 12)
 	local activeState = label(activePanel, "ST  9", UDim2.fromOffset(60, 7), UDim2.new(1, -70, 0, 17), 9)
-	activeState.TextColor3 = Theme.Colors.White
+	activeState.TextColor3 = Theme.Colors.Electric
 	local rating = label(activePanel, "", UDim2.new(1, -92, 0, 35), UDim2.fromOffset(80, 16), 8)
 	rating.TextXAlignment = Enum.TextXAlignment.Right
 	rating.TextColor3 = Theme.Colors.Silver
@@ -311,7 +311,7 @@ function Controller.new(data: any)
 	local staminaFill = Instance.new("Frame")
 	staminaFill.Position=UDim2.fromScale(0,.25)
 	staminaFill.Size = UDim2.fromScale(1, .5)
-	staminaFill.BackgroundColor3 = Theme.Colors.White
+	staminaFill.BackgroundColor3 = Theme.Colors.Electric
 	staminaFill.BorderSizePixel = 0
 	staminaFill.Parent = enduranceFill
 	corner(staminaFill, 3)
@@ -343,7 +343,7 @@ function Controller.new(data: any)
 	local chargeFill = Instance.new("Frame")
 	chargeFill.Position = UDim2.new(0, 4, 1, -6)
 	chargeFill.Size = UDim2.new(0, 0, 0, 4)
-	chargeFill.BackgroundColor3 = Theme.Colors.White
+	chargeFill.BackgroundColor3 = Theme.Colors.Electric
 	chargeFill.BorderSizePixel = 0
 	chargeFill.Parent = charge
 	chargeFill.ZIndex = 20
@@ -358,7 +358,7 @@ function Controller.new(data: any)
 	pauseButton.AnchorPoint = Vector2.new(1, 0)
 	pauseButton.Position = UDim2.new(1, -22, 0, 58)
 	pauseButton.Size = UDim2.fromOffset(142, 36)
-	pauseButton.BackgroundColor3 = Theme.Colors.White
+	pauseButton.BackgroundColor3 = Theme.Colors.Electric
 	pauseButton.BorderSizePixel = 0
 	pauseButton.AutoButtonColor = true
 	pauseButton.Text = data.Ranked and "QUEUE PAUSE" or "PAUSE"
@@ -559,7 +559,7 @@ function Controller:PlayScoreboardIntro(force: boolean?)
 	for index = 1, 3 do
 		local rail = Instance.new("Frame")
 		rail.Name = "AssemblyRail" .. index
-		rail.BackgroundColor3 = index == 2 and Theme.Colors.White or Theme.Colors.White
+		rail.BackgroundColor3 = index == 2 and Theme.Colors.White or Theme.Colors.Electric
 		rail.BackgroundTransparency = 0.15
 		rail.BorderSizePixel = 0
 		rail.Position = UDim2.fromOffset(8 + index * 22, index == 2 and -7 or 61)
@@ -570,7 +570,7 @@ function Controller:PlayScoreboardIntro(force: boolean?)
 	end
 	local scanner = Instance.new("Frame")
 	scanner.Name = "AssemblyScanner"
-	scanner.BackgroundColor3 = Theme.Colors.White
+	scanner.BackgroundColor3 = Theme.Colors.Electric
 	scanner.BackgroundTransparency = 0.05
 	scanner.BorderSizePixel = 0
 	scanner.Position = UDim2.fromOffset(-8, 0)
@@ -580,7 +580,7 @@ function Controller:PlayScoreboardIntro(force: boolean?)
 
 	tween(board, 0.28, {Position = UDim2.fromOffset(18, 58), BackgroundTransparency = 0.02}, Enum.EasingStyle.Back)
 	task.delay(0.08, function()
-		if strip then tween(strip, 0.2, {Size = UDim2.fromOffset(25, 56), BackgroundColor3 = Theme.Colors.White}, Enum.EasingStyle.Back) end
+		if strip then tween(strip, 0.2, {Size = UDim2.fromOffset(25, 56), BackgroundColor3 = Theme.Colors.Electric}, Enum.EasingStyle.Back) end
 	end)
 	task.delay(0.18, function()
 		if main then tween(main, 0.32, {Size = UDim2.fromOffset(107, 38), BackgroundTransparency = 0}, Enum.EasingStyle.Quart) end
@@ -651,7 +651,7 @@ function Controller:SetCharge(value: number, kind: string?)
 	self.Charge.Visible = value > 0.01
 	self.ChargeFill.Size = UDim2.new(math.clamp(value, 0, 1), 0, 0, 4)
 	self.ChargeLabel.Text = kind == "Pass" and "PASS POWER" or "SHOT POWER"
-	self.ChargeFill.BackgroundColor3 = kind == "Pass" and Color3.fromHex("FFFFFF") or Color3.fromHex("DFFF4A")
+	self.ChargeFill.BackgroundColor3 = kind == "Pass" and Color3.fromHex("B7FF1A") or Color3.fromHex("DFFF4A")
 end
 
 function Controller:SetPhase(value: string)
@@ -717,7 +717,7 @@ end
 
 function Controller:SetPossession(owner: string, active: boolean)
 	self.BoardPossession.Text = active and "IN POSSESSION" or owner ~= "" and ("POS: " .. string.upper(owner)) or "LOOSE BALL"
-	self.BoardPossession.TextColor3 = active and Theme.Colors.White or Theme.Colors.Silver
+	self.BoardPossession.TextColor3 = active and Theme.Colors.Electric or Theme.Colors.Silver
 end
 
 function Controller:Flash(message: string, duration: number?)
@@ -864,11 +864,11 @@ function Controller:ShowPauseQueue(playerName:string,queued:boolean)
 	local text=queued and(string.upper(playerName).." QUEUED A PAUSE")or(string.upper(playerName).." CANCELLED PAUSE QUEUE")
 	if self.PauseButton then
 		self.PauseButton.Text = queued and "CANCEL PAUSE" or "QUEUE PAUSE"
-		self.PauseButton.BackgroundColor3 = queued and Theme.Colors.Silver or Theme.Colors.White
+		self.PauseButton.BackgroundColor3 = queued and Theme.Colors.Silver or Theme.Colors.Electric
 	end
 	local line=label(box,text,UDim2.fromOffset(12,7),UDim2.new(1,-24,1,-14),11)
 	line.TextXAlignment=Enum.TextXAlignment.Center
-	line.TextColor3=queued and Theme.Colors.White or Theme.Colors.Silver
+	line.TextColor3=queued and Theme.Colors.Electric or Theme.Colors.Silver
 	local scale=Instance.new("UIScale");scale.Scale=.88;scale.Parent=box
 	TweenService:Create(scale,TweenInfo.new(.18,Enum.EasingStyle.Back,Enum.EasingDirection.Out),{Scale=1}):Play()
 	task.delay(queued and 2.2 or 1.25,function()
@@ -892,13 +892,13 @@ function Controller:ShowSubstitution(payload:any)
 	overlay.BorderSizePixel=0
 	overlay.ZIndex=52
 	overlay.Parent=self.Gui
-	corner(overlay,10);stroke(overlay,Theme.Colors.White,.35)
+	corner(overlay,10);stroke(overlay,Theme.Colors.Electric,.35)
 	self.SubstitutionBanner=overlay
-	local tag=label(overlay,"SUBSTITUTION",UDim2.fromOffset(18,9),UDim2.new(1,-36,0,16),9);tag.TextColor3=Theme.Colors.White;tag.TextXAlignment=Enum.TextXAlignment.Center
+	local tag=label(overlay,"SUBSTITUTION",UDim2.fromOffset(18,9),UDim2.new(1,-36,0,16),9);tag.TextColor3=Theme.Colors.Electric;tag.TextXAlignment=Enum.TextXAlignment.Center
 	local outCard=panel(overlay,UDim2.fromOffset(24,30),UDim2.fromOffset(230,46));outCard.ZIndex=53;outCard.BackgroundTransparency=.18
 	local inCard=panel(overlay,UDim2.new(1,-254,0,30),UDim2.fromOffset(230,46));inCard.ZIndex=53;inCard.BackgroundTransparency=.18
 	local outLabel=label(outCard,"OUT  "..string.upper(tostring(payload.Outgoing or"PLAYER")),UDim2.fromOffset(12,8),UDim2.new(1,-24,0,28),11);outLabel.TextColor3=Color3.fromHex("FF6975")
-	local inLabel=label(inCard,"IN  "..string.upper(tostring(payload.Incoming or"PLAYER")),UDim2.fromOffset(12,8),UDim2.new(1,-24,0,28),11);inLabel.TextColor3=Theme.Colors.White
+	local inLabel=label(inCard,"IN  "..string.upper(tostring(payload.Incoming or"PLAYER")),UDim2.fromOffset(12,8),UDim2.new(1,-24,0,28),11);inLabel.TextColor3=Theme.Colors.Electric
 	local arrow=label(overlay,"⇄",UDim2.new(.5,-22,0,34),UDim2.fromOffset(44,38),28);arrow.TextXAlignment=Enum.TextXAlignment.Center;arrow.TextColor3=Theme.Colors.White
 	local flip=Instance.new("UIScale");flip.Scale=.18;flip.Parent=arrow
 	TweenService:Create(flip,TweenInfo.new(.32,Enum.EasingStyle.Back,Enum.EasingDirection.Out),{Scale=1}):Play()
@@ -937,11 +937,11 @@ function Controller:ShowHalfTime(payload: any)
 	local events=entry.Events or{}
 	local value=Instance.new("Frame");value.Name="HalfTimePlayerOfHalf";value.AnchorPoint=Vector2.new(.5,.5);value.Position=UDim2.fromScale(1.35,.49);value.Size=UDim2.fromScale(.78,.68);value.BackgroundTransparency=1;value.ZIndex=58;value.Parent=self.Gui
 	local left=panel(value,UDim2.fromScale(0,.03),UDim2.fromScale(.56,.88));left.BackgroundColor3=Color3.fromHex("25003F");left.BackgroundTransparency=.03;left.ZIndex=59
-	local right=panel(value,UDim2.fromScale(.58,0),UDim2.fromScale(.36,.94));right.BackgroundColor3=Theme.Colors.White;right.BackgroundTransparency=0;right.ZIndex=59
+	local right=panel(value,UDim2.fromScale(.58,0),UDim2.fromScale(.36,.94));right.BackgroundColor3=Theme.Colors.Electric;right.BackgroundTransparency=0;right.ZIndex=59
 	local badge=Instance.new("Frame");badge.Position=UDim2.fromScale(-.06,-.04);badge.Size=UDim2.fromOffset(70,70);badge.BackgroundColor3=Theme.Colors.White;badge.BorderSizePixel=0;badge.ZIndex=62;badge.Parent=value;corner(badge,2)
 	label(badge,entry.Team=="Away"and self.AwayCode or self.HomeCode,UDim2.fromScale(0,0),UDim2.fromScale(1,1),16).TextXAlignment=Enum.TextXAlignment.Center
 	local title=label(left,"PLAYER OF\nTHE HALF",UDim2.fromScale(.07,.06),UDim2.fromScale(.48,.15),27);title.TextColor3=Theme.Colors.White;title.TextWrapped=true
-	local score=label(left,self.HomeCode.."  "..tostring(payload.Home or 0).." - "..tostring(payload.Away or 0).."  "..self.AwayCode,UDim2.fromScale(.62,.07),UDim2.fromScale(.3,.05),13);score.TextXAlignment=Enum.TextXAlignment.Right;score.TextColor3=Theme.Colors.White
+	local score=label(left,self.HomeCode.."  "..tostring(payload.Home or 0).." - "..tostring(payload.Away or 0).."  "..self.AwayCode,UDim2.fromScale(.62,.07),UDim2.fromScale(.3,.05),13);score.TextXAlignment=Enum.TextXAlignment.Right;score.TextColor3=Theme.Colors.Electric
 	local pitch=Instance.new("Frame");pitch.Position=UDim2.fromScale(.12,.23);pitch.Size=UDim2.fromScale(.42,.38);pitch.BackgroundColor3=Color3.fromHex("101A14");pitch.BackgroundTransparency=.05;pitch.BorderSizePixel=0;pitch.ZIndex=61;pitch.Parent=left;stroke(pitch,Theme.Colors.White,.12)
 	local function pitchLine(pos:UDim2,size:UDim2,transparency:number?)
 		local line=Instance.new("Frame");line.Position=pos;line.Size=size;line.BackgroundColor3=Theme.Colors.White;line.BackgroundTransparency=transparency or .18;line.BorderSizePixel=0;line.ZIndex=67;line.Parent=pitch;return line
@@ -999,7 +999,7 @@ function Controller:ShowHalfTime(payload: any)
 	local passAccuracy=passes>0 and math.floor((tonumber(events.SuccessfulPass)or 0)/passes*100+.5)or 0
 	local xg=math.floor((tonumber(events.ExpectedGoals)or 0)*100+.5)/100
 	local rows={{"MATCH RATING",string.format("%.1f",tonumber(entry.Rating)or 6)},{"GOALS",tostring(entry.Goals or 0)},{"ASSISTS",tostring(entry.Assists or 0)},{"SHOTS ON TARGET",tostring(events.ShotOnTarget or 0)},{"XG",tostring(xg)},{"DEFENSIVE CONTRIBUTIONS",tostring(defensive)},{"PASSES COMPLETED",tostring(events.SuccessfulPass or 0)},{"PASS ACCURACY",tostring(passAccuracy).."%"}}
-	local statsTitle=label(left,"STATS",UDim2.fromScale(.08,.63),UDim2.fromScale(.18,.04),13);statsTitle.TextColor3=Theme.Colors.White
+	local statsTitle=label(left,"STATS",UDim2.fromScale(.08,.63),UDim2.fromScale(.18,.04),13);statsTitle.TextColor3=Theme.Colors.Electric
 	for i,row in rows do
 		local y=.68+(i-1)*.035
 		local name=label(left,row[1],UDim2.fromScale(.08,y),UDim2.fromScale(.48,.03),10);name.TextColor3=Theme.Colors.White
@@ -1054,7 +1054,7 @@ function Controller:SetPaused(paused: boolean, _cameraController: any, onReturn:
 	menu.Parent=overlay
 	local halfTimeMode=payload and payload.HalfTime==true
 	label(menu, halfTimeMode and "VTR 25 HALF TIME" or "VTR 25 MATCH", UDim2.fromOffset(0, 0), UDim2.new(1, 0, 0, 18), 10).TextColor3=Theme.Colors.Silver
-	label(menu, halfTimeMode and "HALF TIME" or "PAUSED", UDim2.fromOffset(0, 26), UDim2.new(1, 0, 0, 34), 25).TextColor3=Theme.Colors.White
+	label(menu, halfTimeMode and "HALF TIME" or "PAUSED", UDim2.fromOffset(0, 26), UDim2.new(1, 0, 0, 34), 25).TextColor3=Theme.Colors.Electric
 	local pauseTimer=label(overlay,tostring(payload and payload.PauseRemaining or 60).."s",UDim2.new(.5,-110,0,34),UDim2.fromOffset(220,48),30);pauseTimer.TextXAlignment=Enum.TextXAlignment.Center;pauseTimer.TextColor3=Theme.Colors.White;pauseTimer.Name="PauseTimerLabel";pauseTimer.ZIndex=135
 	local list = Instance.new("Frame")
 	list.BackgroundTransparency = 1
@@ -1067,7 +1067,7 @@ function Controller:SetPaused(paused: boolean, _cameraController: any, onReturn:
 	layout.SortOrder = Enum.SortOrder.LayoutOrder
 	layout.Parent = list
 	local content=panel(overlay,UDim2.new(.34,0,.1,0),UDim2.new(.62,0,.78,0));content.ZIndex=96
-	local contentTitle=label(content,"TEAM MANAGEMENT",UDim2.fromOffset(18,14),UDim2.new(1,-36,0,30),22);contentTitle.TextColor3=Theme.Colors.White
+	local contentTitle=label(content,"TEAM MANAGEMENT",UDim2.fromOffset(18,14),UDim2.new(1,-36,0,30),22);contentTitle.TextColor3=Theme.Colors.Electric
 	local body=Instance.new("ScrollingFrame");body.BackgroundTransparency=1;body.BorderSizePixel=0;body.Position=UDim2.fromOffset(18,58);body.Size=UDim2.new(1,-36,1,-76);body.CanvasSize=UDim2.new();body.AutomaticCanvasSize=Enum.AutomaticSize.Y;body.ScrollBarThickness=4;body.ScrollBarImageColor3=Theme.Colors.White;body.ZIndex=97;body.Parent=content
 	local bodyLayout=Instance.new("UIListLayout");bodyLayout.Padding=UDim.new(0,8);bodyLayout.Parent=body
 	content.Visible=false
@@ -1083,7 +1083,7 @@ function Controller:SetPaused(paused: boolean, _cameraController: any, onReturn:
 		entry=entry or{Name="EMPTY",Position="--",Overall=0,Number=0}
 		local card=Instance.new("TextButton")
 		card.Position=pos;card.Size=size;card.BackgroundColor3=Theme.Colors.Black;card.BackgroundTransparency=.1;card.BorderSizePixel=0;card.AutoButtonColor=false;card.Selectable=false;card.Text="";card.ZIndex=99;card.Parent=parent
-		corner(card,6);stroke(card,Theme.Colors.White,.58)
+		corner(card,6);stroke(card,Theme.Colors.Electric,.58)
 		local portraitSize=math.max(30,math.floor(math.min(size.X.Offset,size.Y.Offset)*.42))
 		if showPortrait ~= false then
 			local portraitOk,portrait=pcall(function()
@@ -1103,17 +1103,17 @@ function Controller:SetPaused(paused: boolean, _cameraController: any, onReturn:
 			fallback.BorderSizePixel=0
 			fallback.ZIndex=101
 			fallback.Parent=card
-			corner(fallback,7);stroke(fallback,Theme.Colors.White,.35)
+			corner(fallback,7);stroke(fallback,Theme.Colors.Electric,.35)
 			local sourceName=string.upper(tostring(entry.Name or entry.displayName or entry.shortName or"VTR"))
 			local initials=""
 			for token in string.gmatch(sourceName,"%S+")do initials..=string.sub(token,1,1);if #initials>=2 then break end end
 			local face=label(fallback,initials~=""and initials or"V",UDim2.fromScale(0,0),UDim2.fromScale(1,1),math.max(10,math.floor(portraitSize*.28)))
 			face.TextXAlignment=Enum.TextXAlignment.Center
-			face.TextColor3=Theme.Colors.White
+			face.TextColor3=Theme.Colors.Electric
 			face.ZIndex=102
 			end
 		end
-		local ovr=label(card,tostring(entry.Overall or entry.overall or 0),UDim2.fromOffset(7,5),UDim2.fromOffset(32,15),10);ovr.TextColor3=Theme.Colors.White
+		local ovr=label(card,tostring(entry.Overall or entry.overall or 0),UDim2.fromOffset(7,5),UDim2.fromOffset(32,15),10);ovr.TextColor3=Theme.Colors.Electric
 		local p=label(card,string.upper(tostring(entry.Position or entry.bestPosition or"--")),UDim2.new(1,-38,0,5),UDim2.fromOffset(31,15),8);p.TextXAlignment=Enum.TextXAlignment.Right;p.TextColor3=Theme.Colors.Silver
 		local name=label(card,string.upper(tostring(entry.Name or entry.displayName or entry.shortName or"PLAYER")),UDim2.fromOffset(5,size.Y.Offset-29),UDim2.new(1,-10,0,15),7);name.TextXAlignment=Enum.TextXAlignment.Center;name.TextTruncate=Enum.TextTruncate.AtEnd
 		local number=label(card,"#" .. tostring(entry.Number or entry.shirtNumber or 0),UDim2.fromOffset(7,size.Y.Offset-15),UDim2.new(1,-14,0,11),6);number.TextXAlignment=Enum.TextXAlignment.Center;number.TextColor3=Theme.Colors.Silver
@@ -1125,9 +1125,9 @@ function Controller:SetPaused(paused: boolean, _cameraController: any, onReturn:
 		content.Size=UDim2.new(.68,0,.84,0);content.Position=UDim2.new(.28,0,.08,0)
 		local canvas=Instance.new("Frame");canvas.BackgroundTransparency=1;canvas.Size=UDim2.new(1,-8,0,560);canvas.ZIndex=98;canvas.Parent=body
 		local pitch=panel(canvas,UDim2.fromOffset(0,0),UDim2.new(.62,-8,0,380));pitch.ZIndex=98;pitch.BackgroundColor3=Color3.fromHex("07130C");pitch.BackgroundTransparency=.04
-		local pitchTitle=label(pitch,"SQUAD  /  FORMATION",UDim2.fromOffset(14,10),UDim2.new(1,-28,0,18),9);pitchTitle.TextColor3=Theme.Colors.White
+		local pitchTitle=label(pitch,"SQUAD  /  FORMATION",UDim2.fromOffset(14,10),UDim2.new(1,-28,0,18),9);pitchTitle.TextColor3=Theme.Colors.Electric
 		local details=panel(canvas,UDim2.new(.62,8,0,0),UDim2.new(.38,-8,0,380));details.ZIndex=98;details.BackgroundTransparency=.09
-		local detailsTitle=label(details,"PLAYER INFO",UDim2.fromOffset(16,12),UDim2.new(1,-32,0,20),11);detailsTitle.TextColor3=Theme.Colors.White
+		local detailsTitle=label(details,"PLAYER INFO",UDim2.fromOffset(16,12),UDim2.new(1,-32,0,20),11);detailsTitle.TextColor3=Theme.Colors.Electric
 		local detailsHolder=Instance.new("Frame");detailsHolder.BackgroundTransparency=1;detailsHolder.Position=UDim2.fromOffset(16,46);detailsHolder.Size=UDim2.new(1,-32,1,-62);detailsHolder.ZIndex=100;detailsHolder.Parent=details
 		local function setDetails(entry:any?)
 			for _,child in detailsHolder:GetChildren()do child:Destroy()end
@@ -1139,9 +1139,9 @@ function Controller:SetPaused(paused: boolean, _cameraController: any, onReturn:
 			label(detailsHolder,string.upper(tostring(entry.Name or entry.displayName or entry.shortName or"PLAYER")),UDim2.fromOffset(0,0),UDim2.new(1,0,0,28),18)
 			label(detailsHolder,"OVR "..tostring(entry.Overall or entry.overall or 60).."   POS "..string.upper(tostring(entry.Position or entry.bestPosition or"--")).."   KIT #"..tostring(entry.Number or entry.shirtNumber or 0),UDim2.fromOffset(0,35),UDim2.new(1,0,0,18),9).TextColor3=Theme.Colors.Silver
 			local energy=tonumber(entry.Stamina or entry.stamina or 100)or 100
-			label(detailsHolder,"ENERGY",UDim2.fromOffset(0,78),UDim2.fromOffset(90,18),9).TextColor3=Theme.Colors.White
+			label(detailsHolder,"ENERGY",UDim2.fromOffset(0,78),UDim2.fromOffset(90,18),9).TextColor3=Theme.Colors.Electric
 			local bar=Instance.new("Frame");bar.Position=UDim2.fromOffset(0,102);bar.Size=UDim2.new(1,0,0,8);bar.BackgroundColor3=Theme.Colors.Gunmetal;bar.BorderSizePixel=0;bar.ZIndex=101;bar.Parent=detailsHolder;corner(bar,4)
-			local fill=Instance.new("Frame");fill.Size=UDim2.fromScale(math.clamp(energy/100,0,1),1);fill.BackgroundColor3=Theme.Colors.White;fill.BorderSizePixel=0;fill.ZIndex=102;fill.Parent=bar;corner(fill,4)
+			local fill=Instance.new("Frame");fill.Size=UDim2.fromScale(math.clamp(energy/100,0,1),1);fill.BackgroundColor3=Theme.Colors.Electric;fill.BorderSizePixel=0;fill.ZIndex=102;fill.Parent=bar;corner(fill,4)
 			label(detailsHolder,"MATCH RATING  "..string.format("%.1f",tonumber(entry.Rating)or 6),UDim2.fromOffset(0,130),UDim2.new(1,0,0,22),11).TextColor3=Theme.Colors.White
 			label(detailsHolder,"Actions: swap, sub and tactical instructions plug into this detail panel next.",UDim2.fromOffset(0,170),UDim2.new(1,0,0,70),9).TextColor3=Theme.Colors.Silver
 		end
@@ -1182,7 +1182,7 @@ function Controller:SetPaused(paused: boolean, _cameraController: any, onReturn:
 			addPlayerMini(pitch,entry,UDim2.new(c.X,-38,c.Y,-27),UDim2.fromOffset(76,54),setDetails)
 		end
 		local benchPanel=panel(canvas,UDim2.new(0,0,0,398),UDim2.new(1,0,0,132));benchPanel.ZIndex=98;benchPanel.BackgroundTransparency=.09
-		label(benchPanel,"SUBSTITUTES",UDim2.fromOffset(14,8),UDim2.new(1,-28,0,18),10).TextColor3=Theme.Colors.White
+		label(benchPanel,"SUBSTITUTES",UDim2.fromOffset(14,8),UDim2.new(1,-28,0,18),10).TextColor3=Theme.Colors.Electric
 		local bench=benches[controlledSide] or benches.Home or{}
 		for i=1,math.min(7,#bench)do addPlayerMini(benchPanel,bench[i],UDim2.fromOffset(14+(i-1)*92,36),UDim2.fromOffset(84,70),setDetails)end
 		if #bench==0 then label(benchPanel,"Bench data unavailable for this match snapshot.",UDim2.fromOffset(14,42),UDim2.new(1,-28,0,22),10).TextColor3=Theme.Colors.Silver end
@@ -1192,7 +1192,7 @@ function Controller:SetPaused(paused: boolean, _cameraController: any, onReturn:
 		content.Size=UDim2.new(.62,0,.74,0);content.Position=UDim2.new(.34,0,.14,0)
 		local home=stats.Home or{};local away=stats.Away or{}
 		local header=Instance.new("Frame");header.BackgroundTransparency=1;header.Size=UDim2.new(1,-8,0,74);header.ZIndex=98;header.Parent=body
-		local left=label(header,self.HomeCode,UDim2.new(.2,-35,0,8),UDim2.fromOffset(70,38),22);left.TextXAlignment=Enum.TextXAlignment.Center;left.BackgroundColor3=Theme.Colors.White;left.BackgroundTransparency=.05;left.TextColor3=Theme.Colors.Black;corner(left,19)
+		local left=label(header,self.HomeCode,UDim2.new(.2,-35,0,8),UDim2.fromOffset(70,38),22);left.TextXAlignment=Enum.TextXAlignment.Center;left.BackgroundColor3=Theme.Colors.Electric;left.BackgroundTransparency=.05;left.TextColor3=Theme.Colors.Black;corner(left,19)
 		local score=label(header,tostring(stats.HomeScore or payload.Home or 0).."  -  "..tostring(stats.AwayScore or payload.Away or 0),UDim2.new(.5,-75,0,8),UDim2.fromOffset(150,38),24);score.TextXAlignment=Enum.TextXAlignment.Center
 		local right=label(header,self.AwayCode,UDim2.new(.8,-35,0,8),UDim2.fromOffset(70,38),22);right.TextXAlignment=Enum.TextXAlignment.Center;right.BackgroundColor3=Color3.fromHex("24C6B8");right.BackgroundTransparency=.05;right.TextColor3=Theme.Colors.Black;corner(right,19)
 		local rows={{"POSSESSION",home.Possession or 0,away.Possession or 0,"%"},{"SHOTS",home.Shots or 0,away.Shots or 0,""},{"ON TARGET",home.ShotsOnTarget or 0,away.ShotsOnTarget or 0,""},{"EXPECTED GOALS",home.ExpectedGoals or 0,away.ExpectedGoals or 0,""},{"PASS ACCURACY",home.PassAccuracy or 0,away.PassAccuracy or 0,"%"},{"TACKLES",home.TacklesCompleted or 0,away.TacklesCompleted or 0,""},{"FOULS",home.Fouls or 0,away.Fouls or 0,""},{"CARDS",tostring(home.YellowCards or 0).."/"..tostring(home.RedCards or 0),tostring(away.YellowCards or 0).."/"..tostring(away.RedCards or 0),""}}
@@ -1203,16 +1203,16 @@ function Controller:SetPaused(paused: boolean, _cameraController: any, onReturn:
 		content.Size=UDim2.new(.62,0,.78,0);content.Position=UDim2.new(.34,0,.12,0)
 		local header=Instance.new("Frame");header.BackgroundColor3=Theme.Colors.Gunmetal;header.BackgroundTransparency=.18;header.BorderSizePixel=0;header.Size=UDim2.new(1,-8,0,30);header.ZIndex=98;header.Parent=body;corner(header,5)
 		local cols={{"POS",.02,.08},{"NAME",.11,.34},{"MR",.46,.08},{"G",.56,.05},{"AST",.63,.06},{"SOT",.72,.06},{"XG",.80,.07},{"DEF",.90,.08}}
-		for _,c in cols do local h=label(header,c[1],UDim2.new(c[2],0,0,7),UDim2.new(c[3],0,0,16),8);h.TextColor3=Theme.Colors.White end
+		for _,c in cols do local h=label(header,c[1],UDim2.new(c[2],0,0,7),UDim2.new(c[3],0,0,16),8);h.TextColor3=Theme.Colors.Electric end
 		for _,entry in stats.PlayerRatings or{}do
 			local events=entry.Events or{}
 			local rowFrame=Instance.new("Frame");rowFrame.BackgroundColor3=entry.Team==controlledSide and Theme.Colors.Black or Theme.Colors.Gunmetal;rowFrame.BackgroundTransparency=entry.Team==controlledSide and .18 or .42;rowFrame.BorderSizePixel=0;rowFrame.Size=UDim2.new(1,-8,0,32);rowFrame.ZIndex=98;rowFrame.Parent=body;corner(rowFrame,5)
 			local values={entry.Position or"--",string.upper(entry.Name or"PLAYER"),string.format("%.1f",entry.Rating or 6),tostring(entry.Goals or 0),tostring(entry.Assists or 0),tostring(events.ShotOnTarget or 0),tostring(events.ExpectedGoals or 0),tostring(entry.DefensiveActions or 0)}
-			for i,c in cols do local cell=label(rowFrame,values[i],UDim2.new(c[2],0,0,8),UDim2.new(c[3],0,0,16),8);cell.TextColor3=i==3 and Theme.Colors.White or Theme.Colors.White end
+			for i,c in cols do local cell=label(rowFrame,values[i],UDim2.new(c[2],0,0,8),UDim2.new(c[3],0,0,16),8);cell.TextColor3=i==3 and Theme.Colors.Electric or Theme.Colors.White end
 		end
 		local shotCount=(stats.ShotMap and stats.ShotMap.Home and #stats.ShotMap.Home or 0)+(stats.ShotMap and stats.ShotMap.Away and #stats.ShotMap.Away or 0)
 		local passCount=(stats.PassMap and stats.PassMap.Home and #stats.PassMap.Home or 0)+(stats.PassMap and stats.PassMap.Away and #stats.PassMap.Away or 0)
-		addRow("FIELD EVENTS REGISTERED: "..tostring(shotCount).." SHOTS  /  "..tostring(passCount).." COMPLETED PASSES",Theme.Colors.White)
+		addRow("FIELD EVENTS REGISTERED: "..tostring(shotCount).." SHOTS  /  "..tostring(passCount).." COMPLETED PASSES",Theme.Colors.Electric)
 		addRow("TRACKED CATEGORIES: XG, SHOT LOCATION, PASS ORIGIN, PASS DESTINATION, PASS ACCURACY, TACKLES, SAVES, FOULS, CARDS",Theme.Colors.Silver)
 	end
 	local function showForfeitAnimation()
@@ -1229,17 +1229,17 @@ function Controller:SetPaused(paused: boolean, _cameraController: any, onReturn:
 		menu.Visible=false;content.Visible=false
 		if self.TeamManagementPage then self.TeamManagementPage:Destroy();self.TeamManagementPage=nil end
 		local page=Instance.new("Frame");page.Name="TeamManagementPage";page.Size=UDim2.fromScale(1,1);page.BackgroundColor3=Theme.Colors.Black;page.BackgroundTransparency=.02;page.BorderSizePixel=0;page.ZIndex=130;page.Active=true;page.Parent=overlay;self.TeamManagementPage=page
-		local title=label(page,"TEAM MANAGEMENT",UDim2.fromOffset(28,24),UDim2.new(.45,0,0,38),28);title.TextColor3=Theme.Colors.White
+		local title=label(page,"TEAM MANAGEMENT",UDim2.fromOffset(28,24),UDim2.new(.45,0,0,38),28);title.TextColor3=Theme.Colors.Electric
 		label(page,"SQUAD  /  TACTICS  /  ASSIGNMENTS",UDim2.fromOffset(30,64),UDim2.new(.5,0,0,18),10).TextColor3=Theme.Colors.Silver
 		local back=actionButton(page,"‹ BACK",1,function()if self.TeamManagementPage then self.TeamManagementPage:Destroy();self.TeamManagementPage=nil end;menu.Visible=true;content.Visible=true end);back.Position=UDim2.new(1,-150,0,24);back.Size=UDim2.fromOffset(118,36);back.ZIndex=133
 		back.Activated:Connect(function()content.Visible=false end)
 		local pitch=panel(page,UDim2.fromOffset(28,100),UDim2.new(.58,-42,.62,0));pitch.ZIndex=131;pitch.BackgroundColor3=Color3.fromHex("07170B");pitch.BackgroundTransparency=.03
 		local info=panel(page,UDim2.new(.60,0,0,100),UDim2.new(.37,0,.62,0));info.ZIndex=131;info.BackgroundTransparency=.07
 		local benchPanel=panel(page,UDim2.new(0,28,.75,0),UDim2.new(.94,0,.18,0));benchPanel.ZIndex=131;benchPanel.BackgroundTransparency=.08
-		label(pitch,"FORMATION",UDim2.fromOffset(14,12),UDim2.new(1,-28,0,20),10).TextColor3=Theme.Colors.White
+		label(pitch,"FORMATION",UDim2.fromOffset(14,12),UDim2.new(1,-28,0,20),10).TextColor3=Theme.Colors.Electric
 		label(benchPanel,"SUBSTITUTES",UDim2.fromOffset(16,10),UDim2.new(1,-32,0,18),10).TextColor3=Theme.Colors.White
 		local infoHolder=Instance.new("Frame");infoHolder.BackgroundTransparency=1;infoHolder.Position=UDim2.fromOffset(20,44);infoHolder.Size=UDim2.new(1,-40,1,-64);infoHolder.ZIndex=134;infoHolder.Parent=info
-		label(info,"PLAYER INFO",UDim2.fromOffset(20,16),UDim2.new(1,-40,0,20),11).TextColor3=Theme.Colors.White
+		label(info,"PLAYER INFO",UDim2.fromOffset(20,16),UDim2.new(1,-40,0,20),11).TextColor3=Theme.Colors.Electric
 		local function setInfo(entry:any?)
 			for _,child in infoHolder:GetChildren()do child:Destroy()end
 			if not entry then local blank=label(infoHolder,"SELECT A PLAYER",UDim2.fromScale(0,.34),UDim2.new(1,0,0,30),18);blank.TextXAlignment=Enum.TextXAlignment.Center;blank.TextColor3=Theme.Colors.Silver;return end
@@ -1247,7 +1247,7 @@ function Controller:SetPaused(paused: boolean, _cameraController: any, onReturn:
 			if portraitOk and portrait then portrait.Position=UDim2.fromOffset(0,0);portrait.ZIndex=135 end
 			label(infoHolder,string.upper(tostring(entry.Name or entry.displayName or entry.shortName or"PLAYER")),UDim2.fromOffset(100,2),UDim2.new(1,-100,0,30),20)
 			label(infoHolder,"OVR "..tostring(entry.Overall or entry.overall or 60).."   POS "..string.upper(tostring(entry.Position or entry.bestPosition or"--")).."   KIT #"..tostring(entry.Number or entry.shirtNumber or 0),UDim2.fromOffset(100,40),UDim2.new(1,-100,0,18),10).TextColor3=Theme.Colors.Silver
-			for i,row in ipairs({{"Energy",entry.Stamina or entry.stamina or 100},{"Match Rating",entry.Rating or 6},{"PAC",entry.PAC or(entry.mainStats and entry.mainStats.PAC)or 60},{"SHO",entry.SHO or(entry.mainStats and entry.mainStats.SHO)or 60},{"PAS",entry.PAS or(entry.mainStats and entry.mainStats.PAS)or 60},{"DRI",entry.DRI or(entry.mainStats and entry.mainStats.DRI)or 60},{"DEF",entry.DEF or(entry.mainStats and entry.mainStats.DEF)or 60},{"PHY",entry.PHY or(entry.mainStats and entry.mainStats.PHY)or 60},{"Goals",entry.Goals or 0},{"Assists",entry.Assists or 0},{"Defensive Actions",entry.DefensiveActions or 0}})do label(infoHolder,string.upper(row[1]).."   "..tostring(row[2]),UDim2.fromOffset(0,96+i*22),UDim2.new(1,0,0,18),9).TextColor3=i==1 and Theme.Colors.White or Theme.Colors.White end
+			for i,row in ipairs({{"Energy",entry.Stamina or entry.stamina or 100},{"Match Rating",entry.Rating or 6},{"PAC",entry.PAC or(entry.mainStats and entry.mainStats.PAC)or 60},{"SHO",entry.SHO or(entry.mainStats and entry.mainStats.SHO)or 60},{"PAS",entry.PAS or(entry.mainStats and entry.mainStats.PAS)or 60},{"DRI",entry.DRI or(entry.mainStats and entry.mainStats.DRI)or 60},{"DEF",entry.DEF or(entry.mainStats and entry.mainStats.DEF)or 60},{"PHY",entry.PHY or(entry.mainStats and entry.mainStats.PHY)or 60},{"Goals",entry.Goals or 0},{"Assists",entry.Assists or 0},{"Defensive Actions",entry.DefensiveActions or 0}})do label(infoHolder,string.upper(row[1]).."   "..tostring(row[2]),UDim2.fromOffset(0,96+i*22),UDim2.new(1,0,0,18),9).TextColor3=i==1 and Theme.Colors.Electric or Theme.Colors.White end
 		end
 		setInfo(nil)
 		local coords={Vector2.new(.50,.86),Vector2.new(.18,.68),Vector2.new(.38,.68),Vector2.new(.62,.68),Vector2.new(.82,.68),Vector2.new(.32,.47),Vector2.new(.50,.55),Vector2.new(.68,.47),Vector2.new(.18,.22),Vector2.new(.50,.16),Vector2.new(.82,.22)}
@@ -1362,7 +1362,7 @@ local function showPackRewardScreen(parent: Instance, rewardData: any)
 	local qty = math.max(1, tonumber(rewardData.Packs) or 1)
 	local leagueClear = rewardData.LeagueClear == true or rewardData.VoltraPack == true
 	local packName = leagueClear and string.upper(tostring(rewardData.BonusPack or "VOLTRA PACK")) or string.upper(tostring(rewardData.Pack or "MATCH REWARD PACK"))
-	local accent = leagueClear and Theme.Colors.Warning or Theme.Colors.White
+	local accent = leagueClear and Theme.Colors.Warning or Theme.Colors.Electric
 	local screen = Instance.new("Frame")
 	screen.Name = "PostMatchPackReward"
 	screen.Size = UDim2.fromScale(1, 1)
@@ -1542,14 +1542,14 @@ function Controller:ShowShotChance(chance:any, actor:Model?)
 	root.ZIndex = 62
 	root.Parent = self.Gui
 	corner(root, 10)
-	stroke(root, Theme.Colors.White, .18)
+	stroke(root, Theme.Colors.Electric, .18)
 	local title = Instance.new("TextLabel")
 	title.Name = "XGText"
 	title.BackgroundTransparency = 1
 	title.Position = UDim2.fromOffset(16, 6)
 	title.Size = UDim2.new(1, -32, 0, 32)
 	title.Text = string.format("%.2f xG", number)
-	title.TextColor3 = Theme.Colors.White
+	title.TextColor3 = Theme.Colors.Electric
 	title.TextSize = 25
 	title.Font = Theme.Fonts.Display
 	title.TextXAlignment = Enum.TextXAlignment.Center
@@ -1596,7 +1596,7 @@ function Controller:ResolveShotChance(scored:boolean)
 	self.ShotChancePopup = nil
 	local root = state.Root or state
 	if not root or not root.Parent then return end
-	local resultColor = scored and Theme.Colors.White or Color3.fromHex("FF4056")
+	local resultColor = scored and Theme.Colors.Electric or Color3.fromHex("FF4056")
 	local title = root:FindFirstChild("XGText")
 	local subtitle = root:FindFirstChild("Subtitle")
 	if title and title:IsA("TextLabel") then
@@ -1648,7 +1648,7 @@ function Controller:ShowResult(payload: any, onReturn: () -> ())
 	rewardGlow.AnchorPoint = Vector2.new(.5,.5)
 	rewardGlow.Position = UDim2.fromScale(.5,.22)
 	rewardGlow.Size = UDim2.fromOffset(520,160)
-	rewardGlow.BackgroundColor3 = won and Theme.Colors.White or Theme.Colors.Gunmetal
+	rewardGlow.BackgroundColor3 = won and Theme.Colors.Electric or Theme.Colors.Gunmetal
 	rewardGlow.BackgroundTransparency = won and .72 or 1
 	rewardGlow.BorderSizePixel = 0
 	rewardGlow.ZIndex = 41
@@ -1665,7 +1665,7 @@ function Controller:ShowResult(payload: any, onReturn: () -> ())
 			shard.AnchorPoint=Vector2.new(.5,.5)
 			shard.Position=UDim2.fromScale(.5,.23)
 			shard.Size=UDim2.fromOffset(math.random(8,18),math.random(22,46))
-			shard.BackgroundColor3=i%3==0 and Theme.Colors.White or Theme.Colors.White
+			shard.BackgroundColor3=i%3==0 and Theme.Colors.White or Theme.Colors.Electric
 			shard.BackgroundTransparency=.08
 			shard.BorderSizePixel=0
 			shard.Rotation=math.random(-24,24)
@@ -1680,7 +1680,7 @@ function Controller:ShowResult(payload: any, onReturn: () -> ())
 	end
 	local title = label(overlay, outcome, UDim2.new(0.2, 0, 0.08, 0), UDim2.new(0.6, 0, 0, 55), 34)
 	title.TextXAlignment = Enum.TextXAlignment.Center
-	title.TextColor3 = won and Theme.Colors.White or Theme.Colors.White
+	title.TextColor3 = won and Theme.Colors.Electric or Theme.Colors.White
 	local titleScale = Instance.new("UIScale")
 	titleScale.Scale = won and .72 or 1
 	titleScale.Parent = title
@@ -1700,7 +1700,7 @@ function Controller:ShowResult(payload: any, onReturn: () -> ())
 		spotlight.BackgroundTransparency = .12
 		local teamCode = motm.Team == "Away" and self.AwayCode or self.HomeCode
 		local kicker = label(spotlight, "FULL TIME PLAYER OF THE MATCH", UDim2.fromOffset(14, 10), UDim2.new(1, -28, 0, 15), 8)
-		kicker.TextColor3 = Theme.Colors.White
+		kicker.TextColor3 = Theme.Colors.Electric
 		local name = label(spotlight, string.upper(tostring(motm.Name or "PLAYER")), UDim2.fromOffset(14, 30), UDim2.new(1, -28, 0, 24), 15)
 		name.TextColor3 = Theme.Colors.White
 		name.TextTruncate = Enum.TextTruncate.AtEnd
@@ -1735,9 +1735,9 @@ function Controller:ShowResult(payload: any, onReturn: () -> ())
 		local middle=label(row,name,UDim2.new(.33,0,0,6),UDim2.new(.34,0,0,16),9);middle.TextXAlignment=Enum.TextXAlignment.Center;middle.TextColor3=Theme.Colors.Silver
 		local right=label(row,format(awayValue),UDim2.new(.72,0,0,6),UDim2.new(.18,0,0,16),10);right.TextXAlignment=Enum.TextXAlignment.Center;right.TextColor3=Theme.Colors.White
 	end
-	local teamStats=Instance.new("ScrollingFrame");teamStats.BackgroundTransparency=1;teamStats.BorderSizePixel=0;teamStats.Position=UDim2.fromOffset(26,18);teamStats.Size=UDim2.new(1,-52,1,-34);teamStats.AutomaticCanvasSize=Enum.AutomaticSize.Y;teamStats.CanvasSize=UDim2.new();teamStats.ScrollBarThickness=3;teamStats.ScrollBarImageColor3=Theme.Colors.White;teamStats.ZIndex=52;teamStats.Parent=content
+	local teamStats=Instance.new("ScrollingFrame");teamStats.BackgroundTransparency=1;teamStats.BorderSizePixel=0;teamStats.Position=UDim2.fromOffset(26,18);teamStats.Size=UDim2.new(1,-52,1,-34);teamStats.AutomaticCanvasSize=Enum.AutomaticSize.Y;teamStats.CanvasSize=UDim2.new();teamStats.ScrollBarThickness=3;teamStats.ScrollBarImageColor3=Theme.Colors.Electric;teamStats.ZIndex=52;teamStats.Parent=content
 	local header=Instance.new("Frame");header.BackgroundTransparency=1;header.Position=UDim2.fromOffset(0,0);header.Size=UDim2.new(1,-8,0,44);header.ZIndex=53;header.Parent=teamStats
-	local homeHeader=label(header,self.HomeCode,UDim2.new(.09,0,0,4),UDim2.new(.20,0,0,28),15);homeHeader.TextXAlignment=Enum.TextXAlignment.Center;homeHeader.BackgroundColor3=Theme.Colors.White;homeHeader.BackgroundTransparency=.06;homeHeader.TextColor3=Theme.Colors.Black;homeHeader.ZIndex=54;corner(homeHeader,14)
+	local homeHeader=label(header,self.HomeCode,UDim2.new(.09,0,0,4),UDim2.new(.20,0,0,28),15);homeHeader.TextXAlignment=Enum.TextXAlignment.Center;homeHeader.BackgroundColor3=Theme.Colors.Electric;homeHeader.BackgroundTransparency=.06;homeHeader.TextColor3=Theme.Colors.Black;homeHeader.ZIndex=54;corner(homeHeader,14)
 	local titleHeader=label(header,"TEAM STATS",UDim2.new(.35,0,0,7),UDim2.new(.30,0,0,22),13);titleHeader.TextXAlignment=Enum.TextXAlignment.Center;titleHeader.TextColor3=Theme.Colors.White
 	local awayHeader=label(header,self.AwayCode,UDim2.new(.71,0,0,4),UDim2.new(.20,0,0,28),15);awayHeader.TextXAlignment=Enum.TextXAlignment.Center;awayHeader.BackgroundColor3=Color3.fromHex("24C6B8");awayHeader.BackgroundTransparency=.06;awayHeader.TextColor3=Theme.Colors.Black;awayHeader.ZIndex=54;corner(awayHeader,14)
 	local rows={
@@ -1771,12 +1771,12 @@ function Controller:ShowResult(payload: any, onReturn: () -> ())
 		{"SPRINTS",teamValue(home,"Sprints"),teamValue(away,"Sprints")},
 	}
 	for index,row in rows do statRow(teamStats,index,row[1],row[2],row[3],row[4]) end
-	local ratings=Instance.new("ScrollingFrame");ratings.BackgroundTransparency=1;ratings.BorderSizePixel=0;ratings.Position=UDim2.fromOffset(18,14);ratings.Size=UDim2.new(1,-36,1,-28);ratings.CanvasSize=UDim2.fromOffset(1320,820);ratings.ScrollBarThickness=5;ratings.ScrollingDirection=Enum.ScrollingDirection.XY;ratings.ScrollBarImageColor3=Theme.Colors.White;ratings.Visible=false;ratings.ZIndex=52;ratings.Parent=content
+	local ratings=Instance.new("ScrollingFrame");ratings.BackgroundTransparency=1;ratings.BorderSizePixel=0;ratings.Position=UDim2.fromOffset(18,14);ratings.Size=UDim2.new(1,-36,1,-28);ratings.CanvasSize=UDim2.fromOffset(1320,820);ratings.ScrollBarThickness=5;ratings.ScrollingDirection=Enum.ScrollingDirection.XY;ratings.ScrollBarImageColor3=Theme.Colors.Electric;ratings.Visible=false;ratings.ZIndex=52;ratings.Parent=content
 	local function eventValue(entry:any,key:string):number local events=entry.Events or{};return tonumber(events[key])or 0 end
 	local function pct(done:number,total:number):string return tostring(done).."/"..tostring(total).." "..(total>0 and tostring(math.floor(done/total*100+.5)).."%"or"0%")end
 	local columns={{"TEAM",0,54},{"POS",58,42},{"PLAYER",104,210},{"MR",318,44},{"KP",366,40},{"BC",410,40},{"SOT",454,44},{"SH",502,42},{"DRB",548,72},{"PASS",624,88},{"CROSS",716,80},{"INT",802,44},{"BLK",850,44},{"ERR",898,44}}
 	local function headerRow(y:number,title:string,team:string)
-		local sep=Instance.new("Frame");sep.Position=UDim2.fromOffset(0,y);sep.Size=UDim2.fromOffset(960,34);sep.BackgroundColor3=team=="Home"and Theme.Colors.White or Color3.fromHex("24C6B8");sep.BackgroundTransparency=.08;sep.BorderSizePixel=0;sep.ZIndex=53;sep.Parent=ratings;corner(sep,6)
+		local sep=Instance.new("Frame");sep.Position=UDim2.fromOffset(0,y);sep.Size=UDim2.fromOffset(960,34);sep.BackgroundColor3=team=="Home"and Theme.Colors.Electric or Color3.fromHex("24C6B8");sep.BackgroundTransparency=.08;sep.BorderSizePixel=0;sep.ZIndex=53;sep.Parent=ratings;corner(sep,6)
 		local badge=label(sep,team=="Home"and self.HomeCode or self.AwayCode,UDim2.fromOffset(10,6),UDim2.fromOffset(46,20),10);badge.TextXAlignment=Enum.TextXAlignment.Center;badge.TextColor3=Theme.Colors.Black
 		local titleLabel=label(sep,title,UDim2.fromOffset(66,6),UDim2.fromOffset(250,20),11);titleLabel.TextColor3=Theme.Colors.Black
 		for _,c in columns do if c[1]~="TEAM"then local h=label(sep,c[1],UDim2.fromOffset(c[2],7),UDim2.fromOffset(c[3],18),8);h.TextXAlignment=Enum.TextXAlignment.Center;h.TextColor3=Theme.Colors.Black end end
@@ -1805,7 +1805,7 @@ function Controller:ShowResult(payload: any, onReturn: () -> ())
 		}
 		local row=Instance.new("Frame");row.Position=UDim2.fromOffset(0,y);row.Size=UDim2.fromOffset(960,30);row.BackgroundColor3=Theme.Colors.Black;row.BackgroundTransparency=.38;row.BorderSizePixel=0;row.ZIndex=53;row.Parent=ratings;corner(row,5)
 		local motm=stats.MOTM and stats.MOTM.playerId==entry.playerId
-		for i,c in columns do local cell=label(row,(motm and i==3 and"★ "or"")..values[i],UDim2.fromOffset(c[2],7),UDim2.fromOffset(c[3],16),i==3 and 8 or 7);cell.TextXAlignment=i==3 and Enum.TextXAlignment.Left or Enum.TextXAlignment.Center;cell.TextTruncate=Enum.TextTruncate.AtEnd;cell.TextColor3=motm and Theme.Colors.White or entry.Team=="Home"and Theme.Colors.White or Theme.Colors.Silver end
+		for i,c in columns do local cell=label(row,(motm and i==3 and"★ "or"")..values[i],UDim2.fromOffset(c[2],7),UDim2.fromOffset(c[3],16),i==3 and 8 or 7);cell.TextXAlignment=i==3 and Enum.TextXAlignment.Left or Enum.TextXAlignment.Center;cell.TextTruncate=Enum.TextTruncate.AtEnd;cell.TextColor3=motm and Theme.Colors.Electric or entry.Team=="Home"and Theme.Colors.White or Theme.Colors.Silver end
 	end
 	local y=0
 	for _,team in{"Home","Away"}do
@@ -1821,9 +1821,9 @@ function Controller:ShowResult(payload: any, onReturn: () -> ())
 		local hasPack=payload.Reward.Pack~=nil or tonumber(payload.Reward.Packs)~=nil
 		local reward=panel(overlay,hasPack and UDim2.new(.5,-190,.765,0)or UDim2.new(.5,-150,.775,0),hasPack and UDim2.fromOffset(380,74)or UDim2.fromOffset(300,44));reward.ZIndex=70
 		local rewardScale=Instance.new("UIScale");rewardScale.Scale=.4;rewardScale.Parent=reward
-		local rewardText=label(reward,"*  "..string.upper(payload.Reward.Title).."   +"..tostring(payload.Reward.Coins or 0).." COINS   +"..tostring(payload.Reward.XP or 0).." XP",UDim2.fromOffset(8,7),UDim2.new(1,-16,0,22),9);rewardText.TextColor3=Theme.Colors.White;rewardText.TextXAlignment=Enum.TextXAlignment.Center
+		local rewardText=label(reward,"*  "..string.upper(payload.Reward.Title).."   +"..tostring(payload.Reward.Coins or 0).." COINS   +"..tostring(payload.Reward.XP or 0).." XP",UDim2.fromOffset(8,7),UDim2.new(1,-16,0,22),9);rewardText.TextColor3=Theme.Colors.Electric;rewardText.TextXAlignment=Enum.TextXAlignment.Center
 		if hasPack then
-			local pack=Instance.new("Frame");pack.Name="PackRewardReveal";pack.AnchorPoint=Vector2.new(.5,0);pack.Position=UDim2.new(.5,0,0,33);pack.Size=UDim2.fromOffset(242,30);pack.BackgroundColor3=Theme.Colors.Gunmetal;pack.BackgroundTransparency=.08;pack.BorderSizePixel=0;pack.ZIndex=71;pack.Parent=reward;corner(pack,5);stroke(pack,Theme.Colors.White,.42)
+			local pack=Instance.new("Frame");pack.Name="PackRewardReveal";pack.AnchorPoint=Vector2.new(.5,0);pack.Position=UDim2.new(.5,0,0,33);pack.Size=UDim2.fromOffset(242,30);pack.BackgroundColor3=Theme.Colors.Gunmetal;pack.BackgroundTransparency=.08;pack.BorderSizePixel=0;pack.ZIndex=71;pack.Parent=reward;corner(pack,5);stroke(pack,Theme.Colors.Electric,.42)
 			local stripe=Instance.new("Frame");stripe.BackgroundColor3=Theme.Colors.White;stripe.BorderSizePixel=0;stripe.Position=UDim2.fromOffset(0,0);stripe.Size=UDim2.fromOffset(5,30);stripe.ZIndex=72;stripe.Parent=pack
 			local qty=math.max(1,tonumber(payload.Reward.Packs)or 1)
 			local packText=label(pack,(qty>1 and(tostring(qty).."x ")or"")..string.upper(tostring(payload.Reward.Pack or"PACK REWARD")),UDim2.fromOffset(16,6),UDim2.new(1,-26,0,18),8);packText.TextColor3=Theme.Colors.White;packText.TextXAlignment=Enum.TextXAlignment.Center

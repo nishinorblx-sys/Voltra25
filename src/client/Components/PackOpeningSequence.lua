@@ -143,7 +143,7 @@ local function showResults(overlay: CanvasGroup, title: string, reveals: { any }
 	panel.ZIndex = 106
 	panel.Parent = overlay
 	label(panel, string.upper(title) .. "  /  PACK CONTENTS", UDim2.fromOffset(26, 14), UDim2.new(1, -52, 0, 38), 23, Theme.Colors.White, Theme.Fonts.Display, 108)
-	label(panel, "HIGHEST RATED FIRST  •  ALL ITEMS ARE NOW SECURED IN YOUR CLUB", UDim2.fromOffset(26, 51), UDim2.new(1, -52, 0, 20), 8, Theme.Colors.White, Theme.Fonts.Strong, 108)
+	label(panel, "HIGHEST RATED FIRST  •  ALL ITEMS ARE NOW SECURED IN YOUR CLUB", UDim2.fromOffset(26, 51), UDim2.new(1, -52, 0, 20), 8, Theme.Colors.Electric, Theme.Fonts.Strong, 108)
 
 	local list = Instance.new("ScrollingFrame")
 	list.BackgroundTransparency = 1
@@ -153,7 +153,7 @@ local function showResults(overlay: CanvasGroup, title: string, reveals: { any }
 	list.AutomaticCanvasSize = Enum.AutomaticSize.Y
 	list.CanvasSize = UDim2.new()
 	list.ScrollBarThickness = 3
-	list.ScrollBarImageColor3 = Theme.Colors.White
+	list.ScrollBarImageColor3 = Theme.Colors.Electric
 	list.ZIndex = 107
 	list.Parent = panel
 	local grid = Instance.new("UIGridLayout")
@@ -185,7 +185,7 @@ local function showResults(overlay: CanvasGroup, title: string, reveals: { any }
 		table.insert(resultNodes, wrapper)
 	end
 	if #reveals > renderLimit then
-		label(panel, "+" .. (#reveals - renderLimit) .. " MORE CARDS SECURED IN PLAYERS", UDim2.fromOffset(430, 542), UDim2.fromOffset(230, 18), 8, Theme.Colors.White, Theme.Fonts.Strong, 108)
+		label(panel, "+" .. (#reveals - renderLimit) .. " MORE CARDS SECURED IN PLAYERS", UDim2.fromOffset(430, 542), UDim2.fromOffset(230, 18), 8, Theme.Colors.Electric, Theme.Fonts.Strong, 108)
 	end
 	local secured = false
 	local function secure(animated: boolean)
@@ -263,7 +263,7 @@ function PackOpeningSequence.play(parent: Instance, props: any): CanvasGroup
 	local burstSound = sound(overlay, "PackBurstSound")
 	local revealSound = sound(overlay, "PlayerRevealSound")
 	label(overlay, "VTR 25  /  SEALED PACK", UDim2.fromScale(0.05, 0.055), UDim2.fromScale(0.9, 0.04), 9, Theme.Colors.Muted, Theme.Fonts.Strong, 112).TextXAlignment = Enum.TextXAlignment.Center
-	local status = label(overlay, "INITIALIZING VOLTRA CHAMBER", UDim2.fromScale(0.25, 0.9), UDim2.fromScale(0.5, 0.04), 9, Theme.Colors.White, Theme.Fonts.Strong, 112)
+	local status = label(overlay, "INITIALIZING VOLTRA CHAMBER", UDim2.fromScale(0.25, 0.9), UDim2.fromScale(0.5, 0.04), 9, Theme.Colors.Electric, Theme.Fonts.Strong, 112)
 	status.TextXAlignment = Enum.TextXAlignment.Center
 
 	local energy = Instance.new("Frame")
