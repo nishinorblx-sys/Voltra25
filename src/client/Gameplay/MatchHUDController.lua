@@ -177,7 +177,7 @@ function Controller.new(data: any)
 	gui.Parent = Players.LocalPlayer.PlayerGui
 	DeviceScaleService.Apply(gui)
 
-	local board = panel(gui, UDim2.fromOffset(18, 58), UDim2.fromOffset(132, 56))
+	local board = panel(gui, UserInputService.TouchEnabled and UDim2.fromOffset(16, 86) or UDim2.fromOffset(18, 58), UDim2.fromOffset(132, 56))
 	board.BackgroundTransparency = 0.02
 	board.Visible = false
 	local boardCorner = board:FindFirstChildOfClass("UICorner")
@@ -185,6 +185,7 @@ function Controller.new(data: any)
 	local boardStroke = board:FindFirstChildOfClass("UIStroke")
 	if boardStroke then boardStroke.Transparency = 0.88 end
 	local scoreScale = Instance.new("UIScale")
+	scoreScale.Scale = UserInputService.TouchEnabled and 1.22 or 1
 	scoreScale.Parent = board
 	local strip = Instance.new("Frame")
 	strip.Name = "BroadcastStrip"

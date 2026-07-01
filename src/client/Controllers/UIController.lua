@@ -5,6 +5,7 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local GuiService = game:GetService("GuiService")
 local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
 
 local Theme = require(ReplicatedStorage.VTR.Shared.Theme)
 local Config = require(ReplicatedStorage.VTR.Shared.UIConfig)
@@ -535,6 +536,9 @@ function UIController:_bindResponsive()
 		-- Fit the complete design viewport on both axes. Individual long pages
 		-- remain scrollable instead of forcing the application outside the screen.
 		local scaleValue = math.clamp(math.min(widthFit, heightFit), Theme.Layout.MinimumScale, Theme.Layout.MaximumScale)
+		if UserInputService.TouchEnabled then
+			scaleValue = math.clamp(scaleValue * 1.2, Theme.Layout.MinimumScale, Theme.Layout.MaximumScale * 1.2)
+		end
 		local sidebarWidth = compact and Theme.Layout.CompactSidebarWidth or Theme.Layout.SidebarWidth
 		self.Scale.Scale = scaleValue
 		self.Root.Size = UDim2.fromScale(1 / scaleValue, 1 / scaleValue)

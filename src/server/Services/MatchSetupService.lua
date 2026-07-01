@@ -41,7 +41,7 @@ function Service:_teleportSoloCampaign(player:Player,action:string):(boolean,str
 	options.ReservedServerAccessCode=code
 	local profile=self.Profiles:GetProfile(player)
 	local setupSnapshot=profile and profile.MatchSetup and table.clone(profile.MatchSetup) or nil
-	options:SetTeleportData({MatchMode="AICampaignSolo",Action=action,ReturnPlaceId=game.PlaceId,Setup=setupSnapshot})
+	options:SetTeleportData({MatchMode="AICampaignSolo",Action=action,ReturnPlaceId=game.PlaceId,Setup=setupSnapshot,AutoStart=true,DirectIntro=true,Campaign=true})
 	local sent,teleportErr=pcall(function()TeleportService:TeleportAsync(game.PlaceId,{player},options)end)
 	if not sent then return false,tostring(teleportErr),nil end
 	return true,"Teleporting to solo campaign server.",{Teleporting=true,SoloCampaign=true,Action=action}
@@ -73,6 +73,7 @@ function Service:HandleSoloCampaignTeleport(player:Player):boolean
 					end
 					if ok then
 						player:SetAttribute("VTRAICampaignAutoStarting",false)
+						player:SetAttribute("VTRAICampaignDirectIntro",true)
 						return
 					end
 				end

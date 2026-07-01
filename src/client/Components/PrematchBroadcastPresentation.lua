@@ -13,21 +13,52 @@ local Presentation = {}
 local TOTAL_DURATION = 66.0
 local STARTING_XI_SOUND_ONE = "rbxassetid://111250989374137"
 local STARTING_XI_SOUND_TWO = "rbxassetid://76843129252399"
+local INTRO_BACKGROUND_SOUND = "rbxassetid://127074097075829"
+local INTRO_TRACKS = {
+	"rbxassetid://103355995717599",
+	"rbxassetid://104511486039648",
+	"rbxassetid://111700713857834",
+}
+local activeIntroSounds = {}
 
-local function playPresentationSound(soundId: string, volume: number?)
+local function playPresentationSound(soundId: string, volume: number?, looped: boolean?)
 	local sound = Instance.new("Sound")
-	sound.Name = "VTRStartingXIAudio"
+	sound.Name = "VTRPresentationAudio"
 	sound.SoundId = soundId
 	sound.Volume = volume or .62
+	sound.Looped = looped == true
 	sound.RollOffMode = Enum.RollOffMode.InverseTapered
 	sound.Parent = SoundService
-	sound.Ended:Connect(function()
-		if sound.Parent then sound:Destroy() end
-	end)
+	if not sound.Looped then
+		sound.Ended:Connect(function()
+			if sound.Parent then sound:Destroy() end
+		end)
+	end
 	sound:Play()
-	task.delay(8, function()
-		if sound.Parent then sound:Destroy() end
-	end)
+	if not sound.Looped then
+		task.delay(14, function()
+			if sound.Parent then sound:Destroy() end
+		end)
+	end
+	return sound
+end
+
+local function stopIntroAudio()
+	for _, sound in activeIntroSounds do
+		if sound and sound.Parent then sound:Destroy() end
+	end
+	table.clear(activeIntroSounds)
+end
+
+function Presentation.StopAudio()
+	stopIntroAudio()
+end
+
+local function startIntroAudio(gui: ScreenGui)
+	stopIntroAudio()
+	table.insert(activeIntroSounds, playPresentationSound(INTRO_BACKGROUND_SOUND, .34, true))
+	table.insert(activeIntroSounds, playPresentationSound(INTRO_TRACKS[math.random(1, #INTRO_TRACKS)], .58, false))
+	gui.Destroying:Connect(stopIntroAudio)
 end
 
 local function shortCode(name: string): string
@@ -917,6 +948,7 @@ function Presentation.Play(data: any, onComplete: (() -> ())?)
 	gui.ResetOnSpawn = false
 	gui.DisplayOrder = 92
 	gui.Parent = playerGui
+	startIntroAudio(gui)
 
 	local root = Instance.new("Frame")
 	root.BackgroundTransparency = 1
@@ -1152,6 +1184,7 @@ function Presentation.Play(data: any, onComplete: (() -> ())?)
 		slideOut(kickoff, UDim2.fromScale(0.18, 1.04), 0.28)
 	end)
 	task.delay(TOTAL_DURATION, function()
+		stopIntroAudio()
 		if gui.Parent then gui:Destroy() end
 		if onComplete then onComplete() end
 	end)

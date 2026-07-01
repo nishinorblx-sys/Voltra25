@@ -166,7 +166,7 @@ task.defer(function()
 end)
 
 local teleportData = TeleportService:GetLocalPlayerTeleportData()
-local reservedRankedBoot = type(teleportData) == "table" and teleportData.MatchMode == "Ranked1v1"
+local reservedRankedBoot = type(teleportData) == "table" and (teleportData.MatchMode == "Ranked1v1" or teleportData.MatchMode == "AICampaignSolo")
 
 local function showReservedRankedBoot()
 	local playerGui = Players.LocalPlayer:WaitForChild("PlayerGui")
@@ -200,7 +200,7 @@ local function showReservedRankedBoot()
 	title.Position = UDim2.fromScale(0.5, 0.43)
 	title.Size = UDim2.fromScale(0.78, 0.08)
 	title.Font = Theme.Fonts.Display
-	title.Text = "RANKED 1V1 SERVER"
+	title.Text = teleportData.MatchMode == "AICampaignSolo" and "AI CAMPAIGN MATCH" or "RANKED 1V1 SERVER"
 	title.TextColor3 = Theme.Colors.Electric
 	title.TextSize = 32
 	title.Parent = bg
@@ -210,7 +210,7 @@ local function showReservedRankedBoot()
 	sub.Position = UDim2.fromScale(0.5, 0.51)
 	sub.Size = UDim2.fromScale(0.78, 0.05)
 	sub.Font = Theme.Fonts.Strong
-	sub.Text = "SYNCING BOTH TEAMS  /  LOADING RESERVED MATCH"
+	sub.Text = teleportData.MatchMode == "AICampaignSolo" and "LOADING DIRECTLY INTO THE INTRO" or "SYNCING BOTH TEAMS  /  LOADING RESERVED MATCH"
 	sub.TextColor3 = Theme.Colors.Silver
 	sub.TextSize = 10
 	sub.Parent = bg

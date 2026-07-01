@@ -46,6 +46,9 @@ function Controller:StadiumIntro(payload: any?)
 end
 
 function Controller:SkipStadiumIntro()
+	if PrematchBroadcastPresentation.StopAudio then
+		PrematchBroadcastPresentation.StopAudio()
+	end
 	local playerGui = game:GetService("Players").LocalPlayer:FindFirstChild("PlayerGui")
 	local gui = playerGui and playerGui:FindFirstChild("VTRPrematchBroadcast")
 	if gui then gui:Destroy() end
