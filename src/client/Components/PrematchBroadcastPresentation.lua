@@ -215,7 +215,7 @@ end
 
 local function formationEntries(data: any, side: string): {any}
 	local models = sortedModels(data, side)
-	local players = lineupData(data, side)
+	local players = side == "Home" and (data.HomeLineup or {}) or (data.AwayLineup or {})
 	local result = {}
 	for index = 1, 11 do
 		local model = models[index]
