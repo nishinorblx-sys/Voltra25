@@ -38,6 +38,11 @@ local UIStateService=require(script.Parent.Parent.Services.UIStateService)
 local PenaltyConfig=require(ReplicatedStorage.VTR.Shared.PenaltyConfig)
 local Controller={};Controller.__index=Controller
 local function clearGreenScreenEffects()
+	for _, item in ipairs(workspace:GetDescendants()) do
+		if item.Name == "VTRControlledPlayerHighlight" or item.Name == "VTRControlledPlayerRing" then
+			item:Destroy()
+		end
+	end
 	for _, inst in ipairs(Lighting:GetChildren()) do
 		if inst:IsA("ColorCorrectionEffect") then
 			local tint = inst.TintColor

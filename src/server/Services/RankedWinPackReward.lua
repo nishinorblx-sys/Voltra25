@@ -1,4 +1,6 @@
 --!strict
+local PackInstanceFactory = require(script.Parent.Parent.Data.PackInstanceFactory)
+
 local Service = {}
 
 local Packs = {
@@ -29,10 +31,35 @@ function Service.Roll(): any
 	return table.clone(Packs[1])
 end
 
+local function directAddPack(progression: any, player: Player, packId: string): any?
+	local profile = progression and progression.Profiles and progression.Profiles:GetProfile(player)
+	if not profile then return nil end
+	profile.PackInventory = profile.PackInventory or {}
+	local instance = PackInstanceFactory.Create(packId, "RankedWin")
+	if not instance then return nil end
+	table.insert(profile.PackInventory, instance)
+	return instance
+end
+
+local function publishAll(progression: any, publish: ((Player, string, any) -> ())?, player: Player)
+	if not publish or not progression then return end
+	if progression.GetClientData then
+		pcall(function()
+			publish(player, "Progression", progression:GetClientData(player))
+		end)
+	end
+	if progression.Inventory and progression.Inventory.GetClientData then
+		pcall(function()
+			publish(player, "Inventory", progression.Inventory:GetClientData(player))
+		end)
+	end
+end
+
 function Service.Grant(progression: any, player: Player, publish: ((Player, string, any) -> ())?): any
 	local pack = Service.Roll()
 	local granted = false
 	local grantedId = pack.PackId
+	local grantedInstance = nil
 	if progression and progression.Inventory and progression.Inventory.AddPack then
 		local attempts = {pack.PackId}
 		for _, fallback in Fallbacks do
@@ -47,20 +74,21 @@ function Service.Grant(progression: any, player: Player, publish: ((Player, stri
 			if ok and result then
 				granted = true
 				grantedId = packId
+				if type(result) == "table" then
+					grantedInstance = result[1]
+				end
 				break
 			end
 		end
 	end
-	if publish and progression and progression.GetClientData then
-		pcall(function()
-			publish(player, "Progression", progression:GetClientData(player))
-		end)
+	if not granted then
+		grantedInstance = directAddPack(progression, player, pack.PackId)
+		if grantedInstance then
+			granted = true
+			grantedId = pack.PackId
+		end
 	end
-	if publish and progression and progression.Inventory and progression.Inventory.GetClientData then
-		pcall(function()
-			publish(player, "Inventory", progression.Inventory:GetClientData(player))
-		end)
-	end
+	publishAll(progression, publish, player)
 	return {
 		Title = "RANKED WIN REWARD",
 		Coins = 0,
@@ -68,6 +96,7 @@ function Service.Grant(progression: any, player: Player, publish: ((Player, stri
 		Pack = pack.Name,
 		PackName = pack.Name,
 		PackId = grantedId,
+		PackInstanceId = grantedInstance and (grantedInstance.packInstanceId or grantedInstance.PackInstanceId) or nil,
 		Rarity = pack.Rarity,
 		Packs = granted and 1 or 0,
 		PackGranted = granted,

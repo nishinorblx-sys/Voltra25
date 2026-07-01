@@ -55,6 +55,7 @@ function Service.new(profiles: any, runtime: any, rankedProfiles: any, notificat
 		GlobalEnabled = not RunService:IsStudio() and game.PlaceId ~= 0,
 	}, Service)
 	self:_startGlobalPoll()
+	self:_startRankedTeleportWatcher()
 	return self
 end
 
@@ -218,6 +219,8 @@ function Service:_attachResultHandlers(session: any, home: Player, away: Player)
 		ended.RankedResultsRecorded=true
 		self.RankedProfiles:RecordServerResult(home, homeResult, rpFor(homeResult), away.Name, score, personal("Home"))
 		self.RankedProfiles:RecordServerResult(away, awayResult, rpFor(awayResult), home.Name, tostring(awayScore) .. "-" .. tostring(homeScore), personal("Away"))
+		if homeResult=="Win" or homeResult=="ForfeitWin" then session.RankedWinPackGrant(session,home) end
+		if awayResult=="Win" or awayResult=="ForfeitWin" then session.RankedWinPackGrant(session,away) end
 		if self.Publish and self.RankedProfiles.GetClientData then
 			pcall(function()self.Publish(home,"Ranked",self.RankedProfiles:GetClientData(home))end)
 			pcall(function()self.Publish(away,"Ranked",self.RankedProfiles:GetClientData(away))end)
@@ -245,6 +248,16 @@ function Service:_attachResultHandlers(session: any, home: Player, away: Player)
 			if self.Publish and self.RankedProfiles.GetClientData then
 				pcall(function()self.Publish(home,"Ranked",self.RankedProfiles:GetClientData(home))end)
 				pcall(function()self.Publish(away,"Ranked",self.RankedProfiles:GetClientData(away))end)
+			end
+			if self.Publish and self.Progression then
+				if self.Progression.GetClientData then
+					pcall(function()self.Publish(home,"Progression",self.Progression:GetClientData(home))end)
+					pcall(function()self.Publish(away,"Progression",self.Progression:GetClientData(away))end)
+				end
+				if self.Progression.Inventory and self.Progression.Inventory.GetClientData then
+					pcall(function()self.Publish(home,"Inventory",self.Progression.Inventory:GetClientData(home))end)
+					pcall(function()self.Publish(away,"Inventory",self.Progression.Inventory:GetClientData(away))end)
+				end
 			end
 		end
 		for participant, result in {[home]=homeResult,[away]=awayResult} do
@@ -465,6 +478,81 @@ function Service:_tryPairGlobal()
 			end
 		end
 	end
+end
+
+function Service:_rankedTeleportData(player: Player): any?
+	local joinData = player:GetJoinData()
+	local teleportData = joinData and joinData.TeleportData
+	if type(teleportData) == "table" and teleportData.MatchMode == "Ranked1v1" then
+		return teleportData
+	end
+	return nil
+end
+
+function Service:_tryStartTeleportRanked()
+	if self.RankedTeleportStarted then return end
+	local found = {}
+	for _, player in Players:GetPlayers() do
+		local data = self:_rankedTeleportData(player)
+		if data then
+			found[player] = data
+		end
+	end
+	local homePlayer = nil
+	local awayPlayer = nil
+	local data = nil
+	for player, teleportData in found do
+		local homeId = tonumber(teleportData.HomeUserId)
+		local awayId = tonumber(teleportData.AwayUserId)
+		if player.UserId == homeId then homePlayer = player end
+		if player.UserId == awayId then awayPlayer = player end
+		data = teleportData
+	end
+	if not homePlayer or not awayPlayer or not data then return end
+	if not homePlayer.Character or not awayPlayer.Character then return end
+	if not homePlayer.Character:FindFirstChildOfClass("Humanoid") or not awayPlayer.Character:FindFirstChildOfClass("Humanoid") then return end
+	local homeProfile = self.Profiles:GetProfile(homePlayer)
+	local awayProfile = self.Profiles:GetProfile(awayPlayer)
+	if not homeProfile or not awayProfile then return end
+	local homeReady, homeMessage, homeRoster = self.RankedSquads:GetRoster(homePlayer)
+	local awayReady, awayMessage, awayRoster = self.RankedSquads:GetRoster(awayPlayer)
+	if not homeReady or not awayReady or not homeRoster or not awayRoster then
+		self.Notifications:Send(homePlayer, "RANKED MATCH", homeMessage or "Home roster unavailable.", "Error")
+		self.Notifications:Send(awayPlayer, "RANKED MATCH", awayMessage or "Away roster unavailable.", "Error")
+		return
+	end
+	self.RankedTeleportStarted = true
+	local homeSetup = self:BuildRankedSetup(homePlayer, homeProfile, homeRoster)
+	local awaySetup = self:BuildRankedSetup(awayPlayer, awayProfile, awayRoster)
+	local success, message = self.Runtime:StartRankedMatch(homePlayer, awayPlayer, homeSetup, awaySetup, homeRoster, awayRoster)
+	if not success then
+		self.RankedTeleportStarted = false
+		self.Notifications:Send(homePlayer, "MATCH FAILED", message, "Error")
+		self.Notifications:Send(awayPlayer, "MATCH FAILED", message, "Error")
+		return
+	end
+	self.RankedSquads:ConsumeLoans(homePlayer)
+	self.RankedSquads:ConsumeLoans(awayPlayer)
+	local session = self.Runtime:GetSession(homePlayer)
+	if session then
+		session.PrivateRankedMatch = true
+		session.ReturnPlaceId = tonumber(data.ReturnPlaceId) or tonumber(data.PlaceId) or game.PlaceId
+		self:_attachResultHandlers(session, homePlayer, awayPlayer)
+	end
+end
+
+function Service:_startRankedTeleportWatcher()
+	task.spawn(function()
+		while true do
+			for _, player in Players:GetPlayers() do
+				if self:_rankedTeleportData(player) then
+					self:_tryStartTeleportRanked()
+					break
+				end
+			end
+			task.wait(.35)
+		end
+	end)
 end
 
 function Service:_startGlobalPoll()
