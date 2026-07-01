@@ -1,4 +1,5 @@
 --!strict
+local DeviceScaleService = require(script:FindFirstAncestor("VTRClient").Services.DeviceScaleService)
 
 local Players = game:GetService("Players")
 local CollectionService = game:GetService("CollectionService")

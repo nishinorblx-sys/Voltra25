@@ -1,4 +1,5 @@
 --!strict
+local DeviceScaleService = require(script:FindFirstAncestor("VTRClient").Services.DeviceScaleService)
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
@@ -111,6 +112,7 @@ function Controller.new(data: any)
 	gui.ResetOnSpawn = false
 	gui.DisplayOrder = 80
 	gui.Parent = Players.LocalPlayer.PlayerGui
+	DeviceScaleService.Apply(gui)
 
 	local board = panel(gui, UDim2.fromOffset(18, 58), UDim2.fromOffset(132, 56))
 	board.BackgroundTransparency = 0.02

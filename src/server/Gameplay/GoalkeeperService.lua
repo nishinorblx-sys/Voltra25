@@ -138,6 +138,15 @@ end
 
 local function saveProbability(keeper:Model,rectangle:any,target:Vector3,time:number,xg:number?,shooter:Model?):number
 	local shooterRoot = root(shooter)
+	if shooter and (tonumber(shooter:GetAttribute("VTRFreeKickGoalChanceUntil")) or 0) >= os.clock() then
+		local goalChance = math.clamp(tonumber(shooter:GetAttribute("VTRFreeKickGoalChance")) or .3, .01, .99)
+		if shooterRoot then
+			shooter:SetAttribute("VTRShotDistanceGoalChance", goalChance)
+			shooter:SetAttribute("VTRShotDistancePercent", math.floor(goalChance * 100 + .5))
+		end
+		keeper:SetAttribute("VTRDistanceGoalChance", math.floor(goalChance * 100 + .5))
+		return 1 - goalChance
+	end
 	local distance = 190
 	if shooterRoot then
 		local goalCenter = GoalModelResolver.Point(rectangle, (rectangle.Left + rectangle.RightBound) * 0.5, (rectangle.Bottom + rectangle.Top) * 0.5)

@@ -392,7 +392,7 @@ function Service:Start(player: Player, kind: string, restartTeam: string, locati
 		local freeGoalSign=setPieceGoalSign(restartTeam)
 		if (self.Half or 1)>=2 then freeGoalSign=-freeGoalSign end
 		local goalPosition=self.World.PitchCFrame:PointToWorldSpace(Vector3.new(0,3,freeGoalSign*self.World.Length*.5))
-		setPieceCutscene=(Vector3.new(goalPosition.X-location.X,0,goalPosition.Z-location.Z)).Magnitude<=170
+		setPieceCutscene=(Vector3.new(goalPosition.X-location.X,0,goalPosition.Z-location.Z)).Magnitude<=190
 		if setPieceCutscene then
 			arrangeFreeKick(self.Teams,restartTeam,location,self.World.PitchCFrame,self.World.Width,self.World.Length,taker,self.Half)
 		else

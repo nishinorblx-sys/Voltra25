@@ -278,6 +278,9 @@ function Service:Kick(model: Model, kind: string, direction: Vector3, charge: nu
 			shotDistance = direction.Magnitude
 		end
 		local shotChance = distanceGoalChance(shotDistance)
+		if (tonumber(model:GetAttribute("VTRFreeKickGoalChanceUntil")) or 0) >= os.clock() then
+			shotChance = math.clamp(tonumber(model:GetAttribute("VTRFreeKickGoalChance")) or .3, .01, .99)
+		end
 		model:SetAttribute("VTRLastShotScoringChance",shotChance)
 		model:SetAttribute("VTRLastShotScoringPercent",math.floor(shotChance*100+.5))
 		model:SetAttribute("VTRShotDistanceStuds",shotDistance)

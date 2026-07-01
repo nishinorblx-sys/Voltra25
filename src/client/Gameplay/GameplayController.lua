@@ -1,4 +1,5 @@
 --!strict
+local DeviceScaleService = require(script:FindFirstAncestor("VTRClient").Services.DeviceScaleService)
 local Players=game:GetService("Players")
 local RunService=game:GetService("RunService")
 local GuiService=game:GetService("GuiService")
@@ -79,6 +80,7 @@ function Controller:_aimPayload(kind:string?,shotCharge:number?):any
 end
 function Controller:_playPrematchSkipTransition()
 	local gui=Instance.new("ScreenGui");gui.Name="VTRPrematchSkipTransition";gui.IgnoreGuiInset=true;gui.ResetOnSpawn=false;gui.DisplayOrder=112;gui.Parent=Players.LocalPlayer.PlayerGui
+	DeviceScaleService.Apply(gui)
 	local overlay=Instance.new("CanvasGroup");overlay.BackgroundColor3=Color3.new(0,0,0);overlay.BorderSizePixel=0;overlay.GroupTransparency=1;overlay.Size=UDim2.fromScale(1,1);overlay.ZIndex=112;overlay.Parent=gui
 	local slash=Instance.new("Frame");slash.AnchorPoint=Vector2.new(.5,.5);slash.BackgroundColor3=Color3.fromHex("B7FF1A");slash.BorderSizePixel=0;slash.Position=UDim2.fromScale(-.25,.5);slash.Rotation=-16;slash.Size=UDim2.fromScale(.55,1.7);slash.ZIndex=113;slash.Parent=overlay
 	local TweenService=game:GetService("TweenService")

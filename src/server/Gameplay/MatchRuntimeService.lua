@@ -864,6 +864,32 @@ function Service:_releaseAIFieldRestart(session:any)
 	local mode=setPieces.RestartMode
 	local goalSign=tonumber(setPieces.RestartGoalSign)or(tostring(taker:GetAttribute("VTRTeam"))=="Home"and-1 or 1)
 	local released=false
+	if mode=="DirectShotFreeKick" then
+		local goalPosition=session.World.PitchCFrame:PointToWorldSpace(Vector3.new(0,3,goalSign*session.World.Length*.5))
+		local freeKickDistance=Vector3.new(goalPosition.X-takerRoot.Position.X,0,goalPosition.Z-takerRoot.Position.Z).Magnitude
+		if freeKickDistance<=190 then
+			local localTaker=session.World.PitchCFrame:PointToObjectSpace(takerRoot.Position)
+			local side=localTaker.X>=0 and -1 or 1
+			if math.random()<.5 then side=-side end
+			local top=math.random()<.52
+			local target=session.World.PitchCFrame:PointToWorldSpace(Vector3.new(side*11,top and 6.2 or 2.45,goalSign*session.World.Length*.5))
+			taker:SetAttribute("VTRFreeKickGoalChance",.3)
+			taker:SetAttribute("VTRFreeKickGoalChanceUntil",os.clock()+4)
+			taker:SetAttribute("VTRFreeKickDirectShot",true)
+			taker:SetAttribute("VTRFreeKickShotDistance",freeKickDistance)
+			taker:SetAttribute("VTRFreeKickCurve",side*.85)
+			taker:SetAttribute("VTRFreeKickLift",top and .75 or -.15)
+			if self._setPieceRunup then self:_setPieceRunup(session,taker,"Shot")end
+			released=session.BallService:Kick(taker,"Shot",target-takerRoot.Position,.72,nil,nil,nil,target)
+			if not released then
+				if session.BallService and session.BallService.Last then session.BallService.Last[taker]={}end
+				released=session.BallService:Kick(taker,"Shot",target-takerRoot.Position,.72,nil,nil,nil,target)
+			end
+			if setPieces.ReleaseRestartTaker then setPieces:ReleaseRestartTaker()end
+			session.OutOfBounds:Reset();session.Goals:Unlock();session.Phase="IN PLAY";session.AI:SetExternalPhase(nil);self:_setPlayersFrozen(session,session.Paused==true);if not session.Paused then self:_releasePlayersForLive(session);self:_stabilizePlayers(session)end;session.Running=true;self:_syncPositions(session);broadcast(self.State,session,{Type="Phase",Phase="IN PLAY",HoldCutscene=false})
+			return
+		end
+	end
 	local team=tostring(taker:GetAttribute("VTRTeam")or"Home")
 	local opponents=session.Teams[team=="Home"and"Away"or"Home"]or{}
 	local bestReceiver:Model?=nil
