@@ -1,0 +1,441 @@
+from pathlib import Path
+import re
+
+ui_sound = Path("src/client/Services/UISoundService.lua")
+ui_sound.write_text('''--!strict
+local SoundService = game:GetService("SoundService")
+
+local Service = {}
+
+local CLICK_SOUNDS = {
+	"rbxassetid://99694938057192",
+	"rbxassetid://100116561106520",
+}
+
+local HOVER_SOUNDS = {
+	"rbxassetid://114921985760826",
+	"rbxassetid://98484565371608",
+}
+
+local TYPE_SOUND = "rbxassetid://124938422635867"
+local COLOR_SOUND = "rbxassetid://109229821869092"
+local TRANSITION_SOUND = "rbxassetid://136186135240645"
+
+local lastPlayed: {[string]: number} = {}
+
+local function play(id: string, volume: number, key: string?, cooldown: number?)
+	local now = os.clock()
+	if key and cooldown and (lastPlayed[key] or 0) + cooldown > now then return end
+	if key then lastPlayed[key] = now end
+	local sound = Instance.new("Sound")
+	sound.Name = "VTRUISound"
+	sound.SoundId = id
+	sound.Volume = volume
+	sound.RollOffMode = Enum.RollOffMode.InverseTapered
+	sound.Parent = SoundService
+	sound.Ended:Connect(function()
+		if sound.Parent then sound:Destroy() end
+	end)
+	sound:Play()
+	task.delay(5, function()
+		if sound.Parent then sound:Destroy() end
+	end)
+end
+
+function Service.PlayClick()
+	play(CLICK_SOUNDS[math.random(1, #CLICK_SOUNDS)], 0.42, "Click", 0.035)
+end
+
+function Service.PlayHover()
+	play(HOVER_SOUNDS[math.random(1, #HOVER_SOUNDS)], 0.2, "Hover", 0.08)
+end
+
+function Service.PlayType()
+	play(TYPE_SOUND, 0.32, "Type", 0.025)
+end
+
+function Service.PlayColor()
+	play(COLOR_SOUND, 0.42, "Color", 0.05)
+end
+
+function Service.PlayTransition()
+	play(TRANSITION_SOUND, 0.48, "Transition", 0.18)
+end
+
+function Service.Bind(root: Instance)
+	local function bindOne(item: Instance)
+		if item:GetAttribute("VTRUISoundBound") == true then return end
+		if item:IsA("GuiButton") then
+			item:SetAttribute("VTRUISoundBound", true)
+			item.MouseEnter:Connect(function()
+				Service.PlayHover()
+			end)
+			item.Activated:Connect(function()
+				Service.PlayClick()
+			end)
+		elseif item:IsA("TextBox") then
+			item:SetAttribute("VTRUISoundBound", true)
+			local previous = item.Text
+			item:GetPropertyChangedSignal("Text"):Connect(function()
+				if item.Text ~= previous then
+					previous = item.Text
+					Service.PlayType()
+				end
+			end)
+		end
+	end
+	for _, item in ipairs(root:GetDescendants()) do
+		bindOne(item)
+	end
+	root.DescendantAdded:Connect(bindOne)
+end
+
+return Service
+''', encoding="utf-8", newline="\n")
+
+settings_path = Path("src/client/Pages/SettingsPage.lua")
+settings_path.write_text('''--!strict
+
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local Theme = require(ReplicatedStorage.VTR.Shared.Theme)
+local Panel = require(script.Parent.Parent.Components.Panel)
+local Button = require(script.Parent.Parent.Components.Button)
+local SettingsRuntimeService = require(script.Parent.Parent.Services.SettingsRuntimeService)
+local UISoundService = require(script.Parent.Parent.Services.UISoundService)
+local PageBase = require(script.Parent.PageBase)
+
+local SettingsPage = {}
+local TABS = {"Controls", "Audio", "Camera", "Accessibility", "Account"}
+local CAMERA_PRESETS = {"Broadcast", "End to End", "Pro"}
+local LANGUAGES = {"English", "Spanish", "French", "Portuguese"}
+local NUMBER_NAMES = {Zero = "0", One = "1", Two = "2", Three = "3", Four = "4", Five = "5", Six = "6", Seven = "7", Eight = "8", Nine = "9"}
+local KEY_DEFAULTS = {
+	PauseKey = "M",
+	ManualPassKey = "LeftControl",
+	LobbedPassKey = "LeftAlt",
+	ChangePlayerKey = "Q",
+	TackleKey = "E",
+	SlideTackleKey = "F",
+	SkipKey = "Space",
+}
+
+local CONTROL_ROWS = {
+	{Key = "PauseKey", Title = "PAUSE", Subtitle = "Open or close the pause menu.", Editable = true},
+	{Key = "ManualPassKey", Title = "MANUAL PASS MODIFIER", Subtitle = "Hold this with right click / pass to aim a manual pass.", Editable = true},
+	{Key = "LobbedPassKey", Title = "LOBBED PASS MODIFIER", Subtitle = "Hold this with pass for lobbed pass. Combine with manual modifier for manual lobbed pass.", Editable = true},
+	{Key = "ChangePlayerKey", Title = "CHANGE PLAYER", Subtitle = "Switch to the best nearby teammate or defender.", Editable = true},
+	{Key = "TackleKey", Title = "TACKLE", Subtitle = "Standing tackle / defensive challenge.", Editable = true},
+	{Key = "SlideTackleKey", Title = "SLIDE TACKLE", Subtitle = "Slide tackle input.", Editable = true},
+	{Key = "SkipKey", Title = "SKIP", Subtitle = "Prematch and replay skip is Space.", Editable = false},
+}
+
+local function label(parent: Instance, value: string, position: UDim2, size: UDim2, textSize: number, color: Color3?, font: Enum.Font?): TextLabel
+	local item = Instance.new("TextLabel")
+	item.BackgroundTransparency = 1
+	item.Position = position
+	item.Size = size
+	item.Text = value
+	item.TextColor3 = color or Theme.Colors.White
+	item.TextSize = textSize
+	item.Font = font or Theme.Fonts.Body
+	item.TextXAlignment = Enum.TextXAlignment.Left
+	item.TextYAlignment = Enum.TextYAlignment.Center
+	item.TextWrapped = true
+	item.Parent = parent
+	return item
+end
+
+local function settings(context: any): any
+	context.Data.UIState.Settings = context.Data.UIState.Settings or {}
+	return context.Data.UIState.Settings
+end
+
+local function commit(context: any, key: string, value: any)
+	local current = settings(context)
+	current[key] = value
+	SettingsRuntimeService.Apply(current)
+	context.StateService:SetSetting(key, value)
+end
+
+local function row(parent: Instance, title: string, subtitle: string, y: number): Frame
+	local holder = Instance.new("Frame")
+	holder.BackgroundColor3 = Theme.Colors.Black
+	holder.BackgroundTransparency = .78
+	holder.BorderSizePixel = 0
+	holder.Position = UDim2.fromOffset(18, y)
+	holder.Size = UDim2.new(1, -36, 0, 64)
+	holder.Parent = parent
+	local corner = Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(0, Theme.Radius.Medium)
+	corner.Parent = holder
+	label(holder, title, UDim2.fromOffset(14, 8), UDim2.new(.52, -14, 0, 22), 11, Theme.Colors.White, Theme.Fonts.Strong)
+	label(holder, subtitle, UDim2.fromOffset(14, 31), UDim2.new(.55, -14, 0, 22), 8, Theme.Colors.Muted, Theme.Fonts.Body)
+	return holder
+end
+
+local function toggle(parent: Instance, context: any, key: string, title: string, subtitle: string, y: number)
+	local holder = row(parent, title, subtitle, y)
+	local current = settings(context)[key] == true
+	local button = Button.new({Text = current and "ON" or "OFF", Variant = current and "Primary" or "Secondary", Size = UDim2.fromOffset(92, 34), OnActivated = function()
+		commit(context, key, not current)
+		if context.RefreshSettings then context.RefreshSettings(key) end
+	end})
+	button.AnchorPoint = Vector2.new(1, .5)
+	button.Position = UDim2.new(1, -14, .5, 0)
+	button.Parent = holder
+end
+
+local function option(parent: Instance, context: any, key: string, title: string, subtitle: string, y: number, values: {string})
+	local holder = row(parent, title, subtitle, y)
+	local current = tostring(settings(context)[key] or values[1])
+	local x = 0
+	for index, value in ipairs(values) do
+		local active = value == current
+		local button = Button.new({Text = value, Variant = active and "Primary" or "Secondary", Size = UDim2.fromOffset(index == 2 and 112 or 96, 32), OnActivated = function()
+			commit(context, key, value)
+			if context.RefreshSettings then context.RefreshSettings(key) end
+		end})
+		button.AnchorPoint = Vector2.new(1, .5)
+		button.Position = UDim2.new(1, -14 - x, .5, 0)
+		button.Parent = holder
+		x += (index == 2 and 120 or 104)
+	end
+end
+
+local function slider(parent: Instance, context: any, key: string, title: string, subtitle: string, y: number, fallback: number)
+	local holder = row(parent, title, subtitle, y)
+	local current = math.clamp(tonumber(settings(context)[key]) or fallback, 0, 1)
+	local readout = label(holder, tostring(math.floor(current * 100 + .5)) .. "%", UDim2.new(1, -70, 0, 8), UDim2.fromOffset(56, 20), 12, Theme.Colors.Electric, Theme.Fonts.Display)
+	readout.TextXAlignment = Enum.TextXAlignment.Right
+	local track = Instance.new("TextButton")
+	track.AutoButtonColor = false
+	track.Text = ""
+	track.BackgroundColor3 = Theme.Colors.Gunmetal
+	track.BorderSizePixel = 0
+	track.Position = UDim2.new(.58, 0, .5, 8)
+	track.Size = UDim2.new(.32, 0, 0, 8)
+	track.Parent = holder
+	local corner = Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(1, 0)
+	corner.Parent = track
+	local fill = Instance.new("Frame")
+	fill.BackgroundColor3 = Theme.Colors.Electric
+	fill.BorderSizePixel = 0
+	fill.Size = UDim2.fromScale(current, 1)
+	fill.Parent = track
+	local fillCorner = corner:Clone()
+	fillCorner.Parent = fill
+	local function setFromX(x: number)
+		local alpha = math.clamp((x - track.AbsolutePosition.X) / math.max(1, track.AbsoluteSize.X), 0, 1)
+		alpha = math.floor(alpha * 100 + .5) / 100
+		fill.Size = UDim2.fromScale(alpha, 1)
+		readout.Text = tostring(math.floor(alpha * 100 + .5)) .. "%"
+		commit(context, key, alpha)
+	end
+	track.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+			setFromX(input.Position.X)
+		end
+	end)
+end
+
+local function displayKeyName(name: string): string
+	return string.upper(NUMBER_NAMES[name] or name)
+end
+
+local function inputName(input: InputObject): string?
+	if input.UserInputType == Enum.UserInputType.Keyboard then
+		if input.KeyCode.Name == "Unknown" then return nil end
+		return NUMBER_NAMES[input.KeyCode.Name] or input.KeyCode.Name
+	end
+	if input.UserInputType == Enum.UserInputType.MouseButton1 then return "MouseButton1" end
+	if input.UserInputType == Enum.UserInputType.MouseButton2 then return "MouseButton2" end
+	if input.UserInputType == Enum.UserInputType.MouseButton3 then return "MouseButton3" end
+	return nil
+end
+
+local function keybind(parent: Instance, context: any, key: string, title: string, subtitle: string, y: number, editable: boolean)
+	local holder = row(parent, title, subtitle, y)
+	local current = tostring(settings(context)[key] or KEY_DEFAULTS[key] or "M")
+	local waiting = false
+	local button = Button.new({Text = displayKeyName(current), Variant = editable and "Primary" or "Secondary", Size = UDim2.fromOffset(150, 34), OnActivated = function()
+		if not editable then return end
+		waiting = true
+	end})
+	button.AnchorPoint = Vector2.new(1, .5)
+	button.Position = UDim2.new(1, -14, .5, 0)
+	button.Parent = holder
+	button.Activated:Connect(function()
+		if editable then
+			button.Text = "PRESS KEY"
+		end
+	end)
+	if editable then
+		local connection: RBXScriptConnection?
+		connection = UserInputService.InputBegan:Connect(function(input, processed)
+			if not waiting or processed then return end
+			local name = inputName(input)
+			if not name then return end
+			waiting = false
+			button.Text = displayKeyName(name)
+			UISoundService.PlayType()
+			commit(context, key, name)
+			if context.RefreshSettings then context.RefreshSettings(key) end
+			if connection then connection:Disconnect() end
+		end)
+	end
+end
+
+local function panel(parent: Instance, title: string, position: UDim2, size: UDim2): Frame
+	local frame = Panel.new({Name = title:gsub("%W", ""), Position = position, Size = size})
+	frame.Parent = parent
+	label(frame, string.upper(title), UDim2.fromOffset(18, 12), UDim2.new(1, -36, 0, 28), 16, Theme.Colors.White, Theme.Fonts.Display)
+	return frame
+end
+
+local function renderTab(context: any, scroll: ScrollingFrame, active: string)
+	for _, child in ipairs(scroll:GetChildren()) do
+		if child:IsA("GuiObject") and child.Name ~= "Heading" and child.Name ~= "Tabs" then
+			child:Destroy()
+		end
+	end
+	if active == "Controls" then
+		local box = panel(scroll, "Controls", UDim2.fromOffset(0, 154), UDim2.new(1, 0, 0, 610))
+		for index, item in ipairs(CONTROL_ROWS) do
+			keybind(box, context, item.Key, item.Title, item.Subtitle, 52 + (index - 1) * 74, item.Editable ~= false)
+		end
+	elseif active == "Audio" then
+		local mix = panel(scroll, "Audio Mix", UDim2.fromOffset(0, 154), UDim2.new(.5, -10, 0, 242))
+		slider(mix, context, "MasterVolume", "MASTER VOLUME", "Controls global game audio.", 52, .8)
+		toggle(mix, context, "MenuMusic", "MENU MUSIC", "Turns menu soundtrack audio on or off.", 126)
+		local comm = panel(scroll, "Commentary", UDim2.new(.5, 10, 0, 154), UDim2.new(.5, -10, 0, 242))
+		option(comm, context, "CommentaryLanguage", "COMMENTARY LANGUAGE", "Choose match commentary language.", 52, LANGUAGES)
+		slider(comm, context, "CommentaryVolume", "COMMENTARY VOLUME", "Separate commentary mix level.", 126, .7)
+	elseif active == "Camera" then
+		local cam = panel(scroll, "Camera Options", UDim2.fromOffset(0, 154), UDim2.new(1, 0, 0, 190))
+		option(cam, context, "CameraPreset", "CAMERA PRESET", "Broadcast, End to End, or Pro player-follow camera.", 52, CAMERA_PRESETS)
+	elseif active == "Accessibility" then
+		local access = panel(scroll, "Accessibility", UDim2.fromOffset(0, 154), UDim2.new(1, 0, 0, 220))
+		toggle(access, context, "HighContrast", "HIGH CONTRAST", "Increases scene contrast and UI readability.", 52)
+		toggle(access, context, "ReducedMotion", "REDUCE MOTION", "Shortens UI transitions and presentation movement.", 126)
+	elseif active == "Account" then
+		local account = panel(scroll, "Account", UDim2.fromOffset(0, 154), UDim2.new(1, 0, 0, RunService:IsStudio() and 220 or 144))
+		toggle(account, context, "Crossplay", "CROSS-PLAY", "On queues against all devices. Off only pairs same-device players.", 52)
+		if RunService:IsStudio() then
+			local reset = Button.new({Text = "RESET PROFILE", Variant = "Secondary", Size = UDim2.fromOffset(156, 36), OnActivated = function()
+				if context.Persist then
+					context.Persist("Settings", {Operation = "Developer", ServerAction = "DeveloperResetProfile"}, {})
+				end
+				if context.Toast then
+					context.Toast({Title = "SETTINGS", Message = "Studio reset profile request sent.", Kind = "Info"})
+				end
+			end})
+			reset.Position = UDim2.fromOffset(18, 132)
+			reset.Parent = account
+		end
+	end
+end
+
+function SettingsPage.new(context: any): CanvasGroup
+	local group, scroll = PageBase.new("Settings", 900)
+	PageBase.heading(scroll, "SETTINGS", "GAME SETTINGS", "Adjust controls, audio, camera, accessibility, and account matchmaking.")
+	local active = (context.Data.UIState.SelectedTabs and context.Data.UIState.SelectedTabs.Settings) or "Controls"
+	if not table.find(TABS, active) then active = "Controls" end
+	context.Data.UIState.SelectedTabs = context.Data.UIState.SelectedTabs or {}
+	local tabs = Instance.new("Frame")
+	tabs.Name = "Tabs"
+	tabs.BackgroundTransparency = 1
+	tabs.Position = UDim2.fromOffset(0, 96)
+	tabs.Size = UDim2.new(1, 0, 0, 42)
+	tabs.Parent = scroll
+	context.RefreshSettings = function()
+		renderTab(context, scroll, active)
+	end
+	for index, tab in ipairs(TABS) do
+		local button = Button.new({Text = tab, Variant = tab == active and "Primary" or "Secondary", Size = UDim2.new(1 / #TABS, -8, 0, 36), OnActivated = function()
+			active = tab
+			context.Data.UIState.SelectedTabs.Settings = tab
+			context.StateService:SetTab("Settings", tab)
+			context.RefreshSettings()
+		end})
+		button.Position = UDim2.new((index - 1) / #TABS, 4, 0, 0)
+		button.Parent = tabs
+	end
+	renderTab(context, scroll, active)
+	return group
+end
+
+return SettingsPage
+''', encoding="utf-8", newline="\n")
+
+ui_controller_path = Path("src/client/Controllers/UIController.lua")
+ui = ui_controller_path.read_text(encoding="utf-8")
+
+if "UISoundService" not in ui:
+    ui = ui.replace(
+        'local SettingsRuntimeService = require(script.Parent.Parent.Services.SettingsRuntimeService)',
+        'local SettingsRuntimeService = require(script.Parent.Parent.Services.SettingsRuntimeService)\nlocal UISoundService = require(script.Parent.Parent.Services.UISoundService)',
+        1
+    )
+
+if "UISoundService.Bind(root)" not in ui:
+    ui = ui.replace(
+        'root.Parent = gui\n\tself.Root = root',
+        'root.Parent = gui\n\tUISoundService.Bind(root)\n\tself.Root = root',
+        1
+    )
+
+ui_controller_path.write_text(ui, encoding="utf-8", newline="\n")
+
+flow_path = Path("src/client/Controllers/FlowController.lua")
+flow = flow_path.read_text(encoding="utf-8")
+
+if "UISoundService" not in flow:
+    flow = flow.replace(
+        'local Button=require(script.Parent.Parent.Components.Button)',
+        'local Button=require(script.Parent.Parent.Components.Button)\nlocal UISoundService=require(script.Parent.Parent.Services.UISoundService)',
+        1
+    )
+
+flow = flow.replace(
+    'if self.Busy then return end;self.Busy=true',
+    'if self.Busy then return end;self.Busy=true;UISoundService.PlayTransition()',
+    1
+)
+
+flow_path.write_text(flow, encoding="utf-8", newline="\n")
+
+state_path = Path("src/client/Services/UIStateService.lua")
+state = state_path.read_text(encoding="utf-8")
+
+if "UISoundService" not in state:
+    state = state.replace(
+        'local base=require(script.Parent.ServiceClient).create("UIState")',
+        'local base=require(script.Parent.ServiceClient).create("UIState")\nlocal UISoundService=require(script.Parent.UISoundService)',
+        1
+    )
+
+state = state.replace(
+    'function Service:SetSetting(key:string,value:any) remote:FireServer({Type="Setting",Key=key,Value=value}) end',
+    '''function Service:SetSetting(key:string,value:any)
+	local lowered=string.lower(tostring(key))
+	if string.find(lowered,"color")or string.find(lowered,"kit")then
+		UISoundService.PlayColor()
+	end
+	remote:FireServer({Type="Setting",Key=key,Value=value})
+end''',
+    1
+)
+
+state = state.replace(
+    'function Service:SetCosmetic(slot:string,item:string) remote:FireServer({Type="Cosmetic",Slot=slot,Item=item}) end',
+    'function Service:SetCosmetic(slot:string,item:string) UISoundService.PlayColor();remote:FireServer({Type="Cosmetic",Slot=slot,Item=item}) end',
+    1
+)
+
+state_path.write_text(state, encoding="utf-8", newline="\n")
+
+print("fixed controls list and added UI audio")

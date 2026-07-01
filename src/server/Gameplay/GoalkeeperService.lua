@@ -38,8 +38,6 @@ local function saveLineOffset(rectangle:any,ballRadius:number):number
 	if hitbox and hitbox.Parent then
 		local size=hitbox.Size;local frame=hitbox.CFrame;local normal=rectangle.Normal
 		local depth=(math.abs(frame.RightVector:Dot(normal))*size.X+math.abs(frame.UpVector:Dot(normal))*size.Y+math.abs(frame.LookVector:Dot(normal))*size.Z)*.5
-		-- Rectangle plane is at the hitbox center. Stand 1.5 studs beyond its
-		-- field-facing surface, independent of ball size.
 		return depth+2
 	end
 	return 2
@@ -136,10 +134,10 @@ local function shooterRating(shooter: Model?): number
 	return math.clamp(shooting * 0.42 + finishing * 0.42 + shotPower * 0.16, 1, 99)
 end
 
-local function saveProbability(keeper:Model,rectangle:any,target:Vector3,time:number,xg:number?,shooter:Model?):number
+local function saveProbability(keeper:Model,rectangle:any,target:Vector3,time:number,xg:number?,shooter:Model?):(number,number)
 	local shooterRoot=root(shooter)
 	local goalChance=tonumber(xg)
-	if goalChance==nil or goalChance<=0 then
+	if goalChance==nil then
 		local distance=160
 		if shooterRoot then
 			local goalCenter=GoalModelResolver.Point(rectangle,(rectangle.Left+rectangle.RightBound)*.5,(rectangle.Bottom+rectangle.Top)*.5)
@@ -148,21 +146,33 @@ local function saveProbability(keeper:Model,rectangle:any,target:Vector3,time:nu
 		goalChance=distanceGoalChance(distance)
 	end
 	goalChance=math.clamp(goalChance,0,1)
-	local saveChance=1-goalChance
-	if goalChance>=.999 then
-		goalChance=1
-		saveChance=0
-	elseif goalChance<=.001 then
-		goalChance=0
-		saveChance=.99
-	else
-		saveChance=math.clamp(saveChance,.01,.99)
-	end
+	local saveChance=math.clamp(1-goalChance,0,1)
 	if shooter then
 		shooter:SetAttribute("VTRShotXG",goalChance)
 		shooter:SetAttribute("VTRShotSaveChance",saveChance)
 	end
-	return saveChance
+	return saveChance,goalChance
+end
+
+local function goalPercentChance(service:any,keeper:Model,chance:number):boolean
+	chance=math.clamp(chance,0,1)
+	if chance<=0 then
+		return false
+	end
+	if chance>=1 then
+		return true
+	end
+	local bank=service.GoalChanceBank[keeper]
+	if bank==nil then
+		bank=.5
+	end
+	bank+=chance
+	if bank>=1 then
+		service.GoalChanceBank[keeper]=bank-1
+		return true
+	end
+	service.GoalChanceBank[keeper]=bank
+	return false
 end
 
 function Service.new(ball: BasePart, teams: any, pitchCFrame: CFrame, width: number, length: number, ballService: any, animations: any, remote: RemoteEvent,aiService:any?)
@@ -178,8 +188,8 @@ function Service.new(ball: BasePart, teams: any, pitchCFrame: CFrame, width: num
 		ObservedShot = 0,
 		ActiveSave = nil,
 		MissedShots = {},
-		Random = Random.new(),
 		LineFacing = {},
+		GoalChanceBank = {},
 		AI=aiService,
 		Half=1,
 	}, Service)
@@ -233,7 +243,7 @@ function Service:_begin(attackingSide: string, shotId: number)
 	local keeper = goalkeeper(self.Teams[defendingSide])
 	local rectangle, target, time = self:_prediction(attackingSide)
 	if not keeper or not rectangle or not target or not time then return end
-	local chance=saveProbability(keeper,rectangle,target,time,self.BallService.LastShotChance,self.BallService.LastShooter)
+	local chance,goalChance=saveProbability(keeper,rectangle,target,time,self.BallService.LastShotChance,self.BallService.LastShooter)
 	keeper:SetAttribute("VTRLastSaveChance",math.floor(chance*100+.5))
 	local willSave=false
 	local shotPlan=self.BallService and self.BallService.ShotPlan
@@ -241,12 +251,8 @@ function Service:_begin(attackingSide: string, shotId: number)
 		willSave=false
 	elseif shotPlan and shotPlan.ForcedMiss==true then
 		willSave=true
-	elseif chance<=0 then
-		willSave=false
-	elseif chance>=1 then
-		willSave=true
 	else
-		willSave=self.Random:NextNumber()<=chance
+		willSave=not goalPercentChance(self,keeper,goalChance)
 	end
 	local shotPlan=self.BallService.ShotPlan
 	local penaltySlot=shotPlan and shotPlan.PenaltySlot
@@ -321,9 +327,6 @@ function Service:_finish(save: any)
 	local keeperRoot = root(keeper)
 	if not keeperRoot then self.ActiveSave = nil return end
 	local localRoot=self.PitchCFrame:PointToObjectSpace(keeperRoot.Position);if localRoot.Y<SAFE_ROOT_HEIGHT then keeperRoot.CFrame=keeperRoot.CFrame+self.PitchCFrame.UpVector*(SAFE_ROOT_HEIGHT-localRoot.Y)end
-	-- Keep the save deterministic through contact. Letting a PlatformStand R6 rig
-	-- become physical at the peak allowed limbs and the welded ball to catapult
-	-- the goalkeeper through the pitch.
 	keeperRoot.Anchored=true
 	if save.DiveAlign then save.DiveAlign:Destroy();save.DiveAlign=nil end
 	if save.DiveVelocity then save.DiveVelocity:Destroy();save.DiveVelocity=nil end
@@ -370,8 +373,6 @@ function Service:_finish(save: any)
 		if save.DiveVelocity then save.DiveVelocity:Destroy()end
 		if save.DiveAttachment then save.DiveAttachment:Destroy()end
 		local facing=self.LineFacing[keeper];if facing then facing.Align.Enabled=true end
-		-- Recover to the safe line, then carry the caught ball several studs into
-		-- the field before detaching it for manual distribution.
 		currentRoot=root(keeper)
 		if currentRoot then
 			currentRoot.AssemblyLinearVelocity=Vector3.zero
@@ -588,8 +589,6 @@ function Service:Step(dt:number?)
 	local rise=math.max(0,(rootTarget-keeperRoot.Position):Dot(upAxis))
 	local requiredTime=math.clamp(math.max(travel/MAX_DIVE_SPEED,math.sqrt(2*rise/math.max(workspace.Gravity,1))),.22,1.05)
 	if not save.Launched then
-		-- Difficult corners get a measured pre-dive shuffle along the goal line.
-		-- Depth and height stay fixed, so the keeper never backs into the net.
 		local lateral=(rootTarget-keeperRoot.Position):Dot(lateralAxis)
 		if math.abs(lateral)>8 and time>requiredTime+.62 then
 			humanoid.WalkSpeed=1.15
@@ -602,8 +601,6 @@ function Service:Step(dt:number?)
 		save.Keeper:SetAttribute("VTRGoalkeeperState","Diving")
 		humanoid:Move(Vector3.zero,false)
 		humanoid.PlatformStand=true
-		-- Close-range attempts use their real remaining time instead of the old
-		-- 0.18 second minimum, allowing an immediate reflex dive.
 		local flightTime=math.clamp(time,.09,.92)
 		save.DiveStartedAt=os.clock()
 		save.DiveDuration=flightTime
