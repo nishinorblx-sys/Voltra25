@@ -114,6 +114,17 @@ function Service:_monitorControlledHold(keeper:Model,rectangle:any,defendingSide
 	end)
 end
 
+local function distanceGoalChance(distance: number): number
+	if distance <= 70 then
+		return 1
+	elseif distance <= 160 then
+		return 1 - ((distance - 70) / 90) * 0.7
+	elseif distance <= 190 then
+		return 0.3 - ((distance - 160) / 30) * 0.29
+	end
+	return 0.01
+end
+
 local function shooterRating(shooter: Model?): number
 	if not shooter then
 		return 65
@@ -126,27 +137,21 @@ local function shooterRating(shooter: Model?): number
 end
 
 local function saveProbability(keeper:Model,rectangle:any,target:Vector3,time:number,xg:number?,shooter:Model?):number
-	local rating=keeperRating(keeper)
-	local shooterStat=shooterRating(shooter)
 	local shooterRoot = root(shooter)
-	if shooterRoot and PitchConfig.GetDistanceStuds(shooterRoot.Position, target) <= 70 then
-		local goalChance = math.clamp(0.95 + (shooterStat - rating) / 160, 0.65, 0.99)
-		return 1 - goalChance
+	local distance = 190
+	if shooterRoot then
+		local goalCenter = GoalModelResolver.Point(rectangle, (rectangle.Left + rectangle.RightBound) * 0.5, (rectangle.Bottom + rectangle.Top) * 0.5)
+		local targetDistance = Vector3.new(shooterRoot.Position.X - target.X, 0, shooterRoot.Position.Z - target.Z).Magnitude
+		local goalDistance = Vector3.new(shooterRoot.Position.X - goalCenter.X, 0, shooterRoot.Position.Z - goalCenter.Z).Magnitude
+		distance = math.min(targetDistance, goalDistance)
+		shooter:SetAttribute("VTRShotDistanceGoalChance", distanceGoalChance(distance))
+		shooter:SetAttribute("VTRShotDistanceStuds", distance)
+		shooter:SetAttribute("VTRShotDistancePercent", math.floor(distanceGoalChance(distance) * 100 + 0.5))
 	end
-	if shooter and (tonumber(shooter:GetAttribute("VTRLongShotChanceUntil")) or 0) >= os.clock() then
-		local goalChance = tonumber(shooter:GetAttribute("VTRLongShotGoalChance")) or 0.18
-		goalChance = math.clamp(goalChance + (shooterStat - rating) / 140, 0.08, 0.38)
-		return 1 - goalChance
-	end
-	if shooter and (tonumber(shooter:GetAttribute("VTROpenDangerShotChanceUntil")) or 0) >= os.clock() then
-		local baseGoalChance = tonumber(shooter:GetAttribute("VTROpenDangerShotChance")) or 0.9
-		local goalChance = math.clamp(baseGoalChance + (shooterStat - rating) / 120, 0.22, 0.97)
-		return 1 - goalChance
-	end
-	local shotXG = xg or 0
-	local baseGoalChance = shotXG >= 0.18 and 0.72 or shotXG >= 0.1 and 0.64 or 0.56
-	local goalChance=math.clamp(baseGoalChance+(shooterStat-rating)/120,.18,.92)
-	return 1-goalChance
+	local goalChance = distanceGoalChance(distance)
+	keeper:SetAttribute("VTRDistanceGoalChance", math.floor(goalChance * 100 + 0.5))
+	keeper:SetAttribute("VTRDistanceShotStuds", distance)
+	return 1 - goalChance
 end
 
 function Service.new(ball: BasePart, teams: any, pitchCFrame: CFrame, width: number, length: number, ballService: any, animations: any, remote: RemoteEvent,aiService:any?)
@@ -233,7 +238,7 @@ function Service:_begin(attackingSide: string, shotId: number)
 	end
 	keeper:SetAttribute("VTRGoalkeeperSaving", true)
 	keeper:SetAttribute("VTRSaveTarget", target)
-	keeper:SetAttribute("VTRGoalkeeperState", willSave and "Tracking" or "Desperate")
+	keeper:SetAttribute("VTRGoalkeeperState", willSave and "Tracking" or "DivingNoSave")
 	self.Ball:SetAttribute("VTRGoalkeeperTracking", keeper.Name)
 	local keeperRoot = root(keeper)
 	local humanoid = keeper:FindFirstChildOfClass("Humanoid")
@@ -340,22 +345,10 @@ function Service:_finish(save: any)
 		local facing=self.LineFacing[keeper];if facing then facing.Align.Enabled=true end
 		-- Recover to the safe line, then carry the caught ball several studs into
 		-- the field before detaching it for manual distribution.
-		local recoveryStarted=os.clock()
-		repeat
-			currentRoot=root(keeper);if not currentRoot then break end
-			local desiredDepth=saveLineOffset(rectangle,self.Ball.Size.X*.5)
-			local depth=(currentRoot.Position-rectangle.PlanePoint):Dot(forward)
-			if depth>=desiredDepth-.15 then break end
-			if humanoid then humanoid.WalkSpeed=10;humanoid:MoveTo(currentRoot.Position+forward*math.min(desiredDepth-depth,8))end
-			task.wait(.05)
-		until os.clock()-recoveryStarted>1.4
 		currentRoot=root(keeper)
-		if currentRoot and humanoid then
-			local carryTarget=currentRoot.Position+fieldDirection(rectangle,self.PitchCFrame)*5
-			humanoid.WalkSpeed=9
-			humanoid:MoveTo(carryTarget)
-			local carryStarted=os.clock()
-			repeat task.wait(.05);currentRoot=root(keeper)until not currentRoot or(currentRoot.Position-carryTarget).Magnitude<1.25 or os.clock()-carryStarted>1.15
+		if currentRoot then
+			currentRoot.AssemblyLinearVelocity=Vector3.zero
+			currentRoot.AssemblyAngularVelocity=Vector3.zero
 		end
 		if userControlled then
 			keeper:SetAttribute("VTRGoalkeeperState","Held")

@@ -12,17 +12,13 @@ local laneOpenTo: (any, any, number) -> boolean
 local function goalTarget(context: any, shooter: any): Vector3
 	local attackSign = context.AttackSigns and context.AttackSigns[shooter.Side] or PitchConfig.GetAttackDirection(shooter.Side, context.Options)
 	local rectangle = GoalModelResolver.ResolveByAttackSign(attackSign, context.PitchCFrame, context.Width, context.Length)
-	local goalPitch = Vector3.new(PitchConfig.HALF_WIDTH, 3, PitchConfig.PITCH_LENGTH)
-	local center = PitchConfig.TeamPitchPositionToWorld(goalPitch, shooter.Side, context.Options)
-	local distance = PitchConfig.GetDistanceStuds(shooter.World, center)
-	local pressure = AIContextBuilder.Pressure(context, shooter)
 	local leftOpen = laneOpenTo(context, shooter, 180)
 	local rightOpen = laneOpenTo(context, shooter, 244)
 	local width = math.max(1, rectangle.RightBound - rectangle.Left)
 	local height = math.max(1, rectangle.Top - rectangle.Bottom)
-	local edgeInset = math.clamp(width * (0.06 + pressure.Score * 0.018), 0.18, width * 0.13)
-	local leftX = rectangle.Left + edgeInset
-	local rightX = rectangle.RightBound - edgeInset
+	local cornerInset = math.clamp(width * 0.07, 0.18, width * 0.12)
+	local leftX = rectangle.Left + cornerInset
+	local rightX = rectangle.RightBound - cornerInset
 	local sideBias = shooter.Pitch.X < PitchConfig.HALF_WIDTH and rightX or leftX
 	if leftOpen ~= rightOpen then
 		sideBias = leftOpen and leftX or rightX
@@ -31,17 +27,11 @@ local function goalTarget(context: any, shooter: any): Vector3
 	else
 		sideBias = rightX
 	end
-	local highEdge = rectangle.Top - height * math.clamp(0.08 + pressure.Score * 0.03, 0.08, 0.18)
-	local lowEdge = rectangle.Bottom + height * math.clamp(0.16 + math.clamp((90 - distance) / 160, 0, .08), 0.16, 0.24)
-	local vertical
-	if distance < 62 then
-		vertical = lowEdge
-	elseif pressure.Heavy then
-		vertical = highEdge
-	elseif math.floor((context.Now or os.clock()) * 7 + shooter.Stats.shooting) % 2 == 0 then
-		vertical = highEdge
-	else
-		vertical = lowEdge
+	local topCorner = rectangle.Top - height * 0.1
+	local bottomCorner = rectangle.Bottom + height * 0.18
+	local vertical = bottomCorner
+	if math.floor((context.Now or os.clock()) * 7 + shooter.Stats.shooting + math.floor(shooter.Pitch.X)) % 2 == 0 then
+		vertical = topCorner
 	end
 	return GoalModelResolver.Point(rectangle, sideBias, vertical)
 end

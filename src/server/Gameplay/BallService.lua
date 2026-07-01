@@ -147,6 +147,17 @@ ballisticVelocity=function(origin:Vector3,target:Vector3,preferredSpeed:number,g
 	return horizontal.Unit*(math.cos(angle)*speed)+Vector3.yAxis*(math.sin(angle)*speed)
 end
 
+local function distanceGoalChance(distance: number): number
+	if distance <= 70 then
+		return 1
+	elseif distance <= 160 then
+		return 1 - ((distance - 70) / 90) * 0.7
+	elseif distance <= 190 then
+		return 0.3 - ((distance - 160) / 30) * 0.29
+	end
+	return 0.01
+end
+
 function Service:_shotVelocity(model: Model, direction: Vector3, charge: number, targetPoint:Vector3?): Vector3
 	local modelRoot = self:_root(model)
 	local team = model:GetAttribute("VTRTeam")
@@ -259,16 +270,16 @@ function Service:Kick(model: Model, kind: string, direction: Vector3, charge: nu
 		velocity+=self.Curve:StartShot(model,direction,flightTime)
 		local shotRoot=self:_root(model)
 		local xg=self.Stats:CalculateXG(model,shotRoot and shotRoot.Position or self.Ball.Position,self:_pressure(model),nil)
-		local shotChance=math.clamp(tonumber(xg)or 0,.01,.99)
-		if shotRoot and targetPoint and Vector3.new(shotRoot.Position.X-targetPoint.X,0,shotRoot.Position.Z-targetPoint.Z).Magnitude<=70 then
-			shotChance=.95
-		elseif (tonumber(model:GetAttribute("VTROpenDangerShotChanceUntil"))or 0)>=os.clock() then
-			shotChance=math.clamp(tonumber(model:GetAttribute("VTROpenDangerShotChance"))or .9,.01,.99)
-		elseif (tonumber(model:GetAttribute("VTRLongShotChanceUntil"))or 0)>=os.clock() then
-			shotChance=math.clamp(tonumber(model:GetAttribute("VTRLongShotGoalChance"))or .18,.01,.99)
+		local shotDistance = 190
+		if shotRoot and targetPoint then
+			shotDistance = Vector3.new(shotRoot.Position.X - targetPoint.X, 0, shotRoot.Position.Z - targetPoint.Z).Magnitude
+		elseif shotRoot then
+			shotDistance = direction.Magnitude
 		end
+		local shotChance = distanceGoalChance(shotDistance)
 		model:SetAttribute("VTRLastShotScoringChance",shotChance)
 		model:SetAttribute("VTRLastShotScoringPercent",math.floor(shotChance*100+.5))
+		model:SetAttribute("VTRShotDistanceStuds",shotDistance)
 		self.LastShotChance=shotChance
 		self.LastShotChancePercent=math.floor(shotChance*100+.5)
 		self.LastShotXG=xg;self.LastShooter=model;self.Stats:RecordShot(model,targetPoint~=nil,xg)
