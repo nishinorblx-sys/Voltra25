@@ -6,6 +6,7 @@ local Controller = {}
 Controller.__index = Controller
 
 local KICK_SOUND = "rbxassetid://107963207460422"
+local KICKOFF_SOUND = "rbxassetid://99361731737732"
 local GOAL_COMMENTATOR = "rbxassetid://103341909626250"
 local FINAL_WHISTLE = "rbxassetid://72085323238660"
 local DRIBBLE_SOUND = "rbxassetid://108255149267958"
@@ -73,6 +74,10 @@ end
 
 function Controller:PlayKick()
 	playOneShot(KICK_SOUND, 0.36, 1)
+end
+
+function Controller:PlayKickoff()
+	playOneShot(KICKOFF_SOUND, 0.62, 1)
 end
 
 function Controller:PlayGoal()
