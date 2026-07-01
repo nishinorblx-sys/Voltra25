@@ -1141,9 +1141,13 @@ function Service:_action(player:Player,payload:any)
 		return
 	end
 	if payload.Type=="Forfeit"then
-		local side=session.PlayerSides[player]or"Home";local opponentSide=side=="Home"and"Away"or"Home"
-		if opponentSide=="Home"then session.World.HomeScore.Value=math.max(session.World.HomeScore.Value,session.World.AwayScore.Value+3)else session.World.AwayScore.Value=math.max(session.World.AwayScore.Value,session.World.HomeScore.Value+3)end
-		session.ForfeitBy=player.UserId
+		if session.Ranked then
+			self:_applyRankedForfeit(session,player,"Forfeit")
+		else
+			local side=session.PlayerSides[player]or"Home";local opponentSide=side=="Home"and"Away"or"Home"
+			if opponentSide=="Home"then session.World.HomeScore.Value=math.max(session.World.HomeScore.Value,session.World.AwayScore.Value+3)else session.World.AwayScore.Value=math.max(session.World.AwayScore.Value,session.World.HomeScore.Value+3)end
+			session.ForfeitBy=player.UserId
+		end
 		self:EndMatch(session.StepOwner,true)
 		return
 	end
@@ -1361,6 +1365,30 @@ function Service:_step(dt:number)
 	end
 end
 
+function Service:_applyRankedForfeit(session:any,player:Player,reason:string?)
+	if not session or session.Ended or not session.Ranked then return false end
+	local side=session.PlayerSides and session.PlayerSides[player] or "Home"
+	local opponentSide=side=="Home" and "Away" or "Home"
+	if opponentSide=="Home" then
+		session.World.HomeScore.Value=math.max(session.World.HomeScore.Value,session.World.AwayScore.Value+3)
+	else
+		session.World.AwayScore.Value=math.max(session.World.AwayScore.Value,session.World.HomeScore.Value+3)
+	end
+	session.ForfeitBy=player.UserId
+	session.ForfeitReason=reason or "Leave"
+	session.RankedForceLossUserId=player.UserId
+	for _,participant in session.Players or{}do
+		if participant==player then
+			participant:SetAttribute("VTRRankedResult","Loss")
+			participant:SetAttribute("VTRRankedForfeitLoss",true)
+		else
+			participant:SetAttribute("VTRRankedResult","Win")
+			participant:SetAttribute("VTRRankedForfeitWin",true)
+		end
+	end
+	return true
+end
+
 function Service:EndMatch(player:Player,showResult:boolean):boolean
 	local session=self.Sessions[player]
 	if not session then return false end
@@ -1384,7 +1412,7 @@ function Service:EndMatch(player:Player,showResult:boolean):boolean
 			local homeScore=session.World.HomeScore.Value
 			local awayScore=session.World.AwayScore.Value
 			local result="Draw"
-			if session.ForfeitBy==participant.UserId then
+			if session.RankedForceLossUserId==participant.UserId or session.ForfeitBy==participant.UserId then
 				result="ForfeitLoss"
 			elseif session.ForfeitBy then
 				result="ForfeitWin"
@@ -1410,7 +1438,7 @@ function Service:EndMatch(player:Player,showResult:boolean):boolean
 					rewardPayload.PackName=rewardPayload.PackName or rewardPayload.Pack or"Ranked Champion Pack"
 					rewardPayload.Rarity=rewardPayload.Rarity or"Mythic"
 				end
-				self.State:FireClient(participant,{Type="MatchEnded",Ranked=session.Ranked,LocalSide=side,Result=result,Forfeit=session.ForfeitBy~=nil,Home=homeScore,Away=awayScore,Stats=resultStats,Reward=rewardPayload,RankedWinPack=rankedWin and rewardPayload or nil})
+				self.State:FireClient(participant,{Type="MatchEnded",Ranked=session.Ranked,LocalSide=side,Result=result,Forfeit=session.ForfeitBy~=nil,ForfeitReason=session.ForfeitReason,RankedLossUserId=session.RankedForceLossUserId,Home=homeScore,Away=awayScore,Stats=resultStats,Reward=rewardPayload,RankedWinPack=rankedWin and rewardPayload or nil})
 			end
 		end
 		if session.OnRankedEnded then task.defer(session.OnRankedEnded,session)end
@@ -1457,15 +1485,8 @@ function Service:PlayerRemoving(player:Player)
 	player:SetAttribute("VTRRankedQueueLockedUntil",os.clock()+10)
 	local session=self.Sessions[player]
 	if not session then return end
-	if not session.Ended and session.Running and session.Ranked then
-		local side=session.PlayerSides[player]or"Home"
-		local opponentSide=side=="Home"and"Away"or"Home"
-		if opponentSide=="Home"then
-			session.World.HomeScore.Value=math.max(session.World.HomeScore.Value,session.World.AwayScore.Value+3)
-		else
-			session.World.AwayScore.Value=math.max(session.World.AwayScore.Value,session.World.HomeScore.Value+3)
-		end
-		session.ForfeitBy=player.UserId
+	if not session.Ended and session.Ranked then
+		self:_applyRankedForfeit(session,player,"Leave")
 		self:EndMatch(session.StepOwner,true)
 	else
 		self:EndMatch(player,false)

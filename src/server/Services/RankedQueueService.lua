@@ -150,9 +150,9 @@ function Service:_attachResultHandlers(session: any, home: Player, away: Player)
 		local homeScore = ended.World.HomeScore.Value
 		local awayScore = ended.World.AwayScore.Value
 		local homeResult = homeScore > awayScore and "Win" or homeScore < awayScore and "Loss" or "Draw"
-		local awayResult = homeResult == "Win" and "Loss" or homeResult == "Loss" and "Win" or "Draw"
-		local homeRP = homeResult == "Win" and 35 or homeResult == "Draw" and 12 or -20
-		local awayRP = awayResult == "Win" and 35 or awayResult == "Draw" and 12 or -20
+		local awayResult = home(Result == "Win" or Result == "ForfeitWin") and "Loss" or home(Result == "Loss" or Result == "ForfeitLoss") and "Win" or "Draw"
+		local homeRP = home(Result == "Win" or Result == "ForfeitWin") and 35 or homeResult == "Draw" and 12 or -20
+		local awayRP = away(Result == "Win" or Result == "ForfeitWin") and 35 or awayResult == "Draw" and 12 or -20
 		local score = tostring(homeScore) .. "-" .. tostring(awayScore)
 		local serialized = ended.Stats:Serialize(homeScore, awayScore, ended.Clock:Payload().GameSeconds)
 		local function updateObjectives(target: Player, side: string)

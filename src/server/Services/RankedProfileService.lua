@@ -13,11 +13,11 @@ function Service:GetClientData(player:Player):any?
 end
 function Service:RecordServerResult(player:Player,result:string,_legacyDelta:number,opponent:string,score:string,matchStats:any?):boolean
 	if result~="Win"and result~="Draw"and result~="Loss"then return false end;local p=self.Profiles:GetProfile(player);if not p then return false end;local r=p.Ranked;local delta=0
-	if result=="Win"then r.Wins+=1;r.WinStreak+=1 elseif result=="Draw"then r.Draws+=1;r.WinStreak=0 else r.Losses+=1;r.WinStreak=0 end
+	if (result=="Win" or result=="ForfeitWin")then r.Wins+=1;r.WinStreak+=1 elseif result=="Draw"then r.Draws+=1;r.WinStreak=0 else r.Losses+=1;r.WinStreak=0 end
 	if r.DivisionNumber==0 then
-		local tier=math.max(0,math.floor((r.VoltraRating-1000)/100));delta=result=="Win"and math.max(8,30-tier*2)or result=="Loss"and-math.min(45,10+tier*2)or 0;r.VoltraRating=math.max(0,r.VoltraRating+delta);r.RP=r.VoltraRating;r.Division="VOLTRA DIVISION";r.Rank=tostring(r.VoltraRating).." RATING"
+		local tier=math.max(0,math.floor((r.VoltraRating-1000)/100));delta=(result=="Win" or result=="ForfeitWin")and math.max(8,30-tier*2)or (result=="Loss" or result=="ForfeitLoss")and-math.min(45,10+tier*2)or 0;r.VoltraRating=math.max(0,r.VoltraRating+delta);r.RP=r.VoltraRating;r.Division="VOLTRA DIVISION";r.Rank=tostring(r.VoltraRating).." RATING"
 	else
-		if result=="Win"then r.DivisionWins=math.min(10,r.DivisionWins+1);delta=1;r.ProtectedWins=math.max(r.ProtectedWins,protectedThreshold(r.DivisionWins,r.DivisionNumber))elseif result=="Loss"then local old=r.DivisionWins;r.DivisionWins=math.max(r.ProtectedWins,r.DivisionWins-1);delta=r.DivisionWins-old end
+		if (result=="Win" or result=="ForfeitWin")then r.DivisionWins=math.min(10,r.DivisionWins+1);delta=1;r.ProtectedWins=math.max(r.ProtectedWins,protectedThreshold(r.DivisionWins,r.DivisionNumber))elseif (result=="Loss" or result=="ForfeitLoss")then local old=r.DivisionWins;r.DivisionWins=math.max(r.ProtectedWins,r.DivisionWins-1);delta=r.DivisionWins-old end
 		if r.DivisionWins>=10 then r.DivisionNumber-=1;r.DivisionWins=0;r.ProtectedWins=0;if r.DivisionNumber<=0 then r.DivisionNumber=0;r.VoltraRating=1000;r.RP=1000;r.Division="VOLTRA DIVISION";r.Rank="1000 RATING"else r.Division="DIVISION "..r.DivisionNumber;r.Rank="PROMOTED";r.RP=0 end else r.RP=r.DivisionWins;r.Division="DIVISION "..r.DivisionNumber;r.Rank="STEP "..r.DivisionWins.." / 10"end
 	end
 	local playerStats=r.PlayerStats;playerStats.MatchesPlayed+=1
