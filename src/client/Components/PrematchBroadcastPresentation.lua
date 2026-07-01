@@ -23,6 +23,78 @@ local function color(value: any, fallback: Color3): Color3
 	return typeof(value) == "Color3" and value or fallback
 end
 
+local function badgeAccent(primary: Color3): Color3
+	local bright = Color3.fromHex("F5F7F2")
+	local dark = Color3.fromHex("050805")
+	local brightness = primary.R + primary.G + primary.B
+	return brightness > 1.65 and dark or bright
+end
+
+local function applyPresentationBadge(target: TextLabel, primary: Color3, logoText: string?)
+	target.Text = ""
+	target.BackgroundTransparency = 1
+	target.ClipsDescendants = true
+	for _, child in target:GetChildren() do
+		if child.Name == "VTRPresentationBadgeArt" then child:Destroy() end
+	end
+	local accent = badgeAccent(primary)
+	local art = Instance.new("Frame")
+	art.Name = "VTRPresentationBadgeArt"
+	art.BackgroundTransparency = 1
+	art.Size = UDim2.fromScale(1, 1)
+	art.ZIndex = target.ZIndex + 1
+	art.Parent = target
+	local outer = Instance.new("Frame")
+	outer.AnchorPoint = Vector2.new(.5, .5)
+	outer.Position = UDim2.fromScale(.5, .5)
+	outer.Size = UDim2.fromScale(.82, .82)
+	outer.BackgroundColor3 = primary
+	outer.BorderSizePixel = 0
+	outer.ZIndex = art.ZIndex + 1
+	outer.Parent = art
+	local outerCorner = Instance.new("UICorner")
+	outerCorner.CornerRadius = UDim.new(.22, 0)
+	outerCorner.Parent = outer
+	local outerStroke = Instance.new("UIStroke")
+	outerStroke.Color = accent
+	outerStroke.Transparency = .08
+	outerStroke.Thickness = 2
+	outerStroke.Parent = outer
+	local inner = Instance.new("Frame")
+	inner.AnchorPoint = Vector2.new(.5, .5)
+	inner.Position = UDim2.fromScale(.5, .5)
+	inner.Size = UDim2.fromScale(.68, .68)
+	inner.BackgroundColor3 = Color3.fromHex("050505")
+	inner.BackgroundTransparency = .04
+	inner.BorderSizePixel = 0
+	inner.ZIndex = outer.ZIndex + 1
+	inner.Parent = outer
+	local innerCorner = Instance.new("UICorner")
+	innerCorner.CornerRadius = UDim.new(.18, 0)
+	innerCorner.Parent = inner
+	local stripe = Instance.new("Frame")
+	stripe.AnchorPoint = Vector2.new(.5, .5)
+	stripe.Position = UDim2.fromScale(.5, .5)
+	stripe.Size = UDim2.fromScale(.18, 1.12)
+	stripe.Rotation = -24
+	stripe.BackgroundColor3 = primary:Lerp(accent, .2)
+	stripe.BackgroundTransparency = .16
+	stripe.BorderSizePixel = 0
+	stripe.ZIndex = inner.ZIndex + 1
+	stripe.Parent = inner
+	local mark = Instance.new("TextLabel")
+	mark.BackgroundTransparency = 1
+	mark.Size = UDim2.fromScale(1, 1)
+	mark.Text = tostring(logoText or "V")
+	mark.TextColor3 = primary
+	mark.TextSize = math.max(16, math.floor(target.AbsoluteSize.Y * .34))
+	mark.Font = Theme.Fonts.Display
+	mark.TextXAlignment = Enum.TextXAlignment.Center
+	mark.TextYAlignment = Enum.TextYAlignment.Center
+	mark.ZIndex = inner.ZIndex + 2
+	mark.Parent = inner
+end
+
 local function label(parent: Instance, text: string, pos: UDim2, size: UDim2, textSize: number, textColor: Color3?, font: Enum.Font?): TextLabel
 	local item = Instance.new("TextLabel")
 	item.BackgroundTransparency = 1
@@ -591,6 +663,14 @@ function Presentation.Play(data: any, onComplete: (() -> ())?)
 	local playerGui = Players.LocalPlayer:WaitForChild("PlayerGui")
 	local old = playerGui:FindFirstChild("VTRPrematchBroadcast")
 	if old then old:Destroy() end
+	for _, overlayName in ipairs({"VTRMatchTeleport","VTRRankedTeleportFound","VTRRankedTeleportMatchFound","VTRMatchupConfirmed","VTRMatchupConfirm","VTRRankedReservedBoot"}) do
+		local overlay = playerGui:FindFirstChild(overlayName)
+		if overlay then overlay:Destroy() end
+	end
+	for _, overlayName in ipairs({"VTRMatchTeleport","VTRRankedTeleportFound","VTRRankedTeleportMatchFound","VTRMatchupConfirmed","VTRMatchupConfirm","VTRRankedReservedBoot"}) do
+		local overlay = playerGui:FindFirstChild(overlayName)
+		if overlay then overlay:Destroy() end
+	end
 
 	local gui = Instance.new("ScreenGui")
 	gui.Name = "VTRPrematchBroadcast"
@@ -652,10 +732,12 @@ function Presentation.Play(data: any, onComplete: (() -> ())?)
 	homeBadge.BackgroundColor3 = homeColor
 	homeBadge.BackgroundTransparency = 0
 	homeBadge.TextXAlignment = Enum.TextXAlignment.Center
+	applyPresentationBadge(homeBadge, homeColor, tostring(data.HomeLogo or "V"))
 	local awayBadge = label(rightPanel, tostring(data.AwayLogo or shortCode(away)), UDim2.fromScale(0.29, 0.58), UDim2.fromScale(0.42, 0.23), 24, Theme.Colors.White, Theme.Fonts.Display)
 	awayBadge.BackgroundColor3 = awayColor
 	awayBadge.BackgroundTransparency = 0
 	awayBadge.TextXAlignment = Enum.TextXAlignment.Center
+	applyPresentationBadge(awayBadge, awayColor, tostring(data.AwayLogo or "V"))
 	for _, spec in {
 		{UDim2.fromScale(0.47, 0.55), UDim2.fromScale(0.08, 0.01)},
 		{UDim2.fromScale(0.87, 0.55), UDim2.fromScale(0.13, 0.01)},
@@ -739,6 +821,8 @@ function Presentation.Play(data: any, onComplete: (() -> ())?)
 	sheetLogo.BackgroundColor3 = Theme.Colors.White
 	sheetLogo.BackgroundTransparency = 0
 	sheetLogo.TextXAlignment = Enum.TextXAlignment.Center
+	applyPresentationBadge(sheetLogo, homeColor, teamLogoText(data, "Home", "V"))
+	applyPresentationBadge(sheetLogo, homeColor, teamLogoText(data, "Home", "V"))
 	local sheetTeamCode = label(sheetLogoPanel, shortCode(home), UDim2.fromScale(0.12, 0.08), UDim2.fromScale(0.76, 0.12), 34, Theme.Colors.Black, Theme.Fonts.Display)
 	sheetTeamCode.TextXAlignment = Enum.TextXAlignment.Center
 	local sheetStartTitle = label(sheet, "STARTING 11", UDim2.fromScale(0.36, 0.12), UDim2.fromScale(0.25, 0.08), 25, Theme.Colors.White, Theme.Fonts.Display)
@@ -750,6 +834,7 @@ function Presentation.Play(data: any, onComplete: (() -> ())?)
 		local teamColor = side == "Home" and homeColor or awayColor
 		sheetLogoPanel.BackgroundColor3 = teamColor
 		sheetLogo.Text = teamLogoText(data, side, shortCode(teamName))
+		applyPresentationBadge(sheetLogo, teamColor, teamLogoText(data, side, "V"))
 		sheetTeamCode.Text = shortCode(teamName)
 		sheetStartList.Text = teamSheetFromPlayers(lineupData(data, side), teamSheet(data, side))
 		sheetSubsList.Text = benchSheetFromPlayers(side == "Home" and (data.HomeBench or {}) or (data.AwayBench or {}), benchSheet(data, side))

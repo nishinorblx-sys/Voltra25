@@ -5,14 +5,28 @@ local Theme = require(game:GetService("ReplicatedStorage").VTR.Shared.Theme)
 local Presentation = {}
 
 local PACKS = {
-	{Name = "Voltra Spark Pack", Rarity = "Common", Color = Color3.fromHex("B7FF1A"), Accent = Color3.fromHex("050505")},
-	{Name = "Street Pulse Pack", Rarity = "Rare", Color = Color3.fromHex("1FA2FF"), Accent = Color3.fromHex("F5F7F2")},
-	{Name = "Neon Tactics Pack", Rarity = "Rare", Color = Color3.fromHex("24C6B8"), Accent = Color3.fromHex("050505")},
-	{Name = "Elite Matchday Pack", Rarity = "Epic", Color = Color3.fromHex("8E00D6"), Accent = Color3.fromHex("F5F7F2")},
-	{Name = "Voltra Vault Pack", Rarity = "Epic", Color = Color3.fromHex("FFCB45"), Accent = Color3.fromHex("111111")},
-	{Name = "Ranked Champion Pack", Rarity = "Mythic", Color = Color3.fromHex("FF477E"), Accent = Color3.fromHex("F5F7F2")},
-	{Name = "Icon Voltage Pack", Rarity = "Mythic", Color = Color3.fromHex("D9D9D9"), Accent = Color3.fromHex("7D2CFF")},
+	{Name = "Voltra Spark Pack", Rarity = "Common", Color = Color3.fromHex("B7FF1A"), Accent = Color3.fromHex("050505"), Weight = 800},
+	{Name = "Street Pulse Pack", Rarity = "Rare", Color = Color3.fromHex("1FA2FF"), Accent = Color3.fromHex("F5F7F2"), Weight = 90},
+	{Name = "Neon Tactics Pack", Rarity = "Rare", Color = Color3.fromHex("24C6B8"), Accent = Color3.fromHex("050505"), Weight = 50},
+	{Name = "Elite Matchday Pack", Rarity = "Epic", Color = Color3.fromHex("8E00D6"), Accent = Color3.fromHex("F5F7F2"), Weight = 35},
+	{Name = "Voltra Vault Pack", Rarity = "Epic", Color = Color3.fromHex("FFCB45"), Accent = Color3.fromHex("111111"), Weight = 18},
+	{Name = "Ranked Champion Pack", Rarity = "Mythic", Color = Color3.fromHex("FF477E"), Accent = Color3.fromHex("F5F7F2"), Weight = 6},
+	{Name = "Icon Voltage Pack", Rarity = "Mythic", Color = Color3.fromHex("D9D9D9"), Accent = Color3.fromHex("7D2CFF"), Weight = 1},
 }
+
+local function weightedPack(): any
+	local total = 0
+	for _, pack in PACKS do
+		total += pack.Weight or 1
+	end
+	local roll = math.random() * total
+	local cursor = 0
+	for _, pack in PACKS do
+		cursor += pack.Weight or 1
+		if roll <= cursor then return pack end
+	end
+	return PACKS[1]
+end
 
 local function label(parent: Instance, value: string, pos: UDim2, size: UDim2, textSize: number, color: Color3, z: number): TextLabel
 	local item = Instance.new("TextLabel")
@@ -52,13 +66,9 @@ local function rewardPack(payload: any): any
 		for _, pack in PACKS do
 			if string.upper(pack.Name) == string.upper(tostring(wanted)) then return pack end
 		end
-		return {Name = tostring(wanted), Rarity = tostring(reward.Rarity or ranked.Rarity or "Mythic"), Color = Color3.fromHex("B7FF1A"), Accent = Color3.fromHex("050505")}
+		return {Name = tostring(wanted), Rarity = tostring(reward.Rarity or ranked.Rarity or "Common"), Color = Color3.fromHex("B7FF1A"), Accent = Color3.fromHex("050505"), Weight = 1}
 	end
-	local roll = math.random()
-	if roll > .92 then return PACKS[math.random(6, 7)] end
-	if roll > .72 then return PACKS[math.random(4, 5)] end
-	if roll > .34 then return PACKS[math.random(2, 3)] end
-	return PACKS[1]
+	return weightedPack()
 end
 
 local function makePackCard(parent: Instance, pack: any, size: UDim2, z: number): Frame

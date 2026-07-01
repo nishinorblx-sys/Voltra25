@@ -219,9 +219,27 @@ end
 function Controller:_activate(data:any)
 	if self.Active then self:_cleanup(false)end;local player=Players.LocalPlayer;local ball=data.Ball;if not ball or not ball.Parent then local world=workspace:FindFirstChild(data.WorldName);ball=world and world:FindFirstChild(Config.Ball.Name,true)end;local active=data.ActivePlayer;if not ball or not active or not active.Parent then return end
 	setMenuVisible(false)
+	local bootCover = Instance.new("ScreenGui")
+	bootCover.Name = "VTRMatchBootCover"
+	bootCover.IgnoreGuiInset = true
+	bootCover.ResetOnSpawn = false
+	bootCover.DisplayOrder = 980
+	bootCover.Parent = player:WaitForChild("PlayerGui")
+	local bootFrame = Instance.new("Frame")
+	bootFrame.BackgroundColor3 = Color3.fromHex("020402")
+	bootFrame.BorderSizePixel = 0
+	bootFrame.Size = UDim2.fromScale(1, 1)
+	bootFrame.Parent = bootCover
+	task.delay(1.2, function()
+		if bootCover.Parent then bootCover:Destroy() end
+	end)
 	self.Active=true;self.Ball=ball;self.TeamModels=data.TeamModels;self.ControlledSide=data.ControlledSide or"Home";self.WatchMode=data.WatchMode==true;self.Paused=false;self.Ranked=data.Ranked==true;self.MatchInPlay=false;self.PrematchActive=true;self.PrematchSkipRequested=false;self.TacticalMode=false;self.TacticalPanelOpen=true;GuiService.SelectedObject=nil;local playerModule=require(player.PlayerScripts:WaitForChild("PlayerModule"));self.Controls=playerModule:GetControls();self.Controls:Disable();self.HUD=MatchHUDController.new(data);self.Commentary=CommentaryController.new(self.HUD.Gui);self.Camera=BroadcastCameraController.new(data.PitchCFrame,data.PitchWidth,data.PitchLength,ball,active);self.MouseAim=MouseAimController.new(workspace.CurrentCamera,data.PitchCFrame,data.PitchWidth,data.PitchLength);self.Input=InputController.new(self.Action,function(kind,charge)return self:_aimPayload(kind,charge)end);self.InputLock=MatchInputLockController.new(self.Action);self.TeamControl=TeamControlController.new(self.Action,self.Camera,self.HUD,active);self.BallRoll=BallRollVisualController.new(ball);self:_createTacticalPanel()
 	self.HUD:SetPauseButtonCallback(function()self:_setPaused(true)end)
-	if not self.ControlledIndicator then self.ControlledIndicator=VoltraControlledPlayerIndicator.new(function() return self.ActiveModel end) end
+	if self.WatchMode then
+		if self.ControlledIndicator then self.ControlledIndicator:Destroy();self.ControlledIndicator=nil end
+	elseif not self.ControlledIndicator then
+		self.ControlledIndicator=VoltraControlledPlayerIndicator.new(function() return self.ActiveModel end)
+	end
 	self.HUD:SetManualSubstitutionCallback(function(benchIndex:number,outgoingModel:Model,outgoingName:string)
 		self.Action:FireServer({Type="ManualSubstitution",BenchIndex=benchIndex,OutgoingModel=outgoingModel,OutgoingName=outgoingName})
 	end)

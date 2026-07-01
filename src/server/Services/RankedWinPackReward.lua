@@ -2,12 +2,12 @@
 local Service = {}
 
 local Packs = {
-	{PackId = "bronze_pack", Name = "Voltra Spark Pack", Rarity = "Common", Weight = 34},
-	{PackId = "silver_pack", Name = "Street Pulse Pack", Rarity = "Rare", Weight = 25},
-	{PackId = "gold_pack", Name = "Neon Tactics Pack", Rarity = "Rare", Weight = 18},
-	{PackId = "elite_pack", Name = "Elite Matchday Pack", Rarity = "Epic", Weight = 12},
-	{PackId = "champion_pack", Name = "Voltra Vault Pack", Rarity = "Epic", Weight = 7},
-	{PackId = "hero_pack", Name = "Ranked Champion Pack", Rarity = "Mythic", Weight = 3},
+	{PackId = "bronze_pack", Name = "Voltra Spark Pack", Rarity = "Common", Weight = 800},
+	{PackId = "silver_pack", Name = "Street Pulse Pack", Rarity = "Rare", Weight = 90},
+	{PackId = "gold_pack", Name = "Neon Tactics Pack", Rarity = "Rare", Weight = 50},
+	{PackId = "elite_pack", Name = "Elite Matchday Pack", Rarity = "Epic", Weight = 35},
+	{PackId = "champion_pack", Name = "Voltra Vault Pack", Rarity = "Epic", Weight = 18},
+	{PackId = "hero_pack", Name = "Ranked Champion Pack", Rarity = "Mythic", Weight = 6},
 	{PackId = "voltra_pack", Name = "Icon Voltage Pack", Rarity = "Mythic", Weight = 1},
 }
 
