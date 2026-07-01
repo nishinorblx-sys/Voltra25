@@ -142,6 +142,29 @@ function Service:_closestTeammateToPoint(player: Player, active: Model, point: V
 	return best
 end
 
+function Service:_switchDefenseToPassTarget(attackingSide: string, passTarget: Vector3)
+	local defendingSide = attackingSide == "Home" and "Away" or "Home"
+	local best: Model? = nil
+	local bestDistance = math.huge
+	for _, candidate in self.Teams[defendingSide] or {} do
+		local candidateRoot = root(candidate)
+		local humanoid = candidate:FindFirstChildOfClass("Humanoid")
+		if candidateRoot and humanoid and humanoid.Health > 0 and candidate:GetAttribute("VTRSentOff") ~= true then
+			local distance = (candidateRoot.Position - passTarget).Magnitude
+			if distance < bestDistance then
+				best = candidate
+				bestDistance = distance
+			end
+		end
+	end
+	if not best then return end
+	for player, active in self.Active do
+		if self.PlayerSides[player] == defendingSide and active ~= best then
+			self:_set(player, best, "PassDefense")
+		end
+	end
+end
+
 function Service:_aimPoint(active: Model, value: any, goalTarget: boolean?): Vector3?
 	if typeof(value) ~= "Vector3" or value.X ~= value.X or value.Y ~= value.Y or value.Z ~= value.Z then return nil end
 	local localPoint = self.PitchCFrame:PointToObjectSpace(value)
@@ -245,6 +268,7 @@ function Service:Handle(player: Player, payload: any)
 			if activeRoot and aimPoint and offset and offset.Magnitude>1 then
 				local target = self:_closestTeammateToPoint(player, active, aimPoint)
 				local kicked = self.BallService:Kick(active,"Pass",offset,tonumber(payload.Charge)or 0,target,payload.PassType=="ManualLobbed"and"Lofted"or"Manual",offset.Magnitude,aimPoint)
+				if kicked then self:_switchDefenseToPassTarget(tostring(active:GetAttribute("VTRTeam") or self.PlayerSides[player] or "Home"), aimPoint) end
 				if kicked and target then
 					self.Receiving:Expect(player, target, aimPoint)
 					self.PassIntent[player] = {Model = target, Passer = active, Until = os.clock() + 4.2, AutoSwitch = "Instant"}
@@ -258,6 +282,7 @@ function Service:Handle(player: Player, payload: any)
 		local lockedReceiver = typeof(payload.TargetModel) == "Instance" and payload.TargetModel:IsA("Model") and payload.TargetModel or nil
 		local receiver, receivePoint = self.Passing:Pass(active, payload.Direction, tonumber(payload.Charge) or 0, payload.PassType, aimPoint, lockedReceiver)
 		if receiver and receivePoint then
+			self:_switchDefenseToPassTarget(tostring(active:GetAttribute("VTRTeam") or self.PlayerSides[player] or "Home"), receivePoint)
 			local mode = autoSwitchMode(payload.AutoSwitch)
 			local assistMode = receiverAssistMode(payload.ReceiverAssist)
 			self.Receiving:Expect(player, receiver, receivePoint)

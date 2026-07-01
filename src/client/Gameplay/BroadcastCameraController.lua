@@ -207,22 +207,40 @@ function Controller:_updatePro(dt: number, root: BasePart)
 	local velocity = Vector3.new(root.AssemblyLinearVelocity.X, 0, root.AssemblyLinearVelocity.Z)
 	local speed = velocity.Magnitude
 	local forwardSpeed = velocity:Dot(attackDirection)
-	local backRun = math.clamp(-forwardSpeed, 0, 36)
+	local backRun = math.clamp(-forwardSpeed, 0, 38)
 	local ballOffset = Vector3.new(self.Ball.Position.X - root.Position.X, 0, self.Ball.Position.Z - root.Position.Z)
-	local ballForward = math.clamp(ballOffset:Dot(attackDirection), -8, 90)
-	local ballSide = math.clamp(ballOffset:Dot(right), -34, 34)
-	local distance = math.clamp(78 + speed * .22 + backRun * 1.15, 76, 128)
-	local height = math.clamp(34 + speed * .07 + backRun * .16, 32, 56)
-	local desired = root.Position - attackDirection * distance + right * math.clamp(ballSide * .16, -8, 8) + Vector3.new(0, height, 0)
-	local targetAhead = math.clamp(56 + ballForward * .22, 48, 80)
-	local target = root.Position + attackDirection * targetAhead + right * math.clamp(ballSide * .36, -14, 14) + Vector3.new(0, 6.5, 0)
-	if ballForward > 2 and ballOffset.Magnitude < 58 then
-		target = target:Lerp(self.Ball.Position + Vector3.new(0, 3.4, 0), .34)
+	local ballForward = ballOffset:Dot(attackDirection)
+	local ballSide = ballOffset:Dot(right)
+	local distance = math.clamp(76 + speed * .18 + backRun * 1.1, 74, 132)
+	local height = math.clamp(32 + speed * .055 + backRun * .14, 30, 58)
+	local target = root.Position + attackDirection * math.clamp(54 + math.clamp(ballForward, -8, 110) * .22, 48, 86) + right * math.clamp(ballSide * .34, -16, 16) + Vector3.new(0, 6.4, 0)
+	if ballForward > 0 and ballOffset.Magnitude < 70 then
+		target = target:Lerp(self.Ball.Position + Vector3.new(0, 3.4, 0), .32)
 	end
-	self.ProCameraPosition = self.ProCameraPosition and self.ProCameraPosition:Lerp(desired, 1 - math.exp(-dt / .17)) or desired
-	self.ProCameraTarget = self.ProCameraTarget and self.ProCameraTarget:Lerp(target, 1 - math.exp(-dt / .12)) or target
+	local fov = math.clamp(47 + speed * .035 + backRun * .075, 47, 55)
+	local viewport = self.Camera.ViewportSize
+	local aspect = viewport.Y > 0 and viewport.X / viewport.Y or 16 / 9
+	local function contains(frame: CFrame, checkFov: number): boolean
+		local localPoint = frame:PointToObjectSpace(self.Ball.Position + Vector3.new(0, 1.6, 0))
+		if localPoint.Z >= -4 then return false end
+		local depth = -localPoint.Z
+		local halfV = math.tan(math.rad(checkFov) * .5) * depth
+		local halfH = halfV * aspect
+		return math.abs(localPoint.X) <= halfH * .78 and math.abs(localPoint.Y) <= halfV * .72
+	end
+	for _ = 1, 12 do
+		local desired = root.Position - attackDirection * distance + right * math.clamp(ballSide * .16, -10, 10) + Vector3.new(0, height, 0)
+		local frame = CFrame.lookAt(desired, target, self.PitchCFrame.UpVector)
+		if contains(frame, fov) then break end
+		distance = math.min(distance + 14, 228)
+		height = math.min(height + 3.2, 92)
+		fov = math.min(fov + 1.4, 68)
+		target = target:Lerp(self.Ball.Position + Vector3.new(0, 3.5, 0), .18)
+	end
+	local desired = root.Position - attackDirection * distance + right * math.clamp(ballSide * .16, -10, 10) + Vector3.new(0, height, 0)
+	self.ProCameraPosition = self.ProCameraPosition and self.ProCameraPosition:Lerp(desired, 1 - math.exp(-dt / .18)) or desired
+	self.ProCameraTarget = self.ProCameraTarget and self.ProCameraTarget:Lerp(target, 1 - math.exp(-dt / .13)) or target
 	self.Camera.CFrame = CFrame.lookAt(self.ProCameraPosition, self.ProCameraTarget, self.PitchCFrame.UpVector)
-	local fov = math.clamp(47 + speed * .04 + backRun * .08, 47, 54)
 	self.Camera.FieldOfView += (fov - self.Camera.FieldOfView) * (1 - math.exp(-dt / .18))
 end
 

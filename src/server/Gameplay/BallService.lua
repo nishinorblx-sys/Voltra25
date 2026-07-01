@@ -149,14 +149,17 @@ ballisticVelocity=function(origin:Vector3,target:Vector3,preferredSpeed:number,g
 end
 
 local function distanceGoalChance(distance: number): number
+	local chance
 	if distance <= 70 then
-		return 1
+		chance = .95
 	elseif distance <= 160 then
-		return 1 - ((distance - 70) / 90) * 0.7
+		chance = .95 - ((distance - 70) / 90) * 0.67
 	elseif distance <= 190 then
-		return 0.3 - ((distance - 160) / 30) * 0.29
+		chance = 0.28 - ((distance - 160) / 30) * 0.265
+	else
+		chance = 0.01
 	end
-	return 0.01
+	return math.clamp(chance, 0.01, 0.95)
 end
 
 function Service:_shotVelocity(model: Model, direction: Vector3, charge: number, targetPoint:Vector3?): Vector3
@@ -174,6 +177,13 @@ function Service:_shotVelocity(model: Model, direction: Vector3, charge: number,
 			local lift=math.clamp(tonumber(model:GetAttribute("VTRFreeKickLift")) or 0,-2.5,2.5)*0.5
 			local curve=math.clamp(tonumber(model:GetAttribute("VTRFreeKickCurve")) or 0,-2.5,2.5)
 			local solved=FreeKickTrajectory.Compute(origin,targetPoint,curve,lift)
+			self.PendingFreeKickTrajectory = {
+				Target = targetPoint,
+				Lateral = solved.Lateral,
+				Strength = solved.Strength,
+				FlightTime = solved.FlightTime,
+				Gravity = solved.Gravity,
+			}
 			model:SetAttribute("VTRFreeKickTarget",targetPoint)
 			model:SetAttribute("VTRFreeKickFlightTime",solved.FlightTime)
 			model:SetAttribute("VTRFreeKickEffectiveGravity",solved.Gravity)
@@ -271,6 +281,12 @@ function Service:Kick(model: Model, kind: string, direction: Vector3, charge: nu
 		local freeKickTrajectory=model:GetAttribute("VTRFreeKickTrajectoryActive")==true
 		local effectiveShotGravity=tonumber(model:GetAttribute("VTRFreeKickEffectiveGravity")) or TARGETED_SHOT_GRAVITY
 		self.ShotPlan=targetPoint and{Target=targetPoint,Started=os.clock(),EffectiveGravity=effectiveShotGravity,PenaltySlot=penaltySlot~=""and penaltySlot or nil,PenaltyMissHigh=model:GetAttribute("VTRPenaltyMissHigh")==true}or nil
+		if freeKickTrajectory and self.ShotPlan and self.PendingFreeKickTrajectory then
+			self.ShotPlan.FreeKickTrajectory = self.PendingFreeKickTrajectory
+			self.ShotPlan.EffectiveGravity = self.PendingFreeKickTrajectory.Gravity or effectiveShotGravity
+			self.ShotPlan.Target = self.PendingFreeKickTrajectory.Target or targetPoint
+		end
+		self.PendingFreeKickTrajectory = nil
 		local horizontalVelocity=Vector3.new(velocity.X,0,velocity.Z);local horizontalDistance=targetPoint and Vector3.new(targetPoint.X-self.Ball.Position.X,0,targetPoint.Z-self.Ball.Position.Z).Magnitude or 65;local flightTime=tonumber(model:GetAttribute("VTRFreeKickFlightTime")) or horizontalDistance/math.max(horizontalVelocity.Magnitude,1)
 		if not freeKickTrajectory then
 			velocity+=self.Curve:StartShot(model,direction,flightTime)
@@ -289,8 +305,9 @@ function Service:Kick(model: Model, kind: string, direction: Vector3, charge: nu
 		end
 		local shotChance = distanceGoalChance(shotDistance)
 		if (tonumber(model:GetAttribute("VTRFreeKickGoalChanceUntil")) or 0) >= os.clock() then
-			shotChance = math.clamp(tonumber(model:GetAttribute("VTRFreeKickGoalChance")) or .3, .01, .99)
+			shotChance = math.clamp(tonumber(model:GetAttribute("VTRFreeKickGoalChance")) or .3, .01, .95)
 		end
+		shotChance = math.clamp(shotChance, .01, .95)
 		model:SetAttribute("VTRLastShotScoringChance",shotChance)
 		model:SetAttribute("VTRLastShotScoringPercent",math.floor(shotChance*100+.5))
 		model:SetAttribute("VTRShotDistanceStuds",shotDistance)
@@ -298,8 +315,8 @@ function Service:Kick(model: Model, kind: string, direction: Vector3, charge: nu
 		self.LastShotChancePercent=math.floor(shotChance*100+.5)
 		self.LastShotXG=shotChance
 		local intendedGoal=targetPoint
-		local goalRoll=targetPoint and (shotChance>=.999 or self.Random:NextNumber()<=shotChance) or false
-		if targetPoint and not goalRoll then
+		local goalRoll=targetPoint and (self.Random:NextNumber()<=shotChance) or false
+		if targetPoint and not goalRoll and not freeKickTrajectory then
 			local sideSign=self.Random:NextNumber()<.5 and -1 or 1
 			local highMiss=self.Random:NextNumber()<.34
 			local missTarget=targetPoint + self.Ball.CFrame.RightVector * sideSign * self.Random:NextNumber(16,28) + Vector3.yAxis * (highMiss and self.Random:NextNumber(5,10) or self.Random:NextNumber(-.5,2.5))
@@ -315,8 +332,8 @@ function Service:Kick(model: Model, kind: string, direction: Vector3, charge: nu
 				self.ShotPlan={Target=missTarget,Started=os.clock(),EffectiveGravity=TARGETED_SHOT_GRAVITY,ForcedMiss=true}
 			end
 			targetPoint=missTarget
-		elseif targetPoint and shotChance>=.999 then
-			self.ShotPlan={Target=intendedGoal,Started=os.clock(),EffectiveGravity=tonumber(model:GetAttribute("VTRFreeKickEffectiveGravity")) or TARGETED_SHOT_GRAVITY,GuaranteedGoal=true}
+		elseif targetPoint and shotChance>=.95 and not freeKickTrajectory then
+			self.ShotPlan={Target=intendedGoal,Started=os.clock(),EffectiveGravity=tonumber(model:GetAttribute("VTRFreeKickEffectiveGravity")) or TARGETED_SHOT_GRAVITY}
 		end
 		self.LastShooter=model
 		self.Stats:RecordShot(model,targetPoint~=nil,shotChance)
@@ -488,6 +505,9 @@ function Service:_applyLoosePhysics(dt: number)
 	local passPlan=self.PassPlan
 	if shotPlan and os.clock()-shotPlan.Started<2.5 then
 		velocity+=Vector3.yAxis*math.max(0,workspace.Gravity-shotPlan.EffectiveGravity)*dt
+		if shotPlan.FreeKickTrajectory then
+			velocity += shotPlan.FreeKickTrajectory.Lateral * shotPlan.FreeKickTrajectory.Strength * dt
+		end
 		local toTarget=shotPlan.Target-self.Ball.Position
 		local horizontalVelocity=Vector3.new(velocity.X,0,velocity.Z)
 		local horizontalTarget=Vector3.new(toTarget.X,0,toTarget.Z)
