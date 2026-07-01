@@ -38,7 +38,7 @@ function Teleport.Run(title: string, callback: () -> any): any
 	sub.AnchorPoint = Vector2.new(.5, .5)
 	sub.Position = UDim2.fromScale(.5, .56)
 	sub.Size = UDim2.fromScale(.8, .04)
-	sub.Text = "TELEPORTING TO VOLTRA MATCH"
+	sub.Text = "CINEMATIC MATCH LOADING"
 	sub.TextColor3 = Theme.Colors.Electric
 	sub.TextSize = 11
 	sub.Font = Theme.Fonts.Strong
@@ -62,7 +62,7 @@ function Teleport.Run(title: string, callback: () -> any): any
 	TweenService:Create(fill, TweenInfo.new(.75, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {Size = UDim2.fromScale(1, 1)}):Play()
 	task.wait(.28)
 	local result = callback()
-	task.wait(.28)
+	task.wait(1.15)
 	TweenService:Create(overlay, TweenInfo.new(.22), {GroupTransparency = 1}):Play()
 	task.delay(.24, function()
 		if gui.Parent then gui:Destroy() end

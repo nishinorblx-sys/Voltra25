@@ -64,6 +64,19 @@ function Service:JoinRankedQueue():any
 	end
 	return request("JoinRankedQueue",{DeviceType=deviceType()})
 end
+function Service:StartCampaignMatch():any
+	local choice=AIMatchModePrompt.Choose()
+	if choice=="Manual"then
+		return VoltraMatchTeleport.Run("Manual Campaign Match",function()
+			return request("StartMatch",{AIMatchTeleport=true,CampaignMode="Manual"})
+		end)
+	elseif choice=="Manage"then
+		return VoltraMatchTeleport.Run("Manage Campaign Match",function()
+			return request("WatchMatch",{AIMatchTeleport=true,CampaignMode="Manage"})
+		end)
+	end
+	return{Success=false,Message="Match cancelled."}
+end
 function Service:LeaveRankedQueue():any return request("LeaveRankedQueue")end
 function Service:GetRankedQueue():any return request("GetRankedQueue")end
 function Service:ReturnToMenu():any return request("ReturnToMenu")end
