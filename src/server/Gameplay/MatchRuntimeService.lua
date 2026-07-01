@@ -1369,6 +1369,15 @@ function Service:EndMatch(player:Player,showResult:boolean):boolean
 	if showResult then
 		local gameSeconds=session.Clock:Payload().GameSeconds
 		local rewards=session.OnBeforeResult and session.OnBeforeResult(session)or{}
+		local rankedPackChoices={
+			{Name="Voltra Spark Pack",Rarity="Common"},
+			{Name="Street Pulse Pack",Rarity="Rare"},
+			{Name="Neon Tactics Pack",Rarity="Rare"},
+			{Name="Elite Matchday Pack",Rarity="Epic"},
+			{Name="Voltra Vault Pack",Rarity="Epic"},
+			{Name="Ranked Champion Pack",Rarity="Mythic"},
+			{Name="Icon Voltage Pack",Rarity="Mythic"},
+		}
 		local resultStats=session.Stats:Serialize(session.World.HomeScore.Value,session.World.AwayScore.Value,gameSeconds)
 		for _,participant in session.Players do
 			local side=session.PlayerSides[participant]or"Home"
@@ -1384,10 +1393,24 @@ function Service:EndMatch(player:Player,showResult:boolean):boolean
 				result=sideWon and"Win"or"Loss"
 			end
 			if participant.Parent==Players then
-				if session.PrivateRankedMatch and session.ReturnPlaceId then
-					self.PostMatchReturns[participant]={PlaceId=session.ReturnPlaceId}
+				if session.PrivateRankedMatch and session.ReturnPlaceId and session.ForfeitBy ~= participant.UserId then
+				self.PostMatchReturns[participant]={PlaceId=session.ReturnPlaceId,IssuedAt=os.clock()}
+			elseif self.PostMatchReturns then
+				self.PostMatchReturns[participant]=nil
+			end
+			if session.Ranked then
+				participant:SetAttribute("VTRRankedMatchEnding",true)
+				participant:SetAttribute("VTRRankedQueueLockedUntil",os.clock()+10)
+			end
+				local rewardPayload=rewards and rewards[participant.UserId]or nil
+				local rankedWin=session.Ranked==true and(result=="Win"or result=="ForfeitWin")
+				if rankedWin then
+					rewardPayload=rewardPayload or{}
+					rewardPayload.PackChoices=rewardPayload.PackChoices or rankedPackChoices
+					rewardPayload.PackName=rewardPayload.PackName or rewardPayload.Pack or"Ranked Champion Pack"
+					rewardPayload.Rarity=rewardPayload.Rarity or"Mythic"
 				end
-				self.State:FireClient(participant,{Type="MatchEnded",Ranked=session.Ranked,LocalSide=side,Result=result,Forfeit=session.ForfeitBy~=nil,Home=homeScore,Away=awayScore,Stats=resultStats,Reward=rewards and rewards[participant.UserId]or nil})
+				self.State:FireClient(participant,{Type="MatchEnded",Ranked=session.Ranked,LocalSide=side,Result=result,Forfeit=session.ForfeitBy~=nil,Home=homeScore,Away=awayScore,Stats=resultStats,Reward=rewardPayload,RankedWinPack=rankedWin and rewardPayload or nil})
 			end
 		end
 		if session.OnRankedEnded then task.defer(session.OnRankedEnded,session)end
@@ -1414,16 +1437,24 @@ function Service:ReturnToMenu(player:Player):boolean
 	local pendingReturn=self.PostMatchReturns and self.PostMatchReturns[player]
 	if pendingReturn then
 		self.PostMatchReturns[player]=nil
+		if player:GetAttribute("VTRRankedTeleporting")==true then return true end
+		player:SetAttribute("VTRRankedTeleporting",true)
 		local ok,err=pcall(function()
 			TeleportService:TeleportAsync(tonumber(pendingReturn.PlaceId)or game.PlaceId,{player})
 		end)
-		if not ok then warn("[VTR RANKED RETURN] "..tostring(err))end
+		if not ok then
+			player:SetAttribute("VTRRankedTeleporting",nil)
+			warn("[VTR RANKED RETURN] "..tostring(err))
+		end
 		return ok
 	end
 	return self:EndMatch(player,false)
 end
 
 function Service:PlayerRemoving(player:Player)
+	if self.PostMatchReturns then self.PostMatchReturns[player]=nil end
+	player:SetAttribute("VTRRankedTeleporting",nil)
+	player:SetAttribute("VTRRankedQueueLockedUntil",os.clock()+10)
 	local session=self.Sessions[player]
 	if not session then return end
 	if not session.Ended and session.Running and session.Ranked then

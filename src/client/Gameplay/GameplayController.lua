@@ -29,6 +29,7 @@ local BallFlightMarkerController=require(script.Parent.BallFlightMarkerControlle
 local ReplayController=require(script.Parent.ReplayController)
 local CommentaryController=require(script.Parent.CommentaryController)
 local RankedQueuePresentation=require(script.Parent.Parent.Components.RankedQueuePresentation)
+local VoltraPackRoulette=require(script.Parent.Parent.Components.VoltraPackRoulette)
 local UIStateService=require(script.Parent.Parent.Services.UIStateService)
 local PenaltyConfig=require(ReplicatedStorage.VTR.Shared.PenaltyConfig)
 local Controller={};Controller.__index=Controller
@@ -306,7 +307,15 @@ function Controller:_state(payload:any)
 		self.GoalTarget:Destroy();self.GoalTarget=nil
 		self.Cutscenes:Destroy();self.Cutscenes=nil
 		if self.PauseConnection then self.PauseConnection:Disconnect();self.PauseConnection=nil end
-		self.HUD:ShowResult(payload,function()self:_cleanup(true)end)
+		local function showResult()
+			self.HUD:ShowResult(payload,function()self:_cleanup(true)end)
+		end
+		local rankedWin = payload.Ranked == true and (payload.Result == "Win" or payload.Result == "ForfeitWin")
+		if rankedWin and self.HUD and self.HUD.Gui then
+			VoltraPackRoulette.Play(self.HUD.Gui,payload,showResult)
+		else
+			showResult()
+		end
 	end
 end
 function Controller:_cleanup(restoreMenu:boolean)

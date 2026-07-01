@@ -1,6 +1,7 @@
 local MATCHUP_PANEL_DELAY = 0.85
 --!strict
 local ReplicatedStorage=game:GetService("ReplicatedStorage")
+local Players=game:GetService("Players")
 local UserInputService=game:GetService("UserInputService")
 local NetworkConfig=require(ReplicatedStorage.VTR.Shared.NetworkConfig)
 local remote=ReplicatedStorage.VTR:WaitForChild(NetworkConfig.FolderName):WaitForChild(NetworkConfig.MatchFunction)::RemoteFunction
@@ -17,7 +18,13 @@ local function deviceType():string
 	if UserInputService.GamepadEnabled and not UserInputService.KeyboardEnabled then return"Gamepad"end
 	return"KeyboardMouse"
 end
-function Service:JoinRankedQueue():any return request("JoinRankedQueue",{DeviceType=deviceType()})end
+function Service:JoinRankedQueue():any
+	local player=Players.LocalPlayer
+	if player and (player:GetAttribute("VTRInMatch")==true or (tonumber(player:GetAttribute("VTRRankedQueueLockedUntil"))or 0)>os.clock()) then
+		return{Success=false,Message="Finish the current ranked match first."}
+	end
+	return request("JoinRankedQueue",{DeviceType=deviceType()})
+end
 function Service:LeaveRankedQueue():any return request("LeaveRankedQueue")end
 function Service:GetRankedQueue():any return request("GetRankedQueue")end
 function Service:ReturnToMenu():any return request("ReturnToMenu")end
