@@ -10,25 +10,23 @@ function Service.new(pitchCFrame: CFrame, width: number, length: number)
 	return setmetatable({PitchCFrame = pitchCFrame, Width = width, Length = length, Cache = {}}, Service)
 end
 
+local function attackSignFor(active: Model?): number
+	local side = active and tostring(active:GetAttribute("VTRTeam") or "Home") or "Home"
+	local half = tonumber(workspace:GetAttribute("VTRMatchHalf")) or 1
+	if side == "Home" then
+		return half >= 2 and 1 or -1
+	end
+	return half >= 2 and -1 or 1
+end
+
 function Service:GetGoalRectangle(active: Model?): any
 	local side = active and tostring(active:GetAttribute("VTRTeam") or "Home") or "Home"
-	if not self.Cache[side] then
-		self.Cache[side] = GoalModelResolver.Resolve(active, self.PitchCFrame, self.Width, self.Length)
-		if workspace:GetAttribute("GameplayDebug") == true or workspace:GetAttribute("VTRGameplayDebug") == true then
-			local rectangle = self.Cache[side]
-			local width = rectangle.RightBound - rectangle.Left
-			local height = rectangle.Top - rectangle.Bottom
-			local center = rectangle.PlanePoint + rectangle.Right * (rectangle.Left + width * 0.5) + rectangle.Up * (rectangle.Bottom + height * 0.5)
-			local outline = Instance.new("Part")
-			outline.Name = "VTRGoalPlaneDebug_" .. side
-			outline.Anchored = true; outline.CanCollide = false; outline.CanTouch = false; outline.CanQuery = false
-			outline.Material = Enum.Material.Neon; outline.Color = Color3.fromHex("B7FF1A"); outline.Transparency = 0.78
-			outline.Size = Vector3.new(width, height, 0.08)
-			outline.CFrame = CFrame.fromMatrix(center, rectangle.Right, rectangle.Up, rectangle.Normal)
-			outline.Parent = workspace
-		end
+	local half = tonumber(workspace:GetAttribute("VTRMatchHalf")) or 1
+	local key = side .. ":" .. tostring(half)
+	if not self.Cache[key] then
+		self.Cache[key] = GoalModelResolver.ResolveByAttackSign(attackSignFor(active), self.PitchCFrame, self.Width, self.Length)
 	end
-	return self.Cache[side]
+	return self.Cache[key]
 end
 
 function Service:ProjectRay(active: Model?, rayOrigin: Vector3, rayDirection: Vector3): (boolean, Vector3?)

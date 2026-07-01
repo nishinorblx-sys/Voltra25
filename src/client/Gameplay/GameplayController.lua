@@ -91,23 +91,19 @@ function Controller:_mobileAimPayload(kind:string?,charge:number?,root:BasePart)
 	local goalTarget=false
 	if kind=="Shot"then
 		local pitch=self.Camera and self.Camera.PitchCFrame
-		local width=self.Camera and self.Camera.Width or 424
 		local length=self.Camera and self.Camera.Length or 742
 		if pitch then
-			local goalA=pitch:PointToWorldSpace(Vector3.new(0,3,-length*.5))
-			local goalB=pitch:PointToWorldSpace(Vector3.new(0,3,length*.5))
-			local toA=Vector3.new(goalA.X-root.Position.X,0,goalA.Z-root.Position.Z)
-			local toB=Vector3.new(goalB.X-root.Position.X,0,goalB.Z-root.Position.Z)
-			local dotA=toA.Magnitude>1 and direction:Dot(toA.Unit)or-1
-			local dotB=toB.Magnitude>1 and direction:Dot(toB.Unit)or-1
-			local chosen=dotA>dotB and goalA or goalB
-			local chosenDot=math.max(dotA,dotB)
-			local chosenDistance=Vector3.new(chosen.X-root.Position.X,0,chosen.Z-root.Position.Z).Magnitude
+			local half=tonumber(workspace:GetAttribute("VTRMatchHalf"))or 1
+			local team=tostring(self.ActiveModel and self.ActiveModel:GetAttribute("VTRTeam")or"Home")
+			local attackSign=(team=="Home"and(half>=2 and 1 or-1)or(half>=2 and-1 or 1))
+			local chosen=pitch:PointToWorldSpace(Vector3.new(0,3,attackSign*length*.5))
+			local toGoal=Vector3.new(chosen.X-root.Position.X,0,chosen.Z-root.Position.Z)
+			local chosenDot=toGoal.Magnitude>1 and direction:Dot(toGoal.Unit)or-1
+			local chosenDistance=toGoal.Magnitude
 			if chosenDistance<=172 and chosenDot>-0.08 then
-				local localGoal=pitch:PointToObjectSpace(chosen)
 				local side=direction:Dot(pitch.RightVector)>=0 and 1 or -1
 				local high=((math.floor(os.clock()*10)+math.floor(root.Position.X))%2)==0
-				position=pitch:PointToWorldSpace(Vector3.new(side*11,high and 6.2 or 2.45,localGoal.Z))
+				position=pitch:PointToWorldSpace(Vector3.new(side*11,high and 6.2 or 2.45,attackSign*length*.5))
 				goalTarget=true
 			else
 				position=root.Position+direction*(90+amount*80)
@@ -140,7 +136,7 @@ function Controller:_playPrematchSkipTransition()
 	local gui=Instance.new("ScreenGui");gui.Name="VTRPrematchSkipTransition";gui.IgnoreGuiInset=true;gui.ResetOnSpawn=false;gui.DisplayOrder=112;gui.Parent=Players.LocalPlayer.PlayerGui
 	DeviceScaleService.Apply(gui)
 	local overlay=Instance.new("CanvasGroup");overlay.BackgroundColor3=Color3.new(0,0,0);overlay.BorderSizePixel=0;overlay.GroupTransparency=1;overlay.Size=UDim2.fromScale(1,1);overlay.ZIndex=112;overlay.Parent=gui
-	local slash=Instance.new("Frame");slash.AnchorPoint=Vector2.new(.5,.5);slash.BackgroundColor3=Color3.fromHex("B7FF1A");slash.BorderSizePixel=0;slash.Position=UDim2.fromScale(-.25,.5);slash.Rotation=-16;slash.Size=UDim2.fromScale(.55,1.7);slash.ZIndex=113;slash.Parent=overlay
+	local slash=Instance.new("Frame");slash.AnchorPoint=Vector2.new(.5,.5);slash.BackgroundColor3=Color3.new(0,0,0);slash.BackgroundTransparency=1;slash.BorderSizePixel=0;slash.Position=UDim2.fromScale(-.25,.5);slash.Rotation=-16;slash.Size=UDim2.fromScale(.55,1.7);slash.ZIndex=113;slash.Parent=overlay
 	local TweenService=game:GetService("TweenService")
 	TweenService:Create(overlay,TweenInfo.new(.16),{GroupTransparency=0}):Play()
 	TweenService:Create(slash,TweenInfo.new(.36,Enum.EasingStyle.Quart,Enum.EasingDirection.Out),{Position=UDim2.fromScale(1.22,.5)}):Play()
@@ -363,7 +359,7 @@ function Controller:_state(payload:any)
 	elseif payload.Type=="Offside"then self.HUD:Flash("OFFSIDE",1.1)
 	elseif payload.Type=="Substitution"then self.HUD:ShowSubstitution(payload)
 	elseif payload.Type=="GoalkeeperSave"then if self.HUD then self.HUD:ResolveShotChance(false)end;if self.Visual then self.Visual:StopShotTrail()end;if self.GoalTarget then self.GoalTarget:Unlock()end;if self.Camera and self.Camera.EndCutscene then task.delay(1.5,function()if self.Camera then self.Camera:EndCutscene()end end)end;self.HUD:Flash("GREAT SAVE",.9)
-	elseif payload.Type=="Clock"then self.Stamina=tonumber(payload.Stamina)or self.Stamina;self.Endurance=tonumber(payload.Endurance)or self.Endurance;self.HUD:SetClock(payload.GameSeconds or 0,payload.Home,payload.Away,payload.AddedMinutes,payload.InAddedTime,payload.AddedElapsed);self.HUD:UpdateActiveRating()
+	elseif payload.Type=="Clock"then workspace:SetAttribute("VTRMatchHalf",tonumber(payload.Half)or 1);self.Stamina=tonumber(payload.Stamina)or self.Stamina;self.Endurance=tonumber(payload.Endurance)or self.Endurance;self.HUD:SetClock(payload.GameSeconds or 0,payload.Home,payload.Away,payload.AddedMinutes,payload.InAddedTime,payload.AddedElapsed);self.HUD:UpdateActiveRating()
 	elseif payload.Type=="Kickoff"then if self.Visual then self.Visual:StopShotTrail()end;self.HUD:Flash("Kick Off",1)
 	elseif payload.Type=="Goal"then if self.HUD then self.HUD:ResolveShotChance(true)end;self.MatchInPlay=false;if self.Visual then self.Visual:ClearLock();self.Visual:HoldShotTrail()end;if self.GoalTarget then self.GoalTarget:Unlock()end;if self.Trainer then self.Trainer:SetMatchActive(false)end;self.Minimap:SetMatchActive(false);self.AimLine:SetMatchActive(false);self.GoalTarget:SetMatchActive(false);self.HUD:SetClock(payload.GameSeconds or 0,payload.Home,payload.Away,payload.AddedMinutes,payload.InAddedTime,payload.AddedElapsed);self.HUD:RememberGoalScorer(payload);self.ReplayBlocking=true;self.ReplayQueuedPayloads={};self.ReplayQueuedClock=nil;if self.ReplayController then self.ReplayController:PlayGoalReplay(function()self:_finishGoalPresentation(payload)end)else self:_finishGoalPresentation(payload)end
 	elseif payload.Type=="Info"then if payload.Important==true then self.HUD:Flash(payload.Message,1.3)end

@@ -145,7 +145,11 @@ function Service:_aimPoint(active: Model, value: any, goalTarget: boolean?): Vec
 	if typeof(value) ~= "Vector3" or value.X ~= value.X or value.Y ~= value.Y or value.Z ~= value.Z then return nil end
 	local localPoint = self.PitchCFrame:PointToObjectSpace(value)
 	if goalTarget then
-		local rectangle = GoalModelResolver.Resolve(active, self.PitchCFrame, self.Width, self.Length)
+		local homeRectangle = GoalModelResolver.ResolveSide("Home", self.PitchCFrame, self.Width, self.Length)
+		local awayRectangle = GoalModelResolver.ResolveSide("Away", self.PitchCFrame, self.Width, self.Length)
+		local homePoint = GoalModelResolver.ClampPoint(homeRectangle, value)
+		local awayPoint = GoalModelResolver.ClampPoint(awayRectangle, value)
+		local rectangle = (homePoint - value).Magnitude <= (awayPoint - value).Magnitude and homeRectangle or awayRectangle
 		local clamped=GoalModelResolver.ClampPoint(rectangle,value);local offset=clamped-rectangle.PlanePoint;local x=math.clamp(offset:Dot(rectangle.Right),rectangle.Left,rectangle.RightBound);local safeBottom=math.min(rectangle.Top,rectangle.Bottom+GameplayConfig.Ball.Radius*.95);local safeTop=math.max(safeBottom,rectangle.Top-math.min(.8,(rectangle.Top-rectangle.Bottom)*.08));local y=math.clamp(offset:Dot(rectangle.Up),safeBottom,safeTop);return GoalModelResolver.Point(rectangle,x,y)
 	else
 		localPoint = Vector3.new(math.clamp(localPoint.X, -self.Width / 2, self.Width / 2), 0.15, math.clamp(localPoint.Z, -self.Length / 2, self.Length / 2))

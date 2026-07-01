@@ -162,41 +162,50 @@ function Controller:_updateShotReplayCamera(timeNow: number, shotTime: number)
 	local shooterRoot = self:_cloneFor(rootPart(self.LastShotActor))
 	local ballClone = self:_cloneFor(self.Ball)
 	if not shooterRoot or not shooterRoot:IsA("BasePart") or not ballClone or not ballClone:IsA("BasePart") then return end
-
 	local shooterPos = shooterRoot.Position
 	local ballPos = ballClone.Position
-	local shotVector = Vector3.new(ballPos.X - shooterPos.X, 0, ballPos.Z - shooterPos.Z)
-	local fallbackLook = Vector3.new(shooterRoot.CFrame.LookVector.X, 0, shooterRoot.CFrame.LookVector.Z)
-	local shotDir = if shotVector.Magnitude > 0.05 then shotVector.Unit else (fallbackLook.Magnitude > 0.05 and fallbackLook.Unit or Vector3.zAxis)
-	local sideDir = Vector3.new(-shotDir.Z, 0, shotDir.X)
-	if sideDir.Magnitude < 0.05 then
-		sideDir = Vector3.xAxis
-	else
-		sideDir = sideDir.Unit
+	if not self.ReplayShotDirection then
+		local fallbackLook = Vector3.new(shooterRoot.CFrame.LookVector.X, 0, shooterRoot.CFrame.LookVector.Z)
+		local shotVector = Vector3.new(ballPos.X - shooterPos.X, 0, ballPos.Z - shooterPos.Z)
+		self.ReplayShotDirection = shotVector.Magnitude > 0.08 and shotVector.Unit or (fallbackLook.Magnitude > 0.08 and fallbackLook.Unit or Vector3.zAxis)
+		self.ReplayShotSide = Vector3.new(-self.ReplayShotDirection.Z, 0, self.ReplayShotDirection.X).Unit
+		self.ReplayCameraPosition = nil
+		self.ReplayCameraTarget = nil
+		self.ReplayCameraLastTime = nil
 	end
+	local shotDir = self.ReplayShotDirection
+	local sideDir = self.ReplayShotSide
 	local up = Vector3.yAxis
 	local setupStart = shotTime - 1.85
 	local strikeMoment = shotTime + 0.05
+	local desiredPosition: Vector3
+	local desiredTarget: Vector3
+	local desiredFov: number
 	if timeNow <= strikeMoment then
 		local alpha = math.clamp((timeNow - setupStart) / math.max(0.01, strikeMoment - setupStart), 0, 1)
 		local eased = alpha * alpha * (3 - 2 * alpha)
-		local target = shooterPos:Lerp(ballPos, 0.45) + up * (5.2 + eased * 1.6)
-		local distance = 72 - eased * 10
-		local height = 27 + eased * 5
-		local sidePan = -16 + eased * 26
-		local position = target - shotDir * distance + sideDir * sidePan + up * height
-		camera.FieldOfView = 54 - eased * 3
-		camera.CFrame = CFrame.lookAt(position, target)
+		desiredTarget = shooterPos:Lerp(ballPos, 0.38) + up * (5.4 + eased * 1.2)
+		desiredPosition = desiredTarget - shotDir * (76 - eased * 8) + sideDir * (-12 + eased * 16) + up * (29 + eased * 2)
+		desiredFov = 53 - eased * 2
 	else
 		local alpha = math.clamp((timeNow - shotTime) / 3.0, 0, 1)
 		local eased = 1 - (1 - alpha) * (1 - alpha)
-		local target = shooterPos:Lerp(ballPos, 0.58 + eased * 0.24) + up * (5.6 + eased * 2.8)
-		local behindShooter = shooterPos - shotDir * 68 + sideDir * 7 + up * 31
-		local behindBall = ballPos - shotDir * 58 + sideDir * 3 + up * 34
-		local position = behindShooter:Lerp(behindBall, eased * 0.8)
-		camera.FieldOfView = 51 + eased * 3
-		camera.CFrame = CFrame.lookAt(position, target)
+		desiredTarget = shooterPos:Lerp(ballPos, 0.50 + eased * 0.20) + up * (5.8 + eased * 1.6)
+		desiredPosition = shooterPos - shotDir * (72 - eased * 8) + sideDir * 8 + up * (32 + eased * 2)
+		desiredFov = 51 + eased * 2
 	end
+	local dt = math.clamp(timeNow - (self.ReplayCameraLastTime or timeNow), 0, 0.08)
+	self.ReplayCameraLastTime = timeNow
+	local alpha = 1 - math.exp(-dt * 9)
+	if not self.ReplayCameraPosition then
+		self.ReplayCameraPosition = desiredPosition
+		self.ReplayCameraTarget = desiredTarget
+	else
+		self.ReplayCameraPosition = self.ReplayCameraPosition:Lerp(desiredPosition, alpha)
+		self.ReplayCameraTarget = self.ReplayCameraTarget:Lerp(desiredTarget, alpha)
+	end
+	camera.FieldOfView = desiredFov
+	camera.CFrame = CFrame.lookAt(self.ReplayCameraPosition, self.ReplayCameraTarget)
 	viewport.CurrentCamera = camera
 end
 
@@ -205,6 +214,11 @@ function Controller:_startCinematicReplay(replay: any, startTime: number, endTim
 	if not replay.ReplayVisible then replay:ShowReplay(true) end
 	replay.Playing = true
 	replay.CustomEvents.ReplayStarted:Fire()
+	self.ReplayShotDirection=nil
+	self.ReplayShotSide=nil
+	self.ReplayCameraPosition=nil
+	self.ReplayCameraTarget=nil
+	self.ReplayCameraLastTime=nil
 	local currentTime = startTime
 	local connection: RBXScriptConnection?
 	connection = RunService.RenderStepped:Connect(function(dt)
@@ -274,7 +288,8 @@ function Controller:_playSkipTransition(done: () -> ())
 	overlay.Parent = gui
 	local slash = Instance.new("Frame")
 	slash.AnchorPoint = Vector2.new(0.5, 0.5)
-	slash.BackgroundColor3 = Theme.Colors.Electric
+	slash.BackgroundColor3 = Theme.Colors.Black
+	slash.BackgroundTransparency = 1
 	slash.BorderSizePixel = 0
 	slash.Position = UDim2.fromScale(-0.25, 0.5)
 	slash.Rotation = -16

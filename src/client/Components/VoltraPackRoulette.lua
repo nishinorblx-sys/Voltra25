@@ -137,7 +137,21 @@ function Presentation.Play(gui: ScreenGui, payload: any, onComplete: () -> ())
 	overlay.ZIndex = 520
 	overlay.Active = true
 	overlay.Parent = gui
+	local blocker = Instance.new("TextButton")
+	blocker.Name = "RouletteInputBlocker"
+	blocker.BackgroundTransparency = 1
+	blocker.Text = ""
+	blocker.Size = UDim2.fromScale(1, 1)
+	blocker.ZIndex = 521
+	blocker.Active = true
+	blocker.AutoButtonColor = false
+	pcall(function() blocker.Modal = true end)
+	blocker.Parent = overlay
 	TweenService:Create(overlay, TweenInfo.new(.28), {GroupTransparency = 0}):Play()
+	label(overlay, "YOU WON THE GAME", UDim2.fromScale(.12, .18), UDim2.fromScale(.76, .08), 42, Theme.Colors.Electric, 522)
+	label(overlay, "RANKED VICTORY REWARD LOCKED", UDim2.fromScale(.18, .27), UDim2.fromScale(.64, .05), 13, Theme.Colors.White, 522)
+	task.wait(1.35)
+	if not overlay.Parent then return end
 	label(overlay, "RANKED WIN REWARD", UDim2.fromScale(.18, .07), UDim2.fromScale(.64, .05), 13, Theme.Colors.Electric, 522)
 	label(overlay, "VOLTRA PACK ROULETTE", UDim2.fromScale(.14, .12), UDim2.fromScale(.72, .08), 38, Theme.Colors.White, 522)
 	local rail = Instance.new("Frame")
