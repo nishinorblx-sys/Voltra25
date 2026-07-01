@@ -1,4 +1,5 @@
 --!strict
+local RankedWinPackReward=require(script.Parent.RankedWinPackReward)
 local HttpService = game:GetService("HttpService")
 local MemoryStoreService = game:GetService("MemoryStoreService")
 local Players = game:GetService("Players")

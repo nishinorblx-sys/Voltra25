@@ -1447,6 +1447,14 @@ function Service:EndMatch(player:Player,showResult:boolean):boolean
 				local rankedWin=session.Ranked==true and(result=="Win"or result=="ForfeitWin")
 				if rankedWin then
 					rewardPayload=rewardPayload or{}
+					if session.RankedWinPackGrant and rewardPayload.PackGranted~=true then
+						local ok,packReward=pcall(session.RankedWinPackGrant,session,participant,rewardPayload)
+						if ok and type(packReward)=="table"then
+							for key,value in packReward do
+								rewardPayload[key]=value
+							end
+						end
+					end
 					rewardPayload.PackChoices=rewardPayload.PackChoices or rankedPackChoices
 					rewardPayload.PackName=rewardPayload.PackName or rewardPayload.Pack or"Ranked Champion Pack"
 					rewardPayload.Rarity=rewardPayload.Rarity or"Mythic"
