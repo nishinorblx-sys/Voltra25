@@ -286,8 +286,6 @@ local function formationDots(parent: Instance, data: any, side: string)
 	updateFormationDots(dots, data, side)
 	return dots
 end
-	return dots
-end
 
 local function setLineHighlight(dots: {Frame}, groupName: string, first: number, last: number)
 	for index, dot in dots do
@@ -300,7 +298,6 @@ local function setLineHighlight(dots: {Frame}, groupName: string, first: number,
 			Size = active and UDim2.fromOffset(16, 16) or UDim2.fromOffset(11, 11),
 		}):Play()
 	end
-end
 end
 
 local function makePitchLine(parent: Instance, pos: UDim2, size: UDim2)
