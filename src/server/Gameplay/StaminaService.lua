@@ -30,7 +30,7 @@ function Service:Step(model: Model, dt: number, state: any): (number,number)
 	local reserve=math.clamp(tonumber(model:GetAttribute("VTRSprintStamina"))or tonumber(model:GetAttribute("VTRStamina"))or endurance,0,endurance)
 	local sprintDuration = math.max(0, tonumber(model:GetAttribute("VTRSprintDuration")) or 0)
 	local controlled=state.UserControlled==true
-	local sprintLocked=model:GetAttribute("VTRSprintLocked")==true
+	local sprintLocked=model:GetAttribute("VTRSprintLocked")==true and not controlled
 	local sprinting = controlled and not sprintLocked and state.Sprinting == true and (tonumber(state.MoveMagnitude) or 0) > 0.1
 	local speed = math.max(0, tonumber(state.CurrentSpeed) or 0)
 	local gameRate=math.max(0,tonumber(state.GameRate)or 1)
@@ -52,7 +52,7 @@ function Service:Step(model: Model, dt: number, state: any): (number,number)
 		local recoveryQuality = math.clamp((staminaStat - 35) / 64, 0, 1)
 		local idle = speed < 5
 		local recovery = idle and (Config.IdleRecoveryMin + (Config.IdleRecoveryMax - Config.IdleRecoveryMin) * recoveryQuality) or (Config.JogRecoveryMin + (Config.JogRecoveryMax - Config.JogRecoveryMin) * recoveryQuality)
-		if not controlled then recovery*=Config.UnusedRecoveryMultiplier end
+		if not controlled then recovery=math.max(recovery*Config.UnusedRecoveryMultiplier,Config.IdleRecoveryMax*1.25) end
 		reserve=math.min(endurance,reserve+recovery*dt)
 	end
 	reserve=math.min(reserve,endurance)

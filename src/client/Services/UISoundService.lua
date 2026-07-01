@@ -1,4 +1,5 @@
 --!strict
+local ContentProvider = game:GetService("ContentProvider")
 local SoundService = game:GetService("SoundService")
 
 local Service = {}
@@ -17,8 +18,39 @@ local COLOR_SOUND = "rbxassetid://109229821869092"
 local TRANSITION_SOUND = "rbxassetid://136186135240645"
 
 local lastPlayed: {[string]: number} = {}
+local preloaded = false
+
+local function preload()
+	if preloaded then return end
+	preloaded = true
+	local sounds = {}
+	for _, id in CLICK_SOUNDS do
+		local sound = Instance.new("Sound")
+		sound.SoundId = id
+		table.insert(sounds, sound)
+	end
+	for _, id in HOVER_SOUNDS do
+		local sound = Instance.new("Sound")
+		sound.SoundId = id
+		table.insert(sounds, sound)
+	end
+	for _, id in {TYPE_SOUND, COLOR_SOUND, TRANSITION_SOUND} do
+		local sound = Instance.new("Sound")
+		sound.SoundId = id
+		table.insert(sounds, sound)
+	end
+	task.spawn(function()
+		pcall(function()
+			ContentProvider:PreloadAsync(sounds)
+		end)
+		for _, sound in sounds do
+			sound:Destroy()
+		end
+	end)
+end
 
 local function play(id: string, volume: number, key: string?, cooldown: number?)
+	preload()
 	local now = os.clock()
 	if key and cooldown and (lastPlayed[key] or 0) + cooldown > now then return end
 	if key then lastPlayed[key] = now end
@@ -37,12 +69,16 @@ local function play(id: string, volume: number, key: string?, cooldown: number?)
 	end)
 end
 
+function Service.Preload()
+	preload()
+end
+
 function Service.PlayClick()
 	play(CLICK_SOUNDS[math.random(1, #CLICK_SOUNDS)], 0.42, "Click", 0.035)
 end
 
 function Service.PlayHover()
-	play(HOVER_SOUNDS[math.random(1, #HOVER_SOUNDS)], 0.2, "Hover", 0.08)
+	play(HOVER_SOUNDS[1], 0.2, "Hover", 0.08)
 end
 
 function Service.PlayType()
@@ -54,10 +90,11 @@ function Service.PlayColor()
 end
 
 function Service.PlayTransition()
-	play(TRANSITION_SOUND, 0.48, "Transition", 0.18)
+	play(TRANSITION_SOUND, 0.52, "Transition", 0.02)
 end
 
 function Service.Bind(root: Instance)
+	preload()
 	local function bindOne(item: Instance)
 		if item:GetAttribute("VTRUISoundBound") == true then return end
 		if item:IsA("GuiButton") then
@@ -84,5 +121,7 @@ function Service.Bind(root: Instance)
 	end
 	root.DescendantAdded:Connect(bindOne)
 end
+
+preload()
 
 return Service

@@ -10,6 +10,66 @@ local Theme = require(ReplicatedStorage.VTR.Shared.Theme)
 local FocusController = require(script.Parent.Controllers.FocusController)
 local MatchGameplayController = require(script.Parent.Gameplay.GameplayController)
 
+local function showMatchLoadSyncCover()
+	local data = TeleportService:GetLocalPlayerTeleportData()
+	local matchTeleport = type(data) == "table" and (data.MatchMode == "Ranked1v1" or data.MatchMode == "AICampaignSolo")
+	if not matchTeleport then return nil end
+	local playerGui = Players.LocalPlayer:WaitForChild("PlayerGui")
+	local old = playerGui:FindFirstChild("VTRMatchLoadSyncCover")
+	if old then old:Destroy() end
+	local gui = Instance.new("ScreenGui")
+	gui.Name = "VTRMatchLoadSyncCover"
+	gui.IgnoreGuiInset = true
+	gui.ResetOnSpawn = false
+	gui.DisplayOrder = 5000
+	gui.Parent = playerGui
+	local bg = Instance.new("Frame")
+	bg.BackgroundColor3 = Color3.fromHex("020402")
+	bg.BorderSizePixel = 0
+	bg.Size = UDim2.fromScale(1, 1)
+	bg.Parent = gui
+	local title = Instance.new("TextLabel")
+	title.BackgroundTransparency = 1
+	title.AnchorPoint = Vector2.new(.5, .5)
+	title.Position = UDim2.fromScale(.5, .44)
+	title.Size = UDim2.fromScale(.78, .08)
+	title.Font = Theme.Fonts.Display
+	title.Text = data.MatchMode == "Ranked1v1" and "SYNCING MATCH" or "LOADING AI MATCH"
+	title.TextColor3 = Theme.Colors.White
+	title.TextSize = 36
+	title.Parent = bg
+	local sub = Instance.new("TextLabel")
+	sub.BackgroundTransparency = 1
+	sub.AnchorPoint = Vector2.new(.5, .5)
+	sub.Position = UDim2.fromScale(.5, .52)
+	sub.Size = UDim2.fromScale(.78, .05)
+	sub.Font = Theme.Fonts.Strong
+	sub.Text = "PREPARING CINEMATIC BROADCAST"
+	sub.TextColor3 = Theme.Colors.Silver
+	sub.TextSize = 11
+	sub.Parent = bg
+	task.spawn(function()
+		local started = os.clock()
+		while gui.Parent and os.clock() - started < 55 do
+			local prematch = playerGui:FindFirstChild("VTRPrematchBroadcast")
+			if prematch then
+				task.wait(.35)
+				break
+			end
+			task.wait(.05)
+		end
+		if gui.Parent then
+			local tween = TweenService:Create(bg, TweenInfo.new(.18), {BackgroundTransparency = 1})
+			tween:Play()
+			task.delay(.2, function()
+				if gui.Parent then gui:Destroy() end
+			end)
+		end
+	end)
+	return gui
+end
+
+showMatchLoadSyncCover()
 FocusController.new():Start(Players.LocalPlayer:WaitForChild("PlayerGui"))
 MatchGameplayController.new():Start()
 
@@ -125,8 +185,8 @@ local function showReservedRankedBoot()
 	bg.Parent = gui
 	for index = 1, 4 do
 		local slash = Instance.new("Frame")
-		slash.BackgroundColor3 = index % 2 == 0 and Theme.Colors.Electric or Theme.Colors.Gunmetal
-		slash.BackgroundTransparency = index % 2 == 0 and 0.8 or 0.38
+		slash.BackgroundColor3 = Color3.fromHex("020402")
+		slash.BackgroundTransparency = 1
 		slash.BorderSizePixel = 0
 		slash.AnchorPoint = Vector2.new(0.5, 0.5)
 		slash.Position = UDim2.fromScale(0.16 + index * 0.18, 0.5)

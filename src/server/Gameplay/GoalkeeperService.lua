@@ -433,7 +433,7 @@ function Service:_faceBall(keeper:Model,rectangle:any)
 end
 
 function Service:_positionOnLine(defendingSide:string)
-	local keeper=goalkeeper(self.Teams[defendingSide]);if not keeper or keeper:GetAttribute("VTRGoalkeeperSaving")==true or self.BallService.Possession:GetOwner()==keeper then return end
+	local keeper=goalkeeper(self.Teams[defendingSide]);if not keeper or keeper:GetAttribute("VTRGoalkeeperSaving")==true or keeper:GetAttribute("controlledByUser")==true or self.BallService.Possession:GetOwner()==keeper then return end
 	local attackingSide=self:_scoringSideForDefendedGoal(defendingSide)
 	local rectangle=GoalModelResolver.ResolveSide(attackingSide,self.PitchCFrame,self.Width,self.Length)
 	local width=rectangle.RightBound-rectangle.Left

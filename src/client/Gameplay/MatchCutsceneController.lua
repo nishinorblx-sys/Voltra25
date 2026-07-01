@@ -14,7 +14,9 @@ end
 function Controller:Play(payload: any)
 	local title = TITLES[payload.Kind] or tostring(payload.Kind or "RESTART")
 	self.HUD:SetPhase(title)
-	self.HUD:Flash(title, payload.Duration or 1.6)
+	if payload.Kind ~= "ThrowIn" and payload.Kind ~= "Corner" and payload.Kind ~= "GoalKick" and payload.Kind ~= "FreeKick" then
+		self.HUD:Flash(title, payload.Duration or 1.6)
+	end
 	if payload.Cutscene == false then
 		return
 	end

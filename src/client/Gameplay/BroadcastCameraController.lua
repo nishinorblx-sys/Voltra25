@@ -382,11 +382,11 @@ function Controller:_updateCutscene(dt: number): boolean
 					local panX = (-self.Width * .42 + self.Width * .84 * t) * self.SideSign
 					local panZ = self.Length * (.18 - .32 * t)
 					target = self.PitchCFrame.Position + Vector3.new(0, 6, 0)
-					desired = self.PitchCFrame:PointToWorldSpace(Vector3.new(panX, 255, panZ))
+					desired = self.PitchCFrame:PointToWorldSpace(Vector3.new(panX * .72, 205, panZ * .72))
 				end
 				local cameraSmoothing = if not lineupCenter and not kickoffCenter and alpha < .427 then 0.08 else 0.13
 				self.Camera.CFrame = self.Camera.CFrame:Lerp(CFrame.lookAt(desired, target), 1 - math.exp(-dt / cameraSmoothing))
-				self.Camera.FieldOfView += ((alpha < .427 and 68 or alpha < .853 and 63 or 50) - self.Camera.FieldOfView) * (1 - math.exp(-dt / 0.16))
+				self.Camera.FieldOfView += ((alpha < .427 and 68 or alpha < .853 and 63 or 43) - self.Camera.FieldOfView) * (1 - math.exp(-dt / 0.16))
 				return true
 			end
 			local side = self.SideSign
@@ -417,14 +417,14 @@ function Controller:_updateCutscene(dt: number): boolean
 				targetLocal=Vector3.new(0,5,0)
 			else
 				local t=between(.88,1)
-				cameraLocal=Vector3.new((BROADCAST_SIDE_OFFSET+self.SideOffset)*side,150,self.Length*.04*(1-t))
+				cameraLocal=Vector3.new((BROADCAST_SIDE_OFFSET+self.SideOffset)*side*.82,124,self.Length*.025*(1-t))
 				targetLocal=Vector3.new(0,3,0)
 			end
 			local desired = self.PitchCFrame:PointToWorldSpace(cameraLocal)
 			local target = self.PitchCFrame:PointToWorldSpace(targetLocal)
 			self.Camera.CFrame = self.Camera.CFrame:Lerp(CFrame.lookAt(desired, target), 1 - math.exp(-dt / 0.18))
 		end
-		self.Camera.FieldOfView += (42 - self.Camera.FieldOfView) * (1 - math.exp(-dt / 0.2))
+		self.Camera.FieldOfView += (38 - self.Camera.FieldOfView) * (1 - math.exp(-dt / 0.2))
 		return true
 	end
 	if kind == "HalfTime" then

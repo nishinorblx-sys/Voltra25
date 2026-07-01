@@ -157,6 +157,28 @@ function Service:_aimPoint(active: Model, value: any, goalTarget: boolean?): Vec
 	return self.PitchCFrame:PointToWorldSpace(localPoint)
 end
 
+function Service:_clampGoalkeeperBox(model: Model)
+	if tostring(model:GetAttribute("position")) ~= "GK" then return end
+	local modelRoot = root(model)
+	if not modelRoot then return end
+	local localPosition = self.PitchCFrame:PointToObjectSpace(modelRoot.Position)
+	local goalSign = localPosition.Z >= 0 and 1 or -1
+	local boxDepth = 142
+	local zMin = goalSign > 0 and self.Length * .5 - boxDepth or -self.Length * .5 + 4
+	local zMax = goalSign > 0 and self.Length * .5 - 4 or -self.Length * .5 + boxDepth
+	if zMin > zMax then zMin, zMax = zMax, zMin end
+	local clamped = Vector3.new(
+		math.clamp(localPosition.X, -self.Width * .29, self.Width * .29),
+		localPosition.Y,
+		math.clamp(localPosition.Z, zMin, zMax)
+	)
+	if (clamped - localPosition).Magnitude > .15 then
+		local world = self.PitchCFrame:PointToWorldSpace(clamped)
+		local facing = Vector3.new(modelRoot.CFrame.LookVector.X, 0, modelRoot.CFrame.LookVector.Z)
+		model:PivotTo(CFrame.lookAt(world, world + (facing.Magnitude > .05 and facing.Unit or self.PitchCFrame.LookVector)))
+	end
+end
+
 function Service:_isShotNearGoal(active: Model, aimPoint: Vector3?): boolean
 	if not aimPoint then return false end
 	local side = tostring(active:GetAttribute("VTRTeam") or "Home")
@@ -201,6 +223,7 @@ function Service:Handle(player: Player, payload: any)
 			active:SetAttribute("DribbleTurnPenalty", penalty)
 			humanoid:Move(smoothed, false)
 			DribbleControlService.Rotate(active, smoothed, ownsBall, sprinting, dt)
+			self:_clampGoalkeeperBox(active)
 		end
 	elseif kind == "Switch" then
 		local requested=typeof(payload.TargetModel)=="Instance"and payload.TargetModel:IsA("Model")and payload.TargetModel or nil;local target:Model?=nil

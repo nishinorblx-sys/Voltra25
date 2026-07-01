@@ -217,6 +217,7 @@ end
 function Controller:_activate(data:any)
 	if self.Active then self:_cleanup(false)end;local player=Players.LocalPlayer;local ball=data.Ball;if not ball or not ball.Parent then local world=workspace:FindFirstChild(data.WorldName);ball=world and world:FindFirstChild(Config.Ball.Name,true)end;local active=data.ActivePlayer;if not ball or not active or not active.Parent then return end
 	setMenuVisible(false)
+	player:SetAttribute("VTRInMatch", true)
 	local bootCover = Instance.new("ScreenGui")
 	bootCover.Name = "VTRMatchBootCover"
 	bootCover.IgnoreGuiInset = true
@@ -232,7 +233,7 @@ function Controller:_activate(data:any)
 		local started=os.clock()
 		while bootCover.Parent and os.clock()-started<8 do
 			if player.PlayerGui:FindFirstChild("VTRPrematchBroadcast") then
-				task.wait(.18)
+				task.wait(.45)
 				break
 			end
 			task.wait(.05)
