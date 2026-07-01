@@ -1,5 +1,6 @@
 --!strict
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local ContentProvider = game:GetService("ContentProvider")
 local AnimationConfig = require(ReplicatedStorage.VTR.Shared.AnimationConfig)
 
 local Service = {}
@@ -16,11 +17,12 @@ local function loadModel(model: Model): any
 	local state = {Model=model,Animator=animator,Tracks={},Animations={},Movement=nil,Action=nil}
 	for name,id in AnimationConfig do
 		local animation=Instance.new("Animation");animation.Name="VTR_"..name;animation.AnimationId=id;state.Animations[name]=animation
+		pcall(function()ContentProvider:PreloadAsync({animation})end)
 		local ok,result=pcall(function()return animator:LoadAnimation(animation)end)
 		if ok and result then
 			local track:AnimationTrack=result
 			track.Looped=MOVEMENT[name]==true
-			track.Priority=(name=="Shoot"or name=="Pass"or name=="Tackle")and Enum.AnimationPriority.Action4 or ACTION[name]and Enum.AnimationPriority.Action or(name=="Idle"or name=="GoalkeeperIdle")and Enum.AnimationPriority.Idle or Enum.AnimationPriority.Movement
+			track.Priority=(name=="Shoot"or name=="Pass"or name=="Tackle"or name=="GoalkeeperDive"or name=="SlideTackle")and Enum.AnimationPriority.Action4 or ACTION[name]and Enum.AnimationPriority.Action or(name=="Idle"or name=="GoalkeeperIdle")and Enum.AnimationPriority.Idle or Enum.AnimationPriority.Movement
 			state.Tracks[name]=track
 		else warn(string.format("[VTR ANIMATION] %s failed on %s: %s",name,model.Name,tostring(result)))end
 	end

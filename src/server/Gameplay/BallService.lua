@@ -416,7 +416,7 @@ function Service:Tackle(model: Model,slide:boolean?): boolean
 	self.MotionKind = "Tackle"
 	self.MotionStarted = os.clock()
 	self.Possession:ForcePickup(model);model:SetAttribute("VTRNoAutoPassUntil",now+1)
-	self.Possession:Block(owner,slide and 1.5 or.5);owner:SetAttribute("VTRStunnedUntil",now+(slide and 1.5 or.5))
+	self.Possession:Block(owner,slide and 1.5 or 1.0);owner:SetAttribute("VTRStunnedUntil",now+(slide and 1.5 or 1.0));owner:SetAttribute("VTRCannotRecoverBallUntil",now+(slide and 1.5 or 1.0))
 	local ownerHumanoid=owner:FindFirstChildOfClass("Humanoid");if ownerHumanoid then ownerHumanoid:Move(Vector3.zero,false)end
 	self.Remote:FireAllClients({Type = slide and"SlideTackle"or"Tackle", Actor = model,Victim=owner})
 	return true

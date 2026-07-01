@@ -1,6 +1,9 @@
 local MATCHUP_PANEL_DELAY = 0.85
 --!strict
 local ReplicatedStorage=game:GetService("ReplicatedStorage")
+local Players=game:GetService("Players")
+local RunService=game:GetService("RunService")
+local TeleportService=game:GetService("TeleportService")
 local MatchConfig=require(ReplicatedStorage.VTR.Shared.MatchConfig)
 local VTRLiteConfig=require(ReplicatedStorage.VTR.Shared.VTRLiteConfig)
 local TeamDatabase=require(script.Parent.Parent.Data.TeamDatabase)
@@ -12,18 +15,68 @@ local function packIdFor(id:string?):string return PACK_FALLBACKS[id or""]or id 
 local function stadium(id:string):any?for _,item in MatchConfig.Stadiums do if item.Id==id then return item end end;return nil end
 local function kit(team:any,name:string):any?return team and team.kits[name]or nil end
 local function colorDistance(first:string,second:string):number local a,b=Color3.fromHex(first),Color3.fromHex(second);return math.abs(a.R-b.R)+math.abs(a.G-b.G)+math.abs(a.B-b.B)end
-function Service.new(profiles:any,publish:(Player,string,any)->(),progression:any,runtime:any,rankedSquads:any?)return setmetatable({Profiles=profiles,Publish=publish,Progression=progression,Runtime=runtime,RankedSquads=rankedSquads},Service)end
+function Service.new(profiles:any,publish:(Player,string,any)->(),progression:any,runtime:any,rankedSquads:any?)
+	local self=setmetatable({Profiles=profiles,Publish=publish,Progression=progression,Runtime=runtime,RankedSquads=rankedSquads,SoloTeleportConnections={}},Service)
+	task.defer(function()
+		for _,player in Players:GetPlayers()do self:HandleSoloCampaignTeleport(player)end
+		table.insert(self.SoloTeleportConnections,Players.PlayerAdded:Connect(function(player)task.defer(function()self:HandleSoloCampaignTeleport(player)end)end))
+	end)
+	return self
+end
 function Service:_ensure(profile:any):any local setup=profile.MatchSetup;if not setup or not TeamDatabase.Get(setup.HomeTeamId)or not TeamDatabase.Get(setup.AwayTeamId)or(setup.HomeTeamId==setup.AwayTeamId and setup.MatchType~="Friendly")then local home,away=TeamDatabase.Teams[1],TeamDatabase.Teams[2];setup={MatchLength=6,Difficulty="Professional",MatchType="Objective Match",HomeTeamId=home.teamId,AwayTeamId=away.teamId,HomeKit="Home",AwayKit="Away",StadiumId="voltra_arena",Weather="Clear",Time="Evening",Completed=false,SavedAt=0,KitConflict=false,CampaignTeamId="",CampaignTier=0,CampaignReplay=false};profile.MatchSetup=setup end;setup.CampaignTeamId=setup.CampaignTeamId or"";setup.CampaignTier=tonumber(setup.CampaignTier)or 0;setup.CampaignReplay=setup.CampaignReplay==true;return setup end
 function Service:_validate(setup:any):(boolean,string)
 	if not contains(MatchConfig.MatchLengths,setup.MatchLength)then return false,"Invalid match length."end;if not contains(MatchConfig.Difficulties,setup.Difficulty)then return false,"Invalid difficulty."end;if not contains(MatchConfig.MatchTypes,setup.MatchType)then return false,"Invalid match type."end;if not contains(MatchConfig.Weather,setup.Weather)or not contains(MatchConfig.Times,setup.Time)then return false,"Invalid presentation settings."end
 	local home,away=TeamDatabase.Get(setup.HomeTeamId),TeamDatabase.Get(setup.AwayTeamId);if not home or not away then return false,"Select two valid teams."end;if home.teamId==away.teamId and setup.MatchType~="Friendly"then return false,"Mirror matches are only available in Friendly mode."end;if not kit(home,setup.HomeKit)or not kit(away,setup.AwayKit)then return false,"Invalid kit selection."end;local venue=stadium(setup.StadiumId);if not venue or not contains(venue.WeatherSupport,setup.Weather)then return false,"Selected stadium does not support this weather."end;return true,"Match setup valid."
 end
+function Service:_isCampaignMatch(setup:any):boolean
+	return type(setup)=="table" and type(setup.CampaignTeamId)=="string" and setup.CampaignTeamId~=""
+end
+
+function Service:_teleportSoloCampaign(player:Player,action:string):(boolean,string,any?)
+	if RunService:IsStudio() or game.PrivateServerId~="" or player:GetAttribute("VTRAICampaignSoloServer")==true then return false,"",nil end
+	local code=nil
+	local ok,err=pcall(function()code=TeleportService:ReserveServer(game.PlaceId)end)
+	if not ok or not code then return false,"Could not reserve a solo campaign server.",nil end
+	local options=Instance.new("TeleportOptions")
+	options.ReservedServerAccessCode=code
+	options:SetTeleportData({MatchMode="AICampaignSolo",Action=action,ReturnPlaceId=game.PlaceId})
+	local sent,teleportErr=pcall(function()TeleportService:TeleportAsync(game.PlaceId,{player},options)end)
+	if not sent then return false,tostring(teleportErr),nil end
+	return true,"Teleporting to solo campaign server.",{Teleporting=true,SoloCampaign=true,Action=action}
+end
+
+function Service:HandleSoloCampaignTeleport(player:Player):boolean
+	local joinData=player:GetJoinData()
+	local teleportData=joinData and joinData.TeleportData
+	if type(teleportData)~="table" or teleportData.MatchMode~="AICampaignSolo" then return false end
+	player:SetAttribute("VTRAICampaignSoloServer",true)
+	task.spawn(function()
+		local started=os.clock()
+		while player.Parent==Players and os.clock()-started<35 do
+			if self.Profiles:GetProfile(player) and player.Character and player.Character:FindFirstChildOfClass("Humanoid") then
+				if teleportData.Action=="Manage" then
+					self:WatchMatch(player)
+				else
+					self:StartMatch(player)
+				end
+				return
+			end
+			task.wait(.25)
+		end
+	end)
+	return true
+end
+
 function Service:GetClientData(player:Player):any?local profile=self.Profiles:GetProfile(player);if not profile then return nil end;local setup=self:_ensure(profile);local home,away=TeamDatabase.Get(setup.HomeTeamId),TeamDatabase.Get(setup.AwayTeamId);return{Setup=table.clone(setup),Teams={TeamDatabase.Summary(home),TeamDatabase.Summary(away)},Countries=TeamDatabase.GetCountries(),TeamCount=TeamDatabase.Count,Stadiums=MatchConfig.Stadiums,Options={MatchLengths=MatchConfig.MatchLengths,Difficulties=MatchConfig.Difficulties,MatchTypes=MatchConfig.MatchTypes,Weather=MatchConfig.Weather,Times=MatchConfig.Times,KitTypes=MatchConfig.KitTypes}}end
 function Service:GetRoster(_player:Player,teamId:string):any?return TeamDatabase.GetRoster(teamId)end
 function Service:GetTeams(_player:Player,country:any,league:any):any?if type(country)~="string"or#country>50 or type(league)~="string"or#league>60 then return nil end;return TeamDatabase.GetSummaries(country,league)end
 function Service:Save(player:Player,payload:any):(boolean,string,any?)local profile=self.Profiles:GetProfile(player);if not profile or type(payload)~="table"then return false,"Profile unavailable.",nil end;local nextSetup=table.clone(self:_ensure(profile));for key,value in payload do if nextSetup[key]~=nil then nextSetup[key]=value end end;local valid,message=self:_validate(nextSetup);if not valid then return false,message,nil end;nextSetup.Completed=true;nextSetup.SavedAt=os.time();local home,away=TeamDatabase.Get(nextSetup.HomeTeamId),TeamDatabase.Get(nextSetup.AwayTeamId);nextSetup.KitConflict=colorDistance(home.kits[nextSetup.HomeKit].Primary,away.kits[nextSetup.AwayKit].Primary)<.35;profile.MatchSetup=nextSetup;return true,"Match settings saved.",table.clone(nextSetup)end
 function Service:StartMatch(player:Player):(boolean,string,any?)
 	local profile=self.Profiles:GetProfile(player);if not profile then return false,"Profile unavailable.",nil end;local setup=self:_ensure(profile);local valid,message=self:_validate(setup);if not valid or not setup.Completed then return false,message,nil end
+	if self:_isCampaignMatch(setup) and player:GetAttribute("VTRAICampaignSoloServer")~=true then
+		local teleporting,teleportMessage,teleportData=self:_teleportSoloCampaign(player,"Manual")
+		if teleporting then return true,teleportMessage,teleportData end
+	end
 	local success,text,data=self.Runtime:StartMatch(player,setup);if not success then return false,text,nil end;if data then data.AIMatchTeleport=true;data.MatchLaunchType="Manual"end
 	local session=self.Runtime:GetSession(player);if session then
 		session.OnBeforeResult=function(ended:any)
@@ -46,6 +99,10 @@ function Service:StartMatch(player:Player):(boolean,string,any?)
 end
 function Service:WatchMatch(player:Player):(boolean,string,any?)
 	local profile=self.Profiles:GetProfile(player);if not profile then return false,"Profile unavailable.",nil end;local setup=self:_ensure(profile);local valid,message=self:_validate(setup);if not valid or not setup.Completed then return false,message,nil end
+	if self:_isCampaignMatch(setup) and player:GetAttribute("VTRAICampaignSoloServer")~=true then
+		local teleporting,teleportMessage,teleportData=self:_teleportSoloCampaign(player,"Manage")
+		if teleporting then return true,teleportMessage,teleportData end
+	end
 	local watchSetup=table.clone(setup);watchSetup.WatchMode=true;watchSetup.TeamTactics=profile.TeamTactics
 	local homeRoster=nil
 	if self.RankedSquads then

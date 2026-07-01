@@ -164,8 +164,14 @@ function Service:_nextPair(): (Player?, Player?)
 end
 
 function Service:_attachResultHandlers(session: any, home: Player, away: Player)
+	session.RankedWinRewards=session.RankedWinRewards or{}
 	session.RankedWinPackGrant=function(_,winner:Player)
-		return RankedWinPackReward.Grant(self.Progression,winner,self.Publish)
+		session.RankedWinRewards=session.RankedWinRewards or{}
+		local existing=session.RankedWinRewards[winner.UserId]
+		if existing then return existing end
+		local reward=RankedWinPackReward.Grant(self.Progression,winner,self.Publish)
+		session.RankedWinRewards[winner.UserId]=reward
+		return reward
 	end
 	local function resultFor(player: Player, side: string, homeScore: number, awayScore: number): string
 		if session.RankedForceLossUserId==player.UserId or session.ForfeitBy==player.UserId then
@@ -235,7 +241,12 @@ function Service:_attachResultHandlers(session: any, home: Player, away: Player)
 				})
 			end
 			if won then
-				local packReward=RankedWinPackReward.Grant(self.Progression,participant,self.Publish)
+				session.RankedWinRewards=session.RankedWinRewards or{}
+				local packReward=session.RankedWinRewards[participant.UserId]
+				if not packReward then
+					packReward=RankedWinPackReward.Grant(self.Progression,participant,self.Publish)
+					session.RankedWinRewards[participant.UserId]=packReward
+				end
 				reward=reward or{}
 				for key,value in packReward do
 					reward[key]=value

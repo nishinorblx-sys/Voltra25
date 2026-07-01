@@ -24,7 +24,8 @@ function Service:Update(model: Model, desired: Vector3, hasBall: boolean, sprint
 	end
 	local agility = math.clamp(tonumber(model:GetAttribute("Agility")) or 60, 1, 99) / 99
 	local smoothing = hasBall and Tuning.InputSmoothingTime * (1.18 - agility * 0.38) or Tuning.InputSmoothingNoBall
-	if sprinting and hasBall then smoothing *= 1.35 end
+	if model:GetAttribute("controlledByUser")==true then smoothing *= hasBall and .34 or .22 end
+	if sprinting and hasBall then smoothing *= 1.08 end
 	local alpha = 1 - math.exp(-dt / smoothing)
 	state.Direction = state.Direction:Lerp(desiredUnit * magnitude, alpha)
 	local penalty = now < state.PenaltyUntil and Tuning.SharpTurnSpeedPenalty or 1

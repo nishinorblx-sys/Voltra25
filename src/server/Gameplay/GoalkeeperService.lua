@@ -608,7 +608,11 @@ function Service:Step(dt:number?)
 		local jumpHeight=math.max(4, math.abs(endVertical-startVertical)*0.55+2.5)
 		save.ApexPosition=control+upAxis*(math.max(startVertical,endVertical)+jumpHeight-controlVertical)
 		keeperRoot.Anchored=true
-		self.Animations:PlayActionTimed(save.Keeper,"GoalkeeperDive",math.max(.22,flightTime+.04))
+		save.Keeper:SetAttribute("VTRForceIdle",nil)
+		if self.Animations then
+			self.Animations:StopAction(save.Keeper,.02)
+			self.Animations:PlayActionTimed(save.Keeper,"GoalkeeperDive",math.max(.34,flightTime+.14))
+		end
 		save.Keeper:SetAttribute("VTRDiveLateralDistance",lateralDistance)
 		save.Keeper:SetAttribute("VTRDiveLateralSpeed",math.abs(lateralDistance)/flightTime)
 		save.Keeper:SetAttribute("VTRDiveTarget",rootTarget)

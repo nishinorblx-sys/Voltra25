@@ -183,10 +183,15 @@ function Service:Handle(player: Player, payload: any)
 			local ownsBall = self.Possession:GetOwner() == active
 			local sprinting = active:GetAttribute("VTRSprinting") == true
 			local smoothed, penalty = self.Smoothing:Update(active, raw, ownsBall, sprinting)
+			if active:GetAttribute("controlledByUser")==true then
+				smoothed = magnitude > 0.05 and raw.Unit * magnitude or Vector3.zero
+				penalty = 1
+			end
 			local now = os.clock()
 			local dt = math.clamp(now - (self.LastMovementAt[player] or now - 0.05), 1 / 120, 0.12)
 			self.LastMovementAt[player] = now
 			active:SetAttribute("VTRMoveMagnitude", magnitude)
+			if magnitude>.08 then active:SetAttribute("VTRImmediateControlUntil",os.clock()+.22)end
 			active:SetAttribute("VTRTurnDot", active:GetAttribute("InputTurnDot") or 1)
 			active:SetAttribute("VTRMoveDirection", smoothed.Magnitude > 0.05 and smoothed.Unit or Vector3.zero)
 			active:SetAttribute("DribbleTurnPenalty", penalty)

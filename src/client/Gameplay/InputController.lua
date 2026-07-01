@@ -73,8 +73,8 @@ function Controller:_chargeEnd(kind: string)
 		local passType=mobileMode or manualLobbed and"ManualLobbed"or manual and"Manual"or lofted and"Lofted"or through and"Through"or"Ground"
 		local isMobile = self.MobileControls ~= nil
 		local isManual = manual or manualLobbed or self:MobileManualAim("Pass")
-		local autoSwitch = isMobile and "Off" or (isManual and "Off" or self.AutoSwitch)
-		local receiverAssist = isMobile and "Off" or (isManual and "Off" or self.ReceiverAssist)
+		local autoSwitch = isMobile and "Instant" or (isManual and "Off" or self.AutoSwitch)
+		local receiverAssist = isMobile and "Assisted" or (isManual and "Off" or self.ReceiverAssist)
 		self.Remote:FireServer({Type = "Pass", Direction = aim.Direction, AimPosition = aim.Position, TargetModel = isManual and nil or aim.TargetModel, Charge = charge, PassType = passType, AutoSwitch = autoSwitch, ReceiverAssist = receiverAssist})
 	end
 end
