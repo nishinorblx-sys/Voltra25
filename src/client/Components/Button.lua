@@ -4,6 +4,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
 
 local Theme = require(ReplicatedStorage.VTR.Shared.Theme)
+local UISoundService = require(script.Parent.Parent.Services.UISoundService)
 local C = Theme.Colors
 
 local Button = {}
@@ -49,6 +50,7 @@ function Button.new(props: Props): TextButton
 	end
 
 	local function focus()
+		UISoundService.PlayHover()
 		local isPrimary = instance:GetAttribute("VTRPrimary") == true
 		tween(1.035, isPrimary and C.Neon or C.Raised)
 	end
@@ -64,6 +66,7 @@ function Button.new(props: Props): TextButton
 	instance.MouseButton1Down:Connect(function() tween(0.96, primary and C.Neon or C.Raised) end)
 	instance.MouseButton1Up:Connect(focus)
 	instance.Activated:Connect(function()
+		UISoundService.PlayClick()
 		TweenService:Create(scale, TweenInfo.new(Theme.Animation.Press), { Scale = 0.94 }):Play()
 		task.delay(Theme.Animation.Press, function()
 			if instance.Parent then TweenService:Create(scale, TweenInfo.new(Theme.Animation.Hover), { Scale = 1.035 }):Play() end

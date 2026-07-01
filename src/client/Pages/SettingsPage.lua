@@ -8,6 +8,7 @@ local Theme = require(ReplicatedStorage.VTR.Shared.Theme)
 local Panel = require(script.Parent.Parent.Components.Panel)
 local Button = require(script.Parent.Parent.Components.Button)
 local SettingsRuntimeService = require(script.Parent.Parent.Services.SettingsRuntimeService)
+local UISoundService = require(script.Parent.Parent.Services.UISoundService)
 local PageBase = require(script.Parent.PageBase)
 
 local SettingsPage = {}
@@ -15,6 +16,15 @@ local TABS = {"Controls", "Audio", "Camera", "Accessibility", "Account"}
 local CAMERA_PRESETS = {"Broadcast", "End to End", "Pro"}
 local LANGUAGES = {"English", "Spanish", "French", "Portuguese"}
 local NUMBER_NAMES = {Zero = "0", One = "1", Two = "2", Three = "3", Four = "4", Five = "5", Six = "6", Seven = "7", Eight = "8", Nine = "9"}
+local KEY_DEFAULTS = {
+	PauseKey = "M",
+	ManualPassKey = "LeftControl",
+	LobbedPassKey = "LeftAlt",
+	ChangePlayerKey = "Q",
+	TackleKey = "E",
+	SlideTackleKey = "F",
+	SkipKey = "Space",
+}
 
 local function label(parent: Instance, value: string, position: UDim2, size: UDim2, textSize: number, color: Color3?, font: Enum.Font?): TextLabel
 	local item = Instance.new("TextLabel")
@@ -128,7 +138,7 @@ end
 
 local function keybind(parent: Instance, context: any, key: string, title: string, subtitle: string, y: number, editable: boolean)
 	local holder = row(parent, title, subtitle, y)
-	local current = tostring(settings(context)[key] or (key == "SkipKey" and "Space" or "M"))
+	local current = tostring(settings(context)[key] or KEY_DEFAULTS[key] or "M")
 	local waiting = false
 	local button = Button.new({Text = current, Variant = editable and "Primary" or "Secondary", Size = UDim2.fromOffset(116, 34), OnActivated = function()
 		if not editable then return end
@@ -147,18 +157,14 @@ local function keybind(parent: Instance, context: any, key: string, title: strin
 		connection = UserInputService.InputBegan:Connect(function(input, processed)
 			if not waiting or processed then return end
 			local name = input.KeyCode.Name
+			if name == "Unknown" then return end
 			local displayed = NUMBER_NAMES[name] or name
-			if #name == 1 or NUMBER_NAMES[name] then
-				waiting = false
-				button.Text = displayed
-				commit(context, key, displayed)
-				if connection then connection:Disconnect() end
-			elseif name == "Space" then
-				waiting = false
-				button.Text = "SPACE"
-				commit(context, key, "Space")
-				if connection then connection:Disconnect() end
-			end
+			waiting = false
+			button.Text = string.upper(displayed)
+			UISoundService.PlayType()
+			commit(context, key, displayed)
+			if context.RefreshSettings then context.RefreshSettings(key) end
+			if connection then connection:Disconnect() end
 		end)
 	end
 end
@@ -177,9 +183,19 @@ local function renderTab(context: any, scroll: ScrollingFrame, active: string)
 		end
 	end
 	if active == "Controls" then
-		local box = panel(scroll, "Controls", UDim2.fromOffset(0, 154), UDim2.new(1, 0, 0, 220))
-		keybind(box, context, "PauseKey", "ManualPassKey", "LobbedPassKey", "ChangePlayerKey", "TackleKey", "SlideTackleKey", "PAUSE", "Click the key button, then press a letter or number.", 52, true)
-		keybind(box, context, "SkipKey", "SKIP", "Prematch and replay skip is Space.", 126, false)
+		local box = panel(scroll, "Controls", UDim2.fromOffset(0, 154), UDim2.new(1, 0, 0, 610))
+		local controls = {
+			{Key = "PauseKey", Title = "PAUSE", Subtitle = "Open or close the pause menu."},
+			{Key = "ManualPassKey", Title = "MANUAL PASS MODIFIER", Subtitle = "Hold this with right click / pass to aim manual pass."},
+			{Key = "LobbedPassKey", Title = "LOBBED PASS MODIFIER", Subtitle = "Hold this with pass for lobbed passes. Combine with manual modifier for manual lobbed pass."},
+			{Key = "ChangePlayerKey", Title = "CHANGE PLAYER", Subtitle = "Switch to the best nearby teammate or defender."},
+			{Key = "TackleKey", Title = "TACKLE", Subtitle = "Standing tackle / defensive challenge."},
+			{Key = "SlideTackleKey", Title = "SLIDE TACKLE", Subtitle = "Slide tackle input."},
+			{Key = "SkipKey", Title = "SKIP", Subtitle = "Prematch and replay skip is Space.", Editable = false},
+		}
+		for index, item in ipairs(controls) do
+			keybind(box, context, item.Key, item.Title, item.Subtitle, 52 + (index - 1) * 74, item.Editable ~= false)
+		end
 	elseif active == "Audio" then
 		local mix = panel(scroll, "Audio Mix", UDim2.fromOffset(0, 154), UDim2.new(.5, -10, 0, 242))
 		slider(mix, context, "MasterVolume", "MASTER VOLUME", "Controls global game audio.", 52, .8)
@@ -213,7 +229,7 @@ local function renderTab(context: any, scroll: ScrollingFrame, active: string)
 end
 
 function SettingsPage.new(context: any): CanvasGroup
-	local group, scroll = PageBase.new("Settings", 560)
+	local group, scroll = PageBase.new("Settings", 860)
 	PageBase.heading(scroll, "SETTINGS", "GAME SETTINGS", "Adjust controls, audio, camera, accessibility, and account matchmaking.")
 	local active = (context.Data.UIState.SelectedTabs and context.Data.UIState.SelectedTabs.Settings) or "Controls"
 	if not table.find(TABS, active) then active = "Controls" end
