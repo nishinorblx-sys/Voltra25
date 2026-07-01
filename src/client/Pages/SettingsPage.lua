@@ -26,6 +26,16 @@ local KEY_DEFAULTS = {
 	SkipKey = "Space",
 }
 
+local CONTROL_ROWS = {
+	{Key = "PauseKey", Title = "PAUSE", Subtitle = "Open or close the pause menu.", Editable = true},
+	{Key = "ManualPassKey", Title = "MANUAL PASS MODIFIER", Subtitle = "Hold this with right click / pass to aim a manual pass.", Editable = true},
+	{Key = "LobbedPassKey", Title = "LOBBED PASS MODIFIER", Subtitle = "Hold this with pass for lobbed pass. Combine with manual modifier for manual lobbed pass.", Editable = true},
+	{Key = "ChangePlayerKey", Title = "CHANGE PLAYER", Subtitle = "Switch to the best nearby teammate or defender.", Editable = true},
+	{Key = "TackleKey", Title = "TACKLE", Subtitle = "Standing tackle / defensive challenge.", Editable = true},
+	{Key = "SlideTackleKey", Title = "SLIDE TACKLE", Subtitle = "Slide tackle input.", Editable = true},
+	{Key = "SkipKey", Title = "SKIP", Subtitle = "Prematch and replay skip is Space.", Editable = false},
+}
+
 local function label(parent: Instance, value: string, position: UDim2, size: UDim2, textSize: number, color: Color3?, font: Enum.Font?): TextLabel
 	local item = Instance.new("TextLabel")
 	item.BackgroundTransparency = 1
@@ -86,7 +96,7 @@ local function option(parent: Instance, context: any, key: string, title: string
 	local holder = row(parent, title, subtitle, y)
 	local current = tostring(settings(context)[key] or values[1])
 	local x = 0
-	for index, value in values do
+	for index, value in ipairs(values) do
 		local active = value == current
 		local button = Button.new({Text = value, Variant = active and "Primary" or "Secondary", Size = UDim2.fromOffset(index == 2 and 112 or 96, 32), OnActivated = function()
 			commit(context, key, value)
@@ -136,11 +146,26 @@ local function slider(parent: Instance, context: any, key: string, title: string
 	end)
 end
 
+local function displayKeyName(name: string): string
+	return string.upper(NUMBER_NAMES[name] or name)
+end
+
+local function inputName(input: InputObject): string?
+	if input.UserInputType == Enum.UserInputType.Keyboard then
+		if input.KeyCode.Name == "Unknown" then return nil end
+		return NUMBER_NAMES[input.KeyCode.Name] or input.KeyCode.Name
+	end
+	if input.UserInputType == Enum.UserInputType.MouseButton1 then return "MouseButton1" end
+	if input.UserInputType == Enum.UserInputType.MouseButton2 then return "MouseButton2" end
+	if input.UserInputType == Enum.UserInputType.MouseButton3 then return "MouseButton3" end
+	return nil
+end
+
 local function keybind(parent: Instance, context: any, key: string, title: string, subtitle: string, y: number, editable: boolean)
 	local holder = row(parent, title, subtitle, y)
 	local current = tostring(settings(context)[key] or KEY_DEFAULTS[key] or "M")
 	local waiting = false
-	local button = Button.new({Text = current, Variant = editable and "Primary" or "Secondary", Size = UDim2.fromOffset(116, 34), OnActivated = function()
+	local button = Button.new({Text = displayKeyName(current), Variant = editable and "Primary" or "Secondary", Size = UDim2.fromOffset(150, 34), OnActivated = function()
 		if not editable then return end
 		waiting = true
 	end})
@@ -156,13 +181,12 @@ local function keybind(parent: Instance, context: any, key: string, title: strin
 		local connection: RBXScriptConnection?
 		connection = UserInputService.InputBegan:Connect(function(input, processed)
 			if not waiting or processed then return end
-			local name = input.KeyCode.Name
-			if name == "Unknown" then return end
-			local displayed = NUMBER_NAMES[name] or name
+			local name = inputName(input)
+			if not name then return end
 			waiting = false
-			button.Text = string.upper(displayed)
+			button.Text = displayKeyName(name)
 			UISoundService.PlayType()
-			commit(context, key, displayed)
+			commit(context, key, name)
 			if context.RefreshSettings then context.RefreshSettings(key) end
 			if connection then connection:Disconnect() end
 		end)
@@ -177,23 +201,14 @@ local function panel(parent: Instance, title: string, position: UDim2, size: UDi
 end
 
 local function renderTab(context: any, scroll: ScrollingFrame, active: string)
-	for _, child in scroll:GetChildren() do
+	for _, child in ipairs(scroll:GetChildren()) do
 		if child:IsA("GuiObject") and child.Name ~= "Heading" and child.Name ~= "Tabs" then
 			child:Destroy()
 		end
 	end
 	if active == "Controls" then
 		local box = panel(scroll, "Controls", UDim2.fromOffset(0, 154), UDim2.new(1, 0, 0, 610))
-		local controls = {
-			{Key = "PauseKey", Title = "PAUSE", Subtitle = "Open or close the pause menu."},
-			{Key = "ManualPassKey", Title = "MANUAL PASS MODIFIER", Subtitle = "Hold this with right click / pass to aim manual pass."},
-			{Key = "LobbedPassKey", Title = "LOBBED PASS MODIFIER", Subtitle = "Hold this with pass for lobbed passes. Combine with manual modifier for manual lobbed pass."},
-			{Key = "ChangePlayerKey", Title = "CHANGE PLAYER", Subtitle = "Switch to the best nearby teammate or defender."},
-			{Key = "TackleKey", Title = "TACKLE", Subtitle = "Standing tackle / defensive challenge."},
-			{Key = "SlideTackleKey", Title = "SLIDE TACKLE", Subtitle = "Slide tackle input."},
-			{Key = "SkipKey", Title = "SKIP", Subtitle = "Prematch and replay skip is Space.", Editable = false},
-		}
-		for index, item in ipairs(controls) do
+		for index, item in ipairs(CONTROL_ROWS) do
 			keybind(box, context, item.Key, item.Title, item.Subtitle, 52 + (index - 1) * 74, item.Editable ~= false)
 		end
 	elseif active == "Audio" then
@@ -229,7 +244,7 @@ local function renderTab(context: any, scroll: ScrollingFrame, active: string)
 end
 
 function SettingsPage.new(context: any): CanvasGroup
-	local group, scroll = PageBase.new("Settings", 860)
+	local group, scroll = PageBase.new("Settings", 900)
 	PageBase.heading(scroll, "SETTINGS", "GAME SETTINGS", "Adjust controls, audio, camera, accessibility, and account matchmaking.")
 	local active = (context.Data.UIState.SelectedTabs and context.Data.UIState.SelectedTabs.Settings) or "Controls"
 	if not table.find(TABS, active) then active = "Controls" end
@@ -243,7 +258,7 @@ function SettingsPage.new(context: any): CanvasGroup
 	context.RefreshSettings = function()
 		renderTab(context, scroll, active)
 	end
-	for index, tab in TABS do
+	for index, tab in ipairs(TABS) do
 		local button = Button.new({Text = tab, Variant = tab == active and "Primary" or "Secondary", Size = UDim2.new(1 / #TABS, -8, 0, 36), OnActivated = function()
 			active = tab
 			context.Data.UIState.SelectedTabs.Settings = tab

@@ -20,7 +20,7 @@ function FlowController:SetNavigator(handler:(string)->()) self.Navigator=handle
 function FlowController:SetInventoryNavigator(handler:()->()) self.InventoryNavigator=handler end
 
 function FlowController:ModeTransition(title:string,callback:()->(),compact:boolean?)
-	if self.Busy then return end;self.Busy=true;UISoundService.PlayTransition()
+	if self.Busy then return end;self.Busy=true;UISoundService.PlayTransition();UISoundService.PlayTransition()
 	local reduced=workspace:GetAttribute("VTRReducedMotion")==true
 	local overlay=Instance.new("CanvasGroup");overlay.Name="ModeTransition";overlay.BackgroundColor3=Theme.Colors.Black;overlay.BorderSizePixel=0;overlay.GroupTransparency=1;overlay.Size=UDim2.fromScale(1,1);overlay.ZIndex=80;overlay.Active=true;overlay.Selectable=false;overlay.Parent=self.Root
 	local shield=Instance.new("TextButton");shield.Name="ModeTransitionShield";shield.BackgroundTransparency=1;shield.BorderSizePixel=0;shield.Size=UDim2.fromScale(1,1);shield.Text="";shield.AutoButtonColor=false;shield.Selectable=false;shield.Modal=true;shield.Active=true;shield.ZIndex=80;shield.Parent=overlay

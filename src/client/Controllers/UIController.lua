@@ -25,6 +25,7 @@ local LaunchService = require(script.Parent.Parent.Services.LaunchService)
 local PlayerDatabaseService = require(script.Parent.Parent.Services.PlayerDatabaseService)
 local MatchSetupService = require(script.Parent.Parent.Services.MatchSetupService)
 local SettingsRuntimeService = require(script.Parent.Parent.Services.SettingsRuntimeService)
+local UISoundService = require(script.Parent.Parent.Services.UISoundService)
 local PlayerDetailsModal = require(script.Parent.Parent.Components.PlayerDetailsModal)
 local FlowController = require(script.Parent.FlowController)
 local LoadingScreen = require(script.Parent.Parent.Components.LoadingScreen)
@@ -95,6 +96,7 @@ function UIController:Start()
 	root.Active = true
 	root.Selectable = false
 	root.Parent = gui
+	UISoundService.Bind(root)
 	self.Root = root
 	local splash = SplashScreen.new(root)
 	task.wait(0.85)

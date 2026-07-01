@@ -58,4 +58,32 @@ function Service.PlayTransition()
 	play(TRANSITION_SOUND, 0.48, "Transition", 0.18)
 end
 
+function Service.Bind(root: Instance)
+	local function bindOne(item: Instance)
+		if item:GetAttribute("VTRUISoundBound") == true then return end
+		if item:IsA("GuiButton") then
+			item:SetAttribute("VTRUISoundBound", true)
+			item.MouseEnter:Connect(function()
+				Service.PlayHover()
+			end)
+			item.Activated:Connect(function()
+				Service.PlayClick()
+			end)
+		elseif item:IsA("TextBox") then
+			item:SetAttribute("VTRUISoundBound", true)
+			local previous = item.Text
+			item:GetPropertyChangedSignal("Text"):Connect(function()
+				if item.Text ~= previous then
+					previous = item.Text
+					Service.PlayType()
+				end
+			end)
+		end
+	end
+	for _, item in ipairs(root:GetDescendants()) do
+		bindOne(item)
+	end
+	root.DescendantAdded:Connect(bindOne)
+end
+
 return Service
