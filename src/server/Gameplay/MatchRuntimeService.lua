@@ -719,6 +719,13 @@ function Service:_startSetPiece(session:any,kind:string,restartTeam:string,locat
 		if kind=="Kickoff"then debugKickoff("phase broadcast","phase",session.Phase,"running",session.Running,"externalPhaseCleared",true)end
 	end,sideController~=nil,forcedTaker)
 	
+	if kind~="Kickoff"then
+		local autoDelay=tonumber(workspace:GetAttribute("VTRSetPieceAutoDecisionDelay"))or 10
+		task.delay(autoDelay,function()
+			if session.Ended or session.Running or session.SetPieceAutoSeq~=setPieceAutoSeq or session.Phase~=kind then return end
+			self:_autoReleaseSetPiece(session,controller)
+		end)
+	end
 	if kind=="Corner"and session.SetPieces.ActiveCorner then session.Animations:ForceIdle(session.SetPieces.ActiveCorner.Data.Taker)end
 	if session.Setup and session.Setup.WatchMode==true or sideController==nil then
 		if kind=="Penalty"then
@@ -1056,14 +1063,62 @@ function Service:_releaseGoalKickClearance(session:any,player:Player?)
 	session.World.Ball.Anchored=false
 	session.World.Ball:SetNetworkOwner(nil)
 	session.Possession:ForcePickup(taker)
-	local localTaker=session.World.PitchCFrame:PointToObjectSpace(takerRoot.Position)
+	local pitch=session.World.PitchCFrame
+	local localTaker=pitch:PointToObjectSpace(takerRoot.Position)
 	local goalSign=localTaker.Z>=0 and 1 or -1
-	local lane=(tonumber(taker:GetAttribute("VTRIndex"))or 1)%3-1
-	local target=session.World.PitchCFrame:PointToWorldSpace(Vector3.new(lane*session.World.Width*.16,3,0))
+	local team=tostring(taker:GetAttribute("VTRTeam")or"Home")
+	local bestReceiver:Model?=nil
+	local bestScore=-math.huge
+	local fallback:Model?=nil
+	local fallbackScore=-math.huge
+	for _,candidate in session.Teams[team]or{}do
+		if candidate~=taker and candidate:GetAttribute("VTRSentOff")~=true and tostring(candidate:GetAttribute("position")or"")~="GK"then
+			local candidateRoot=modelRoot(candidate)
+			if candidateRoot then
+				local localCandidate=pitch:PointToObjectSpace(candidateRoot.Position)
+				local centerScore=120-math.abs(localCandidate.Z)-math.abs(localCandidate.X)*.38
+				local role=tostring(candidate:GetAttribute("position")or"")
+				local roleBonus=(role=="CDM"or role=="CM"or role=="CAM"or role=="ST")and 18 or 0
+				local rating=(tonumber(candidate:GetAttribute("overall"))or 60)*.08
+				local score=centerScore+roleBonus+rating
+				if score>fallbackScore then
+					fallbackScore=score
+					fallback=candidate
+				end
+				if math.abs(localCandidate.Z)<=session.World.Length*.18 and math.abs(localCandidate.X)<=session.World.Width*.34 and score>bestScore then
+					bestScore=score
+					bestReceiver=candidate
+				end
+			end
+		end
+	end
+	bestReceiver=bestReceiver or fallback
+	local receiverRoot=bestReceiver and modelRoot(bestReceiver)
+	local target:Vector3
+	local distance:number
+	if receiverRoot then
+		local receiverLocal=pitch:PointToObjectSpace(receiverRoot.Position)
+		local lead=math.clamp((receiverRoot.Position-takerRoot.Position).Magnitude*.10,8,18)
+		local targetLocal=Vector3.new(
+			math.clamp(receiverLocal.X,-session.World.Width*.30,session.World.Width*.30),
+			3.2,
+			math.clamp(receiverLocal.Z-goalSign*lead,-session.World.Length*.12,session.World.Length*.12)
+		)
+		target=pitch:PointToWorldSpace(targetLocal)
+	else
+		target=pitch:PointToWorldSpace(Vector3.new(0,3.2,-goalSign*session.World.Length*.06))
+	end
 	local direction=target-takerRoot.Position
-	if direction.Magnitude<1 then direction=session.World.PitchCFrame:VectorToWorldSpace(Vector3.new(0,0,-goalSign))end
-	local distance=Vector3.new(direction.X,0,direction.Z).Magnitude
-	session.BallService:Kick(taker,"Pass",direction,math.clamp(distance/360,.55,.92),nil,"Lofted",distance,target)
+	if direction.Magnitude<1 then direction=pitch:VectorToWorldSpace(Vector3.new(0,0,-goalSign))end
+	distance=Vector3.new(direction.X,0,direction.Z).Magnitude
+	if session.BallService and session.BallService.Last then session.BallService.Last[taker]={}end
+	local released=session.BallService:Kick(taker,"Pass",direction,math.clamp(distance/185,.74,.96),bestReceiver,"Lofted",distance,target)
+	if bestReceiver and released then
+		bestReceiver:SetAttribute("VTRReceiveTarget",target)
+		bestReceiver:SetAttribute("VTRPreparingReceive",true)
+		bestReceiver:SetAttribute("VTRReceiveUntil",os.clock()+5.2)
+		bestReceiver:SetAttribute("VTRReceiveLockedAt",os.clock())
+	end
 	if setPieces and setPieces.ReleaseRestartTaker then setPieces:ReleaseRestartTaker()end
 	session.OutOfBounds:Reset();session.Goals:Unlock();session.Phase="IN PLAY";session.AI:SetExternalPhase(nil);self:_setPlayersFrozen(session,session.Paused==true);if not session.Paused then self:_releasePlayersForLive(session);self:_stabilizePlayers(session)end;session.Running=true;self:_syncPositions(session);broadcast(self.State,session,{Type="Phase",Phase="IN PLAY"})
 	return true
