@@ -763,16 +763,6 @@ function Controller:ShowFoulBanner(payload:any)
 	end)
 end
 
-function Controller:ShowSubSuggestion(data:any,respond:(boolean)->())
-	if self.SubSuggestion then self.SubSuggestion:Destroy()end
-	local box=panel(self.Gui,UDim2.new(1,-318,.48,-70),UDim2.fromOffset(294,140));box.ZIndex=26;self.SubSuggestion=box
-	local title=label(box,"QUICK SUB  /  "..tostring(data.Role),UDim2.fromOffset(14,10),UDim2.new(1,-28,0,20),10);title.TextColor3=Theme.Colors.Electric
-	label(box,string.upper(tostring(data.Outgoing)).."  →  "..string.upper(tostring(data.Incoming)),UDim2.fromOffset(14,34),UDim2.new(1,-28,0,34),11)
-	label(box,"INCOMING OVR "..tostring(data.IncomingOverall).."  /  CURRENT ENDURANCE "..tostring(data.Endurance).."%",UDim2.fromOffset(14,66),UDim2.new(1,-28,0,18),7).TextColor3=Theme.Colors.Silver
-	local accept=actionButton(box,"SUB NOW",1,function()if box.Parent then box:Destroy()end;self.SubSuggestion=nil;respond(true)end);accept.Position=UDim2.fromOffset(14,96);accept.Size=UDim2.fromOffset(128,32);accept.ZIndex=27
-	local skip=actionButton(box,"SKIP",2,function()if box.Parent then box:Destroy()end;self.SubSuggestion=nil;respond(false)end);skip.Position=UDim2.fromOffset(152,96);skip.Size=UDim2.fromOffset(128,32);skip.ZIndex=27
-end
-
 function Controller:ShowPauseQueue(playerName:string,queued:boolean)
 	if self.PauseQueueBanner then self.PauseQueueBanner:Destroy();self.PauseQueueBanner=nil end
 	local box=panel(self.Gui,UDim2.new(.5,-190,0,86),UDim2.fromOffset(380,38))
@@ -1255,7 +1245,9 @@ end
 
 local function showPackRewardScreen(parent: Instance, rewardData: any)
 	local qty = math.max(1, tonumber(rewardData.Packs) or 1)
-	local packName = string.upper(tostring(rewardData.Pack or "MATCH REWARD PACK"))
+	local leagueClear = rewardData.LeagueClear == true or rewardData.VoltraPack == true
+	local packName = leagueClear and string.upper(tostring(rewardData.BonusPack or "VOLTRA PACK")) or string.upper(tostring(rewardData.Pack or "MATCH REWARD PACK"))
+	local accent = leagueClear and Theme.Colors.Warning or Theme.Colors.Electric
 	local screen = Instance.new("Frame")
 	screen.Name = "PostMatchPackReward"
 	screen.Size = UDim2.fromScale(1, 1)
@@ -1266,12 +1258,12 @@ local function showPackRewardScreen(parent: Instance, rewardData: any)
 	screen.Active = true
 	screen.Parent = parent
 
-	local title = label(screen, "PACK EARNED", UDim2.new(.25, 0, .12, 0), UDim2.new(.5, 0, 0, 40), 28)
+	local title = label(screen, leagueClear and "LEAGUE CLEAR" or "PACK EARNED", UDim2.new(.25, 0, .12, 0), UDim2.new(.5, 0, 0, 40), 28)
 	title.TextXAlignment = Enum.TextXAlignment.Center
-	title.TextColor3 = Theme.Colors.Electric
+	title.TextColor3 = accent
 	title.TextTransparency = 1
 	title.ZIndex = 194
-	local subtitle = label(screen, "ADDED TO YOUR INVENTORY", UDim2.new(.25, 0, .18, 0), UDim2.new(.5, 0, 0, 22), 10)
+	local subtitle = label(screen, leagueClear and "VOLTRA PACK ADDED TO YOUR INVENTORY" or "ADDED TO YOUR INVENTORY", UDim2.new(.25, 0, .18, 0), UDim2.new(.5, 0, 0, 22), 10)
 	subtitle.TextXAlignment = Enum.TextXAlignment.Center
 	subtitle.TextColor3 = Theme.Colors.Silver
 	subtitle.TextTransparency = 1
@@ -1282,7 +1274,7 @@ local function showPackRewardScreen(parent: Instance, rewardData: any)
 	glow.AnchorPoint = Vector2.new(.5, .5)
 	glow.Position = UDim2.fromScale(.5, .45)
 	glow.Size = UDim2.fromOffset(360, 230)
-	glow.BackgroundColor3 = Theme.Colors.Electric
+	glow.BackgroundColor3 = accent
 	glow.BackgroundTransparency = 1
 	glow.BorderSizePixel = 0
 	glow.ZIndex = 191
@@ -1301,20 +1293,20 @@ local function showPackRewardScreen(parent: Instance, rewardData: any)
 	pack.ZIndex = 195
 	pack.Parent = screen
 	corner(pack, 10)
-	stroke(pack, Theme.Colors.Electric, .15)
+	stroke(pack, accent, .12)
 	local packScale = Instance.new("UIScale")
 	packScale.Scale = .28
 	packScale.Parent = pack
 
 	local stripe = Instance.new("Frame")
-	stripe.BackgroundColor3 = Theme.Colors.Electric
+	stripe.BackgroundColor3 = accent
 	stripe.BorderSizePixel = 0
 	stripe.Position = UDim2.fromOffset(0, 0)
 	stripe.Size = UDim2.new(1, 0, 0, 40)
 	stripe.ZIndex = 196
 	stripe.Parent = pack
 	corner(stripe, 10)
-	local seal = label(pack, "VTR LITE", UDim2.fromOffset(0, 12), UDim2.new(1, 0, 0, 20), 12)
+	local seal = label(pack, leagueClear and "LEAGUE CLEAR BONUS" or "VTR LITE", UDim2.fromOffset(0, 12), UDim2.new(1, 0, 0, 20), 12)
 	seal.TextXAlignment = Enum.TextXAlignment.Center
 	seal.TextColor3 = Theme.Colors.Black
 	seal.ZIndex = 197
@@ -1323,10 +1315,20 @@ local function showPackRewardScreen(parent: Instance, rewardData: any)
 	packTitle.TextXAlignment = Enum.TextXAlignment.Center
 	packTitle.TextColor3 = Theme.Colors.White
 	packTitle.ZIndex = 197
-	local packMeta = label(pack, qty > 1 and ("SEALED PACK  x" .. tostring(qty)) or "SEALED PACK", UDim2.fromOffset(20, 158), UDim2.new(1, -40, 0, 22), 10)
+	local packMeta = label(pack, leagueClear and "FIRST CLEAR REWARD" or qty > 1 and ("SEALED PACK  x" .. tostring(qty)) or "SEALED PACK", UDim2.fromOffset(20, 158), UDim2.new(1, -40, 0, 22), 10)
 	packMeta.TextXAlignment = Enum.TextXAlignment.Center
-	packMeta.TextColor3 = Theme.Colors.Electric
+	packMeta.TextColor3 = accent
 	packMeta.ZIndex = 197
+	if leagueClear then
+		local volt = label(pack, "V", UDim2.new(.5, -34, 0, 190), UDim2.fromOffset(68, 54), 42)
+		volt.TextXAlignment = Enum.TextXAlignment.Center
+		volt.TextColor3 = accent
+		volt.ZIndex = 197
+		local vault = label(pack, "VOLTRA VAULT", UDim2.fromOffset(20, 238), UDim2.new(1, -40, 0, 18), 9)
+		vault.TextXAlignment = Enum.TextXAlignment.Center
+		vault.TextColor3 = Theme.Colors.Silver
+		vault.ZIndex = 197
+	end
 	local shine = Instance.new("Frame")
 	shine.BackgroundColor3 = Theme.Colors.White
 	shine.BackgroundTransparency = .58
@@ -1342,9 +1344,9 @@ local function showPackRewardScreen(parent: Instance, rewardData: any)
 	inventory.ZIndex = 193
 	inventory.BackgroundTransparency = 1
 	local inventoryText = label(inventory, "INVENTORY", UDim2.fromOffset(16, 9), UDim2.new(1, -32, 0, 18), 11)
-	inventoryText.TextColor3 = Theme.Colors.Electric
+	inventoryText.TextColor3 = accent
 	inventoryText.TextXAlignment = Enum.TextXAlignment.Center
-	local inventoryHint = label(inventory, "PACK STORED", UDim2.fromOffset(16, 30), UDim2.new(1, -32, 0, 16), 8)
+	local inventoryHint = label(inventory, leagueClear and "VOLTRA PACK STORED" or "PACK STORED", UDim2.fromOffset(16, 30), UDim2.new(1, -32, 0, 16), 8)
 	inventoryHint.TextColor3 = Theme.Colors.Silver
 	inventoryHint.TextXAlignment = Enum.TextXAlignment.Center
 
@@ -1361,7 +1363,7 @@ local function showPackRewardScreen(parent: Instance, rewardData: any)
 		spark.AnchorPoint = Vector2.new(.5, .5)
 		spark.Position = UDim2.fromScale(.5, .46)
 		spark.Size = UDim2.fromOffset(math.random(5, 10), math.random(12, 26))
-		spark.BackgroundColor3 = i % 2 == 0 and Theme.Colors.Electric or Theme.Colors.White
+		spark.BackgroundColor3 = i % 2 == 0 and accent or Theme.Colors.White
 		spark.BackgroundTransparency = .08
 		spark.BorderSizePixel = 0
 		spark.Rotation = math.random(-40, 40)
@@ -1379,6 +1381,7 @@ local function showPackRewardScreen(parent: Instance, rewardData: any)
 		TweenService:Create(pack, TweenInfo.new(.72, Enum.EasingStyle.Quart, Enum.EasingDirection.InOut), {Position = UDim2.new(.68, 105, .70, 29), Size = UDim2.fromOffset(72, 94), Rotation = 8}):Play()
 		TweenService:Create(packScale, TweenInfo.new(.72, Enum.EasingStyle.Quart, Enum.EasingDirection.InOut), {Scale = .74}):Play()
 		TweenService:Create(inventory, TweenInfo.new(.24), {BackgroundTransparency = .08}):Play()
+		inventoryHint.Text = leagueClear and "RECEIVING VOLTRA PACK" or "RECEIVING PACK"
 	end)
 
 	task.delay(2.22, function()
@@ -1386,6 +1389,7 @@ local function showPackRewardScreen(parent: Instance, rewardData: any)
 		TweenService:Create(pack, TweenInfo.new(.22), {BackgroundTransparency = 1}):Play()
 		TweenService:Create(stripe, TweenInfo.new(.22), {BackgroundTransparency = 1}):Play()
 		TweenService:Create(inventory, TweenInfo.new(.28, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Size = UDim2.fromOffset(230, 64)}):Play()
+		inventoryHint.Text = leagueClear and "VOLTRA PACK STORED" or "PACK STORED"
 	end)
 
 	task.delay(3.15, function()
@@ -1458,12 +1462,6 @@ function Controller:ShowResult(payload: any, onReturn: () -> ())
 	if won then
 		TweenService:Create(titleScale,TweenInfo.new(.44,Enum.EasingStyle.Back,Enum.EasingDirection.Out),{Scale=1.18}):Play()
 		task.delay(.46,function()if titleScale.Parent then TweenService:Create(titleScale,TweenInfo.new(.18,Enum.EasingStyle.Quad,Enum.EasingDirection.Out),{Scale=1}):Play()end end)
-		local reward = label(overlay,"+750 COINS   +125 XP   WIN BONUS UNLOCKED",UDim2.new(.2,0,.17,0),UDim2.new(.6,0,0,28),15)
-		reward.TextXAlignment=Enum.TextXAlignment.Center
-		reward.TextColor3=Theme.Colors.Electric
-		reward.TextTransparency=1
-	reward.ZIndex=44
-		TweenService:Create(reward,TweenInfo.new(.38,Enum.EasingStyle.Quart,Enum.EasingDirection.Out),{TextTransparency=0,Position=UDim2.new(.2,0,.155,0)}):Play()
 	end
 	local result = label(overlay, self.Home .. "   " .. payload.Home .. " - " .. payload.Away .. "   " .. self.Away, UDim2.new(0.15, 0, 0.18, 0), UDim2.new(0.7, 0, 0, 52), 23)
 	result.TextXAlignment = Enum.TextXAlignment.Center
@@ -1485,8 +1483,8 @@ function Controller:ShowResult(payload: any, onReturn: () -> ())
 		local meta = label(spotlight, teamCode .. "  /  MR " .. string.format("%.1f", rating), UDim2.fromOffset(14, 59), UDim2.new(1, -28, 0, 18), 9)
 		meta.TextColor3 = Theme.Colors.Silver
 	end
-	local tabs=Instance.new("Frame");tabs.Name="ResultTabs";tabs.BackgroundTransparency=1;tabs.Position=UDim2.new(.5,-210,.285,0);tabs.Size=UDim2.fromOffset(420,38);tabs.ZIndex=180;tabs.Parent=overlay;local tabLayout=Instance.new("UIListLayout");tabLayout.FillDirection=Enum.FillDirection.Horizontal;tabLayout.Padding=UDim.new(0,10);tabLayout.Parent=tabs
-	local content=panel(overlay,UDim2.new(.10,0,.345,0),UDim2.new(.80,0,.46,0));content.ZIndex=50;content.BackgroundTransparency=.11
+	local tabs=Instance.new("Frame");tabs.Name="ResultTabs";tabs.BackgroundTransparency=1;tabs.Position=UDim2.new(.5,-210,.275,0);tabs.Size=UDim2.fromOffset(420,38);tabs.ZIndex=180;tabs.Parent=overlay;local tabLayout=Instance.new("UIListLayout");tabLayout.FillDirection=Enum.FillDirection.Horizontal;tabLayout.Padding=UDim.new(0,10);tabLayout.Parent=tabs
+	local content=panel(overlay,UDim2.new(.10,0,.33,0),UDim2.new(.80,0,.42,0));content.ZIndex=50;content.BackgroundTransparency=.11
 	local function teamValue(source:any,...:string):any
 		for _,key in {...} do
 			local value=source[key]
@@ -1596,18 +1594,18 @@ function Controller:ShowResult(payload: any, onReturn: () -> ())
 	for _,tab in tabs:GetDescendants()do if tab:IsA("GuiObject")then tab.ZIndex=182 end end
 	if payload.Reward then
 		local hasPack=payload.Reward.Pack~=nil or tonumber(payload.Reward.Packs)~=nil
-		local reward=panel(overlay,hasPack and UDim2.new(.5,-190,.755,0)or UDim2.new(.5,-150,.79,0),hasPack and UDim2.fromOffset(380,78)or UDim2.fromOffset(300,48));reward.ZIndex=43
+		local reward=panel(overlay,hasPack and UDim2.new(.5,-190,.765,0)or UDim2.new(.5,-150,.775,0),hasPack and UDim2.fromOffset(380,74)or UDim2.fromOffset(300,44));reward.ZIndex=70
 		local rewardScale=Instance.new("UIScale");rewardScale.Scale=.4;rewardScale.Parent=reward
 		local rewardText=label(reward,"*  "..string.upper(payload.Reward.Title).."   +"..tostring(payload.Reward.Coins or 0).." COINS   +"..tostring(payload.Reward.XP or 0).." XP",UDim2.fromOffset(8,7),UDim2.new(1,-16,0,22),9);rewardText.TextColor3=Theme.Colors.Electric;rewardText.TextXAlignment=Enum.TextXAlignment.Center
 		if hasPack then
-			local pack=Instance.new("Frame");pack.Name="PackRewardReveal";pack.AnchorPoint=Vector2.new(.5,0);pack.Position=UDim2.new(.5,0,0,35);pack.Size=UDim2.fromOffset(242,32);pack.BackgroundColor3=Theme.Colors.Gunmetal;pack.BackgroundTransparency=.08;pack.BorderSizePixel=0;pack.ZIndex=44;pack.Parent=reward;corner(pack,5);stroke(pack,Theme.Colors.Electric,.42)
-			local stripe=Instance.new("Frame");stripe.BackgroundColor3=Theme.Colors.Electric;stripe.BorderSizePixel=0;stripe.Position=UDim2.fromOffset(0,0);stripe.Size=UDim2.fromOffset(5,32);stripe.ZIndex=45;stripe.Parent=pack
+			local pack=Instance.new("Frame");pack.Name="PackRewardReveal";pack.AnchorPoint=Vector2.new(.5,0);pack.Position=UDim2.new(.5,0,0,33);pack.Size=UDim2.fromOffset(242,30);pack.BackgroundColor3=Theme.Colors.Gunmetal;pack.BackgroundTransparency=.08;pack.BorderSizePixel=0;pack.ZIndex=71;pack.Parent=reward;corner(pack,5);stroke(pack,Theme.Colors.Electric,.42)
+			local stripe=Instance.new("Frame");stripe.BackgroundColor3=Theme.Colors.Electric;stripe.BorderSizePixel=0;stripe.Position=UDim2.fromOffset(0,0);stripe.Size=UDim2.fromOffset(5,30);stripe.ZIndex=72;stripe.Parent=pack
 			local qty=math.max(1,tonumber(payload.Reward.Packs)or 1)
 			local packText=label(pack,(qty>1 and(tostring(qty).."x ")or"")..string.upper(tostring(payload.Reward.Pack or"PACK REWARD")),UDim2.fromOffset(16,6),UDim2.new(1,-26,0,18),8);packText.TextColor3=Theme.Colors.White;packText.TextXAlignment=Enum.TextXAlignment.Center
 			local packScale=Instance.new("UIScale");packScale.Scale=.72;packScale.Parent=pack
 			task.delay(.18,function()
 				if packScale.Parent then TweenService:Create(packScale,TweenInfo.new(.42,Enum.EasingStyle.Back,Enum.EasingDirection.Out),{Scale=1}):Play()end
-				if stripe.Parent then TweenService:Create(stripe,TweenInfo.new(.62,Enum.EasingStyle.Quad,Enum.EasingDirection.Out),{Size=UDim2.fromOffset(242,32),BackgroundTransparency=.82}):Play()end
+				if stripe.Parent then TweenService:Create(stripe,TweenInfo.new(.62,Enum.EasingStyle.Quad,Enum.EasingDirection.Out),{Size=UDim2.fromOffset(242,30),BackgroundTransparency=.82}):Play()end
 			end)
 			task.delay(.55,function()
 				if overlay.Parent then showPackRewardScreen(overlay,payload.Reward)end
@@ -1620,9 +1618,9 @@ function Controller:ShowResult(payload: any, onReturn: () -> ())
 		onReturn()
 	end)
 	button.AnchorPoint = Vector2.new(0.5, 0)
-	button.Position = UDim2.fromScale(0.5, 0.84)
+	button.Position = UDim2.fromScale(0.5, 0.90)
 	button.Size = UDim2.fromOffset(230, 48)
-	button.ZIndex = 42
+	button.ZIndex = 72
 end
 
 function Controller:Destroy()

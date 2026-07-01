@@ -110,6 +110,9 @@ function ProfileService:_migrate(profile:any):any
 	normalizeCardInstances(profile)
 	normalizePackInstances(profile)
 	normalizeObjectives(profile)
+	if not DeveloperConfig.InfiniteCoinsEveryone and (tonumber(profile.Currency.Coins) or 0) >= EconomyConfig.MaximumCoins then
+		profile.Currency.Coins = EconomyConfig.StarterCoins
+	end
 	for key,value in ClubIdentityConfig.Default do if profile.ClubMembership[key]==nil or profile.ClubMembership[key]==""then profile.ClubMembership[key]=value end;if profile.Onboarding[key]==nil or profile.Onboarding[key]==""then profile.Onboarding[key]=value end end
 	profile.ClubMembership.KitStyle=ClubIdentityConfig.ResolveStyle(profile.ClubMembership.KitStyle);profile.Onboarding.KitStyle=ClubIdentityConfig.ResolveStyle(profile.Onboarding.KitStyle)
 	profile.UIState=profile.UIState or copy(DefaultProfile.UIState);profile.UIState.Settings=profile.UIState.Settings or {};local matchDefaults={TimedFinishing=true,MenuMusic=true,MotionEffects=true,PerformanceMode=false,InvertY=false,HighContrast=false,ReducedMotion=false,Crossplay=true,MasterVolume=0.8,CommentaryLanguage="English",CommentaryVolume=0.7,CameraPreset="Broadcast",CameraZoomMode="Wide",PlayerNames="Active Only",Trainer="Basic",PassReceiverAutoSwitch="Assisted",ReceiverAssist="Light",Minimap="Medium",MinimapOrientation="Broadcast",BroadcastHeight="178",BroadcastZoom="50",CameraSpeed="1",CameraSide="Near",PauseKey="M",SkipKey="Space"};profile.Settings=profile.Settings or {};for key,value in matchDefaults do if profile.UIState.Settings[key]==nil then profile.UIState.Settings[key]=value end;if profile.Settings[key]==nil then profile.Settings[key]=profile.UIState.Settings[key]end end

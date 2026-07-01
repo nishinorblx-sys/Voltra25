@@ -24,7 +24,22 @@ function Service:Save(player:Player,payload:any):(boolean,string,any?)local prof
 function Service:StartMatch(player:Player):(boolean,string,any?)
 	local profile=self.Profiles:GetProfile(player);if not profile then return false,"Profile unavailable.",nil end;local setup=self:_ensure(profile);local valid,message=self:_validate(setup);if not valid or not setup.Completed then return false,message,nil end
 	local success,text,data=self.Runtime:StartMatch(player,setup);if not success then return false,text,nil end
-	local session=self.Runtime:GetSession(player);if session then session.OnBeforeResult=function(ended:any)local current=self.Profiles:GetProfile(player);if not current or ended.World.HomeScore.Value<=ended.World.AwayScore.Value then return{}end;current.Currency.Coins+=1000;current.Season.XP+=150;return{[player.UserId]={Title="VICTORY STAR",Coins=1000,XP=150}}end;session.OnCompleted=function(ended:any)local current=self.Profiles:GetProfile(player);if not current then return end;local serialized=ended.Stats:Serialize(ended.World.HomeScore.Value,ended.World.AwayScore.Value,ended.Clock:Payload().GameSeconds);for _,objective in current.Objectives do if objective.status~="claimed"then if objective.objectiveId=="daily_complete_passes"then objective.progress=math.min(objective.target,objective.progress+(serialized.Home.PassesCompleted or 0))elseif objective.objectiveId=="weekly_score_goals"then objective.progress=math.min(objective.target,objective.progress+(serialized.Home.Goals or 0))end;if objective.status=="active"and objective.progress>=objective.target then objective.status="claimable"end end end;self.Publish(player,"Objective",ObjectiveService.Serialize(current.Objectives));self.Publish(player,"Progression",self.Progression:GetClientData(player))end end
+	local session=self.Runtime:GetSession(player);if session then
+		session.OnBeforeResult=function(ended:any)
+			local homeScore=ended.World.HomeScore.Value
+			local awayScore=ended.World.AwayScore.Value
+			local homeWon=homeScore>awayScore
+			local drew=homeScore==awayScore
+			local coins=650+(homeWon and 650 or drew and 300 or 150)
+			local xp=110+(homeWon and 90 or drew and 45 or 20)
+			local reward=self.Progression:GrantMatchRewards(player,{Title=homeWon and"VICTORY REWARD"or drew and"DRAW REWARD"or"MATCH REWARD",Coins=coins,XP=xp})
+			return reward and{[player.UserId]=reward}or{}
+		end
+		session.OnCompleted=function(ended:any)
+			local serialized=ended.Stats:Serialize(ended.World.HomeScore.Value,ended.World.AwayScore.Value,ended.Clock:Payload().GameSeconds)
+			self.Progression:UpdateObjectivesFromMatch(player,serialized.Home)
+		end
+	end
 	local completed=false;for _,objective in profile.Objectives do if objective.objectiveId=="play_first_match_placeholder"and objective.status~="claimed"then completed=objective.progress<objective.target;objective.progress=1;if objective.status=="active"then objective.status="claimable"end;break end end
 	self.Publish(player,"Objective",ObjectiveService.Serialize(profile.Objectives));self.Publish(player,"Progression",self.Progression:GetClientData(player));data.ObjectiveCompletedNow=completed;return true,text,data
 end
@@ -59,11 +74,12 @@ function Service:WatchMatch(player:Player):(boolean,string,any?)
 			local cleared=0;local tierId=tier and tier.Id or"";for completedId,done in progress.CompletedTeams do if done and string.find(tostring(completedId),tierId,1,true)then cleared+=1 end end
 			local firstTierClear=cleared>=4
 			local tierClearKey="campaign_tier_clear_"..tostring(tierId)
+			local voltraGranted=false
 			if firstTierClear and progress.RewardsClaimed[tierClearKey]~=true then
 				progress.RewardsClaimed[tierClearKey]=true
-				if self.Progression and self.Progression.Inventory and self.Progression.Inventory:AddPack(player,"voltra_pack","voltra_pack","CampaignTierClear",1)then packsGranted+=1 end
+				if self.Progression and self.Progression.Inventory and self.Progression.Inventory:AddPack(player,"voltra_pack","voltra_pack","CampaignTierClear",1)then packsGranted+=1;voltraGranted=true end
 			end
-			return{[player.UserId]={Title=firstTierClear and"CAMPAIGN TIER CLEAR"or"CAMPAIGN CLEAR",Coins=0,XP=0,Pack=(tier and tier.Reward or"Campaign Pack")..(firstTierClear and" + Voltra Pack"or""),Packs=packsGranted}}
+			return{[player.UserId]={Title=firstTierClear and"CAMPAIGN TIER CLEAR"or"CAMPAIGN CLEAR",Coins=0,XP=0,Pack=(tier and tier.Reward or"Campaign Pack")..(voltraGranted and" + Voltra Pack"or""),BonusPack=voltraGranted and"VOLTRA PACK"or nil,VoltraPack=voltraGranted,LeagueClear=voltraGranted,PackId=packId,Packs=packsGranted}}
 		end
 		session.OnCompleted=function(ended:any)
 			local current=self.Profiles:GetProfile(player);if not current or ended.World.HomeScore.Value<=ended.World.AwayScore.Value or replay then return end

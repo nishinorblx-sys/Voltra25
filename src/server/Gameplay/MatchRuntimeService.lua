@@ -120,7 +120,7 @@ function Service:StartMatch(player:Player,setup:any,opponent:Player?,opponentSet
 	end)
 	if opponent and opponent.Character then local opponentRoot=opponent.Character:FindFirstChild("HumanoidRootPart")::BasePart?;if opponentRoot then opponent.Character:PivotTo(world.PitchCFrame*CFrame.new(0,-30,0));opponentRoot.Anchored=true;opponent.Character:SetAttribute("VTRParked",true)end end
 	local stats=StatsService.new(models,world.PitchCFrame,world.Width,world.Length);local possession=PossessionService.new(world.Ball,self.State);local animations=MatchAnimationService.new(models);local ballService=BallService.new(world.Ball,possession,self.State,stats,models,animations);local teamControl=TeamControlService.new(self.State,teams,world.Ball,possession,ballService,world.PitchCFrame,world.Width,world.Length);local duration=math.max(60,finalSetup.MatchLength*60)
-	local session={Player=player,Players=players,SidePlayers={Home=player,Away=opponent},PlayerSides={[player]="Home"},PlayerState={},StepOwner=player,Ranked=opponent~=nil,Setup=finalSetup,World=world,Teams=teams,Formation=formation,Models=models,Stats=stats,Possession=possession,BallService=ballService,Animations=animations,TeamControl=teamControl,Grounding=BallGroundingService.new(world.Ball,world.PitchCFrame,models),Clock=MatchClockService.new(duration),StaminaService=StaminaService.new(),Remaining=duration,Duration=duration,HalfTimeTriggered=false,Phase="PRE MATCH",Running=false,Ended=false,Accumulator=0,LastPositions={},MovementSpeeds={},BenchData={Home=home.Bench or{},Away=away.Bench or{}},UsedBench={Home={},Away={}},PendingSub={},NextSubSuggestion={},PauseSecondsByPlayer={},PauseRequester=nil,PauseResumeVotes={},PauseGrantIndex=0,PauseTimerAccumulator=0,Connections={postGoalAnchorGuard}}
+	local session={Player=player,Players=players,SidePlayers={Home=player,Away=opponent},PlayerSides={[player]="Home"},PlayerState={},StepOwner=player,Ranked=opponent~=nil,Setup=finalSetup,World=world,Teams=teams,Formation=formation,Models=models,Stats=stats,Possession=possession,BallService=ballService,Animations=animations,TeamControl=teamControl,Grounding=BallGroundingService.new(world.Ball,world.PitchCFrame,models),Clock=MatchClockService.new(duration),StaminaService=StaminaService.new(),Remaining=duration,Duration=duration,HalfTimeTriggered=false,Phase="PRE MATCH",Running=false,Ended=false,Accumulator=0,LastPositions={},MovementSpeeds={},BenchData={Home=home.Bench or{},Away=away.Bench or{}},UsedBench={Home={},Away={}},PauseSecondsByPlayer={},PauseRequester=nil,PauseResumeVotes={},PauseGrantIndex=0,PauseTimerAccumulator=0,Connections={postGoalAnchorGuard}}
 	session.LinkDebug=GameplayLinkDebugService.new()
 	if opponent then session.PlayerSides[opponent]="Away"end
 	for _,participant in players do local hum=humanoids[participant];session.PlayerState[participant]={Stamina=Config.Stamina.Maximum,Endurance=Config.Stamina.Maximum,SprintRequested=false,PreviousSpeed=hum.WalkSpeed,PreviousJump=hum.JumpPower,ReturnCFrame=CFrame.new(0,8,0)};session.PauseSecondsByPlayer[participant]=60;hum.WalkSpeed=0;hum.JumpPower=0;participant:SetAttribute("VTRInMatch",true);self.Sessions[participant]=session end
@@ -708,6 +708,13 @@ end
 
 function Service:_goal(session:any,team:string)
 	if not session.Running then return end
+	local clockPayloadForGoal=session.Clock:Payload()
+	if (clockPayloadForGoal.Half or 1)>=2 then
+		-- GoalService resolves physical goal hitboxes as first-half scoring sides:
+		-- AwayGoal -> Home scores, HomeGoal -> Away scores. After halftime the
+		-- teams switch ends, so the credited scoring side must flip.
+		team=team=="Home"and"Away"or"Home"
+	end
 	local currentGoalVelocity=session.World.Ball.AssemblyLinearVelocity
 	local entryGoalVelocity=session.World.Ball:GetAttribute("VTRGoalEntryVelocity")
 	local goalVelocity=typeof(entryGoalVelocity)=="Vector3"and entryGoalVelocity.Magnitude>currentGoalVelocity.Magnitude and entryGoalVelocity or currentGoalVelocity
@@ -733,7 +740,6 @@ function Service:_goal(session:any,team:string)
 	if scorerModel then session.Animations:PlayAction(scorerModel,"GoalCelebration")end
 	local scorer=scorerModel and scorerModel:GetAttribute("DisplayName")or nil
 	local ownGoal=scorerModel~=nil and scorerModel:GetAttribute("VTRTeam")~=team
-	local clockPayloadForGoal=session.Clock:Payload()
 	session.Stats:Goal(team,scorerModel,ownGoal,clockPayloadForGoal.GameSeconds)
 	local cornerTeam=session.World.Ball:GetAttribute("VTRLastCornerTeam");local cornerAt=tonumber(session.World.Ball:GetAttribute("VTRCornerTakenAt"))or 0;if cornerTeam==team and os.clock()-cornerAt<10 then session.Stats:Add(team,"CornerGoals");broadcast(self.State,session,{Type="CornerObjective",Event="cornerGoal"})end
 	session.Clock:Record("Goal")
@@ -1029,7 +1035,7 @@ function Service:_action(player:Player,payload:any)
 		return
 	end
 	if session.Setup and session.Setup.WatchMode==true and payload.Type~="Pause"and payload.Type~="Forfeit"then return end
-	if session.Paused and payload.Type~="Pause"and payload.Type~="Forfeit"and payload.Type~="SubstitutionResponse"and payload.Type~="ManualSubstitution"then return end
+	if session.Paused and payload.Type~="Pause"and payload.Type~="Forfeit"and payload.Type~="ManualSubstitution"then return end
 	if session.SetPieces and session.SetPieces:HandleAction(player,payload)then return end
 	if payload.Type=="DebugCorner"then
 		if RunService:IsStudio()and session.Running then local ballLocal=session.World.PitchCFrame:PointToObjectSpace(session.World.Ball.Position);local x=ballLocal.X>=0 and session.World.Width*.5+2 or-session.World.Width*.5-2;local location=session.World.PitchCFrame:PointToWorldSpace(Vector3.new(x,.2,-session.World.Length*.5-2));self:_startSetPiece(session,"Corner","Home",location)end
@@ -1112,17 +1118,6 @@ function Service:_action(player:Player,payload:any)
 		if opponentSide=="Home"then session.World.HomeScore.Value=math.max(session.World.HomeScore.Value,session.World.AwayScore.Value+3)else session.World.AwayScore.Value=math.max(session.World.AwayScore.Value,session.World.HomeScore.Value+3)end
 		session.ForfeitBy=player.UserId
 		self:EndMatch(session.StepOwner,true)
-		return
-	end
-	if payload.Type=="SubstitutionResponse"then
-		local suggestion=session.PendingSub[player];if not suggestion then return end;session.PendingSub[player]=nil
-		if payload.Accepted==true then
-			local model=suggestion.Outgoing;local incoming=suggestion.Incoming;if model and model.Parent and incoming then
-				model:SetAttribute("playerId",incoming.playerId);model:SetAttribute("DisplayName",incoming.displayName or incoming.shortName or"SUBSTITUTE");model:SetAttribute("overall",incoming.overall or 60);model:SetAttribute("VTRSprintStamina",100);model:SetAttribute("VTREndurance",100);model:SetAttribute("VTRStamina",100);model:SetAttribute("VTRSprintLocked",false);for _,key in{"PAC","SHO","PAS","DRI","DEF","PHY"}do model:SetAttribute(key,tonumber(incoming.mainStats and incoming.mainStats[key])or incoming.overall or 60)end
-				session.UsedBench[suggestion.Side][suggestion.BenchIndex]=true;session.Clock:Record("Substitution");broadcast(self.State,session,{Type="Substitution",Side=suggestion.Side,Outgoing=suggestion.OutgoingName,Incoming=model:GetAttribute("DisplayName"),Model=model})
-				if session.TeamControl:GetActive(player)==model then self.State:FireClient(player,{Type="ActivePlayer",Model=model,Name=model:GetAttribute("DisplayName"),Position=model:GetAttribute("position"),Reason="Substitution"})end
-			end
-		end
 		return
 	end
 	if payload.Type=="ManualSubstitution"then
@@ -1335,8 +1330,6 @@ function Service:_step(dt:number)
 		for _,model in session.Models do local modelRoot=model:FindFirstChild("HumanoidRootPart")::BasePart?;if modelRoot then local last=session.LastPositions[model];local limit=math.max(8,(model:GetAttribute("VTRUserId")and 40 or 48)*math.min(dt+.12,.28));if last and(modelRoot.Position-last).Magnitude>limit then local facing=Vector3.new(modelRoot.CFrame.LookVector.X,0,modelRoot.CFrame.LookVector.Z);model:PivotTo(CFrame.lookAt(last,last+(facing.Magnitude>.01 and facing.Unit or Vector3.zAxis)))else session.LastPositions[model]=modelRoot.Position end end end
 		local currentHalf=session.Clock and session.Clock:Payload().Half or 1;if session.AI and session.AI.SetHalf then session.AI:SetHalf(currentHalf)end;if session.Offside and session.Offside.SetHalf then session.Offside:SetHalf(currentHalf)end;if session.Goalkeepers and session.Goalkeepers.SetHalf then session.Goalkeepers:SetHalf(currentHalf)end;if session.Stats and session.Stats.RecordPositions then session.Stats:RecordPositions(session.Models,dt)end;session.BallService:Step(dt);session.TeamControl:Step();session.Animations:Step(session.Possession:GetOwner());session.Grounding:Step();session.AI:Step(dt);session.Goalkeepers:Step(dt);session.Goals:Step();if session.Running then session.OutOfBounds:Step()end;RefereeService.Enforce(session.Models,session.World.PitchCFrame,session.World.Width,session.World.Length);if session.LinkDebug then session.LinkDebug:Step(session,dt)end
 		if session.Clock:ShouldEndMatch()then self:EndMatch(session.StepOwner,true)elseif not session.HalfTimeTriggered and session.Clock:ShouldHalfTime()then self:_halfTime(session)elseif session.Accumulator>=.1 then session.Accumulator=0;local clockPayload=session.Clock:Payload();for _,participant in session.Players do local state=session.PlayerState[participant];self.State:FireClient(participant,{Type="Clock",GameSeconds=clockPayload.GameSeconds,Half=clockPayload.Half,AddedMinutes=clockPayload.AddedMinutes,InAddedTime=clockPayload.InAddedTime,AddedElapsed=clockPayload.AddedElapsed,Home=session.World.HomeScore.Value,Away=session.World.AwayScore.Value,Stamina=state and state.Stamina or Config.Stamina.Maximum,Endurance=state and state.Endurance or Config.Stamina.Maximum})end
-			local minute=clockPayload.GameSeconds/60;local thresholds={55,65,75,85};local roles={"ST","CM","CB","ST"}
-			for _,participant in session.Players do local nextIndex=session.NextSubSuggestion[participant]or 1;if nextIndex<=#thresholds and minute>=thresholds[nextIndex]and not session.PendingSub[participant]then local side=session.PlayerSides[participant];local wanted=roles[nextIndex];local outgoing=nil;local lowest=math.huge;for _,model in session.Teams[side]do local position=tostring(model:GetAttribute("position")or"");local match=position==wanted or wanted=="CM"and(position=="CDM"or position=="CAM")or wanted=="CB"and(position=="LB"or position=="RB");local endurance=tonumber(model:GetAttribute("VTREndurance"))or 100;if match and endurance<lowest then outgoing=model;lowest=endurance end end;local incoming=nil;local benchIndex=nil;for index,candidate in session.BenchData[side]do if not session.UsedBench[side][index]then local position=tostring(candidate.bestPosition or"");local match=position==wanted or wanted=="CM"and(position=="CDM"or position=="CAM")or wanted=="CB"and(position=="LB"or position=="RB");if match and(not incoming or(candidate.overall or 0)>(incoming.overall or 0))then incoming=candidate;benchIndex=index end end end;if outgoing and incoming and benchIndex then local suggestion={Side=side,Role=wanted,Outgoing=outgoing,OutgoingName=outgoing:GetAttribute("DisplayName"),Incoming=incoming,BenchIndex=benchIndex};session.PendingSub[participant]=suggestion;self.State:FireClient(participant,{Type="SubSuggestion",Role=wanted,Outgoing=suggestion.OutgoingName,Incoming=incoming.displayName,IncomingOverall=incoming.overall,Endurance=math.floor(lowest+.5)})end;session.NextSubSuggestion[participant]=nextIndex+1 end end
 		end
 	end
 end

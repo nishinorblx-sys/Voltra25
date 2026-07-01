@@ -4,10 +4,15 @@ local Catalog = {}
 Catalog.Packs={
 	starter_launch={Id="starter_launch",Name="FOUNDERS STARTER PACK",Description="Onboarding-exclusive launch squad pack.",PriceCoins=0,CardCount=18,Odds={Bronze=95,Silver=5}},
 	starter_pack={Id="starter_pack",Name="STARTER PACK",Description="Eight foundation players with one Silver-or-better guarantee.",PriceCoins=1200,CardCount=8,GuaranteedMinRarity="Silver",Odds={Bronze=85,Silver=14,Gold=1}},
+	common_pack={Id="common_pack",Name="COMMON PACK",Description="Five entry-level player cards for filling out the club.",PriceCoins=900,CardCount=5,GuaranteedMinRarity="Common",Odds={Common=78,Bronze=20,Silver=2}},
 	bronze_pack={Id="bronze_pack",Name="BRONZE PACK",Description="Five developing players, weighted toward Bronze.",PriceCoins=1800,CardCount=5,Odds={Bronze=90,Silver=9,Gold=1}},
 	silver_pack={Id="silver_pack",Name="SILVER PACK",Description="Six players with one Silver-or-better guarantee.",PriceCoins=3500,CardCount=6,GuaranteedMinRarity="Silver",Odds={Bronze=20,Silver=70,Gold=8,Rare=2}},
 	gold_pack={Id="gold_pack",Name="GOLD PACK",Description="Eight premium players with one Gold-or-better guarantee.",PriceCoins=6500,CardCount=8,GuaranteedMinRarity="Gold",Odds={Silver=20,Gold=65,Rare=13,Elite=2}},
+	rare_pack={Id="rare_pack",Name="RARE PACK",Description="Eight rare-chase player cards with a guaranteed Rare-or-better pull.",PriceCoins=9500,CardCount=8,GuaranteedMinRarity="Rare",Odds={Gold=25,Rare=62,Elite=11,Legendary=1.8,Icon=.2}},
 	elite_pack={Id="elite_pack",Name="ELITE PACK",Description="Eight high-tier players with one Rare-or-better guarantee.",PriceCoins=12000,CardCount=8,GuaranteedMinRarity="Rare",Odds={Gold=15,Rare=65,Elite=18,Legendary=1.8,Icon=.2}},
+	legendary_pack={Id="legendary_pack",Name="LEGENDARY PACK",Description="Ten premium cards with a Legendary chase and strong Elite floor.",PriceCoins=36000,CardCount=10,GuaranteedMinRarity="Elite",Odds={Rare=35,Elite=50,Legendary=13,Icon=1.6,Mythic=.4}},
+	icon_pack={Id="icon_pack",Name="ICON PACK",Description="Prestige white-gold pack with Icon odds and a high-tier guarantee.",PriceCoins=65000,CardCount=10,GuaranteedMinRarity="Elite",Odds={Elite=54,Legendary=34,Icon=10,Mythic=2}},
+	mythic_pack={Id="mythic_pack",Name="MYTHIC PACK",Description="The black-neon chase pack with the strongest Mythic odds.",PriceCoins=120000,CardCount=12,GuaranteedMinRarity="Legendary",Odds={Legendary=70,Icon=22,Mythic=8}},
 	voltra_pack={Id="voltra_pack",Name="VOLTRA PACK",Description="Ten charged reveals with strong Rare odds and Icon potential.",PriceCoins=24000,CardCount=10,GuaranteedMinRarity="Rare",Odds={Gold=5,Rare=65,Elite=25,Legendary=4.7,Icon=.3}},
 	totw_pack={Id="totw_pack",Name="TEAM OF THE WEEK PACK",Description="Black-gold weekly form cards with burning electric reveal effects.",PriceCoins=18500,CardCount=8,GuaranteedMinRarity="Rare",GuaranteedCardType="Team of the Week",Odds={Gold=12,Rare=66,Elite=19,Legendary=2.7,Icon=.3},CardTypeWeights={["Team of the Week"]=72,Base=20,Champion=5,Limited=3}},
 	rising_star_pack={Id="rising_star_pack",Name="RISING STAR PACK",Description="Young talent cards with cyan starburst frames and fast progression energy.",PriceCoins=14500,CardCount=8,GuaranteedMinRarity="Gold",GuaranteedCardType="Rising Star",Odds={Silver=5,Gold=54,Rare=32,Elite=8,Legendary=1},CardTypeWeights={["Rising Star"]=76,Base=18,Event=4,Limited=2}},
@@ -19,6 +24,12 @@ Catalog.Packs={
 	-- Legacy ids remain valid so existing profiles and rewards migrate safely.
 	voltage_standard={Id="voltage_standard",Name="VOLTAGE STANDARD PACK",Description="Legacy six-card Voltage pack.",PriceCoins=2500,CardCount=6,GuaranteedMinRarity="Silver",Odds={Bronze=70,Silver=25,Rare=5}},
 	elite_electrum={Id="elite_electrum",Name="ELITE ELECTRUM PACK",Description="Legacy eight-card elite pack.",PriceCoins=12000,CardCount=8,GuaranteedMinRarity="Rare",Odds={Gold=15,Rare=55,Elite=24,Legendary=5.8,Icon=.2}},
+}
+Catalog.CoinBundles={
+	coin_small={Id="coin_small",Name="SMALL COIN BUNDLE",Coins=5000,Robux=49,ProductId=0},
+	coin_medium={Id="coin_medium",Name="MEDIUM COIN BUNDLE",Coins=15000,Robux=129,ProductId=0},
+	coin_large={Id="coin_large",Name="LARGE COIN BUNDLE",Coins=50000,Robux=399,ProductId=0},
+	coin_elite={Id="coin_elite",Name="ELITE COIN VAULT",Coins=150000,Robux=999,ProductId=0},
 }
 Catalog.StarterClubs={{Id="voltage_fc",Name="VOLTAGE FC",Motto="CONTROL THE CURRENT"},{Id="neon_rovers",Name="NEON ROVERS",Motto="MOVE WITHOUT FEAR"},{Id="static_united",Name="STATIC UNITED",Motto="TOGETHER WE STRIKE"}}
 Catalog.ColorPresets={{Id="electric_green",Name="ELECTRIC GREEN",Hex="B7FF1A"},{Id="neon_green",Name="NEON GREEN",Hex="9FFF00"},{Id="pure_black",Name="PURE BLACK",Hex="050505"},{Id="graphite",Name="GRAPHITE",Hex="111111"},{Id="silver",Name="METALLIC SILVER",Hex="D9D9D9"},{Id="voltra_white",Name="VOLTRA WHITE",Hex="F5F7F2"}}

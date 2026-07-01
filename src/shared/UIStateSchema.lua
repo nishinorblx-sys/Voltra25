@@ -9,7 +9,7 @@ return table.freeze({
 		Ranked={Division=true,Rewards=true,History=true,Leaders=true,Season=true,Queue=true},
 		Clubs={Start=true,Dashboard=true,Members=true,Roles=true,Fixtures=true,League=true,Trophies=true,Settings=true},
 		Career={Choose=true,CreatePlayer=true,CreateManager=true,Dashboard=true,Calendar=true,Training=true,Contracts=true,Transfers=true,Stats=true,Saves=true},
-		Store={Featured=true,Packs=true,Cosmetics=true,Stadium=true,Kits=true,Currency=true},
+		Store={Coins=true,Packs=true},
 		Settings={Controls=true,Audio=true,Camera=true,Accessibility=true,Account=true},
 	}),
 	Settings = table.freeze({ TimedFinishing="boolean",MenuMusic="boolean",MotionEffects="boolean",PerformanceMode="boolean",InvertY="boolean",HighContrast="boolean",ReducedMotion="boolean",Crossplay="boolean",ControlPreset="string",MasterVolume="number",Commentary="string",CommentaryLanguage="string",CommentaryVolume="number",Graphics="string",CameraPreset="string",CameraShake="string",CameraZoomMode="string",BroadcastHeight="string",BroadcastZoom="string",CameraSpeed="string",CameraSide="string",PlayerNames="string",Trainer="string",PassReceiverAutoSwitch="string",ReceiverAssist="string",Minimap="string",MinimapOrientation="string",TextScale="string",PauseKey="string",SkipKey="string" }),

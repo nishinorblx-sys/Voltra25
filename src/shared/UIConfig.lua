@@ -8,6 +8,7 @@ UIConfig.Navigation = {
 	{ Id = "Play", Label = "CAMPAIGN", Icon = "C", Order = 3 },
 	{ Id = "Ranked", Label = "RANKED", Icon = "R", Order = 4 },
 	{ Id = "Inventory", Label = "INVENTORY", Icon = "I", Order = 5 },
+	{ Id = "Store", Label = "STORE", Icon = "S", Order = 6 },
 }
 
 UIConfig.Home = {
@@ -25,6 +26,7 @@ UIConfig.Home = {
 UIConfig.Pages = {
 	UltimateTeam = { Kicker = "VTR LITE SQUAD", Title = "SQUAD BUILDER", Subtitle = "Formation, tactics, bench, reserves and player instructions." },
 	Inventory = { Kicker = "YOUR COLLECTION", Title = "INVENTORY", Subtitle = "Packs, owned players and club items." },
+	Store = { Kicker = "VOLTRA MARKET", Title = "STORE", Subtitle = "Buy coins with Robux placeholders, then spend coins on sealed player packs." },
 	Play = { Kicker = "OFFLINE CAMPAIGN", Title = "CAMPAIGN", Subtitle = "Seven difficulty ladders. Five squads each. Win packs and unlock the next tier." },
 	Ranked = { Kicker = "7-WIN TOURNAMENT", Title = "RANKED", Subtitle = "Enter with your current squad. Seven wins earns a Mythic Pack; three losses ends the run." },
 }

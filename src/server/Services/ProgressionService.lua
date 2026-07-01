@@ -3,6 +3,7 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Catalog = require(ReplicatedStorage.VTR.Shared.Catalog)
+local EconomyConfig = require(ReplicatedStorage.VTR.Shared.EconomyConfig)
 local ObjectiveService = require(script.Parent.ObjectiveService)
 local DeveloperAccessService=require(script.Parent.DeveloperAccessService)
 local PlayerDatabase=require(script.Parent.Parent.Data.PlayerDatabase)
@@ -53,28 +54,62 @@ function ProgressionService:GetClientData(player: Player): any?
 		ProClubsPlayer=copy(profile.ProClubsPlayer),
 		CareerSaveSlots = copy(profile.CareerSaveSlots),
 		StoreOwnership = copy(profile.StoreOwnership),
-		StoreCatalog = { Packs = copy(Catalog.Packs), Kits = copy(Catalog.Kits), Stadiums = copy(Catalog.Stadiums), Cosmetics = copy(Catalog.Cosmetics),Consumables=copy(Catalog.Consumables) },
+		StoreCatalog = { Packs = copy(Catalog.Packs), CoinBundles = copy(Catalog.CoinBundles), Kits = copy(Catalog.Kits), Stadiums = copy(Catalog.Stadiums), Cosmetics = copy(Catalog.Cosmetics),Consumables=copy(Catalog.Consumables) },
 		Onboarding = copy(profile.Onboarding),
 		DeveloperAccess=DeveloperAccessService.IsAuthorized(player),
 		DeveloperStudioAccess=DeveloperAccessService.IsStudio(),
 	}
 end
 
+function ProgressionService:_setObjectiveProgress(profile: any, objectiveId: string, value: number): boolean
+	local objective = findObjective(profile, objectiveId)
+	if not objective or objective.status == "claimed" then return false end
+	local beforeProgress = tonumber(objective.progress) or 0
+	local beforeStatus = objective.status
+	objective.progress = math.clamp(value, 0, objective.target)
+	if objective.status == "active" and objective.progress >= objective.target then
+		objective.status = "claimable"
+	end
+	return beforeProgress ~= objective.progress or beforeStatus ~= objective.status
+end
+
+function ProgressionService:_incrementObjective(profile: any, objectiveId: string, amount: number): boolean
+	local objective = findObjective(profile, objectiveId)
+	if not objective or objective.status == "claimed" then return false end
+	return self:_setObjectiveProgress(profile, objectiveId, (tonumber(objective.progress) or 0) + math.max(0, amount))
+end
+
+function ProgressionService:_addXP(profile: any, amount: number): (number, number, boolean)
+	local xp = math.max(0, math.floor(amount))
+	if xp <= 0 then return 0, profile.Season.Level, false end
+	local oldLevel = tonumber(profile.Season.Level) or 1
+	profile.Season.XP += xp
+	while profile.Season.XP >= profile.Season.RequiredXP do
+		profile.Season.XP -= profile.Season.RequiredXP
+		profile.Season.Level += 1
+		profile.Season.RequiredXP = math.floor(profile.Season.RequiredXP * 1.08)
+	end
+	profile.Profile.XP = profile.Season.XP
+	profile.Profile.Level = profile.Season.Level
+	self:_setObjectiveProgress(profile, "milestone_level_5", profile.Profile.Level)
+	return xp, profile.Season.Level, profile.Season.Level > oldLevel
+end
+
+function ProgressionService:_addCoins(profile: any, amount: number): number
+	local coins = math.max(0, math.floor(amount))
+	if coins <= 0 then return 0 end
+	profile.Currency.Coins = math.min(EconomyConfig.MaximumCoins, (tonumber(profile.Currency.Coins) or 0) + coins)
+	return coins
+end
+
 function ProgressionService:_grantObjectiveReward(player: Player, profile: any, objective: any): boolean
 	local reward = objective.reward
 	if reward.Type == "XP" then
-		profile.Season.XP += reward.Amount
-		while profile.Season.XP >= profile.Season.RequiredXP do
-			profile.Season.XP -= profile.Season.RequiredXP
-			profile.Season.Level += 1
-			profile.Season.RequiredXP = math.floor(profile.Season.RequiredXP * 1.08)
-		end
-		profile.Profile.XP = profile.Season.XP
-		profile.Profile.Level = profile.Season.Level
+		self:_addXP(profile, reward.Amount)
 	elseif reward.Type == "Pack" then
 		return self.Inventory:AddPack(player, reward.ItemId or "voltage_standard", "OBJECTIVE REWARD PACK", "Objective", reward.Amount or 1)
 	elseif reward.Type == "Coins" then
-		profile.Currency.Coins += reward.Amount
+		self:_addCoins(profile, reward.Amount)
 	elseif reward.Type == "Bolts" then
 		profile.Currency.Bolts += reward.Amount
 	elseif reward.Type=="LoanPlayer"then
@@ -84,6 +119,37 @@ function ProgressionService:_grantObjectiveReward(player: Player, profile: any, 
 		profile.Inventory=profile.Inventory or{Items={}};local found=nil;for _,item in profile.Inventory.Items do if item.Id==reward.ItemId and item.Kind=="Consumable"then found=item;break end end;if found then found.Quantity+=(reward.Amount or 1)else table.insert(profile.Inventory.Items,{Id=reward.ItemId,Kind="Consumable",Quantity=reward.Amount or 1,AcquiredAt=os.time()})end
 	end
 	return true
+end
+
+function ProgressionService:UpdateObjectivesFromMatch(player: Player, teamStats: any): boolean
+	local profile = self.Profiles:GetProfile(player)
+	if not profile then return false end
+	local changed = false
+	changed = self:_incrementObjective(profile, "daily_complete_passes", tonumber(teamStats and teamStats.PassesCompleted) or 0) or changed
+	changed = self:_incrementObjective(profile, "weekly_score_goals", tonumber(teamStats and teamStats.Goals) or 0) or changed
+	changed = self:_setObjectiveProgress(profile, "play_first_match_placeholder", 1) or changed
+	changed = self:_setObjectiveProgress(profile, "milestone_level_5", profile.Profile.Level) or changed
+	if changed then self:_publishAll(player, profile) end
+	return changed
+end
+
+function ProgressionService:GrantMatchRewards(player: Player, payload: any): any?
+	local profile = self.Profiles:GetProfile(player)
+	if not profile then return nil end
+	payload = type(payload) == "table" and payload or {}
+	local title = tostring(payload.Title or "MATCH COMPLETE")
+	local coins = tonumber(payload.Coins) or 0
+	local xp = tonumber(payload.XP) or 0
+	local grantedCoins = self:_addCoins(profile, coins)
+	local grantedXP, level, leveledUp = self:_addXP(profile, xp)
+	self:_publishAll(player, profile)
+	return {
+		Title = title,
+		Coins = grantedCoins,
+		XP = grantedXP,
+		Level = level,
+		LeveledUp = leveledUp,
+	}
 end
 
 function ProgressionService:_publishAll(player: Player, profile: any)

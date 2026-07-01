@@ -4,8 +4,8 @@ local Players=game:GetService("Players")
 local Service={}
 Service.__index=Service
 
-function Service.new(profiles:any,runtime:any,rankedProfiles:any,notifications:any,rankedSquads:any)
-	return setmetatable({Profiles=profiles,Runtime=runtime,RankedProfiles=rankedProfiles,Notifications=notifications,RankedSquads=rankedSquads,Queue={},QueuedAt={},QueueSetup={},QueueRoster={},QueueDevice={},Random=Random.new()},Service)
+function Service.new(profiles:any,runtime:any,rankedProfiles:any,notifications:any,rankedSquads:any,progression:any?)
+	return setmetatable({Profiles=profiles,Runtime=runtime,RankedProfiles=rankedProfiles,Notifications=notifications,RankedSquads=rankedSquads,Progression=progression,Queue={},QueuedAt={},QueueSetup={},QueueRoster={},QueueDevice={},Random=Random.new()},Service)
 end
 
 function Service:_rankedSetup(player:Player,profile:any,roster:any):any
@@ -59,10 +59,10 @@ function Service:_pair()
 			local session=self.Runtime:GetSession(home);if session then session.OnRankedEnded=function(ended:any)
 				local homeScore=ended.World.HomeScore.Value;local awayScore=ended.World.AwayScore.Value;local homeResult=homeScore>awayScore and"Win"or homeScore<awayScore and"Loss"or"Draw";local awayResult=homeResult=="Win"and"Loss"or homeResult=="Loss"and"Win"or"Draw";local homeRP=homeResult=="Win"and 35 or homeResult=="Draw"and 12 or-20;local awayRP=awayResult=="Win"and 35 or awayResult=="Draw"and 12 or-20;local score=tostring(homeScore).."-"..tostring(awayScore)
 				local serialized=ended.Stats:Serialize(homeScore,awayScore,ended.Clock:Payload().GameSeconds)
-				local function updateObjectives(target:Player,side:string)local profile=self.Profiles:GetProfile(target);if not profile then return end;local team=side=="Home"and serialized.Home or serialized.Away;for _,objective in profile.Objectives do if objective.status~="claimed"then if objective.objectiveId=="daily_complete_passes"then objective.progress=math.min(objective.target,objective.progress+(team.PassesCompleted or 0))elseif objective.objectiveId=="weekly_score_goals"then objective.progress=math.min(objective.target,objective.progress+(team.Goals or 0))end;if objective.status=="active"and objective.progress>=objective.target then objective.status="claimable"end end end end;updateObjectives(home,"Home");updateObjectives(away,"Away")
+				local function updateObjectives(target:Player,side:string)local team=side=="Home"and serialized.Home or serialized.Away;if self.Progression then self.Progression:UpdateObjectivesFromMatch(target,team)end end;updateObjectives(home,"Home");updateObjectives(away,"Away")
 				local function personal(side:string):any local best=nil;for _,entry in serialized.PlayerRatings or{}do if entry.Team==side and(not best or entry.Rating>best.Rating)then best=entry end end;return{PlayerRating=best and best.Rating or 6,Team=side,Match=side=="Home"and serialized.Home or serialized.Away,Full=serialized,MOTM=serialized.MOTM}end
 				self.RankedProfiles:RecordServerResult(home,homeResult,homeRP,away.Name,score,personal("Home"));self.RankedProfiles:RecordServerResult(away,awayResult,awayRP,home.Name,tostring(awayScore).."-"..tostring(homeScore),personal("Away"))
-			end;session.OnBeforeResult=function(ended:any)local rewards={};local homeWon=ended.World.HomeScore.Value>ended.World.AwayScore.Value;local awayWon=ended.World.AwayScore.Value>ended.World.HomeScore.Value;for participant,won in{[home]=homeWon,[away]=awayWon}do if won then local profile=self.Profiles:GetProfile(participant);if profile then profile.Currency.Coins+=1500;profile.Season.XP+=200;rewards[participant.UserId]={Title="RANKED VICTORY STAR",Coins=1500,XP=200}end end end;return rewards end end
+			end;session.OnBeforeResult=function(ended:any)local rewards={};local homeWon=ended.World.HomeScore.Value>ended.World.AwayScore.Value;local awayWon=ended.World.AwayScore.Value>ended.World.HomeScore.Value;local draw=ended.World.HomeScore.Value==ended.World.AwayScore.Value;for participant,won in{[home]=homeWon,[away]=awayWon}do local coins=900+(won and 900 or draw and 450 or 225);local xp=140+(won and 110 or draw and 55 or 25);if self.Progression then local reward=self.Progression:GrantMatchRewards(participant,{Title=won and"RANKED VICTORY"or draw and"RANKED DRAW"or"RANKED MATCH",Coins=coins,XP=xp});if reward then rewards[participant.UserId]=reward end end end;return rewards end end
 		end)
 	end
 end

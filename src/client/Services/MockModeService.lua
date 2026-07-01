@@ -41,13 +41,44 @@ function MockModeService:Hydrate(ui:any,progression:any)
 		local activeSave=nil;local emptyCount=0;local saves=tab(self.Spec,"Saves");if saves then saves.Cards={};for _,save in progression.CareerSaveSlots do local empty=save.Type=="Empty";if empty then emptyCount+=1 elseif save.Slot==ui.CareerSaveSelection then activeSave=save end;table.insert(saves.Cards,{Title="SLOT "..save.Slot,Subtitle=empty and "EMPTY" or save.Name.." • "..save.Season,Meta=empty and "Create a new career" or save.Type.." CAREER • OVR "..(save.Overall or "N/A"),Empty=empty,Accent=save.Slot==ui.CareerSaveSelection,Action=empty and {Label="NEW CAREER",Operation="CareerSetup",TargetTab="Choose"} or {Label="LOAD SAVE",Operation="Select",Key="SaveSlot",Item="Slot "..save.Slot,AfterTab="Dashboard"}}) end end
 		if emptyCount==#progression.CareerSaveSlots and not ui.SelectedTabs.Career then self.State.SelectedTab="Saves" end;local dashboard=tab(self.Spec,"Dashboard");if dashboard then if activeSave then dashboard.Description="ACTIVE "..string.upper(activeSave.Type).." CAREER • SLOT "..activeSave.Slot;dashboard.Cards={{Title=activeSave.Name,Subtitle=activeSave.Season.." • "..progression.ClubMembership.Name,Meta=activeSave.Type=="Player" and "OVERALL "..(activeSave.Overall or 62) or "MANAGER RATING "..(activeSave.Rating or 50),Accent=true,Action={Label="CONTINUE CAREER",Operation="ComingSoon",Message="Career dashboard is live; match gameplay remains disconnected."}},{Title="CAREER DATA",Subtitle="SERVER PROFILE SAVE",Meta="LAST UPDATED "..(activeSave.UpdatedAt or "NOW"),Action={Label="VIEW STATS",TargetTab="Stats"}}} else dashboard.Description="NO ACTIVE CAREER SAVE";dashboard.Cards={{Title="CREATE YOUR FIRST CAREER",Subtitle="PLAYER OR MANAGER",Meta="Three save slots available",Empty=true,Action={Label="CHOOSE CAREER",TargetTab="Choose"}}} end end
 	elseif self.Spec.Id=="Store" then
-		self.State.Equipped=table.clone(ui.EquippedCosmetics);self.State.Owned={};for _,id in progression.StoreOwnership.Kits do self.State.Owned[id]=true end;for _,id in progression.StoreOwnership.Stadiums do self.State.Owned[id]=true end;for _,id in progression.StoreOwnership.Cosmetics do self.State.Owned[id]=true end
-		local serverCatalog=progression.StoreCatalog;local packsTab=tab(self.Spec,"Packs");if packsTab then packsTab.Cards={};for id,pack in serverCatalog.Packs do if id~="starter_launch" and id~="voltage_standard" and id~="elite_electrum" then table.insert(packsTab.Cards,{Title=pack.Name,Subtitle=pack.CardCount.." SERVER-GENERATED CARDS",Meta="◈ "..pack.PriceCoins,Accent=id=="voltra_pack",Action={Label="PURCHASE PACK",Operation="Purchase",Item=id,ServerId=id,ItemType="Pack",Confirm=true}}) end end end
-		local kitsTab=tab(self.Spec,"Kits");if kitsTab then kitsTab.Cards={};for _,item in serverCatalog.Kits do local owned=self.State.Owned[item.Id];table.insert(kitsTab.Cards,{Title=item.Name,Subtitle="VTR CLUB KIT",Meta=owned and "OWNED" or "◈ "..(item.PriceCoins or 0),Accent=item.Starter==true,Action=owned and {Label="EQUIP KIT",Operation="Select",Key="ActiveKit",Item=item.Id} or {Label="PURCHASE KIT",Operation="Purchase",Item=item.Id,ServerId=item.Id,ItemType="Kit",Confirm=true}}) end end
-		local stadiumTab=tab(self.Spec,"Stadium");if stadiumTab then stadiumTab.Cards={};for _,item in serverCatalog.Stadiums do local owned=self.State.Owned[item.Id];table.insert(stadiumTab.Cards,{Title=item.Name,Subtitle="STADIUM THEME",Meta=owned and "OWNED" or "◈ "..(item.PriceCoins or 0),Accent=item.Starter==true,Action=owned and {Label="EQUIP STADIUM",Operation="Select",Key="StadiumTheme",Item=item.Id} or {Label="PURCHASE",Operation="Purchase",Item=item.Id,ServerId=item.Id,ItemType="Stadium",Confirm=true}}) end end
-		local cosmeticsTab=tab(self.Spec,"Cosmetics");if cosmeticsTab then cosmeticsTab.Cards={};for _,item in serverCatalog.Cosmetics do local owned=self.State.Owned[item.Id];local price=item.PriceBolts and "ϟ "..item.PriceBolts or "◈ "..item.PriceCoins;local slot=item.Type=="Walkout" and "Walkout" or item.Type=="Crest" and "Crest" or "ProfileFrame";table.insert(cosmeticsTab.Cards,{Title=item.Name,Subtitle=string.upper(item.Type),Meta=owned and "OWNED" or price,Action=owned and {Label="EQUIP",Operation="Select",Key=slot,Item=item.Id} or {Label="PURCHASE",Operation="Purchase",Item=item.Id,ServerId=item.Id,ItemType="Cosmetic",Confirm=true}}) end end
-		local featured=tab(self.Spec,"Featured");if featured then local kit=serverCatalog.Kits[4];local cosmetic=serverCatalog.Cosmetics[3];featured.Cards={{Title=kit.Name,Subtitle="LAUNCH FEATURED KIT",Meta=self.State.Owned[kit.Id] and "OWNED" or "◈ "..kit.PriceCoins,Accent=true,Action=self.State.Owned[kit.Id] and {Label="EQUIP KIT",Operation="Select",Key="ActiveKit",Item=kit.Id} or {Label="PURCHASE",Operation="Purchase",Item=kit.Id,ServerId=kit.Id,ItemType="Kit",Confirm=true}},{Title=cosmetic.Name,Subtitle="LAUNCH PROFILE COSMETIC",Meta=self.State.Owned[cosmetic.Id] and "OWNED" or "ϟ "..cosmetic.PriceBolts,Action=self.State.Owned[cosmetic.Id] and {Label="EQUIP",Operation="Select",Key="ProfileFrame",Item=cosmetic.Id} or {Label="PURCHASE",Operation="Purchase",Item=cosmetic.Id,ServerId=cosmetic.Id,ItemType="Cosmetic",Confirm=true}}} end
-		local currencyTab=tab(self.Spec,"Currency");if currencyTab and progression.DeveloperAccess==true then currencyTab.Description="AUTHORIZED DEVELOPMENT UTILITIES";currencyTab.Cards={{Title="DEV COIN VAULT",Subtitle="LOAD TEST THE BEST PACKS",Meta="+10,000,000 COINS",Accent=true,Action={Label="ADD DEV COINS",Operation="Developer",ServerAction="DeveloperGrantCoins",Confirm=true}}};if progression.DeveloperStudioAccess==true then table.insert(currencyTab.Cards,{Title="RESET LAUNCH PROFILE",Subtitle="DELETE CURRENT TEST PROGRESSION",Meta="STUDIO ONLY",Action={Label="RESET PROFILE",Operation="Developer",ServerAction="DeveloperResetProfile",Confirm=true}})end end
+		local serverCatalog=progression.StoreCatalog or {}
+		local coinBundles=serverCatalog.CoinBundles or Catalog.CoinBundles or {}
+		local coinsTab=tab(self.Spec,"Coins")
+		if coinsTab then
+			coinsTab.Cards={}
+			local order={"coin_small","coin_medium","coin_large","coin_elite"}
+			for index,id in order do
+				local bundle=coinBundles[id]
+				if bundle then
+					table.insert(coinsTab.Cards,{
+						Title=bundle.Name,
+						Subtitle=tostring(bundle.Coins).." COINS",
+						Meta="R$ "..tostring(bundle.Robux).."  /  PRODUCT PLACEHOLDER",
+						Accent=index==#order,
+						Action={Label="BUY COINS",Operation="RobuxCoins",ServerAction="BuyCoins",ServerId=id,Confirm=true,Description="This currently grants test coins through the server. Replace ProductId later to use Roblox receipts."},
+					})
+				end
+			end
+		end
+		local packOrder={"common_pack","bronze_pack","silver_pack","gold_pack","rare_pack","elite_pack","legendary_pack","icon_pack","mythic_pack","voltra_pack"}
+		local packsTab=tab(self.Spec,"Packs")
+		if packsTab then
+			packsTab.Cards={}
+			for _,id in packOrder do
+				local pack=(serverCatalog.Packs or Catalog.Packs)[id]
+				if pack then
+					local best=(pack.Odds and pack.Odds.Mythic and "MYTHIC")or(pack.Odds and pack.Odds.Icon and "ICON")or(pack.Odds and pack.Odds.Legendary and "LEGENDARY")or(pack.Odds and pack.Odds.Elite and "ELITE")or(pack.Odds and pack.Odds.Rare and "RARE")or(pack.Odds and pack.Odds.Gold and "GOLD")or"BRONZE"
+					table.insert(packsTab.Cards,{
+						Title=pack.Name,
+						Subtitle=pack.CardCount.." CARDS  /  BEST "..best,
+						Meta="◈ "..tostring(pack.PriceCoins or 0),
+						Accent=id=="voltra_pack" or id=="mythic_storm_pack",
+						Detail=(pack.Description or "VTR player pack").."\n\nGuaranteed: "..tostring(pack.GuaranteedMinRarity or "Weighted odds"),
+						Action={Label="PURCHASE PACK",Operation="Purchase",Item=id,ServerId=id,ItemType="Pack",Confirm=true},
+					})
+				end
+			end
+		end
 	elseif self.Spec.Id=="Settings" then self.State.Values=table.clone(ui.Settings);for key,value in ui.Settings do if type(value)=="string" then self.State.Selections[key]=value end end end
 end
 
