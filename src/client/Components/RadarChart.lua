@@ -178,7 +178,7 @@ function RadarChart.new(parent: Instance, stats: any, size: any): Frame
 		local value = math.clamp(math.floor(tonumber(stats[key]) or 0), 0, 100)
 		statPoints[index] = axisDirection(index) * (value / 100 * MAX_RADIUS)
 	end
-	polygonFill(world, statPoints, Theme.Colors.Electric, 0.42, 0.06, "PlayerStatFill")
+	polygonFill(world, statPoints, Theme.Colors.White, 0.42, 0.06, "PlayerStatFill")
 	for index = 1, 6 do
 		closedEdge(world, statPoints[index], statPoints[index % 6 + 1], Theme.Colors.White, 0.055, 0.13, "PlayerOutline" .. index)
 		local point = Instance.new("Part")
@@ -188,7 +188,7 @@ function RadarChart.new(parent: Instance, stats: any, size: any): Frame
 		point.CastShadow = false
 		point.Shape = Enum.PartType.Ball
 		point.Material = Enum.Material.Neon
-		point.Color = Theme.Colors.Electric
+		point.Color = Theme.Colors.White
 		point.Size = Vector3.new(0.17, 0.17, 0.17)
 		point.Position = Vector3.new(statPoints[index].X, statPoints[index].Y, 0.23)
 		point.Parent = world

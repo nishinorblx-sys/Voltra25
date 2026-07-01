@@ -16,7 +16,7 @@ function LoadingScreen.new(parent: Instance, statusText: string?): CanvasGroup
 	group.Parent = parent
 	local logo = Instance.new("TextLabel")
 	logo.AnchorPoint = Vector2.new(0.5, 0.5)
-	logo.BackgroundColor3 = Theme.Colors.Electric
+	logo.BackgroundColor3 = Theme.Colors.White
 	logo.BorderSizePixel = 0
 	logo.Position = UDim2.fromScale(0.5, 0.44)
 	logo.Size = UDim2.fromOffset(72, 72)
@@ -52,7 +52,7 @@ function LoadingScreen.new(parent: Instance, statusText: string?): CanvasGroup
 	bar.ZIndex = 101
 	bar.Parent = group
 	local fill = Instance.new("Frame")
-	fill.BackgroundColor3 = Theme.Colors.Electric
+	fill.BackgroundColor3 = Theme.Colors.White
 	fill.BorderSizePixel = 0
 	fill.Size = UDim2.fromScale(0.18, 1)
 	fill.ZIndex = 102

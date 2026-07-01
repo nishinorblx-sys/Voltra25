@@ -62,7 +62,7 @@ function ModeHub.new(context: any, service: any): CanvasGroup
 		for id, button in tabButtons do
 			Button.setPrimary(button, id == activeTab.Id)
 		end
-		PageBase.text(body, service:GetSummary(), UDim2.fromOffset(0, 0), UDim2.new(1, 0, 0, 18), 8, Theme.Colors.Electric, Theme.Fonts.Strong)
+		PageBase.text(body, service:GetSummary(), UDim2.fromOffset(0, 0), UDim2.new(1, 0, 0, 18), 8, Theme.Colors.White, Theme.Fonts.Strong)
 		PageBase.text(body, activeTab.Description, UDim2.fromOffset(0, 20), UDim2.new(1, 0, 0, 28), 11, Theme.Colors.Silver, Theme.Fonts.Strong)
 		local gridY = 54
 		if spec.Id == "Ranked" and activeTab.Id == "Division" then
@@ -73,11 +73,11 @@ function ModeHub.new(context: any, service: any): CanvasGroup
 			track.Position = UDim2.fromOffset(0, 52)
 			track.Parent = body
 			PageBase.text(track, tostring(ranked.Division or "DIVISION 10"), UDim2.fromOffset(18, 12), UDim2.new(.32, 0, 0, 28), 18, Theme.Colors.White, Theme.Fonts.Display)
-			PageBase.text(track, "STEP "..tostring(wins).." / 10", UDim2.fromOffset(18, 44), UDim2.new(.25, 0, 0, 20), 10, Theme.Colors.Electric, Theme.Fonts.Strong)
+			PageBase.text(track, "STEP "..tostring(wins).." / 10", UDim2.fromOffset(18, 44), UDim2.new(.25, 0, 0, 20), 10, Theme.Colors.White, Theme.Fonts.Strong)
 			local bar = Instance.new("Frame");bar.Position=UDim2.new(.34,0,.5,-5);bar.Size=UDim2.new(.62,-24,0,10);bar.BackgroundColor3=Color3.fromHex("2B3128");bar.BorderSizePixel=0;bar.Parent=track;local bc=Instance.new("UICorner");bc.CornerRadius=UDim.new(1,0);bc.Parent=bar
-			local fill=Instance.new("Frame");fill.Size=UDim2.fromScale(wins/10,1);fill.BackgroundColor3=Theme.Colors.Electric;fill.BorderSizePixel=0;fill.Parent=bar;local fc=bc:Clone();fc.Parent=fill
+			local fill=Instance.new("Frame");fill.Size=UDim2.fromScale(wins/10,1);fill.BackgroundColor3=Theme.Colors.White;fill.BorderSizePixel=0;fill.Parent=bar;local fc=bc:Clone();fc.Parent=fill
 			for step=1,10 do
-				local dot=Instance.new("Frame");dot.AnchorPoint=Vector2.new(.5,.5);dot.Position=UDim2.fromScale((step-1)/9,.5);dot.Size=UDim2.fromOffset(14,14);dot.BackgroundColor3=step<=wins and Theme.Colors.Electric or step<=protected and Color3.fromHex("D9D9D9") or Color3.fromHex("111111");dot.BorderSizePixel=0;dot.Parent=bar;local dc=Instance.new("UICorner");dc.CornerRadius=UDim.new(1,0);dc.Parent=dot;local ds=Instance.new("UIStroke");ds.Thickness=1;ds.Color=Theme.Colors.Electric;ds.Transparency=step<=wins and .05 or .58;ds.Parent=dot
+				local dot=Instance.new("Frame");dot.AnchorPoint=Vector2.new(.5,.5);dot.Position=UDim2.fromScale((step-1)/9,.5);dot.Size=UDim2.fromOffset(14,14);dot.BackgroundColor3=step<=wins and Theme.Colors.White or step<=protected and Color3.fromHex("D9D9D9") or Color3.fromHex("111111");dot.BorderSizePixel=0;dot.Parent=bar;local dc=Instance.new("UICorner");dc.CornerRadius=UDim.new(1,0);dc.Parent=dot;local ds=Instance.new("UIStroke");ds.Thickness=1;ds.Color=Theme.Colors.White;ds.Transparency=step<=wins and .05 or .58;ds.Parent=dot
 			end
 			gridY = 160
 		end
@@ -107,7 +107,7 @@ function ModeHub.new(context: any, service: any): CanvasGroup
 					portrait.Position = UDim2.new(1, -76, 0, 12)
 				end
 				local textInset = cardData.PlayerData and -104 or -36
-				PageBase.text(card, cardData.Accent and "FEATURED" or activeTab.Label, UDim2.fromOffset(18, 14), UDim2.new(1, textInset, 0, 18), 8, cardData.Accent and Theme.Colors.Electric or Theme.Colors.Muted, Theme.Fonts.Strong)
+				PageBase.text(card, cardData.Accent and "FEATURED" or activeTab.Label, UDim2.fromOffset(18, 14), UDim2.new(1, textInset, 0, 18), 8, cardData.Accent and Theme.Colors.White or Theme.Colors.Muted, Theme.Fonts.Strong)
 				PageBase.text(card, cardData.Title, UDim2.fromOffset(18, 39), UDim2.new(1, textInset, 0, 30), 17, Theme.Colors.White, Theme.Fonts.Display)
 				PageBase.text(card, cardData.Subtitle, UDim2.fromOffset(18, 72), UDim2.new(1, textInset, 0, 25), 10, Theme.Colors.Silver, Theme.Fonts.Strong)
 				PageBase.text(card, cardData.Meta, UDim2.fromOffset(18, 100), UDim2.new(1, -36, 0, 22), 8, Theme.Colors.Muted, Theme.Fonts.Body)

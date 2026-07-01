@@ -620,12 +620,26 @@ function Service:_openPause(session:any,requester:Player?)
 end
 
 function Service:_resumePause(session:any)
-	if not session.Paused then return end
-	session.Paused=false
-	session.PauseRequester=nil
-	session.PauseResumeVotes={}
-	self:_setPlayersFrozen(session,not session.Running)
-	broadcast(self.State,session,self:_pausePayload(session,false,nil))
+	session.ManualPaused = false
+	session.Paused = false
+	if session.World and session.World.Ball then
+		local velocity = session.World.Ball:GetAttribute("VTRPauseSavedVelocity")
+		local angular = session.World.Ball:GetAttribute("VTRPauseSavedAngularVelocity")
+		session.World.Ball.Anchored = false
+		if typeof(velocity) == "Vector3" then session.World.Ball.AssemblyLinearVelocity = velocity end
+		if typeof(angular) == "Vector3" then session.World.Ball.AssemblyAngularVelocity = angular end
+	end
+	for _, model in session.Models or {} do
+		local root = model:FindFirstChild("HumanoidRootPart")
+		if root and root:IsA("BasePart") then
+			local velocity = model:GetAttribute("VTRPauseSavedVelocity")
+			local angular = model:GetAttribute("VTRPauseSavedAngularVelocity")
+			root.Anchored = false
+			if typeof(velocity) == "Vector3" then root.AssemblyLinearVelocity = velocity end
+			if typeof(angular) == "Vector3" then root.AssemblyAngularVelocity = angular end
+		end
+	end
+	broadcast(self.State, session, {Type="Pause", Active=false})
 end
 
 function Service:_checkQueuedPause(session:any)
@@ -1383,6 +1397,9 @@ function Service:_step(dt:number)
 			if typeof(velocity)=="Vector3"and session.World.Ball.AssemblyLinearVelocity.Magnitude<1 and os.clock()-(tonumber(session.World.Ball:GetAttribute("VTRGoalCalledAt"))or 0)<1.2 then session.World.Ball.AssemblyLinearVelocity=velocity end
 			if typeof(angular)=="Vector3"and session.World.Ball.AssemblyAngularVelocity.Magnitude<1 then session.World.Ball.AssemblyAngularVelocity=angular end
 			if session.Grounding then session.Grounding:Step()end
+		end
+		if session.Paused or session.ManualPaused then
+			continue
 		end
 		if not session.Running then continue end
 		session.Accumulator+=dt;session.Clock:Step(dt)

@@ -93,10 +93,10 @@ function WidePlayerCard.new(props: any): TextButton
 	local meta = props.Meta or card.Meta or {}
 	if meta.LoanMatchesRemaining then label(root,"LOAN  "..meta.LoanMatchesRemaining.." MATCHES",UDim2.fromOffset(210,78),UDim2.fromOffset(100,16),7,Theme.Colors.Warning,Theme.Fonts.Strong)end
 	if meta.Favorite then label(root, utf8.char(9733), UDim2.fromOffset(97, 61), UDim2.fromOffset(18, 18), 10, Theme.Colors.Warning, Theme.Fonts.Strong) end
-	if meta.Locked then label(root, "LOCK", UDim2.fromOffset(98, 83), UDim2.fromOffset(38, 14), 6, Theme.Colors.Electric, Theme.Fonts.Strong) end
+	if meta.Locked then label(root, "LOCK", UDim2.fromOffset(98, 83), UDim2.fromOffset(38, 14), 6, Theme.Colors.White, Theme.Fonts.Strong) end
 	if props.Selected then
 		local selected = label(root, utf8.char(10003), UDim2.new(1, -28, 0, 5), UDim2.fromOffset(18, 18), 10, Theme.Colors.Black, Theme.Fonts.Strong)
-		selected.BackgroundColor3 = Theme.Colors.Electric; selected.BackgroundTransparency = 0; selected.TextXAlignment = Enum.TextXAlignment.Center; selected.TextYAlignment = Enum.TextYAlignment.Center
+		selected.BackgroundColor3 = Theme.Colors.White; selected.BackgroundTransparency = 0; selected.TextXAlignment = Enum.TextXAlignment.Center; selected.TextYAlignment = Enum.TextYAlignment.Center
 		local selectedCorner = Instance.new("UICorner"); selectedCorner.CornerRadius = UDim.new(1, 0); selectedCorner.Parent = selected
 	end
 	if props.OnActivated then root.Activated:Connect(props.OnActivated) end

@@ -4,7 +4,7 @@ local Module = {}
 local DEBUG_COLORS = {
 	Forward = Color3.fromHex("35D9FF"),
 	Right = Color3.fromHex("FFB020"),
-	Move = Color3.fromHex("B7FF1A"),
+	Move = Color3.fromHex("FFFFFF"),
 }
 
 local debugFolder: Folder? = nil

@@ -29,12 +29,12 @@ function Controller.new(camera: Camera,ball:BasePart?)
 	corner.CornerRadius = UDim.new(1, 0)
 	corner.Parent = circle
 	local stroke = Instance.new("UIStroke")
-	stroke.Color = Color3.fromHex("B7FF1A")
+	stroke.Color = Color3.fromHex("FFFFFF")
 	stroke.Thickness = 2
 	stroke.Transparency = 0.12
 	stroke.Parent = circle
 	local glow = Instance.new("UIStroke")
-	glow.Color = Color3.fromHex("B7FF1A")
+	glow.Color = Color3.fromHex("FFFFFF")
 	glow.Thickness = 5
 	glow.Transparency = 0.72
 	glow.Parent = circle
@@ -44,7 +44,7 @@ function Controller.new(camera: Camera,ball:BasePart?)
 		cross.Position = UDim2.fromScale(0.5, 0.5)
 		cross.Size = UDim2.fromScale(0.48, 0.07)
 		cross.Rotation = rotation
-		cross.BackgroundColor3 = Color3.fromHex("B7FF1A")
+		cross.BackgroundColor3 = Color3.fromHex("FFFFFF")
 		cross.BorderSizePixel = 0
 		cross.Parent = gui
 	end

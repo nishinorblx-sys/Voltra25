@@ -112,7 +112,7 @@ end
 local function slider(parent: Instance, context: any, key: string, title: string, subtitle: string, y: number, fallback: number)
 	local holder = row(parent, title, subtitle, y)
 	local current = math.clamp(tonumber(settings(context)[key]) or fallback, 0, 1)
-	local readout = label(holder, tostring(math.floor(current * 100 + .5)) .. "%", UDim2.new(1, -70, 0, 8), UDim2.fromOffset(56, 20), 12, Theme.Colors.Electric, Theme.Fonts.Display)
+	local readout = label(holder, tostring(math.floor(current * 100 + .5)) .. "%", UDim2.new(1, -70, 0, 8), UDim2.fromOffset(56, 20), 12, Theme.Colors.White, Theme.Fonts.Display)
 	readout.TextXAlignment = Enum.TextXAlignment.Right
 	local track = Instance.new("TextButton")
 	track.AutoButtonColor = false
@@ -126,7 +126,7 @@ local function slider(parent: Instance, context: any, key: string, title: string
 	corner.CornerRadius = UDim.new(1, 0)
 	corner.Parent = track
 	local fill = Instance.new("Frame")
-	fill.BackgroundColor3 = Theme.Colors.Electric
+	fill.BackgroundColor3 = Theme.Colors.White
 	fill.BorderSizePixel = 0
 	fill.Size = UDim2.fromScale(current, 1)
 	fill.Parent = track

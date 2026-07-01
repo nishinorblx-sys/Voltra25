@@ -58,7 +58,7 @@ function Controller:_createVisual()
 	if trailRoot then
 		local top=Instance.new("Attachment");top.Name="VTRShotTrailTop";top.Position=Vector3.new(0,self.Radius*.48,0);top.Parent=trailRoot
 		local bottom=Instance.new("Attachment");bottom.Name="VTRShotTrailBottom";bottom.Position=Vector3.new(0,-self.Radius*.48,0);bottom.Parent=trailRoot
-		local trail=Instance.new("Trail");trail.Name="VTRShotTrail";trail.Attachment0=top;trail.Attachment1=bottom;trail.Color=ColorSequence.new(Color3.fromHex("F4F5F1"),Color3.fromHex("B7FF1A"));trail.Transparency=NumberSequence.new({NumberSequenceKeypoint.new(0,.12),NumberSequenceKeypoint.new(1,1)});trail.Lifetime=.18;trail.LightEmission=.75;trail.FaceCamera=true;trail.Enabled=false;trail.Parent=trailRoot;self.ShotTrail=trail
+		local trail=Instance.new("Trail");trail.Name="VTRShotTrail";trail.Attachment0=top;trail.Attachment1=bottom;trail.Color=ColorSequence.new(Color3.fromHex("F4F5F1"),Color3.fromHex("FFFFFF"));trail.Transparency=NumberSequence.new({NumberSequenceKeypoint.new(0,.12),NumberSequenceKeypoint.new(1,1)});trail.Lifetime=.18;trail.LightEmission=.75;trail.FaceCamera=true;trail.Enabled=false;trail.Parent=trailRoot;self.ShotTrail=trail
 	end
 end
 

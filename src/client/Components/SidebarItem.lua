@@ -65,7 +65,7 @@ function SidebarItem:SetActive(active: boolean)
 	local button = self.Instance :: TextButton
 	TweenService:Create(button, TweenInfo.new(Theme.Animation.Standard), {
 		BackgroundTransparency = active and 0 or 1,
-		BackgroundColor3 = active and Theme.Colors.Electric or Theme.Colors.Graphite,
+		BackgroundColor3 = active and Theme.Colors.White or Theme.Colors.Graphite,
 		TextColor3 = active and Theme.Colors.Black or Theme.Colors.Muted,
 	}):Play()
 end

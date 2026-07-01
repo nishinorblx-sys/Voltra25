@@ -54,7 +54,7 @@ function TeamSelection.new(parent: Instance, props: any): Frame
 		label(modal, title, UDim2.fromOffset(18, 14), UDim2.new(1, -128, 0, 28), 17, Theme.Colors.White, Theme.Fonts.Display).ZIndex = 123
 		local close = Button.new({ Text = "CLOSE", Variant = "Secondary", Size = UDim2.fromOffset(90, 32), OnActivated = function() overlay:Destroy() end }); close.Position = UDim2.new(1, -108, 0, 14); close.ZIndex = 124; close.Parent = modal
 		local search = Instance.new("TextBox"); search.PlaceholderText = "SEARCH"; search.Text = ""; search.ClearTextOnFocus = false; search.BackgroundColor3 = Theme.Colors.Gunmetal; search.BorderSizePixel = 0; search.TextColor3 = Theme.Colors.White; search.PlaceholderColor3 = Theme.Colors.Muted; search.Font = Theme.Fonts.Strong; search.TextSize = 10; search.Position = UDim2.fromOffset(18, 58); search.Size = UDim2.new(1, -36, 0, 36); search.ZIndex = 124; search.Parent = modal
-		local list = Instance.new("ScrollingFrame"); list.BackgroundTransparency = 1; list.BorderSizePixel = 0; list.Position = UDim2.fromOffset(18, 106); list.Size = UDim2.new(1, -36, 1, -124); list.AutomaticCanvasSize = Enum.AutomaticSize.Y; list.CanvasSize = UDim2.new(); list.ScrollBarThickness = 3; list.ScrollBarImageColor3 = Theme.Colors.Electric; list.ZIndex = 123; list.Parent = modal
+		local list = Instance.new("ScrollingFrame"); list.BackgroundTransparency = 1; list.BorderSizePixel = 0; list.Position = UDim2.fromOffset(18, 106); list.Size = UDim2.new(1, -36, 1, -124); list.AutomaticCanvasSize = Enum.AutomaticSize.Y; list.CanvasSize = UDim2.new(); list.ScrollBarThickness = 3; list.ScrollBarImageColor3 = Theme.Colors.White; list.ZIndex = 123; list.Parent = modal
 		local layout = Instance.new("UIListLayout"); layout.Padding = UDim.new(0, 6); layout.Parent = list
 		local function populate()
 			for _, child in list:GetChildren() do if child:IsA("GuiButton") then child:Destroy() end end
@@ -91,7 +91,7 @@ function TeamSelection.new(parent: Instance, props: any): Frame
 
 		local search = Instance.new("TextBox"); search.Name = "TeamSearch"; search.PlaceholderText = "SEARCH TEAM"; search.Text = searchText; search.ClearTextOnFocus = false; search.BackgroundColor3 = Theme.Colors.Gunmetal; search.BorderSizePixel = 0; search.TextColor3 = Theme.Colors.White; search.PlaceholderColor3 = Theme.Colors.Muted; search.Font = Theme.Fonts.Strong; search.TextSize = 10; search.Position = UDim2.fromOffset(0, 50); search.Size = UDim2.new(.54, -8, 0, 36); search.Parent = content
 		local listPanel = Panel.new({ Name = "TeamList", Position = UDim2.fromOffset(0, 98), Size = UDim2.new(.54, -8, 1, -98) }); listPanel.Parent = content
-		local scroll = Instance.new("ScrollingFrame"); scroll.BackgroundTransparency = 1; scroll.BorderSizePixel = 0; scroll.Position = UDim2.fromOffset(10, 10); scroll.Size = UDim2.new(1, -20, 1, -20); scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y; scroll.CanvasSize = UDim2.new(); scroll.ScrollBarThickness = 3; scroll.ScrollBarImageColor3 = Theme.Colors.Electric; scroll.Parent = listPanel
+		local scroll = Instance.new("ScrollingFrame"); scroll.BackgroundTransparency = 1; scroll.BorderSizePixel = 0; scroll.Position = UDim2.fromOffset(10, 10); scroll.Size = UDim2.new(1, -20, 1, -20); scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y; scroll.CanvasSize = UDim2.new(); scroll.ScrollBarThickness = 3; scroll.ScrollBarImageColor3 = Theme.Colors.White; scroll.Parent = listPanel
 		local layout = Instance.new("UIListLayout"); layout.Padding = UDim.new(0, 6); layout.Parent = scroll
 		local catalog = table.clone(load(country, league)); local query = string.lower(searchText)
 		table.sort(catalog, function(a, b) if sortMode == "NAME" then return a.teamName < b.teamName elseif a.overall == b.overall then return a.teamName < b.teamName else return a.overall > b.overall end end)
@@ -106,9 +106,9 @@ function TeamSelection.new(parent: Instance, props: any): Frame
 		label(details, preview.teamName, UDim2.fromOffset(108, 18), UDim2.new(1, -126, 0, 42), 18, Theme.Colors.White, Theme.Fonts.Display)
 		label(details, preview.country .. "  /  " .. preview.league, UDim2.fromOffset(108, 62), UDim2.new(1, -126, 0, 20), 8, Theme.Colors.Muted, Theme.Fonts.Strong)
 		label(details, string.format("OVR  %d     ATT  %d     MID  %d     DEF  %d", preview.overall, preview.attack, preview.midfield, preview.defense), UDim2.fromOffset(18, 112), UDim2.new(1, -36, 0, 30), 12, Theme.Colors.White, Theme.Fonts.Display)
-		label(details, "FORMATION  /  " .. preview.formation, UDim2.fromOffset(18, 150), UDim2.new(1, -36, 0, 20), 8, Theme.Colors.Electric, Theme.Fonts.Strong)
+		label(details, "FORMATION  /  " .. preview.formation, UDim2.fromOffset(18, 150), UDim2.new(1, -36, 0, 20), 8, Theme.Colors.White, Theme.Fonts.Strong)
 		local stars = {}; for _, player in preview.starPlayers do table.insert(stars, string.format("%d  %s  /  %s", player.overall, player.displayName, player.bestPosition)) end
-		label(details, "STAR PLAYERS", UDim2.fromOffset(18, 192), UDim2.new(1, -36, 0, 18), 8, Theme.Colors.Electric, Theme.Fonts.Strong)
+		label(details, "STAR PLAYERS", UDim2.fromOffset(18, 192), UDim2.new(1, -36, 0, 18), 8, Theme.Colors.White, Theme.Fonts.Strong)
 		label(details, table.concat(stars, "\n"), UDim2.fromOffset(18, 216), UDim2.new(1, -36, 0, 74), 9, Theme.Colors.Silver, Theme.Fonts.Strong)
 		local roster = Button.new({ Text = "VIEW FULL ROSTER", Variant = "Secondary", Size = UDim2.new(1, -36, 0, 38), OnActivated = function() TeamRosterModal.open(preview.teamId, props.OnError) end }); roster.Position = UDim2.new(0, 18, 1, -92); roster.Parent = details
 		local selectButton = Button.new({ Text = "SELECT AS " .. currentSide, Variant = "Primary", Size = UDim2.new(1, -36, 0, 40), OnActivated = function()

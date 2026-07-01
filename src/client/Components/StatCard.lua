@@ -16,7 +16,7 @@ function StatCard.new(labelText: string, valueText: any, accent: boolean?): Fram
 	value.BackgroundTransparency = 1
 	value.Size = UDim2.new(1, 0, 0.58, 0)
 	value.Text = tostring(valueText)
-	value.TextColor3 = accent and Theme.Colors.Electric or Theme.Colors.White
+	value.TextColor3 = accent and Theme.Colors.White or Theme.Colors.White
 	value.TextSize = 24
 	value.Font = Theme.Fonts.Display
 	value.TextXAlignment = Enum.TextXAlignment.Left

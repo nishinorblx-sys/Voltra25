@@ -78,10 +78,10 @@ function CompactPlayerCard.new(props: any): TextButton
 	local meta = props.Meta or card.Meta or {}
 	if meta.LoanMatchesRemaining then label(root,"LOAN "..meta.LoanMatchesRemaining,UDim2.new(0,4,1,-18),UDim2.fromOffset(horizontal and 48 or 42,12),6,Theme.Colors.Warning,Theme.Fonts.Strong)end
 	if meta.Favorite then label(root, utf8.char(9733), UDim2.fromOffset(3, horizontal and 2 or 49), UDim2.fromOffset(14, 14), 8, Theme.Colors.Warning, Theme.Fonts.Strong) end
-	if meta.Locked then label(root, "L", UDim2.fromOffset(horizontal and 35 or 4, horizontal and 2 or 49), UDim2.fromOffset(14, 14), 6, Theme.Colors.Electric, Theme.Fonts.Strong) end
+	if meta.Locked then label(root, "L", UDim2.fromOffset(horizontal and 35 or 4, horizontal and 2 or 49), UDim2.fromOffset(14, 14), 6, Theme.Colors.White, Theme.Fonts.Strong) end
 	if props.Selected then
 		local check = label(root, utf8.char(10003), UDim2.new(1, -20, 1, -20), UDim2.fromOffset(16, 16), 9, Theme.Colors.Black, Theme.Fonts.Strong)
-		check.BackgroundColor3 = Theme.Colors.Electric
+		check.BackgroundColor3 = Theme.Colors.White
 		check.BackgroundTransparency = 0
 		check.TextXAlignment = Enum.TextXAlignment.Center
 		check.TextYAlignment = Enum.TextYAlignment.Center

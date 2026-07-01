@@ -58,7 +58,7 @@ function Page.new(context:any):CanvasGroup
 	local savedTactics=context.Data.Progression.TeamTactics or LiteConfig.DefaultTactics()
 	local unlocked=tonumber(progress.UnlockedDifficulty)or 1
 	local ladder=Panel.new({Name="DifficultyLadder",Position=UDim2.fromOffset(0,96),Size=UDim2.new(.25,-8,0,640)});ladder.Parent=scroll
-	label(ladder,"DIFFICULTY LADDER",UDim2.fromOffset(18,14),UDim2.new(1,-36,0,24),13,Theme.Colors.Electric,Theme.Fonts.Strong)
+	label(ladder,"DIFFICULTY LADDER",UDim2.fromOffset(18,14),UDim2.new(1,-36,0,24),13,Theme.Colors.White,Theme.Fonts.Strong)
 	local selectedIndex=math.clamp(unlocked,1,#LiteConfig.CampaignDifficulties)
 	local body=Instance.new("Frame");body.BackgroundTransparency=1;body.Position=UDim2.new(.25,8,0,96);body.Size=UDim2.new(.75,-8,0,640);body.Parent=scroll
 	local function render()
@@ -74,7 +74,7 @@ function Page.new(context:any):CanvasGroup
 		local tier=LiteConfig.CampaignDifficulties[selectedIndex]
 		local header=Panel.new({Name="CampaignTier",Position=UDim2.fromOffset(0,0),Size=UDim2.new(1,0,0,118)});header.Parent=body
 		label(header,string.upper(tier.Name),UDim2.fromOffset(20,14),UDim2.new(.48,0,0,34),25,Theme.Colors.White,Theme.Fonts.Display)
-		label(header,"AI SQUAD OVR "..tier.Range[1].." - "..tier.Range[2].."  /  REWARD "..string.upper(tier.Reward),UDim2.fromOffset(22,55),UDim2.new(.7,0,0,20),10,Theme.Colors.Electric,Theme.Fonts.Strong)
+		label(header,"AI SQUAD OVR "..tier.Range[1].." - "..tier.Range[2].."  /  REWARD "..string.upper(tier.Reward),UDim2.fromOffset(22,55),UDim2.new(.7,0,0,20),10,Theme.Colors.White,Theme.Fonts.Strong)
 		local completed=0;for teamId,done in progress.CompletedTeams or{}do if done and string.find(tostring(teamId),tier.Id,1,true)then completed+=1 end end
 		local bar=ProgressBar.new(completed/5);bar.Position=UDim2.new(.68,0,0,48);bar.Size=UDim2.new(.27,0,0,7);bar.Parent=header
 		label(header,completed.." / 5 SQUADS BEATEN",UDim2.new(.68,0,0,62),UDim2.new(.27,0,0,18),8,Theme.Colors.Silver,Theme.Fonts.Strong).TextXAlignment=Enum.TextXAlignment.Right
@@ -92,10 +92,10 @@ function Page.new(context:any):CanvasGroup
 			if beaten then
 				card.BackgroundColor3=Color3.fromHex("16351A")
 				local stroke=card:FindFirstChildOfClass("UIStroke")
-				if stroke then stroke.Color=Theme.Colors.Electric;stroke.Transparency=.22 end
+				if stroke then stroke.Color=Theme.Colors.White;stroke.Transparency=.22 end
 			end
 			label(card,(beaten and"CLEARED  "or"")..(opponent and string.upper(opponent.teamName) or("AI SQUAD "..squad)),UDim2.fromOffset(16,14),UDim2.new(1,-32,0,26),17,Theme.Colors.White,Theme.Fonts.Display)
-			label(card,"OVR "..(opponent and opponent.overall or overall).."  /  "..formation.."  /  "..string.upper(tactic),UDim2.fromOffset(16,44),UDim2.new(1,-32,0,18),8,Theme.Colors.Electric,Theme.Fonts.Strong)
+			label(card,"OVR "..(opponent and opponent.overall or overall).."  /  "..formation.."  /  "..string.upper(tactic),UDim2.fromOffset(16,44),UDim2.new(1,-32,0,18),8,Theme.Colors.White,Theme.Fonts.Strong)
 			label(card,(beaten and"REPLAY RUN  NO REWARDS\n"or"WATCH MODE  AI VS AI\n").."SAVED PLAN  "..string.upper(tostring(savedTactics.Identity or"Balanced")).."\nOPPONENT  "..(opponent and string.upper(opponent.country or"ENGLAND")or"ENGLAND"),UDim2.fromOffset(16,70),UDim2.new(1,-32,0,42),8,Theme.Colors.Silver,Theme.Fonts.Body).TextWrapped=true
 			local play=Button.new({Text=beaten and"REPLAY"or"PLAY",Variant="Primary",Size=UDim2.fromOffset(118,34),OnActivated=function()
 				if not opponent or not homeTeam then context.Toast({Title="CAMPAIGN",Message="Campaign teams unavailable.",Kind="Error"});return end

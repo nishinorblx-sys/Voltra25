@@ -26,47 +26,44 @@ end
 
 function Service:Step(model: Model, dt: number, state: any): (number,number)
 	local staminaStat = math.clamp(tonumber(model:GetAttribute("Stamina")) or 65, 1, 99)
-	local endurance=math.clamp(tonumber(model:GetAttribute("VTREndurance"))or Config.Maximum,0,Config.Maximum)
-	local reserve=math.clamp(tonumber(model:GetAttribute("VTRSprintStamina"))or tonumber(model:GetAttribute("VTRStamina"))or endurance,0,endurance)
+	local reserve = math.clamp(tonumber(model:GetAttribute("VTRSprintStamina")) or tonumber(model:GetAttribute("VTRStamina")) or Config.Maximum, 0, Config.Maximum)
 	local sprintDuration = math.max(0, tonumber(model:GetAttribute("VTRSprintDuration")) or 0)
-	local controlled=state.UserControlled==true
-	local sprintLocked=model:GetAttribute("VTRSprintLocked")==true and not controlled
+	local controlled = state.UserControlled == true
+	local sprintLocked = model:GetAttribute("VTRSprintLocked") == true and not controlled
 	local sprinting = controlled and not sprintLocked and state.Sprinting == true and (tonumber(state.MoveMagnitude) or 0) > 0.1
 	local speed = math.max(0, tonumber(state.CurrentSpeed) or 0)
-	local gameRate=math.max(0,tonumber(state.GameRate)or 1)
-	local gameMinutes=dt*gameRate/60
-	local statDelta=(staminaStat-65)/34
-	local enduranceModifier=statDelta>=0 and(1-statDelta*Config.HighStatEnduranceReduction)or(1+(-statDelta)*Config.LowStatEnduranceIncrease)
-	endurance=math.max(0,endurance-Config.EnduranceDrainPerGameMinute*gameMinutes*enduranceModifier)
+	local quality = math.clamp((staminaStat - 35) / 64, 0, 1)
+	local endurance = Config.Maximum
+
 	if sprinting then
 		sprintDuration += dt
-		local quality=math.clamp((staminaStat-35)/64,0,1)
 		local speedModifier = 0.9 + math.clamp(speed / 30, 0, 1) * 0.16
 		local durationModifier = 1 + math.clamp(sprintDuration / Config.SprintDurationRampSeconds, 0, 1) * Config.SprintDurationMaxPenalty
 		local possessionModifier = state.HasBall == true and 1.04 or 1
-		local drain=(Config.SprintReserveDrainMax-(Config.SprintReserveDrainMax-Config.SprintReserveDrainMin)*quality)*buildModifier(model)*positionModifier(model)*speedModifier*durationModifier*possessionModifier
-		reserve=math.max(0,reserve-drain*dt)
-		endurance=math.max(0,endurance-Config.SprintEnduranceDrainPerRealSecond*enduranceModifier*buildModifier(model)*positionModifier(model)*durationModifier*dt)
+		local drain = (Config.SprintReserveDrainMax - (Config.SprintReserveDrainMax - Config.SprintReserveDrainMin) * quality) * buildModifier(model) * positionModifier(model) * speedModifier * durationModifier * possessionModifier
+		reserve = math.max(0, reserve - drain * dt)
 	else
-		sprintDuration = math.max(0, sprintDuration - dt * 1.8)
-		local recoveryQuality = math.clamp((staminaStat - 35) / 64, 0, 1)
+		sprintDuration = math.max(0, sprintDuration - dt * 2.1)
 		local idle = speed < 5
-		local recovery = idle and (Config.IdleRecoveryMin + (Config.IdleRecoveryMax - Config.IdleRecoveryMin) * recoveryQuality) or (Config.JogRecoveryMin + (Config.JogRecoveryMax - Config.JogRecoveryMin) * recoveryQuality)
-		if not controlled then recovery=math.max(recovery*Config.UnusedRecoveryMultiplier,Config.IdleRecoveryMax*1.25) end
-		reserve=math.min(endurance,reserve+recovery*dt)
+		local recovery = idle and (Config.IdleRecoveryMin + (Config.IdleRecoveryMax - Config.IdleRecoveryMin) * quality) or (Config.JogRecoveryMin + (Config.JogRecoveryMax - Config.JogRecoveryMin) * quality)
+		if not controlled then
+			recovery = math.max(recovery * Config.UnusedRecoveryMultiplier, Config.IdleRecoveryMax * 1.35)
+		end
+		reserve = math.min(Config.Maximum, reserve + recovery * dt)
 	end
-	reserve=math.min(reserve,endurance)
-	if reserve<=.05 then
-		sprintLocked=true
-	elseif sprintLocked and reserve>=math.min(endurance,Config.ExhaustedRecoveryThreshold) then
-		sprintLocked=false
+
+	if reserve <= .05 then
+		sprintLocked = true
+	elseif sprintLocked and reserve >= Config.ExhaustedRecoveryThreshold then
+		sprintLocked = false
 	end
-	model:SetAttribute("VTREndurance",endurance)
-	model:SetAttribute("VTRSprintStamina",reserve)
-	model:SetAttribute("VTRStamina",reserve)
+
+	model:SetAttribute("VTREndurance", Config.Maximum)
+	model:SetAttribute("VTRSprintStamina", reserve)
+	model:SetAttribute("VTRStamina", reserve)
 	model:SetAttribute("VTRSprintDuration", sprintDuration)
-	model:SetAttribute("VTRSprintLocked",sprintLocked)
-	return reserve,endurance
+	model:SetAttribute("VTRSprintLocked", sprintLocked)
+	return reserve, Config.Maximum
 end
 
 return Service

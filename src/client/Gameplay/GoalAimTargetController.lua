@@ -29,7 +29,7 @@ function Controller.new()
 	corner.CornerRadius = UDim.new(1, 0)
 	corner.Parent = circle
 	local stroke = Instance.new("UIStroke")
-	stroke.Color = Color3.fromHex("B7FF1A")
+	stroke.Color = Color3.fromHex("FFFFFF")
 	stroke.Thickness = 2
 	stroke.Transparency = 0.18
 	stroke.Parent = circle
@@ -39,7 +39,7 @@ function Controller.new()
 		cross.Position = UDim2.fromScale(0.5, 0.5)
 		cross.Size = UDim2.fromOffset(12, 2)
 		cross.Rotation = rotation
-		cross.BackgroundColor3 = Color3.fromHex("B7FF1A")
+		cross.BackgroundColor3 = Color3.fromHex("FFFFFF")
 		cross.BackgroundTransparency = 0.12
 		cross.BorderSizePixel = 0
 		cross.Parent = gui

@@ -19,7 +19,7 @@ function VirtualizedList.new(parent:Instance,props:any):ScrollingFrame
 	scroll.AutomaticCanvasSize=Enum.AutomaticSize.None
 	scroll.CanvasSize=UDim2.fromOffset(0,canvasHeight)
 	scroll.ScrollBarThickness=3
-	scroll.ScrollBarImageColor3=Color3.fromHex("B7FF1A")
+	scroll.ScrollBarImageColor3=Color3.fromHex("FFFFFF")
 	scroll.ScrollingDirection=Enum.ScrollingDirection.Y
 	scroll.Parent=parent
 

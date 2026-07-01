@@ -116,7 +116,7 @@ local function buildR6Model(playerData: any): Model
 	local source=playerData.appearance;assert(type(source)=="table","CSV appearance missing for "..playerId);local appearance=table.clone(source);appearance.hairStyle=hairMap[appearance.hairStyle]or"BuzzCut"
 	local skin = Color3.fromHex(assert(skinColors[source.skinTone],"Invalid CSV skin tone"))
 	local hair = Color3.fromHex(assert(hairColors[source.hairColor],"Invalid CSV hair color"))
-	local shirt = Color3.fromHex("111111");local sleeves=Color3.fromHex("111111");local trim=Color3.fromHex("B7FF1A")
+	local shirt = Color3.fromHex("111111");local sleeves=Color3.fromHex("111111");local trim=Color3.fromHex("FFFFFF")
 	local accessory = Color3.fromHex(accessoryColors[source.accessoryColor]or"111111")
 
 	local model = Instance.new("Model")
@@ -189,7 +189,7 @@ function AvatarPortraitGenerator.new(parent: Instance, playerData: any, size: UD
 	corner.CornerRadius = circular and UDim.new(1, 0) or UDim.new(0, 7)
 	corner.Parent = viewport
 	local stroke = Instance.new("UIStroke")
-	stroke.Color = special and Color3.fromHex("B7FF1A")or Color3.fromHex("444941")
+	stroke.Color = special and Color3.fromHex("FFFFFF")or Color3.fromHex("444941")
 	stroke.Thickness = special and 2 or 1
 	stroke.Transparency = 0.2
 	stroke.Parent = viewport

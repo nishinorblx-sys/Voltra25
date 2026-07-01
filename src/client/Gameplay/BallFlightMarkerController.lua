@@ -28,7 +28,7 @@ local function makeBar(name:string): Part
 	part.CanQuery=false
 	part.CastShadow=false
 	part.Material=Enum.Material.Neon
-	part.Color=Color3.fromHex("B7FF1A")
+	part.Color=Color3.fromHex("FFFFFF")
 	part.Transparency=.2
 	part.Size=Vector3.new(2.4,.035,.12)
 	part.Parent=workspace
@@ -41,7 +41,7 @@ function Controller.new(ball:BasePart)
 	raycast.FilterDescendantsInstances={ball}
 	local shadow=makeDisc("VTRBallAirShadow",Color3.fromRGB(0,0,0),1.15,.58)
 	shadow.Material=Enum.Material.SmoothPlastic
-	local landing=makeDisc("VTRBallLandingMarker",Color3.fromHex("B7FF1A"),1.05,.52)
+	local landing=makeDisc("VTRBallLandingMarker",Color3.fromHex("FFFFFF"),1.05,.52)
 	local crossA=makeBar("VTRLobLandingCrossA")
 	local crossB=makeBar("VTRLobLandingCrossB")
 	return setmetatable({Ball=ball,Raycast=raycast,Shadow=shadow,Landing=landing,CrossA=crossA,CrossB=crossB,SmoothLanding=nil},Controller)
@@ -93,7 +93,7 @@ function Controller:Update(_dt:number)
 	local landingHit=workspace:Raycast(landingPos+Vector3.new(0,80,0),Vector3.new(0,-180,0),self.Raycast)
 	if landingHit then landingPos=landingHit.Position end
 	local markerScale=clearanceActive and math.clamp(1.35+height/32,1.35,2.65)or scale
-	self.Landing.Color=clearanceActive and Color3.fromHex("FFCB45")or Color3.fromHex("B7FF1A")
+	self.Landing.Color=clearanceActive and Color3.fromHex("FFCB45")or Color3.fromHex("FFFFFF")
 	self.CrossA.Color=self.Landing.Color
 	self.CrossB.Color=self.Landing.Color
 	self.Landing.Size=Vector3.new(.035,1.05*markerScale,1.05*markerScale)

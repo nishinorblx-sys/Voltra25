@@ -41,7 +41,7 @@ function Teleport.Run(title: string, callback: () -> any): any
 	sub.Position = UDim2.fromScale(.5, .54)
 	sub.Size = UDim2.fromScale(.8, .04)
 	sub.Text = "CINEMATIC MATCH LOADING"
-	sub.TextColor3 = Theme.Colors.Electric
+	sub.TextColor3 = Theme.Colors.White
 	sub.TextSize = 11
 	sub.Font = Theme.Fonts.Strong
 	sub.ZIndex = 962
@@ -56,7 +56,7 @@ function Teleport.Run(title: string, callback: () -> any): any
 	bar.Parent = overlay
 	local fill = Instance.new("Frame")
 	fill.Size = UDim2.fromScale(0, 1)
-	fill.BackgroundColor3 = Theme.Colors.Electric
+	fill.BackgroundColor3 = Theme.Colors.White
 	fill.BorderSizePixel = 0
 	fill.ZIndex = 963
 	fill.Parent = bar

@@ -10,6 +10,15 @@ local Theme = require(ReplicatedStorage.VTR.Shared.Theme)
 local FocusController = require(script.Parent.Controllers.FocusController)
 local MatchGameplayController = require(script.Parent.Gameplay.GameplayController)
 
+local function forceMenuVisible()
+	local playerGui = Players.LocalPlayer:WaitForChild("PlayerGui")
+	for _, gui in ipairs(playerGui:GetChildren()) do
+		if gui:IsA("ScreenGui") and (gui.Name == "VTRApp" or gui.Name == "VTRMainMenu" or string.find(gui.Name, "Menu")) then
+			gui.Enabled = true
+		end
+	end
+end
+
 local function showMatchLoadSyncCover()
 	local data = TeleportService:GetLocalPlayerTeleportData()
 	local matchTeleport = type(data) == "table" and (data.MatchMode == "Ranked1v1" or data.MatchMode == "AICampaignSolo")
@@ -96,7 +105,7 @@ local function showRankedMatchFoundTeleport(data:any)
 	title.Size=UDim2.fromScale(.86,.1)
 	title.Font=Theme.Fonts.Display
 	title.Text="MATCH FOUND"
-	title.TextColor3=Theme.Colors.Electric
+	title.TextColor3=Theme.Colors.White
 	title.TextSize=46
 	title.ZIndex=505
 	title.Parent=overlay
@@ -126,7 +135,7 @@ local function showRankedMatchFoundTeleport(data:any)
 	core.AnchorPoint=Vector2.new(.5,.5)
 	core.Position=UDim2.fromScale(.5,.55)
 	core.Size=UDim2.fromOffset(28,28)
-	core.BackgroundColor3=Theme.Colors.Electric
+	core.BackgroundColor3=Theme.Colors.White
 	core.BorderSizePixel=0
 	core.Rotation=45
 	core.ZIndex=504
@@ -141,7 +150,7 @@ local function showRankedMatchFoundTeleport(data:any)
 		ray.AnchorPoint=Vector2.new(.5,.5)
 		ray.Position=UDim2.fromScale(.5,.55)
 		ray.Size=UDim2.fromOffset(math.random(8,22),math.random(80,180))
-		ray.BackgroundColor3=index%3==0 and Theme.Colors.White or Theme.Colors.Electric
+		ray.BackgroundColor3=index%3==0 and Theme.Colors.White or Theme.Colors.White
 		ray.BackgroundTransparency=.22
 		ray.BorderSizePixel=0
 		ray.Rotation=(360/28)*index
@@ -201,7 +210,7 @@ local function showReservedRankedBoot()
 	title.Size = UDim2.fromScale(0.78, 0.08)
 	title.Font = Theme.Fonts.Display
 	title.Text = teleportData.MatchMode == "AICampaignSolo" and "AI CAMPAIGN MATCH" or "RANKED 1V1 SERVER"
-	title.TextColor3 = Theme.Colors.Electric
+	title.TextColor3 = Theme.Colors.White
 	title.TextSize = 32
 	title.Parent = bg
 	local sub = Instance.new("TextLabel")
@@ -232,4 +241,5 @@ elseif reservedRankedBoot then
 else
 	local UIController = require(script.Parent.Controllers.UIController)
 	UIController.new():Start()
+	forceMenuVisible()
 end

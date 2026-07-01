@@ -196,13 +196,13 @@ function GameplayController:_createHUD()
 	goal.Position = UDim2.fromScale(0.5, 0.13)
 	goal.Size = UDim2.fromOffset(260, 54)
 	goal.Text = "GOAL"
-	goal.TextColor3 = Color3.fromHex("B7FF1A")
+	goal.TextColor3 = Color3.fromHex("FFFFFF")
 	goal.Visible = false
 	goal.Parent = gui
 	self.GoalBanner = goal
 	local crosshair = Instance.new("Frame")
 	crosshair.AnchorPoint = Vector2.new(0.5, 0.5)
-	crosshair.BackgroundColor3 = Color3.fromHex("B7FF1A")
+	crosshair.BackgroundColor3 = Color3.fromHex("FFFFFF")
 	crosshair.BorderSizePixel = 0
 	crosshair.Position = UDim2.fromScale(0.5, 0.5)
 	crosshair.Size = UDim2.fromOffset(5, 5)
@@ -218,7 +218,7 @@ function GameplayController:_createHUD()
 	stamina.Size = UDim2.fromOffset(250, 7)
 	stamina.Parent = gui
 	local staminaFill = Instance.new("Frame")
-	staminaFill.BackgroundColor3 = Color3.fromHex("B7FF1A")
+	staminaFill.BackgroundColor3 = Color3.fromHex("FFFFFF")
 	staminaFill.BorderSizePixel = 0
 	staminaFill.Size = UDim2.fromScale(1, 1)
 	staminaFill.Parent = stamina
@@ -266,7 +266,7 @@ function GameplayController:_createTacticalPanel(gui: ScreenGui)
 	hint.Position = UDim2.fromOffset(18, 104)
 	hint.Size = UDim2.fromOffset(390, 34)
 	hint.Text = "AI TUNER CAMERA  /  PRESS 6 TO EXIT"
-	hint.TextColor3 = Color3.fromHex("B7FF1A")
+	hint.TextColor3 = Color3.fromHex("FFFFFF")
 	hint.TextSize = 12
 	hint.Font = Enum.Font.GothamBlack
 	hint.TextXAlignment = Enum.TextXAlignment.Left
@@ -278,7 +278,7 @@ function GameplayController:_createTacticalPanel(gui: ScreenGui)
 
 	local toggle = Instance.new("TextButton")
 	toggle.AnchorPoint = Vector2.new(1, 0)
-	toggle.BackgroundColor3 = Color3.fromHex("B7FF1A")
+	toggle.BackgroundColor3 = Color3.fromHex("FFFFFF")
 	toggle.BorderSizePixel = 0
 	toggle.Position = UDim2.new(1, -18, 0, 104)
 	toggle.Size = UDim2.fromOffset(112, 34)
@@ -301,7 +301,7 @@ function GameplayController:_createTacticalPanel(gui: ScreenGui)
 	panel.Parent = overlay
 	self.TacticalPanel = panel
 	local stroke = Instance.new("UIStroke")
-	stroke.Color = Color3.fromHex("B7FF1A")
+	stroke.Color = Color3.fromHex("FFFFFF")
 	stroke.Thickness = 1
 	stroke.Transparency = 0.25
 	stroke.Parent = panel
@@ -353,7 +353,7 @@ function GameplayController:_renderTacticalPanel()
 	status.Position = UDim2.fromOffset(18, 42)
 	status.Size = UDim2.new(1, -36, 0, 18)
 	status.Text = self.TacticalSide .. " SELECTED"
-	status.TextColor3 = Color3.fromHex("B7FF1A")
+	status.TextColor3 = Color3.fromHex("FFFFFF")
 	status.TextSize = 9
 	status.Font = Enum.Font.GothamBold
 	status.TextXAlignment = Enum.TextXAlignment.Left
@@ -363,7 +363,7 @@ function GameplayController:_renderTacticalPanel()
 
 	for index, side in ipairs({"Home", "Away"}) do
 		local tab = Instance.new("TextButton")
-		tab.BackgroundColor3 = side == self.TacticalSide and Color3.fromHex("B7FF1A") or Color3.fromHex("1B2118")
+		tab.BackgroundColor3 = side == self.TacticalSide and Color3.fromHex("FFFFFF") or Color3.fromHex("1B2118")
 		tab.BorderSizePixel = 0
 		tab.Position = UDim2.fromOffset(18 + (index - 1) * 116, 72)
 		tab.Size = UDim2.fromOffset(106, 32)
@@ -385,7 +385,7 @@ function GameplayController:_renderTacticalPanel()
 	output.Position = UDim2.new(1, -148, 0, 72)
 	output.Size = UDim2.fromOffset(130, 32)
 	output.Text = "OUTPUT"
-	output.TextColor3 = Color3.fromHex("B7FF1A")
+	output.TextColor3 = Color3.fromHex("FFFFFF")
 	output.TextSize = 11
 	output.Font = Enum.Font.GothamBlack
 	output.ZIndex = 104
@@ -425,7 +425,7 @@ function GameplayController:_renderTacticalPanel()
 	list.CanvasSize = UDim2.new()
 	list.AutomaticCanvasSize = Enum.AutomaticSize.Y
 	list.ScrollBarThickness = 4
-	list.ScrollBarImageColor3 = Color3.fromHex("B7FF1A")
+	list.ScrollBarImageColor3 = Color3.fromHex("FFFFFF")
 	list.ZIndex = 103
 	list.Parent = panel
 
@@ -459,7 +459,7 @@ function GameplayController:_renderTacticalPanel()
 		bar.ZIndex = 105
 		bar.Parent = row
 		local fill = Instance.new("Frame")
-		fill.BackgroundColor3 = Color3.fromHex("B7FF1A")
+		fill.BackgroundColor3 = Color3.fromHex("FFFFFF")
 		fill.BorderSizePixel = 0
 		fill.Size = UDim2.fromScale(value / 100, 1)
 		fill.ZIndex = 106
@@ -486,7 +486,7 @@ function GameplayController:_renderTacticalPanel()
 		number.Position = UDim2.new(1, -86, 0, 8)
 		number.Size = UDim2.fromOffset(42, 20)
 		number.Text = tostring(value)
-		number.TextColor3 = Color3.fromHex("B7FF1A")
+		number.TextColor3 = Color3.fromHex("FFFFFF")
 		number.TextSize = 10
 		number.Font = Enum.Font.GothamBlack
 		number.ZIndex = 106

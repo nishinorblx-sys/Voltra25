@@ -15,9 +15,9 @@ function Modal.open(parent:Instance,props:any)
 	local shield=Instance.new("TextButton");shield.Name="ModalInputShield";shield.BackgroundTransparency=1;shield.BorderSizePixel=0;shield.Size=UDim2.fromScale(1,1);shield.Text="";shield.AutoButtonColor=false;shield.Selectable=false;shield.Modal=true;shield.Active=true;shield.ZIndex=120;shield.Parent=overlay
 	local hasFields=props.Fields and #props.Fields>0
 	local panel=Panel.new({Name="Modal",Size=UDim2.fromOffset(500,hasFields and 350 or 270),ClipsDescendants=true});panel.AnchorPoint=Vector2.new(.5,.5);panel.Position=UDim2.fromScale(.5,.5);panel.ZIndex=121;panel.Parent=overlay
-	text(panel,props.Kicker or "VTR 25",UDim2.fromOffset(24,18),UDim2.new(1,-48,0,20),8,Theme.Colors.Electric,Theme.Fonts.Strong).ZIndex=122
+	text(panel,props.Kicker or "VTR 25",UDim2.fromOffset(24,18),UDim2.new(1,-48,0,20),8,Theme.Colors.White,Theme.Fonts.Strong).ZIndex=122
 	text(panel,props.Title or "CONFIRM ACTION",UDim2.fromOffset(24,48),UDim2.new(1,-48,0,36),22,Theme.Colors.White,Theme.Fonts.Display).ZIndex=122
-	text(panel,props.Meta or "",UDim2.fromOffset(24,84),UDim2.new(1,-48,0,20),8,Theme.Colors.Electric,Theme.Fonts.Strong).ZIndex=122
+	text(panel,props.Meta or "",UDim2.fromOffset(24,84),UDim2.new(1,-48,0,20),8,Theme.Colors.White,Theme.Fonts.Strong).ZIndex=122
 	text(panel,props.Description or "Continue with this action?",UDim2.fromOffset(24,108),UDim2.new(1,-48,0,hasFields and 42 or 70),10,Theme.Colors.Muted,Theme.Fonts.Body).ZIndex=122
 	local fieldValues={}
 	if hasFields then

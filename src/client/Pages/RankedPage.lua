@@ -45,7 +45,7 @@ local function addMarker(parent: Instance, index: number, wins: number)
 	local marker = Instance.new("Frame")
 	marker.Name = "Win" .. tostring(index)
 	marker.AnchorPoint = Vector2.new(.5, .5)
-	marker.BackgroundColor3 = reached and Theme.Colors.Electric or Theme.Colors.Gunmetal
+	marker.BackgroundColor3 = reached and Theme.Colors.White or Theme.Colors.Gunmetal
 	marker.BorderSizePixel = 0
 	marker.Position = UDim2.fromScale(x, .5)
 	marker.Size = index == 7 and UDim2.fromOffset(44, 44) or UDim2.fromOffset(34, 34)
@@ -55,7 +55,7 @@ local function addMarker(parent: Instance, index: number, wins: number)
 	corner.CornerRadius = UDim.new(1, 0)
 	corner.Parent = marker
 	local stroke = Instance.new("UIStroke")
-	stroke.Color = index == 7 and Theme.Colors.Electric or Theme.Colors.Border
+	stroke.Color = index == 7 and Theme.Colors.White or Theme.Colors.Border
 	stroke.Transparency = reached and .1 or .18
 	stroke.Thickness = index == 7 and 2 or 1
 	stroke.Parent = marker
@@ -76,7 +76,7 @@ local function addMarker(parent: Instance, index: number, wins: number)
 	caption.Position = UDim2.new(x, 0, .5, 30)
 	caption.Size = UDim2.fromOffset(index == 7 and 108 or 72, 30)
 	caption.Text = index == 7 and "FINAL PACK" or ("WIN " .. tostring(index))
-	caption.TextColor3 = index == 7 and Theme.Colors.Electric or Theme.Colors.Muted
+	caption.TextColor3 = index == 7 and Theme.Colors.White or Theme.Colors.Muted
 	caption.TextSize = 8
 	caption.Font = Theme.Fonts.Strong
 	caption.TextXAlignment = Enum.TextXAlignment.Center
@@ -107,7 +107,7 @@ function RankedPage.new(context: any): CanvasGroup
 	local path = Panel.new({Name = "SevenWinPath", Position = UDim2.fromOffset(0, 98), Size = UDim2.new(1, 0, 0, 276), ClipsDescendants = false})
 	path.Parent = scroll
 	text(path, "7-WIN PATH", UDim2.fromOffset(24, 20), UDim2.new(.5, -24, 0, 34), 26, Theme.Colors.White, Theme.Fonts.Display)
-	text(path, tostring(wins) .. " / 7 WINS", UDim2.new(.72, 0, 0, 24), UDim2.new(.24, 0, 0, 30), 18, Theme.Colors.Electric, Theme.Fonts.Display).TextXAlignment = Enum.TextXAlignment.Right
+	text(path, tostring(wins) .. " / 7 WINS", UDim2.new(.72, 0, 0, 24), UDim2.new(.24, 0, 0, 30), 18, Theme.Colors.White, Theme.Fonts.Display).TextXAlignment = Enum.TextXAlignment.Right
 	text(path, tostring(losses) .. " LOSSES  /  RUN ENDS AT 3", UDim2.new(.72, 0, 0, 58), UDim2.new(.24, 0, 0, 18), 8, Theme.Colors.Muted, Theme.Fonts.Strong).TextXAlignment = Enum.TextXAlignment.Right
 
 	local rail = Instance.new("Frame")
@@ -129,7 +129,7 @@ function RankedPage.new(context: any): CanvasGroup
 	lineCorner.Parent = line
 	local fill = Instance.new("Frame")
 	fill.AnchorPoint = Vector2.new(0, .5)
-	fill.BackgroundColor3 = Theme.Colors.Electric
+	fill.BackgroundColor3 = Theme.Colors.White
 	fill.BorderSizePixel = 0
 	fill.Position = UDim2.fromScale(0, .5)
 	fill.Size = UDim2.new(math.clamp(wins / 7, 0, 1), 0, 0, 6)
@@ -145,7 +145,7 @@ function RankedPage.new(context: any): CanvasGroup
 	local status = Panel.new({Name = "RankedStatus", Position = UDim2.fromOffset(0, 396), Size = UDim2.new(.56, -10, 0, 170)})
 	status.Parent = scroll
 	text(status, division, UDim2.fromOffset(20, 18), UDim2.new(1, -40, 0, 28), 17, Theme.Colors.White, Theme.Fonts.Display)
-	text(status, "WATCH QUEUE FORMAT", UDim2.fromOffset(20, 50), UDim2.new(1, -40, 0, 18), 8, Theme.Colors.Electric, Theme.Fonts.Strong)
+	text(status, "WATCH QUEUE FORMAT", UDim2.fromOffset(20, 50), UDim2.new(1, -40, 0, 18), 8, Theme.Colors.White, Theme.Fonts.Strong)
 	stat(status, "RUN WINS", tostring(wins), 0)
 	stat(status, "RUN LOSSES", tostring(losses), .25)
 	stat(status, "RECORD", record, .5)
@@ -156,7 +156,7 @@ function RankedPage.new(context: any): CanvasGroup
 	text(explainer, "GLOBAL WATCH MATCH", UDim2.fromOffset(20, 18), UDim2.new(1, -40, 0, 28), 17, Theme.Colors.White, Theme.Fonts.Display)
 	explainer.Visible = false
 	text(explainer, "Your built squad queues for a ranked opponent, then both teams play as AI. You watch the match instead of controlling a player.", UDim2.fromOffset(20, 54), UDim2.new(1, -40, 0, 62), 10, Theme.Colors.Silver, Theme.Fonts.Body)
-	text(explainer, "BOTTOM-RIGHT PLAY STARTS SEARCH", UDim2.fromOffset(20, 122), UDim2.new(1, -40, 0, 24), 8, Theme.Colors.Electric, Theme.Fonts.Strong)
+	text(explainer, "BOTTOM-RIGHT PLAY STARTS SEARCH", UDim2.fromOffset(20, 122), UDim2.new(1, -40, 0, 24), 8, Theme.Colors.White, Theme.Fonts.Strong)
 
 	local play = Button.new({Text = "PLAY RANKED", Variant = "Primary", Size = UDim2.fromOffset(218, 54), OnActivated = function()
 		local result = MatchSetupService:JoinRankedQueue()

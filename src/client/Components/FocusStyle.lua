@@ -29,7 +29,7 @@ function FocusStyle.apply(target: GuiButton)
 	local border = Instance.new("UIStroke")
 	border.Name = "VTRFocusBorder"
 	border.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-	border.Color = Theme.Colors.Electric
+	border.Color = Theme.Colors.White
 	border.Thickness = 1
 	border.Transparency = 1
 	border.Parent = target
@@ -37,7 +37,7 @@ function FocusStyle.apply(target: GuiButton)
 	local glow = Instance.new("UIStroke")
 	glow.Name = "VTRFocusGlow"
 	glow.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-	glow.Color = Theme.Colors.Electric
+	glow.Color = Theme.Colors.White
 	glow.Thickness = 3
 	glow.Transparency = 1
 	glow.Parent = target

@@ -51,6 +51,9 @@ function Controller:SkipStadiumIntro()
 	end
 	local playerGui = game:GetService("Players").LocalPlayer:FindFirstChild("PlayerGui")
 	local gui = playerGui and playerGui:FindFirstChild("VTRPrematchBroadcast")
+	if PrematchBroadcastPresentation.StopAudio then
+		PrematchBroadcastPresentation.StopAudio()
+	end
 	if gui then gui:Destroy() end
 	if self.Camera and self.Camera.EndCutscene then
 		self.Camera:EndCutscene()

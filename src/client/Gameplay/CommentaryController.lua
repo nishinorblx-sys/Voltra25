@@ -39,7 +39,7 @@ function Controller.new(gui: ScreenGui): any
 	root.Parent = gui
 	corner(root, 6)
 	local stroke = Instance.new("UIStroke")
-	stroke.Color = Theme.Colors.Electric
+	stroke.Color = Theme.Colors.White
 	stroke.Transparency = .55
 	stroke.Parent = root
 	local text = Instance.new("TextLabel")
