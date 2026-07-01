@@ -214,6 +214,8 @@ function Service:_attachResultHandlers(session: any, home: Player, away: Player)
 				MOTM = serialized.MOTM,
 			}
 		end
+		if ended.RankedResultsRecorded==true then return end
+		ended.RankedResultsRecorded=true
 		self.RankedProfiles:RecordServerResult(home, homeResult, rpFor(homeResult), away.Name, score, personal("Home"))
 		self.RankedProfiles:RecordServerResult(away, awayResult, rpFor(awayResult), home.Name, tostring(awayScore) .. "-" .. tostring(homeScore), personal("Away"))
 		if self.Publish and self.RankedProfiles.GetClientData then
@@ -227,6 +229,24 @@ function Service:_attachResultHandlers(session: any, home: Player, away: Player)
 		local awayScore=ended.World.AwayScore.Value
 		local homeResult=resultFor(home,"Home",homeScore,awayScore)
 		local awayResult=resultFor(away,"Away",homeScore,awayScore)
+		if ended.RankedResultsRecorded~=true then
+			ended.RankedResultsRecorded=true
+			local score=tostring(homeScore).."-"..tostring(awayScore)
+			local serialized=ended.Stats:Serialize(homeScore,awayScore,ended.Clock:Payload().GameSeconds)
+			local function personal(side:string):any
+				local best=nil
+				for _,entry in serialized.PlayerRatings or{}do
+					if entry.Team==side and (not best or entry.Rating>best.Rating)then best=entry end
+				end
+				return{PlayerRating=best and best.Rating or 6,Team=side,Match=side=="Home"and serialized.Home or serialized.Away,Full=serialized,MOTM=serialized.MOTM}
+			end
+			self.RankedProfiles:RecordServerResult(home,homeResult,rpFor(homeResult),away.Name,score,personal("Home"))
+			self.RankedProfiles:RecordServerResult(away,awayResult,rpFor(awayResult),home.Name,tostring(awayScore).."-"..tostring(homeScore),personal("Away"))
+			if self.Publish and self.RankedProfiles.GetClientData then
+				pcall(function()self.Publish(home,"Ranked",self.RankedProfiles:GetClientData(home))end)
+				pcall(function()self.Publish(away,"Ranked",self.RankedProfiles:GetClientData(away))end)
+			end
+		end
 		for participant, result in {[home]=homeResult,[away]=awayResult} do
 			local won=result=="Win" or result=="ForfeitWin"
 			local draw=result=="Draw"

@@ -718,14 +718,7 @@ function Service:_startSetPiece(session:any,kind:string,restartTeam:string,locat
 		session.OutOfBounds:Reset();session.Goals:Unlock();session.Phase="IN PLAY";session.AI:SetExternalPhase(nil);self:_setPlayersFrozen(session,session.Paused==true);if not session.Paused then self:_releasePlayersForLive(session);self:_stabilizePlayers(session);task.delay(.18,function()if not session.Ended and session.Running then self:_releasePlayersForLive(session);self:_stabilizePlayers(session)end end)end;session.Running=true;self:_syncPositions(session);broadcast(self.State,session,{Type="Phase",Phase="IN PLAY"})
 		if kind=="Kickoff"then debugKickoff("phase broadcast","phase",session.Phase,"running",session.Running,"externalPhaseCleared",true)end
 	end,sideController~=nil,forcedTaker)
-	if kind~="Kickoff" then
-		task.delay(10,function()
-			if session.Ended or session.Running or session.SetPieceAutoSeq~=setPieceAutoSeq then return end
-			if session.Phase==kind then
-				self:_autoReleaseSetPiece(session,controller)
-			end
-		end)
-	end
+	
 	if kind=="Corner"and session.SetPieces.ActiveCorner then session.Animations:ForceIdle(session.SetPieces.ActiveCorner.Data.Taker)end
 	if session.Setup and session.Setup.WatchMode==true or sideController==nil then
 		if kind=="Penalty"then
@@ -818,6 +811,8 @@ function Service:_goal(session:any,team:string)
 	session.World.Ball:SetNetworkOwner(nil)
 	session.World.Ball.AssemblyLinearVelocity=goalVelocity
 	session.World.Ball.AssemblyAngularVelocity=goalAngularVelocity
+	broadcast(self.State,session,{Type="GoalSoundPreview",Team=team})
+	task.wait(.08)
 	broadcast(self.State,session,{Type="GoalSoundPreview",Team=team})
 	task.wait(.08)
 	if team=="Home"then session.World.HomeScore.Value+=1 else session.World.AwayScore.Value+=1 end
@@ -1400,7 +1395,7 @@ function Service:_step(dt:number)
 			if requester and session.PauseSecondsByPlayer and (session.PauseSecondsByPlayer[requester] or 0)<=0 then self:_resumePause(session)end
 			continue
 		end
-		if session.PendingAIPenalty and not session.Running and session.Phase=="Penalty"and os.clock()>=session.PendingAIPenalty.At then
+		if false and session.PendingAIPenalty and not session.Running and session.Phase=="Penalty"and os.clock()>=session.PendingAIPenalty.At then
 			self:_releaseAIPenalty(session)
 		end
 		if session.HalfTimeBreak then
@@ -1548,7 +1543,7 @@ function Service:EndMatch(player:Player,showResult:boolean):boolean
 		task.defer(function()
 			for _,participant in session.Players or{player}do
 				local character=participant.Character;local state=session.PlayerState and session.PlayerState[participant]
-				if character then local accountRoot=character:FindFirstChild("HumanoidRootPart")::BasePart?;if accountRoot then accountRoot.Anchored=false end;character:SetAttribute("VTRParked",nil);character:SetAttribute("VTRCinematicParked",nil);character:SetAttribute("VTRSession",nil);character:SetAttribute("VTRSprinting",nil);character:PivotTo(safeReturnCFrame(state));local humanoid=character:FindFirstChildOfClass("Humanoid");if humanoid then humanoid.WalkSpeed=state and state.PreviousSpeed or 16;humanoid.JumpPower=state and state.PreviousJump or 50;humanoid.AutoRotate=true;humanoid.PlatformStand=false;humanoid.Sit=false;humanoid.Health=math.max(1,humanoid.MaxHealth) end end
+				if character then local accountRoot=character:FindFirstChild("HumanoidRootPart")::BasePart?;if accountRoot then accountRoot.Anchored=false end;character:SetAttribute("VTRParked",nil);character:SetAttribute("VTRCinematicParked",nil);character:SetAttribute("VTRSession",nil);character:SetAttribute("VTRSprinting",nil);character:PivotTo(safeReturnCFrame(state));local humanoid=character:FindFirstChildOfClass("Humanoid");if humanoid then humanoid.WalkSpeed=state and state.PreviousSpeed or 16;humanoid.JumpPower=state and state.PreviousJump or 50;humanoid.AutoRotate=true;humanoid.PlatformStand=false;humanoid.Sit=false;humanoid.Health=math.max(1,humanoid.MaxHealth);humanoid.PlatformStand=false;humanoid.Sit=false;humanoid.Health=math.max(1,humanoid.MaxHealth) end end
 				session.TeamControl:Destroy(participant);self.Sessions[participant]=nil;if participant.Parent==Players then participant:SetAttribute("VTRInMatch",false)end
 			end
 			if session.LinkDebug then session.LinkDebug:Destroy()end;if session.AI then session.AI:Destroy()end;if session.Animations then session.Animations:Destroy()end;if session.OfficialAnimations then session.OfficialAnimations:Destroy()end;if session.World and session.World.Folder and session.World.Folder.Parent then session.World.Folder:Destroy()end
@@ -1557,7 +1552,7 @@ function Service:EndMatch(player:Player,showResult:boolean):boolean
 	end
 	for _,participant in session.Players or{player}do
 		local character=participant.Character;local state=session.PlayerState and session.PlayerState[participant]
-		if character then local accountRoot=character:FindFirstChild("HumanoidRootPart")::BasePart?;if accountRoot then accountRoot.Anchored=false end;character:SetAttribute("VTRParked",nil);character:SetAttribute("VTRCinematicParked",nil);character:SetAttribute("VTRSession",nil);character:SetAttribute("VTRSprinting",nil);character:PivotTo(safeReturnCFrame(state));local humanoid=character:FindFirstChildOfClass("Humanoid");if humanoid then humanoid.WalkSpeed=state and state.PreviousSpeed or 16;humanoid.JumpPower=state and state.PreviousJump or 50;humanoid.AutoRotate=true;humanoid.PlatformStand=false;humanoid.Sit=false;humanoid.Health=math.max(1,humanoid.MaxHealth) end end
+		if character then local accountRoot=character:FindFirstChild("HumanoidRootPart")::BasePart?;if accountRoot then accountRoot.Anchored=false end;character:SetAttribute("VTRParked",nil);character:SetAttribute("VTRCinematicParked",nil);character:SetAttribute("VTRSession",nil);character:SetAttribute("VTRSprinting",nil);character:PivotTo(safeReturnCFrame(state));local humanoid=character:FindFirstChildOfClass("Humanoid");if humanoid then humanoid.WalkSpeed=state and state.PreviousSpeed or 16;humanoid.JumpPower=state and state.PreviousJump or 50;humanoid.AutoRotate=true;humanoid.PlatformStand=false;humanoid.Sit=false;humanoid.Health=math.max(1,humanoid.MaxHealth);humanoid.PlatformStand=false;humanoid.Sit=false;humanoid.Health=math.max(1,humanoid.MaxHealth) end end
 		session.TeamControl:Destroy(participant);self.Sessions[participant]=nil;participant:SetAttribute("VTRInMatch",false)
 	end
 	if session.LinkDebug then session.LinkDebug:Destroy()end;if session.AI then session.AI:Destroy()end;if session.Animations then session.Animations:Destroy()end;if session.OfficialAnimations then session.OfficialAnimations:Destroy()end;if session.World.Folder.Parent then session.World.Folder:Destroy()end

@@ -54,7 +54,6 @@ function Service.ThrowIn(teams: any, restartTeam: string, location: Vector3, pit
 	end
 	taker = taker or teams[restartTeam][2] or teams[restartTeam][1]
 	move(taker, spot, world(pitchCFrame, 0, z))
-	local opponent = restartTeam == "Home" and "Away" or "Home"
 	local options = {}
 	for _, model in teams[restartTeam] do
 		if model ~= taker and not isKeeper(model) and root(model) then
@@ -62,50 +61,20 @@ function Service.ThrowIn(teams: any, restartTeam: string, location: Vector3, pit
 		end
 	end
 	table.sort(options, function(a, b) return ((root(a) :: BasePart).Position - spot).Magnitude < ((root(b) :: BasePart).Position - spot).Magnitude end)
-	local markers = {}
-	for _, model in teams[opponent] do
-		if not isKeeper(model) and root(model) then
-			table.insert(markers, model)
-		end
-	end
 	for index = 1, math.min(2, #options) do
 		local option = options[index]
-		local optionPosition = world(pitchCFrame, x - touchSign * (index == 1 and 13 or index == 2 and 20 or 26), z + (index == 1 and 0 or index == 2 and -17 or index == 3 and 18 or 36))
+		local optionPosition = world(pitchCFrame, x - touchSign * (index == 1 and 13 or 20), z + (index == 1 and 0 or -17))
 		move(option, optionPosition, spot)
-		local marker = markers[index + 2] or markers[index]
-		if marker then
-			move(marker, world(pitchCFrame, x - touchSign * (index == 1 and 18 or index == 2 and 25 or 30), z + (index == 1 and 2 or index == 2 and -14 or index == 3 and 15 or 32)), optionPosition)
-		end
 	end
 	local protected: {[Model]: boolean} = {[taker] = true}
-	for _, side in {"Home", "Away"} do
-		for _, model in teams[side] do
-			if isKeeper(model) then
-				protected[model] = true
-				model:SetAttribute("VTRThrowInKeeperProtected", true)
-			end
-		end
-	end
 	for index = 1, math.min(2, #options) do
 		protected[options[index]] = true
-		local marker = markers[index + 2] or markers[index]
-		if marker then
-			protected[marker] = true
-		end
 	end
-	for _, side in {restartTeam, opponent} do
-		local ownSign = side == "Home" and 1 or -1
-		for index, model in teams[side] do
-			if protected[model] or isKeeper(model) then continue end
-			local lane = ((index - 1) % 5 - 2) * width * 0.16
-			local depth = math.clamp(z + ownSign * (46 + math.floor((index - 1) / 4) * 28), -length / 2 + 28, length / 2 - 28)
-			local fromRestart = Vector2.new(lane - x, depth - z)
-			if fromRestart.Magnitude < Spacing.ThrowIn.Radius + 4 then
-				local direction = fromRestart.Magnitude > 0.1 and fromRestart.Unit or Vector2.new(-touchSign, 0)
-				lane, depth = x + direction.X * (Spacing.ThrowIn.Radius + 4), z + direction.Y * (Spacing.ThrowIn.Radius + 4)
-			end
-			move(model, world(pitchCFrame, lane, depth), spot)
-		end
+	for index, model in teams[restartTeam] do
+		if protected[model] or isKeeper(model) then continue end
+		local lane = ((index - 1) % 5 - 2) * width * 0.16
+		local depth = math.clamp(z + (restartTeam == "Home" and 1 or -1) * (46 + math.floor((index - 1) / 4) * 28), -length / 2 + 28, length / 2 - 28)
+		move(model, world(pitchCFrame, lane, depth), spot)
 	end
 	return taker
 end

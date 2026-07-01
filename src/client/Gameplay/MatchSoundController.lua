@@ -41,7 +41,7 @@ local function playOneShot(soundId: string, volume: number, speed: number?)
 		end
 	end)
 	sound:Play()
-	task.delay(8, function()
+	task.delay(180, function()
 		if sound.Parent then
 			sound:Destroy()
 		end
@@ -100,6 +100,13 @@ function Controller:PlayGoal()
 	task.delay(0.12, function()
 		playOneShot(GOAL_COMMENTATORS[math.random(1, #GOAL_COMMENTATORS)], 0.76, 1)
 	end)
+end
+
+function Controller:PlayGoalPreview()
+	if os.clock() - (self.LastGoalSfxAt or 0) <= .75 then return end
+	self.LastGoalSfxAt = os.clock()
+	playOneShot(GOAL_SOUNDS[math.random(1, #GOAL_SOUNDS)], 0.64, 1)
+	playOneShot("rbxassetid://75642333208760", 0.52, 1)
 end
 
 function Controller:PlayGoalPreview()

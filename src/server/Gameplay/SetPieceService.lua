@@ -341,13 +341,24 @@ function Service:_releaseCorner(player:Player,payload:any)
 	if delivery=="Short"then local shortRoot=active.Data.ShortOption and active.Data.ShortOption:FindFirstChild("HumanoidRootPart")::BasePart?;if shortRoot then target=shortRoot.Position end end
 	local plannedReceiver:Model?=nil
 	if delivery~="Short"then
-		local plan=cornerDeliveryPlan(active.Data,self.Teams,active.Data.Team or active.Data.RestartTeam or tostring(active.Data.Taker:GetAttribute("VTRTeam") or "Home"))
-		plannedReceiver=plan.Receiver
-		target=plan.Target
-		delivery=plan.Delivery
-		power=plan.Power
-		active.Data.CornerReceiver=plannedReceiver
-		active.Data.CornerPlanRole=plan.Role
+		local requested=payload.Receiver
+		local team=active.Data.Team or active.Data.RestartTeam or tostring(active.Data.Taker:GetAttribute("VTRTeam") or "Home")
+		if typeof(requested)=="Instance" and requested:IsA("Model") and requested:GetAttribute("VTRTeam")==team and requested~=active.Data.Taker and not isKeeper(requested) then
+			plannedReceiver=requested
+			target=select(1,cornerLanding(active.Data,requested,tostring(requested:GetAttribute("VTRCornerRole") or "PenaltySpot")))
+			delivery="Cross"
+			power=math.clamp(power>.05 and power or .66,.45,.78)
+			active.Data.CornerReceiver=plannedReceiver
+			active.Data.CornerPlanRole=tostring(requested:GetAttribute("VTRCornerRole") or "PenaltySpot")
+		else
+			local plan=cornerDeliveryPlan(active.Data,self.Teams,team)
+			plannedReceiver=plan.Receiver
+			target=plan.Target
+			delivery=plan.Delivery
+			power=plan.Power
+			active.Data.CornerReceiver=plannedReceiver
+			active.Data.CornerPlanRole=plan.Role
+		end
 	end
 	local takerRoot=active.Data.Taker:FindFirstChild("HumanoidRootPart")::BasePart?;if takerRoot then takerRoot.Anchored=false;takerRoot.AssemblyLinearVelocity=Vector3.zero;takerRoot.AssemblyAngularVelocity=Vector3.zero end
 	active.Data.Taker:SetAttribute("VTRForceIdle",nil)
@@ -434,7 +445,7 @@ function Service:Start(player: Player, kind: string, restartTeam: string, locati
 	self.Remote:FireClient(player, {Type = "SetPiece", Kind = displayKind, ActualKind = kind, Team = restartTeam, Location = ballPosition, Taker = taker, Duration = duration, GoalSign=payloadGoalSign, GoalPosition=goalPosition, Cutscene=kind=="Penalty"or(kind=="FreeKick"and setPieceCutscene), Mode=self.RestartMode, FouledPlayerName=tostring(taker:GetAttribute("DisplayName") or taker.Name)})
 	if kind=="Corner"then
 		local data=self.ActiveCorner.Data
-		if userControlled==true and player and player.Parent then self.Remote:FireClient(player,{Type="CornerMode",Team=restartTeam,Taker=taker,Ball=self.World.Ball,Location=ballPosition,CornerSign=data.CornerSign,GoalSign=data.GoalSign,PitchCFrame=self.World.PitchCFrame,PitchWidth=self.World.Width,PitchLength=self.World.Length})
+		if userControlled==true and player and player.Parent then self.Remote:FireClient(player,{Type="CornerMode",Team=restartTeam,Taker=taker,Ball=self.World.Ball,Location=ballPosition,CornerSign=data.CornerSign,GoalSign=data.GoalSign,PitchCFrame=self.World.PitchCFrame,PitchWidth=self.World.Width,PitchLength=self.World.Length,TeamModels=self.Teams})
 		else task.delay(1.25,function()if self.ActiveCorner and self.ActiveCorner.Sequence==sequence then local target=self.World.PitchCFrame:PointToWorldSpace(Vector3.new(0,.15,data.GoalSign*(self.World.Length*.5-18)));self:_releaseCorner(player,{Delivery="Cross",Power=.65,Target=target,ServerAI=true})end end)end
 		return
 	end

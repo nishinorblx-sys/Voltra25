@@ -56,6 +56,11 @@ function Service.Grant(progression: any, player: Player, publish: ((Player, stri
 			publish(player, "Progression", progression:GetClientData(player))
 		end)
 	end
+	if publish and progression and progression.Inventory and progression.Inventory.GetClientData then
+		pcall(function()
+			publish(player, "Inventory", progression.Inventory:GetClientData(player))
+		end)
+	end
 	return {
 		Title = "RANKED WIN REWARD",
 		Coins = 0,

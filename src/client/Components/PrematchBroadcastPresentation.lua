@@ -33,17 +33,10 @@ local function playPresentationSound(soundId: string, volume: number?, looped: b
 	sound.Looped = looped == true
 	sound.RollOffMode = Enum.RollOffMode.InverseTapered
 	sound.Parent = SoundService
-	if not sound.Looped then
-		sound.Ended:Connect(function()
-			if sound.Parent then sound:Destroy() end
-		end)
-	end
+	sound.Ended:Connect(function()
+		if sound.Parent then sound:Destroy() end
+	end)
 	sound:Play()
-	if not sound.Looped then
-		task.delay(14, function()
-			if sound.Parent then sound:Destroy() end
-		end)
-	end
 	return sound
 end
 
@@ -61,8 +54,8 @@ end
 local function startIntroAudio(gui: ScreenGui)
 	stopIntroAudio()
 	table.insert(activeIntroSounds, playPresentationSound(INTRO_BACKGROUND_SOUND, .34, true))
-	table.insert(activeIntroSounds, playPresentationSound(INTRO_TRACKS[math.random(1, #INTRO_TRACKS)], .58, true))
-	gui.Destroying:Connect(stopIntroAudio)
+	table.insert(activeIntroSounds, playPresentationSound(INTRO_TRACKS[math.random(1, #INTRO_TRACKS)], .58, false))
+	
 end
 
 local function shortCode(name: string): string
