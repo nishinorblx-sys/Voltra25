@@ -51,6 +51,9 @@ local function stopIntroAudio()
 end
 
 function Presentation.StopAudio()
+	if UISoundService.StopTransitions then
+		UISoundService.StopTransitions()
+	end
 	stopIntroAudio()
 end
 

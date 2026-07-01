@@ -18,6 +18,7 @@ local COLOR_SOUND = "rbxassetid://109229821869092"
 local TRANSITION_SOUND = "rbxassetid://136186135240645"
 
 local lastPlayed: {[string]: number} = {}
+local activeTransitionSounds: {Sound} = {}
 local preloaded = false
 
 local function preload()
@@ -49,10 +50,10 @@ local function preload()
 	end)
 end
 
-local function play(id: string, volume: number, key: string?, cooldown: number?)
+local function play(id: string, volume: number, key: string?, cooldown: number?): Sound?
 	preload()
 	local now = os.clock()
-	if key and cooldown and (lastPlayed[key] or 0) + cooldown > now then return end
+	if key and cooldown and (lastPlayed[key] or 0) + cooldown > now then return nil end
 	if key then lastPlayed[key] = now end
 	local sound = Instance.new("Sound")
 	sound.Name = "VTRUISound"
@@ -61,12 +62,19 @@ local function play(id: string, volume: number, key: string?, cooldown: number?)
 	sound.RollOffMode = Enum.RollOffMode.InverseTapered
 	sound.Parent = SoundService
 	sound.Ended:Connect(function()
+		for index, item in ipairs(activeTransitionSounds) do
+			if item == sound then
+				table.remove(activeTransitionSounds, index)
+				break
+			end
+		end
 		if sound.Parent then sound:Destroy() end
 	end)
 	sound:Play()
-	task.delay(5, function()
+	task.delay(8, function()
 		if sound.Parent then sound:Destroy() end
 	end)
+	return sound
 end
 
 function Service.Preload()
@@ -90,7 +98,20 @@ function Service.PlayColor()
 end
 
 function Service.PlayTransition()
-	play(TRANSITION_SOUND, 0.52, "Transition", 0.02)
+	local sound = play(TRANSITION_SOUND, 0.52, "Transition", 0.02)
+	if sound then
+		table.insert(activeTransitionSounds, sound)
+	end
+end
+
+function Service.StopTransitions()
+	for _, sound in ipairs(activeTransitionSounds) do
+		if sound and sound.Parent then
+			sound:Stop()
+			sound:Destroy()
+		end
+	end
+	table.clear(activeTransitionSounds)
 end
 
 function Service.Bind(root: Instance)

@@ -35,6 +35,7 @@ local RankedQueuePresentation=require(script.Parent.Parent.Components.RankedQueu
 local VoltraControlledPlayerIndicator=require(script.Parent.Parent.Components.VoltraControlledPlayerIndicator)
 local VoltraPackRoulette=require(script.Parent.Parent.Components.VoltraPackRoulette)
 local UIStateService=require(script.Parent.Parent.Services.UIStateService)
+local UISoundService=require(script.Parent.Parent.Services.UISoundService)
 local PenaltyConfig=require(ReplicatedStorage.VTR.Shared.PenaltyConfig)
 local Controller={};Controller.__index=Controller
 local function clearGreenScreenEffects()
@@ -431,7 +432,7 @@ function Controller:_state(payload:any)
 	elseif payload.Type=="PauseTimer"then self.HUD:SetPauseTimer(payload.Remaining or 0)
 	elseif payload.Type=="PauseResumeVote"then if payload.Ready~=true then self.HUD:Flash(tostring(payload.PlayerName or"PLAYER").." READY TO RESUME",1.0)end
 	elseif payload.Type=="PrematchSkipQueued"then if self.HUD then self.HUD:Flash(payload.Ready and"INTRO SKIPPED"or(tostring(payload.PlayerName or"PLAYER").." WANTS TO SKIP"),1.0)end
-	elseif payload.Type=="PrematchSkip"then self.PrematchActive=false;self.PrematchSkipRequested=true;if self.Cutscenes then self.Cutscenes:SkipStadiumIntro()end;self:_playPrematchSkipTransition()
+	elseif payload.Type=="PrematchSkip"then self.PrematchActive=false;self.PrematchSkipRequested=true;if UISoundService.StopTransitions then UISoundService.StopTransitions()end;if self.Cutscenes then self.Cutscenes:SkipStadiumIntro()end;self:_playPrematchSkipTransition()
 	elseif payload.Type=="SwitchTarget"then self.TeamControl:SetSwitchTarget(payload.Model);self.Indicators:SetNextSwitch(payload.Model)
 	elseif payload.Type=="Possession"then self.HUD:SetPossession(payload.Owner or"",payload.OwnerUserId==Players.LocalPlayer.UserId);self.Indicators:SetBallCarrier(payload.Model);if self.Minimap then self.Minimap:SetBallCarrier(payload.Model)end;if payload.Model then if self.Visual then self.Visual:StopShotTrail()end;if self.GoalTarget then self.GoalTarget:Unlock()end end
 	elseif payload.Type=="PassTarget"then self.Indicators:SetPassTarget(payload.Model)
