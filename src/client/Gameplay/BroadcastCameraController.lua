@@ -4,10 +4,10 @@ local CameraRelativeMovement = require(script.Parent.CameraRelativeMovement)
 local Controller = {}
 Controller.__index = Controller
 
-local BROADCAST_ZOOM_MULTIPLIER = 0.8
+local BROADCAST_ZOOM_MULTIPLIER = 0.68
 local BROADCAST_HEIGHT = 178 * BROADCAST_ZOOM_MULTIPLIER
 local BROADCAST_SIDE_OFFSET = 222 * BROADCAST_ZOOM_MULTIPLIER
-local BROADCAST_FOV = 37
+local BROADCAST_FOV = 34
 -- Tune this while testing with the Workspace attribute
 -- VTRBallDistanceZoomMultiplier. Higher values react more strongly.
 local BALL_DISTANCE_ZOOM_MULTIPLIER = 0.12
@@ -20,9 +20,9 @@ local GOAL_LOOK_FULL_FRACTION = 0.18
 local GOAL_LOOK_MAX_BLEND = 0.44
 
 local PRESETS = {
-	Broadcast = {Height = 128, Side = 160, Fov = 37, Smooth = 0.11},
+	Broadcast = {Height = 108, Side = 136, Fov = 34, Smooth = 0.10},
 	["Wide Broadcast"] = {Height = BROADCAST_HEIGHT, Side = BROADCAST_SIDE_OFFSET, Fov = BROADCAST_FOV, Smooth = 0.12},
-	["End to End"] = {Height = 174, Side = 0, Fov = 42, Smooth = 0.12},
+	["End to End"] = {Height = 148, Side = 0, Fov = 39, Smooth = 0.11},
 	["Co-op"] = {Height = BROADCAST_HEIGHT, Side = BROADCAST_SIDE_OFFSET, Fov = BROADCAST_FOV, Smooth = 0.12},
 	Tactical = {Height = 208, Side = 252, Fov = 53, Smooth = 0.14},
 	Pro = {Height = 16, Side = 34, Fov = 55, Smooth = 0.075},

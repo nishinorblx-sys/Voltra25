@@ -2,7 +2,7 @@
 local Service = {}
 Service.__index = Service
 
-local STOPPAGE_MINUTES = {Goal = 0.75, Foul = 0.55, Corner = 0.22, GoalKick = 0.14, ThrowIn = 0.12, Injury = 1.0, Substitution = 0.55}
+local STOPPAGE_MINUTES = {Goal = 0.95, Foul = 0.65, Corner = 0.25, GoalKick = 0.18, ThrowIn = 0.14, FreeKick = 0.28, Penalty = 0.55, Injury = 1.0, Substitution = 0.55}
 
 function Service.new(realDuration: number)
 	return setmetatable({RealDuration = realDuration, HalfRealDuration = realDuration / 2, Half = 1, HalfElapsed = 0, AddedMinutes = nil, Stoppages = {0, 0}}, Service)

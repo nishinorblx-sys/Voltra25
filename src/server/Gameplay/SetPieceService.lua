@@ -176,10 +176,16 @@ local function arrangeFreeKick(teams:any,restartTeam:string,location:Vector3,pit
 	local attackers=teams[restartTeam]
 	for index,model in attackers do
 		if model~=taker then
-			local x=((index%5)-2)*13
-			local z=goalSign*(length*.5-34-(index%3)*6)
-			if index==4 or index==5 then z=0 end
-			face(model,localWorld(pitchCFrame,x,3,z),location)
+			if isKeeper(model) then
+				local homeSpot=localWorld(pitchCFrame,0,3,-goalSign*(length*.5-8))
+				face(model,homeSpot,location)
+				model:SetAttribute("VTRForceIdle",true)
+			else
+				local x=((index%5)-2)*13
+				local z=goalSign*(length*.5-34-(index%3)*6)
+				if index==4 or index==5 then z=0 end
+				face(model,localWorld(pitchCFrame,x,3,z),location)
+			end
 		end
 	end
 	for index,model in teams[defending]do

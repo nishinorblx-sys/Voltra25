@@ -654,6 +654,39 @@ function Controller:SetCharge(value: number, kind: string?)
 	self.ChargeFill.BackgroundColor3 = kind == "Pass" and Color3.fromHex("B7FF1A") or Color3.fromHex("DFFF4A")
 end
 
+function Controller:SetClock(seconds: number, home: number?, away: number?, addedMinutes: number?, inAddedTime: boolean?, addedElapsed: number?)
+	local value = math.max(0, tonumber(seconds) or 0)
+	local halfBase = value >= 2700 and 45 or 0
+	local minute = math.floor(value / 60)
+	local second = math.floor(value % 60)
+	if inAddedTime then
+		local base = value >= 5400 and 90 or 45
+		local added = math.max(1, math.ceil((tonumber(addedElapsed) or 0) / 60))
+		self.Clock.Text = string.format("%d+%d", base, added)
+	else
+		self.Clock.Text = string.format("%02d:%02d", minute, second)
+	end
+	if not self.AddedTimeLabel and self.ClockPanel then
+		local added = label(self.ClockPanel, "", UDim2.new(1, -42, 0, 0), UDim2.fromOffset(40, 18), 9)
+		added.Name = "AddedTimeLabel"
+		added.TextXAlignment = Enum.TextXAlignment.Center
+		added.TextColor3 = Theme.Colors.Black
+		added.BackgroundColor3 = Theme.Colors.Electric
+		added.BackgroundTransparency = .06
+		added.Visible = false
+		added.ZIndex = self.Clock.ZIndex + 2
+		corner(added, 3)
+		self.AddedTimeLabel = added
+	end
+	local addedTotal = tonumber(addedMinutes) or 0
+	if self.AddedTimeLabel then
+		self.AddedTimeLabel.Visible = addedTotal > 0
+		self.AddedTimeLabel.Text = "+" .. tostring(addedTotal)
+	end
+	if home ~= nil then self.HomeScoreLabel.Text = tostring(home) end
+	if away ~= nil then self.AwayScoreLabel.Text = tostring(away) end
+end
+
 function Controller:SetPhase(value: string)
 	local phase = string.upper(value)
 	self.Phase.Text = phase

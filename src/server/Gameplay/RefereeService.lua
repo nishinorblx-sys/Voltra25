@@ -7,10 +7,10 @@ function Service:SetHalf(half:number?)self.Half=half or 1 end
 function Service:_penaltyBoxOwner(location:Vector3):string?
 	if not self.PitchCFrame or self.Width<=0 or self.Length<=0 then return nil end
 	local localPoint=self.PitchCFrame:PointToObjectSpace(location)
-	local inWidth=math.abs(localPoint.X)<=22
+	local inWidth=math.abs(localPoint.X)<=44
 	if not inWidth then return nil end
-	local nearPositive=math.abs((self.Length*.5)-localPoint.Z)<=18
-	local nearNegative=math.abs((-self.Length*.5)-localPoint.Z)<=18
+	local nearPositive=localPoint.Z >= self.Length*.5 - 82
+	local nearNegative=localPoint.Z <= -self.Length*.5 + 82
 	if not nearPositive and not nearNegative then return nil end
 	local positiveOwner=(self.Half or 1)>=2 and "Away" or "Home"
 	local negativeOwner=(self.Half or 1)>=2 and "Home" or "Away"
