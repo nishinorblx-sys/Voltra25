@@ -1,4 +1,3 @@
-local MATCHUP_PANEL_DELAY = 0.85
 --!strict
 local Players=game:GetService("Players")
 local ReplicatedStorage=game:GetService("ReplicatedStorage")
@@ -11,6 +10,7 @@ local KitPreview=require(script.Parent.KitPreview)
 local MatchSetupService=require(script.Parent.Parent.Services.MatchSetupService)
 
 local Presentation={}
+local MATCHUP_PANEL_DELAY = 1.8
 local function label(parent:Instance,value:string,position:UDim2,size:UDim2,textSize:number,color:Color3,font:Enum.Font):TextLabel local item=Instance.new("TextLabel");item.BackgroundTransparency=1;item.Position=position;item.Size=size;item.Text=value;item.TextColor3=color;item.TextSize=textSize;item.Font=font;item.TextXAlignment=Enum.TextXAlignment.Center;item.TextWrapped=true;item.ZIndex=184;item.Parent=parent;return item end
 local function tweenWait(target:Instance,duration:number,properties:any)local tween=TweenService:Create(target,TweenInfo.new(duration,Enum.EasingStyle.Quart,Enum.EasingDirection.Out),properties);tween:Play();tween.Completed:Wait()end
 local function identity(team:any,kit:any):any return{PrimaryColor=kit.Primary or team.colors.Primary,SecondaryColor=kit.Secondary or team.colors.Secondary,AccentColor=kit.Accent or team.colors.Accent,KitStyle=kit.Style or"Solid",BadgePreset=team.badgePreset or"Modern",BadgeShape=team.badgePreset=="GeneratedHex"and"Hex"or"Shield",BadgeSymbol="Volt V",BadgeColorBehavior="Tri Color"}end
@@ -25,12 +25,6 @@ function Presentation.play(root:Frame,setup:any,home:any,away:any,onReturn:(()->
 	setMenuVisible(root,false)
 	local homeKit=home.kits[setup.HomeKit]or home.kits.Home;local awayKit=away.kits[setup.AwayKit]or away.kits.Away
 	local overlay=Instance.new("CanvasGroup");overlay.Name="MatchStartPresentation";overlay.BackgroundColor3=Theme.Colors.Black;overlay.BorderSizePixel=0;overlay.Size=UDim2.fromScale(1,1);overlay.GroupTransparency=1;overlay.ZIndex=180;overlay.Parent=root
-	overlay.Visible = false
-	task.delay(MATCHUP_PANEL_DELAY, function()
-		if overlay.Parent then
-			overlay.Visible = true
-		end
-	end)
 	local stadiumWash=Instance.new("Frame");stadiumWash.BackgroundColor3=Theme.Colors.Pitch;stadiumWash.BackgroundTransparency=.3;stadiumWash.BorderSizePixel=0;stadiumWash.Position=UDim2.fromScale(.08,.12);stadiumWash.Size=UDim2.fromScale(.84,.76);stadiumWash.ZIndex=181;stadiumWash.Parent=overlay;local washCorner=Instance.new("UICorner");washCorner.CornerRadius=UDim.new(0,14);washCorner.Parent=stadiumWash
 	label(overlay,"VTR 25  /  MATCHDAY",UDim2.fromScale(.1,.07),UDim2.fromScale(.8,.05),10,Theme.Colors.Electric,Theme.Fonts.Strong)
 	local status=label(overlay,"MATCHUP CONFIRMED",UDim2.fromScale(.1,.14),UDim2.fromScale(.8,.07),25,Theme.Colors.White,Theme.Fonts.Display)
@@ -47,6 +41,7 @@ function Presentation.play(root:Frame,setup:any,home:any,away:any,onReturn:(()->
 	label(overlay,stadiumName.."  /  "..string.upper(setup.Weather).."  /  "..string.upper(setup.Time),UDim2.fromScale(.12,.67),UDim2.fromScale(.76,.04),10,Theme.Colors.Electric,Theme.Fonts.Strong)
 	local entering=label(overlay,"ENTERING MATCH",UDim2.fromScale(.2,.75),UDim2.fromScale(.6,.055),18,Theme.Colors.White,Theme.Fonts.Display)
 	local track=Instance.new("Frame");track.BackgroundColor3=Theme.Colors.Gunmetal;track.BorderSizePixel=0;track.Position=UDim2.fromScale(.25,.83);track.Size=UDim2.fromScale(.5,.008);track.ZIndex=184;track.Parent=overlay;local fill=Instance.new("Frame");fill.BackgroundColor3=Theme.Colors.Electric;fill.BorderSizePixel=0;fill.Size=UDim2.fromScale(0,1);fill.ZIndex=185;fill.Parent=track
+	task.wait(MATCHUP_PANEL_DELAY)
 	tweenWait(overlay,.38,{GroupTransparency=0});task.wait(.7);TweenService:Create(fill,TweenInfo.new(1.3,Enum.EasingStyle.Quart,Enum.EasingDirection.Out),{Size=UDim2.fromScale(.72,1)}):Play();task.wait(.45)
 	status.Text="BUILDING MATCH RUNTIME";entering.Text="SERVER SPAWNING STADIUM, TEAMS + BALL"
 	local started=watchMode and MatchSetupService:WatchMatch()or MatchSetupService:StartMatch()

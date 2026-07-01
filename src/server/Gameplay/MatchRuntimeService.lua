@@ -3,6 +3,7 @@ local Players=game:GetService("Players")
 local RunService=game:GetService("RunService")
 local Workspace=game:GetService("Workspace")
 local ReplicatedStorage=game:GetService("ReplicatedStorage")
+local TeleportService=game:GetService("TeleportService")
 local TweenService=game:GetService("TweenService")
 local Config=require(ReplicatedStorage.VTR.Shared.GameplayConfig)
 local MovementTuning=require(ReplicatedStorage.VTR.Shared.MovementTuningConfig)
@@ -98,7 +99,7 @@ local function buildWorld(player:Player,setup:any):any
 	local score=Instance.new("Folder");score.Name="Score";score.Parent=folder;local home=Instance.new("IntValue");home.Name="Home";home.Parent=score;local away=home:Clone();away.Name="Away";away.Parent=score
 	return{Folder=folder,Center=pitchCFrame.Position,PitchCFrame=pitchCFrame,Width=width,Length=length,Ball=ball,HomeScore=home,AwayScore=away,Analysis=analysis}
 end
-function Service.new()local action,state=Remotes.Create();local self=setmetatable({Action=action,State=state,Sessions={}},Service);action.OnServerEvent:Connect(function(player,payload)self:_action(player,payload)end);RunService.Heartbeat:Connect(function(dt)self:_step(dt)end);return self end
+function Service.new()local action,state=Remotes.Create();local self=setmetatable({Action=action,State=state,Sessions={},PostMatchReturns={}},Service);action.OnServerEvent:Connect(function(player,payload)self:_action(player,payload)end);RunService.Heartbeat:Connect(function(dt)self:_step(dt)end);return self end
 function Service:StartMatch(player:Player,setup:any,opponent:Player?,opponentSetup:any?,homeRoster:any?,awayRoster:any?):(boolean,string,any?)
 	self:EndMatch(player,false);if opponent then self:EndMatch(opponent,false)end
 	local players={player};if opponent then table.insert(players,opponent)end
@@ -1357,6 +1358,9 @@ function Service:EndMatch(player:Player,showResult:boolean):boolean
 				result=sideWon and"Win"or"Loss"
 			end
 			if participant.Parent==Players then
+				if session.PrivateRankedMatch and session.ReturnPlaceId then
+					self.PostMatchReturns[participant]={PlaceId=session.ReturnPlaceId}
+				end
 				self.State:FireClient(participant,{Type="MatchEnded",Ranked=session.Ranked,LocalSide=side,Result=result,Forfeit=session.ForfeitBy~=nil,Home=homeScore,Away=awayScore,Stats=resultStats,Reward=rewards and rewards[participant.UserId]or nil})
 			end
 		end
@@ -1380,7 +1384,18 @@ function Service:EndMatch(player:Player,showResult:boolean):boolean
 	if session.LinkDebug then session.LinkDebug:Destroy()end;if session.AI then session.AI:Destroy()end;if session.Animations then session.Animations:Destroy()end;if session.OfficialAnimations then session.OfficialAnimations:Destroy()end;if session.World.Folder.Parent then session.World.Folder:Destroy()end
 	return true
 end
-function Service:ReturnToMenu(player:Player):boolean return self:EndMatch(player,false)end
+function Service:ReturnToMenu(player:Player):boolean
+	local pendingReturn=self.PostMatchReturns and self.PostMatchReturns[player]
+	if pendingReturn then
+		self.PostMatchReturns[player]=nil
+		local ok,err=pcall(function()
+			TeleportService:TeleportAsync(tonumber(pendingReturn.PlaceId)or game.PlaceId,{player})
+		end)
+		if not ok then warn("[VTR RANKED RETURN] "..tostring(err))end
+		return ok
+	end
+	return self:EndMatch(player,false)
+end
 
 function Service:PlayerRemoving(player:Player)
 	local session=self.Sessions[player]

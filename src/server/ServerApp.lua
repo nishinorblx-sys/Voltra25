@@ -120,6 +120,12 @@ function ServerApp.Start()
 	profiles:Start()
 	transferMarket:Start()
 	uiState:Start()
+	for _, player in Players:GetPlayers() do
+		rankedQueue:HandleTeleportedPlayer(player)
+	end
+	Players.PlayerAdded:Connect(function(player)
+		rankedQueue:HandleTeleportedPlayer(player)
+	end)
 
 	local lastRequest: { [Player]: { [string]: number } } = {}
 	requestData.OnServerInvoke = function(player: Player, serviceName: any)

@@ -1,6 +1,7 @@
 --!strict
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
 
@@ -15,6 +16,10 @@ local BUFFER_SECONDS = 12
 local POST_GOAL_RECORD_SECONDS = 1
 local GOAL_REPLAY_COOLDOWN = 1.25
 local SET_PIECE_REPLAY_GRACE = 0.25
+local SHOT_PRE_ROLL = 2.25
+local SHOT_POST_ROLL = 3.75
+local SHOT_SLOW_WINDOW = 1
+local SHOT_SLOW_SCALE = 0.34
 local STATIC_PADDING = 90
 local MAX_STATIC_PARTS = 1200
 local SET_PIECE_KINDS = {
@@ -117,6 +122,109 @@ function Controller:MarkSetPieceStarted(kind: string?)
 	self.LastSetPieceKind = kind
 end
 
+function Controller:MarkShot(actor: Model?)
+	local replay = self.Replay
+	if not replay or not replay.Recording then return end
+	self.LastShotReplayTime = replay.ReplayTime
+	self.LastShotActor = actor
+end
+
+local function rootPart(model: Model?): BasePart?
+	if not model then return nil end
+	return model:FindFirstChild("HumanoidRootPart") :: BasePart?
+end
+
+function Controller:_cloneFor(original: Instance?): Instance?
+	if not original or not self.Replay then return nil end
+	for index, source in self.Replay.ActiveParts do
+		if source == original then
+			return self.Replay.ActiveClones[index]
+		end
+	end
+	return nil
+end
+
+function Controller:_makeReplayCamera(viewport: ViewportFrame): Camera
+	local camera = Instance.new("Camera")
+	camera.Name = "VTRCinematicReplayCamera"
+	camera.FieldOfView = 52
+	camera.Parent = viewport
+	viewport.CurrentCamera = camera
+	self.ReplayCamera = camera
+	return camera
+end
+
+function Controller:_updateShotReplayCamera(timeNow: number, shotTime: number)
+	local viewport = self.Replay and self.Replay.ViewportFrame
+	if not viewport then return end
+	local camera = self.ReplayCamera or self:_makeReplayCamera(viewport)
+	local shooterRoot = self:_cloneFor(rootPart(self.LastShotActor))
+	local ballClone = self:_cloneFor(self.Ball)
+	if not shooterRoot or not shooterRoot:IsA("BasePart") or not ballClone or not ballClone:IsA("BasePart") then return end
+
+	local shooterPos = shooterRoot.Position
+	local ballPos = ballClone.Position
+	local shotVector = Vector3.new(ballPos.X - shooterPos.X, 0, ballPos.Z - shooterPos.Z)
+	local fallbackLook = Vector3.new(shooterRoot.CFrame.LookVector.X, 0, shooterRoot.CFrame.LookVector.Z)
+	local shotDir = if shotVector.Magnitude > 0.05 then shotVector.Unit else (fallbackLook.Magnitude > 0.05 and fallbackLook.Unit or Vector3.zAxis)
+	local sideDir = Vector3.new(-shotDir.Z, 0, shotDir.X)
+	if sideDir.Magnitude < 0.05 then
+		sideDir = Vector3.xAxis
+	else
+		sideDir = sideDir.Unit
+	end
+	local up = Vector3.yAxis
+	local setupStart = shotTime - 1.85
+	local strikeMoment = shotTime + 0.05
+	if timeNow <= strikeMoment then
+		local alpha = math.clamp((timeNow - setupStart) / math.max(0.01, strikeMoment - setupStart), 0, 1)
+		local eased = alpha * alpha * (3 - 2 * alpha)
+		local target = shooterPos:Lerp(ballPos, 0.45) + up * (5.2 + eased * 1.6)
+		local distance = 72 - eased * 10
+		local height = 27 + eased * 5
+		local sidePan = -16 + eased * 26
+		local position = target - shotDir * distance + sideDir * sidePan + up * height
+		camera.FieldOfView = 54 - eased * 3
+		camera.CFrame = CFrame.lookAt(position, target)
+	else
+		local alpha = math.clamp((timeNow - shotTime) / 3.0, 0, 1)
+		local eased = 1 - (1 - alpha) * (1 - alpha)
+		local target = shooterPos:Lerp(ballPos, 0.58 + eased * 0.24) + up * (5.6 + eased * 2.8)
+		local behindShooter = shooterPos - shotDir * 68 + sideDir * 7 + up * 31
+		local behindBall = ballPos - shotDir * 58 + sideDir * 3 + up * 34
+		local position = behindShooter:Lerp(behindBall, eased * 0.8)
+		camera.FieldOfView = 51 + eased * 3
+		camera.CFrame = CFrame.lookAt(position, target)
+	end
+	viewport.CurrentCamera = camera
+end
+
+function Controller:_startCinematicReplay(replay: any, startTime: number, endTime: number, shotTime: number, finish: () -> ())
+	if replay.Playing or replay.Recording or replay.ReplayFrameCount <= 0 then return end
+	if not replay.ReplayVisible then replay:ShowReplay(true) end
+	replay.Playing = true
+	replay.CustomEvents.ReplayStarted:Fire()
+	local currentTime = startTime
+	local connection: RBXScriptConnection?
+	connection = RunService.RenderStepped:Connect(function(dt)
+		local distanceFromShot = math.abs(currentTime - shotTime)
+		local scale = distanceFromShot <= SHOT_SLOW_WINDOW and SHOT_SLOW_SCALE or 1
+		currentTime += dt * scale
+		if currentTime < endTime then
+			replay:GoToTime(currentTime, true)
+			self:_updateShotReplayCamera(currentTime, shotTime)
+		else
+			replay:GoToTime(endTime, true)
+			self:_updateShotReplayCamera(endTime, shotTime)
+			if connection then connection:Disconnect() end
+			replay.Playing = false
+			replay.CustomEvents.ReplayEnded:Fire()
+			finish()
+		end
+	end)
+	table.insert(replay.Connections, connection)
+end
+
 function Controller:_makeOverlay()
 	local old = self.Player.PlayerGui:FindFirstChild("VTRInstantReplay")
 	if old then old:Destroy() end
@@ -215,10 +323,13 @@ function Controller:PlayGoalReplay(onFinished: (() -> ())?)
 		end
 		replay:StopRecording()
 		local finalTime = replay.Frames[replay.ReplayFrameCount].Time
-		local startTime = math.max(replay.Frames[1].Time, finalTime - REPLAY_SECONDS)
+		local shotTime = tonumber(self.LastShotReplayTime)
+		local hasShotCinematic = shotTime ~= nil and shotTime >= replay.Frames[1].Time and shotTime <= finalTime and finalTime - (shotTime :: number) <= SHOT_PRE_ROLL + SHOT_POST_ROLL + 1.25
+		local startTime = hasShotCinematic and math.max(replay.Frames[1].Time, (shotTime :: number) - SHOT_PRE_ROLL) or math.max(replay.Frames[1].Time, finalTime - REPLAY_SECONDS)
+		local endTime = hasShotCinematic and math.min(finalTime, (shotTime :: number) + SHOT_POST_ROLL) or finalTime
 		local setPieceStart = tonumber(self.LastSetPieceReplayTime)
 		if setPieceStart and finalTime - setPieceStart <= REPLAY_SECONDS + POST_GOAL_RECORD_SECONDS + SET_PIECE_REPLAY_GRACE then
-			startTime = math.max(startTime, setPieceStart)
+			startTime = math.max(replay.Frames[1].Time, math.min(startTime, setPieceStart))
 		end
 		local gui = self:_makeOverlay()
 		replay:CreateViewport(gui)
@@ -258,7 +369,11 @@ function Controller:PlayGoalReplay(onFinished: (() -> ())?)
 				replay:StopReplay()
 			end
 		end)
-		replay:StartReplay(1)
+		if hasShotCinematic then
+			self:_startCinematicReplay(replay,startTime,endTime,shotTime :: number,finish)
+		else
+			replay:StartReplay(1)
+		end
 	end)
 	return true
 end
