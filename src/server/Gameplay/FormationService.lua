@@ -41,6 +41,32 @@ local FORMATIONS = {
 		{Name = "ST", Role = "ST", X = 0, Z = -0.70},
 		{Name = "RW", Role = "Winger", X = 0.72, Z = -0.38},
 	},
+	["3-5-2"] = {
+		{Name = "GK", Role = "GK", X = 0, Z = 0.88},
+		{Name = "LCB", Role = "CB", X = -0.42, Z = 0.64},
+		{Name = "CB", Role = "CB", X = 0, Z = 0.70},
+		{Name = "RCB", Role = "CB", X = 0.42, Z = 0.64},
+		{Name = "RM", Role = "Winger", X = 0.76, Z = 0.05},
+		{Name = "LCM", Role = "CM", X = -0.26, Z = 0.12},
+		{Name = "CDM", Role = "CDM", X = 0, Z = 0.26},
+		{Name = "RCM", Role = "CM", X = 0.26, Z = 0.12},
+		{Name = "LM", Role = "Winger", X = -0.76, Z = 0.05},
+		{Name = "LS", Role = "ST", X = -0.24, Z = -0.62},
+		{Name = "RS", Role = "ST", X = 0.24, Z = -0.62},
+	},
+	["5-3-2"] = {
+		{Name = "GK", Role = "GK", X = 0, Z = 0.88},
+		{Name = "LWB", Role = "Fullback", X = -0.82, Z = 0.44},
+		{Name = "LCB", Role = "CB", X = -0.36, Z = 0.64},
+		{Name = "CB", Role = "CB", X = 0, Z = 0.70},
+		{Name = "RCB", Role = "CB", X = 0.36, Z = 0.64},
+		{Name = "RWB", Role = "Fullback", X = 0.82, Z = 0.44},
+		{Name = "LCM", Role = "CM", X = -0.28, Z = 0.10},
+		{Name = "RCM", Role = "CM", X = 0.28, Z = 0.10},
+		{Name = "CAM", Role = "CAM", X = 0, Z = -0.05},
+		{Name = "LS", Role = "ST", X = -0.24, Z = -0.62},
+		{Name = "RS", Role = "ST", X = 0.24, Z = -0.62},
+	},
 }
 
 function Service.Get(name: string?): {any}

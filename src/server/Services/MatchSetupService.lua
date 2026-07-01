@@ -1,3 +1,4 @@
+local MATCHUP_PANEL_DELAY = 0.85
 --!strict
 local ReplicatedStorage=game:GetService("ReplicatedStorage")
 local MatchConfig=require(ReplicatedStorage.VTR.Shared.MatchConfig)

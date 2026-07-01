@@ -1,3 +1,4 @@
+local MATCHUP_PANEL_DELAY = 0.85
 --!strict
 local Factory=require(script.Parent.MockModeService)
 return Factory.new({Id="Career",Kicker="WRITE YOUR STORY",Title="CAREER",Subtitle="Create a player or manager and shape a long-form career.",Tabs={

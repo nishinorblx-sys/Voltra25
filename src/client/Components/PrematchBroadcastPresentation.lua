@@ -2,6 +2,7 @@
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
+local MATCHUP_PANEL_DELAY = 0.85
 
 local Theme = require(ReplicatedStorage.VTR.Shared.Theme)
 local PlayerPortraitService = require(script.Parent.Parent.Services.PlayerPortraitService)

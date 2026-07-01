@@ -1416,7 +1416,13 @@ function Controller:ShowResult(payload: any, onReturn: () -> ())
 	overlay.Active = true
 	overlay.Selectable = false
 	overlay.Parent = self.Gui
-	local outcome = payload.Home > payload.Away and "VICTORY" or payload.Home < payload.Away and "DEFEAT" or "DRAW"
+	local resultKind = tostring(payload.Result or "")
+	local outcome = resultKind == "Win" and "VICTORY"
+		or resultKind == "Loss" and "DEFEAT"
+		or resultKind == "ForfeitWin" and "VICTORY"
+		or resultKind == "ForfeitLoss" and "FORFEIT"
+		or resultKind == "Draw" and "DRAW"
+		or (payload.Home > payload.Away and "VICTORY" or payload.Home < payload.Away and "DEFEAT" or "DRAW")
 	local won = outcome == "VICTORY"
 	local rewardGlow = Instance.new("Frame")
 	rewardGlow.Name = "RewardGlow"

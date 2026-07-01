@@ -1,3 +1,4 @@
+local MATCHUP_PANEL_DELAY = 0.85
 --!strict
 
 local Players = game:GetService("Players")
@@ -213,7 +214,7 @@ function ServerApp.Start()
 		end
 		return{Success=success,Message=message,Data=data}
 	end
-	Players.PlayerRemoving:Connect(function(player)rankedQueue:PlayerRemoving(player);matchSetup:ReturnToMenu(player);lastRequest[player] = nil;lastProgressionAction[player]=nil;lastLaunchAction[player]=nil;lastSquadAction[player]=nil;lastPlayerData[player]=nil;lastPackAction[player]=nil;lastInventoryAction[player]=nil;lastMatchAction[player]=nil end)
+	Players.PlayerRemoving:Connect(function(player)rankedQueue:PlayerRemoving(player);if matchRuntime.PlayerRemoving then matchRuntime:PlayerRemoving(player)else matchSetup:ReturnToMenu(player)end;lastRequest[player] = nil;lastProgressionAction[player]=nil;lastLaunchAction[player]=nil;lastSquadAction[player]=nil;lastPlayerData[player]=nil;lastPackAction[player]=nil;lastInventoryAction[player]=nil;lastMatchAction[player]=nil end)
 
 	-- Public server API for future gameplay systems. Nothing here is exposed as
 	-- a client-controlled mutation remote.

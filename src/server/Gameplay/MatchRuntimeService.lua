@@ -1343,14 +1343,30 @@ function Service:EndMatch(player:Player,showResult:boolean):boolean
 		local gameSeconds=session.Clock:Payload().GameSeconds
 		local rewards=session.OnBeforeResult and session.OnBeforeResult(session)or{}
 		local resultStats=session.Stats:Serialize(session.World.HomeScore.Value,session.World.AwayScore.Value,gameSeconds)
-		for _,participant in session.Players do self.State:FireClient(participant,{Type="MatchEnded",Ranked=session.Ranked,Home=session.World.HomeScore.Value,Away=session.World.AwayScore.Value,Stats=resultStats,Reward=rewards and rewards[participant.UserId]or nil})end
+		for _,participant in session.Players do
+			local side=session.PlayerSides[participant]or"Home"
+			local homeScore=session.World.HomeScore.Value
+			local awayScore=session.World.AwayScore.Value
+			local result="Draw"
+			if session.ForfeitBy==participant.UserId then
+				result="ForfeitLoss"
+			elseif session.ForfeitBy then
+				result="ForfeitWin"
+			elseif homeScore~=awayScore then
+				local sideWon=(side=="Home"and homeScore>awayScore)or(side=="Away"and awayScore>homeScore)
+				result=sideWon and"Win"or"Loss"
+			end
+			if participant.Parent==Players then
+				self.State:FireClient(participant,{Type="MatchEnded",Ranked=session.Ranked,LocalSide=side,Result=result,Forfeit=session.ForfeitBy~=nil,Home=homeScore,Away=awayScore,Stats=resultStats,Reward=rewards and rewards[participant.UserId]or nil})
+			end
+		end
 		if session.OnRankedEnded then task.defer(session.OnRankedEnded,session)end
 		if session.OnCompleted then task.defer(session.OnCompleted,session)end
 		task.defer(function()
 			for _,participant in session.Players or{player}do
 				local character=participant.Character;local state=session.PlayerState and session.PlayerState[participant]
 				if character then local accountRoot=character:FindFirstChild("HumanoidRootPart")::BasePart?;if accountRoot then accountRoot.Anchored=false end;character:SetAttribute("VTRParked",nil);character:SetAttribute("VTRSession",nil);character:SetAttribute("VTRSprinting",nil);character:PivotTo(state and state.ReturnCFrame or CFrame.new(0,8,0));local humanoid=character:FindFirstChildOfClass("Humanoid");if humanoid then humanoid.WalkSpeed=state and state.PreviousSpeed or 16;humanoid.JumpPower=state and state.PreviousJump or 50;humanoid.AutoRotate=true end end
-				session.TeamControl:Destroy(participant);self.Sessions[participant]=nil;participant:SetAttribute("VTRInMatch",false)
+				session.TeamControl:Destroy(participant);self.Sessions[participant]=nil;if participant.Parent==Players then participant:SetAttribute("VTRInMatch",false)end
 			end
 			if session.LinkDebug then session.LinkDebug:Destroy()end;if session.AI then session.AI:Destroy()end;if session.Animations then session.Animations:Destroy()end;if session.OfficialAnimations then session.OfficialAnimations:Destroy()end;if session.World and session.World.Folder and session.World.Folder.Parent then session.World.Folder:Destroy()end
 		end)
@@ -1365,4 +1381,22 @@ function Service:EndMatch(player:Player,showResult:boolean):boolean
 	return true
 end
 function Service:ReturnToMenu(player:Player):boolean return self:EndMatch(player,false)end
+
+function Service:PlayerRemoving(player:Player)
+	local session=self.Sessions[player]
+	if not session then return end
+	if not session.Ended and session.Running and session.Ranked then
+		local side=session.PlayerSides[player]or"Home"
+		local opponentSide=side=="Home"and"Away"or"Home"
+		if opponentSide=="Home"then
+			session.World.HomeScore.Value=math.max(session.World.HomeScore.Value,session.World.AwayScore.Value+3)
+		else
+			session.World.AwayScore.Value=math.max(session.World.AwayScore.Value,session.World.HomeScore.Value+3)
+		end
+		session.ForfeitBy=player.UserId
+		self:EndMatch(session.StepOwner,true)
+	else
+		self:EndMatch(player,false)
+	end
+end
 return Service

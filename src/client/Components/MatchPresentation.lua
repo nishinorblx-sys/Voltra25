@@ -1,3 +1,4 @@
+local MATCHUP_PANEL_DELAY = 0.85
 --!strict
 local Players=game:GetService("Players")
 local ReplicatedStorage=game:GetService("ReplicatedStorage")
@@ -24,6 +25,12 @@ function Presentation.play(root:Frame,setup:any,home:any,away:any,onReturn:(()->
 	setMenuVisible(root,false)
 	local homeKit=home.kits[setup.HomeKit]or home.kits.Home;local awayKit=away.kits[setup.AwayKit]or away.kits.Away
 	local overlay=Instance.new("CanvasGroup");overlay.Name="MatchStartPresentation";overlay.BackgroundColor3=Theme.Colors.Black;overlay.BorderSizePixel=0;overlay.Size=UDim2.fromScale(1,1);overlay.GroupTransparency=1;overlay.ZIndex=180;overlay.Parent=root
+	overlay.Visible = false
+	task.delay(MATCHUP_PANEL_DELAY, function()
+		if overlay.Parent then
+			overlay.Visible = true
+		end
+	end)
 	local stadiumWash=Instance.new("Frame");stadiumWash.BackgroundColor3=Theme.Colors.Pitch;stadiumWash.BackgroundTransparency=.3;stadiumWash.BorderSizePixel=0;stadiumWash.Position=UDim2.fromScale(.08,.12);stadiumWash.Size=UDim2.fromScale(.84,.76);stadiumWash.ZIndex=181;stadiumWash.Parent=overlay;local washCorner=Instance.new("UICorner");washCorner.CornerRadius=UDim.new(0,14);washCorner.Parent=stadiumWash
 	label(overlay,"VTR 25  /  MATCHDAY",UDim2.fromScale(.1,.07),UDim2.fromScale(.8,.05),10,Theme.Colors.Electric,Theme.Fonts.Strong)
 	local status=label(overlay,"MATCHUP CONFIRMED",UDim2.fromScale(.1,.14),UDim2.fromScale(.8,.07),25,Theme.Colors.White,Theme.Fonts.Display)
