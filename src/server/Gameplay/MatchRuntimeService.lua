@@ -594,7 +594,7 @@ function Service:_openPause(session:any,requester:Player?)
 	if session.Ended or session.Paused then return end
 	local remaining=requester and session.PauseSecondsByPlayer and session.PauseSecondsByPlayer[requester] or 60
 	if remaining<=0 then
-		if requester then self.State:FireClient(requester,{Type="Info",Message="No pause time available until the next 15-minute window.",Important=true})end
+		if requester then self.State:FireClient(requester,{Type="Info",Message="No pause time available until the next 30-minute window.",Important=true})end
 		return
 	end
 	session.Paused=true
@@ -1330,7 +1330,7 @@ function Service:_step(dt:number)
 		end
 		if not session.Running then continue end
 		session.Accumulator+=dt;session.Clock:Step(dt)
-		local grantIndex=math.floor((session.Clock:Payload().GameSeconds or 0)/900)
+		local grantIndex=math.floor((session.Clock:Payload().GameSeconds or 0)/1800)
 		if grantIndex>(session.PauseGrantIndex or 0)then
 			for _,participant in session.Players do
 				session.PauseSecondsByPlayer[participant]=(session.PauseSecondsByPlayer[participant] or 0)+60*(grantIndex-(session.PauseGrantIndex or 0))

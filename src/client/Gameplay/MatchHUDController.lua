@@ -71,6 +71,69 @@ local function badgeColor(value: any, fallback: Color3): Color3
 	return fallback
 end
 
+local function applyBadgeArt(container: GuiObject, primary: Color3, accent: Color3?)
+	container.ClipsDescendants = true
+	if container:IsA("TextLabel") or container:IsA("TextButton") then
+		container.Text = ""
+	end
+	for _, child in container:GetChildren() do
+		if child.Name == "BadgeArt" then child:Destroy() end
+	end
+	local art = Instance.new("Frame")
+	art.Name = "BadgeArt"
+	art.BackgroundTransparency = 1
+	art.Size = UDim2.fromScale(1, 1)
+	art.ZIndex = container.ZIndex + 1
+	art.Parent = container
+	local shield = Instance.new("Frame")
+	shield.Name = "Shield"
+	shield.AnchorPoint = Vector2.new(.5, .5)
+	shield.Position = UDim2.fromScale(.5, .5)
+	shield.Size = UDim2.fromScale(.74, .82)
+	shield.BackgroundColor3 = primary
+	shield.BorderSizePixel = 0
+	shield.ZIndex = art.ZIndex + 1
+	shield.Parent = art
+	local shieldCorner = Instance.new("UICorner")
+	shieldCorner.CornerRadius = UDim.new(.18, 0)
+	shieldCorner.Parent = shield
+	local stripe = Instance.new("Frame")
+	stripe.Name = "Stripe"
+	stripe.AnchorPoint = Vector2.new(.5, .5)
+	stripe.Position = UDim2.fromScale(.5, .5)
+	stripe.Size = UDim2.fromScale(.28, 1.12)
+	stripe.Rotation = -18
+	stripe.BackgroundColor3 = accent or Color3.fromHex("F5F7F2")
+	stripe.BackgroundTransparency = .05
+	stripe.BorderSizePixel = 0
+	stripe.ZIndex = shield.ZIndex + 1
+	stripe.Parent = shield
+	local cap = Instance.new("Frame")
+	cap.Name = "Cap"
+	cap.Position = UDim2.fromScale(.13, .08)
+	cap.Size = UDim2.fromScale(.74, .22)
+	cap.BackgroundColor3 = Color3.fromHex("F5F7F2")
+	cap.BackgroundTransparency = .08
+	cap.BorderSizePixel = 0
+	cap.ZIndex = shield.ZIndex + 2
+	cap.Parent = shield
+	local point = Instance.new("Frame")
+	point.Name = "Point"
+	point.AnchorPoint = Vector2.new(.5, 1)
+	point.Position = UDim2.fromScale(.5, 1.06)
+	point.Size = UDim2.fromScale(.42, .28)
+	point.Rotation = 45
+	point.BackgroundColor3 = primary:Lerp(Color3.fromHex("050505"), .24)
+	point.BorderSizePixel = 0
+	point.ZIndex = shield.ZIndex
+	point.Parent = shield
+	local outline = Instance.new("UIStroke")
+	outline.Color = Color3.fromHex("F5F7F2")
+	outline.Transparency = .18
+	outline.Thickness = 1
+	outline.Parent = shield
+end
+
 local function actionButton(parent: Instance, text: string, order: number, callback: () -> ()): TextButton
 	local button = Instance.new("TextButton")
 	button.Name = text
@@ -168,9 +231,9 @@ function Controller.new(data: any)
 	local awayCode = label(main, shortCode(data.Away), UDim2.fromOffset(5, 19), UDim2.fromOffset(34, 18), 12)
 	awayCode.TextColor3 = Theme.Colors.White
 	local homeBadge = label(main, string.sub(tostring(data.HomeLogo or shortCode(data.Home)), 1, 2), UDim2.fromOffset(41, 3), UDim2.fromOffset(14, 11), 6)
-	homeBadge.TextXAlignment = Enum.TextXAlignment.Center;homeBadge.BackgroundColor3=badgeColor(data.HomeColor,Theme.Colors.Electric);homeBadge.BackgroundTransparency=0;homeBadge.TextColor3=Theme.Colors.Black
+	homeBadge.TextXAlignment = Enum.TextXAlignment.Center;homeBadge.BackgroundColor3=badgeColor(data.HomeColor,Theme.Colors.Electric);homeBadge.BackgroundTransparency=0;homeBadge.TextColor3=Theme.Colors.Black;applyBadgeArt(homeBadge,badgeColor(data.HomeColor,Theme.Colors.Electric),Theme.Colors.White)
 	local awayBadge = label(main, string.sub(tostring(data.AwayLogo or shortCode(data.Away)), 1, 2), UDim2.fromOffset(41, 22), UDim2.fromOffset(14, 11), 6)
-	awayBadge.TextXAlignment = Enum.TextXAlignment.Center;awayBadge.BackgroundColor3=badgeColor(data.AwayColor,Theme.Colors.Silver);awayBadge.BackgroundTransparency=0;awayBadge.TextColor3=Theme.Colors.Black
+	awayBadge.TextXAlignment = Enum.TextXAlignment.Center;awayBadge.BackgroundColor3=badgeColor(data.AwayColor,Theme.Colors.Silver);awayBadge.BackgroundTransparency=0;awayBadge.TextColor3=Theme.Colors.Black;applyBadgeArt(awayBadge,badgeColor(data.AwayColor,Theme.Colors.Silver),Theme.Colors.Electric)
 	local homeScoreLabel = label(main, "0", UDim2.fromOffset(86, 0), UDim2.fromOffset(18, 18), 12)
 	homeScoreLabel.TextXAlignment = Enum.TextXAlignment.Center
 	local awayScoreLabel = label(main, "0", UDim2.fromOffset(86, 19), UDim2.fromOffset(18, 18), 12)
@@ -223,7 +286,7 @@ function Controller.new(data: any)
 	local activePanel = panel(gui, UDim2.new(0, 22, 1, -92), UDim2.fromOffset(270, 64))
 	activePanel.Visible = false
 	local activeBadge = label(activePanel,string.sub(tostring(data.HomeLogo or shortCode(data.Home)),1,2),UDim2.fromOffset(8,11),UDim2.fromOffset(42,42),13)
-	activeBadge.TextXAlignment=Enum.TextXAlignment.Center;activeBadge.BackgroundColor3=badgeColor(data.HomeColor,Theme.Colors.Electric);activeBadge.BackgroundTransparency=0.08;activeBadge.TextColor3=Theme.Colors.Black;corner(activeBadge,21)
+	activeBadge.TextXAlignment=Enum.TextXAlignment.Center;activeBadge.BackgroundColor3=badgeColor(data.HomeColor,Theme.Colors.Electric);activeBadge.BackgroundTransparency=0.08;activeBadge.TextColor3=Theme.Colors.Black;corner(activeBadge,21);applyBadgeArt(activeBadge,badgeColor(data.HomeColor,Theme.Colors.Electric),Theme.Colors.White)
 	local activeName = label(activePanel, "ACTIVE PLAYER", UDim2.fromOffset(60, 34), UDim2.new(1, -70, 0, 20), 12)
 	local activeState = label(activePanel, "ST  9", UDim2.fromOffset(60, 7), UDim2.new(1, -70, 0, 17), 9)
 	activeState.TextColor3 = Theme.Colors.Electric
@@ -289,6 +352,22 @@ function Controller.new(data: any)
 	help.TextXAlignment = Enum.TextXAlignment.Center
 	help.TextColor3 = Theme.Colors.Silver
 	help.Visible = false
+	local pauseButton = Instance.new("TextButton")
+	pauseButton.Name = "PauseQueueButton"
+	pauseButton.AnchorPoint = Vector2.new(1, 0)
+	pauseButton.Position = UDim2.new(1, -22, 0, 58)
+	pauseButton.Size = UDim2.fromOffset(142, 36)
+	pauseButton.BackgroundColor3 = Theme.Colors.Electric
+	pauseButton.BorderSizePixel = 0
+	pauseButton.AutoButtonColor = true
+	pauseButton.Text = data.Ranked and "QUEUE PAUSE" or "PAUSE"
+	pauseButton.TextColor3 = Theme.Colors.Black
+	pauseButton.TextSize = 10
+	pauseButton.Font = Theme.Fonts.Display
+	pauseButton.ZIndex = 42
+	pauseButton.Visible = data.WatchMode ~= true
+	pauseButton.Parent = gui
+	corner(pauseButton, 6)
 	local result=setmetatable({
 		Gui = gui,
 		Board = board,
@@ -330,6 +409,7 @@ function Controller.new(data: any)
 		TargetKicker = targetKicker,
 		PressureFill = pressureFill,
 		Help = help,
+		PauseButton = pauseButton,
 		Home = data.Home,
 		Away = data.Away,
 		HomeLineup = data.HomeLineup or {},
@@ -339,10 +419,18 @@ function Controller.new(data: any)
 		PitchWidth = data.PitchWidth or 80,
 		PitchLength = data.PitchLength or 120,
 	}, Controller)
+	if pauseButton then
+		pauseButton.Activated:Connect(function()
+			if result.PauseButtonCallback then result.PauseButtonCallback() end
+		end)
+	end
 	return result
 end
 
-function Controller:SetPauseButtonCallback(callback:()->())self.PauseButtonCallback=callback end
+function Controller:SetPauseButtonCallback(callback:()->())
+	self.PauseButtonCallback=callback
+	if self.PauseButton then self.PauseButton.Visible=true end
+end
 
 function Controller:_lineupEntryForModel(model: Model?): any?
 	if not model then return nil end
@@ -846,6 +934,10 @@ function Controller:ShowPauseQueue(playerName:string,queued:boolean)
 	box.BackgroundTransparency=.08
 	self.PauseQueueBanner=box
 	local text=queued and(string.upper(playerName).." QUEUED A PAUSE")or(string.upper(playerName).." CANCELLED PAUSE QUEUE")
+	if self.PauseButton then
+		self.PauseButton.Text = queued and "CANCEL PAUSE" or "QUEUE PAUSE"
+		self.PauseButton.BackgroundColor3 = queued and Theme.Colors.Silver or Theme.Colors.Electric
+	end
 	local line=label(box,text,UDim2.fromOffset(12,7),UDim2.new(1,-24,1,-14),11)
 	line.TextXAlignment=Enum.TextXAlignment.Center
 	line.TextColor3=queued and Theme.Colors.Electric or Theme.Colors.Silver
@@ -1105,7 +1197,7 @@ function Controller:SetPaused(paused: boolean, _cameraController: any, onReturn:
 		content.Size=UDim2.new(.68,0,.84,0);content.Position=UDim2.new(.28,0,.08,0)
 		local canvas=Instance.new("Frame");canvas.BackgroundTransparency=1;canvas.Size=UDim2.new(1,-8,0,560);canvas.ZIndex=98;canvas.Parent=body
 		local pitch=panel(canvas,UDim2.fromOffset(0,0),UDim2.new(.62,-8,0,380));pitch.ZIndex=98;pitch.BackgroundColor3=Color3.fromHex("07130C");pitch.BackgroundTransparency=.04
-		local pitchTitle=label(pitch,"SQUAD  /  FORMATION 4-3-3",UDim2.fromOffset(14,10),UDim2.new(1,-28,0,18),9);pitchTitle.TextColor3=Theme.Colors.Electric
+		local pitchTitle=label(pitch,"SQUAD  /  FORMATION",UDim2.fromOffset(14,10),UDim2.new(1,-28,0,18),9);pitchTitle.TextColor3=Theme.Colors.Electric
 		local details=panel(canvas,UDim2.new(.62,8,0,0),UDim2.new(.38,-8,0,380));details.ZIndex=98;details.BackgroundTransparency=.09
 		local detailsTitle=label(details,"PLAYER INFO",UDim2.fromOffset(16,12),UDim2.new(1,-32,0,20),11);detailsTitle.TextColor3=Theme.Colors.Electric
 		local detailsHolder=Instance.new("Frame");detailsHolder.BackgroundTransparency=1;detailsHolder.Position=UDim2.fromOffset(16,46);detailsHolder.Size=UDim2.new(1,-32,1,-62);detailsHolder.ZIndex=100;detailsHolder.Parent=details
@@ -1127,14 +1219,34 @@ function Controller:SetPaused(paused: boolean, _cameraController: any, onReturn:
 		end
 		setDetails(nil)
 		local homeLine=lineups[controlledSide] or lineups.Home or{}
-		local coords={GK=Vector2.new(.50,.86),LB=Vector2.new(.18,.68),CB=Vector2.new(.38,.68),CB2=Vector2.new(.62,.68),RB=Vector2.new(.82,.68),CDM=Vector2.new(.50,.52),CM=Vector2.new(.32,.43),CM2=Vector2.new(.68,.43),LW=Vector2.new(.18,.22),ST=Vector2.new(.50,.16),RW=Vector2.new(.82,.22)}
-		local used:any={}
+		local roleCounts:any={}
+		for i,entry in homeLine do
+			if i>11 then break end
+			local pos=string.upper(tostring(entry.Position or entry.bestPosition or""))
+			local band=(pos=="GK"and"GK")or((pos=="LB"or pos=="LWB")and"LEFTBACK")or((pos=="RB"or pos=="RWB")and"RIGHTBACK")or(pos=="CB"and"CB")or(pos=="CDM"and"CDM")or(pos=="CM"and"CM")or(pos=="CAM"and"CAM")or((pos=="LM"or pos=="LW")and"LEFTWIDE")or((pos=="RM"or pos=="RW")and"RIGHTWIDE")or((pos=="ST"or pos=="CF"or pos=="SS")and"ST")or"OTHER"
+			roleCounts[band]=(roleCounts[band]or 0)+1
+		end
+		local roleSeen:any={}
+		local function spreadX(band:string,base:number):number
+			roleSeen[band]=(roleSeen[band]or 0)+1
+			local count=roleCounts[band]or 1
+			if count<=1 then return base end
+			local gap=math.min(.22,.68/math.max(1,count-1))
+			return math.clamp(base+(roleSeen[band]-(count+1)/2)*gap,.10,.90)
+		end
 		local function coordFor(entry:any,index:number):Vector2
-			local pos=string.upper(tostring(entry.Position or""))
-			if pos=="CB"and used.CB then pos="CB2"end
-			if pos=="CM"and used.CM then pos="CM2"end
-			used[pos]=true
-			return coords[pos]or Vector2.new(.18+((index-1)%4)*.21,.28+math.floor((index-1)/4)*.18)
+			local pos=string.upper(tostring(entry.Position or entry.bestPosition or""))
+			if pos=="GK"then return Vector2.new(.50,.88)end
+			if pos=="LB"or pos=="LWB"then return Vector2.new(.17,.68)end
+			if pos=="RB"or pos=="RWB"then return Vector2.new(.83,.68)end
+			if pos=="CB"then return Vector2.new(spreadX("CB",.50),.70)end
+			if pos=="CDM"then return Vector2.new(spreadX("CDM",.50),.55)end
+			if pos=="CM"then return Vector2.new(spreadX("CM",.50),.44)end
+			if pos=="CAM"then return Vector2.new(spreadX("CAM",.50),.34)end
+			if pos=="LM"or pos=="LW"then return Vector2.new(.18,pos=="LM"and.34 or.23)end
+			if pos=="RM"or pos=="RW"then return Vector2.new(.82,pos=="RM"and.34 or.23)end
+			if pos=="ST"or pos=="CF"or pos=="SS"then return Vector2.new(spreadX("ST",.50),.16)end
+			return Vector2.new(.18+((index-1)%4)*.21,.28+math.floor((index-1)/4)*.18)
 		end
 		for index,entry in homeLine do
 			if index>11 then break end
@@ -1196,7 +1308,7 @@ function Controller:SetPaused(paused: boolean, _cameraController: any, onReturn:
 		local pitch=panel(page,UDim2.fromOffset(28,100),UDim2.new(.58,-42,.62,0));pitch.ZIndex=131;pitch.BackgroundColor3=Color3.fromHex("07170B");pitch.BackgroundTransparency=.03
 		local info=panel(page,UDim2.new(.60,0,0,100),UDim2.new(.37,0,.62,0));info.ZIndex=131;info.BackgroundTransparency=.07
 		local benchPanel=panel(page,UDim2.new(0,28,.75,0),UDim2.new(.94,0,.18,0));benchPanel.ZIndex=131;benchPanel.BackgroundTransparency=.08
-		label(pitch,"4-3-3",UDim2.fromOffset(14,12),UDim2.new(1,-28,0,20),10).TextColor3=Theme.Colors.Electric
+		label(pitch,"FORMATION",UDim2.fromOffset(14,12),UDim2.new(1,-28,0,20),10).TextColor3=Theme.Colors.Electric
 		label(benchPanel,"SUBSTITUTES",UDim2.fromOffset(16,10),UDim2.new(1,-32,0,18),10).TextColor3=Theme.Colors.Electric
 		local infoHolder=Instance.new("Frame");infoHolder.BackgroundTransparency=1;infoHolder.Position=UDim2.fromOffset(20,44);infoHolder.Size=UDim2.new(1,-40,1,-64);infoHolder.ZIndex=134;infoHolder.Parent=info
 		label(info,"PLAYER INFO",UDim2.fromOffset(20,16),UDim2.new(1,-40,0,20),11).TextColor3=Theme.Colors.Electric
