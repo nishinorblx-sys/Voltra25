@@ -33,8 +33,6 @@ function Service:Step(model: Model, dt: number, state: any): (number,number)
 	local sprinting = controlled and not sprintLocked and state.Sprinting == true and (tonumber(state.MoveMagnitude) or 0) > 0.1
 	local speed = math.max(0, tonumber(state.CurrentSpeed) or 0)
 	local quality = math.clamp((staminaStat - 35) / 64, 0, 1)
-	local endurance = Config.Maximum
-
 	if sprinting then
 		sprintDuration += dt
 		local speedModifier = 0.9 + math.clamp(speed / 30, 0, 1) * 0.16
@@ -51,19 +49,17 @@ function Service:Step(model: Model, dt: number, state: any): (number,number)
 		end
 		reserve = math.min(Config.Maximum, reserve + recovery * dt)
 	end
-
 	if reserve <= .05 then
 		sprintLocked = true
 	elseif sprintLocked and reserve >= Config.ExhaustedRecoveryThreshold then
 		sprintLocked = false
 	end
-
-	model:SetAttribute("VTREndurance", Config.Maximum)
+	model:SetAttribute("VTREndurance", reserve)
 	model:SetAttribute("VTRSprintStamina", reserve)
 	model:SetAttribute("VTRStamina", reserve)
 	model:SetAttribute("VTRSprintDuration", sprintDuration)
 	model:SetAttribute("VTRSprintLocked", sprintLocked)
-	return reserve, Config.Maximum
+	return reserve, reserve
 end
 
 return Service

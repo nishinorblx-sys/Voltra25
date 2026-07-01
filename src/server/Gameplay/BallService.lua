@@ -551,6 +551,7 @@ function Service:_applyLoosePhysics(dt: number)
 end
 
 function Service:Step(dt: number)
+	if self.Ball:GetAttribute("VTRWorldPaused")==true then return end
 	local owner = self.Possession:GetOwner()
 	if owner then
 		self.Ball:SetAttribute("VTRMotionKind","Dribble")

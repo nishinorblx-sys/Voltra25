@@ -61,7 +61,7 @@ end
 local function startIntroAudio(gui: ScreenGui)
 	stopIntroAudio()
 	table.insert(activeIntroSounds, playPresentationSound(INTRO_BACKGROUND_SOUND, .34, true))
-	table.insert(activeIntroSounds, playPresentationSound(INTRO_TRACKS[math.random(1, #INTRO_TRACKS)], .58, false))
+	table.insert(activeIntroSounds, playPresentationSound(INTRO_TRACKS[math.random(1, #INTRO_TRACKS)], .58, true))
 	gui.Destroying:Connect(stopIntroAudio)
 end
 
@@ -1188,8 +1188,7 @@ function Presentation.Play(data: any, onComplete: (() -> ())?)
 		slideOut(kickoff, UDim2.fromScale(0.18, 1.04), 0.28)
 	end)
 	task.delay(TOTAL_DURATION, function()
-		stopIntroAudio()
-		stopPresentationSound()
+		Presentation.StopAudio()
 		if gui.Parent then gui:Destroy() end
 		if onComplete then onComplete() end
 	end)

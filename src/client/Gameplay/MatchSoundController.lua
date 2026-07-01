@@ -14,14 +14,17 @@ local GOAL_COMMENTATORS = {
 	"rbxassetid://85367905011258",
 	"rbxassetid://117754134274157",
 	"rbxassetid://72037349498821",
+	"rbxassetid://95283998273205",
+	"rbxassetid://135072046987673",
 }
-local FINAL_WHISTLE = "rbxassetid://72085323238660"
+local FINAL_WHISTLE = "rbxassetid://135741471105087"
 local DRIBBLE_SOUND = "rbxassetid://108878640377793"
 
 local GOAL_SOUNDS = {
 	"rbxassetid://78442706550929",
 	"rbxassetid://119353871044168",
 	"rbxassetid://106000542837895",
+	"rbxassetid://75642333208760",
 }
 
 local function playOneShot(soundId: string, volume: number, speed: number?)
@@ -64,6 +67,7 @@ function Controller.new(ball: BasePart, teamModels: any)
 	self.Models = allModels(teamModels)
 	self.MatchActive = false
 	self.LastDribble = 0
+	self.LastGoalSfxAt = 0
 	self.Connection = nil
 	return self
 end
@@ -88,10 +92,21 @@ function Controller:PlayKickoff()
 end
 
 function Controller:PlayGoal()
-	playOneShot(GOAL_SOUNDS[math.random(1, #GOAL_SOUNDS)], 0.7, 1)
-	task.delay(0.22, function()
+	if os.clock() - (self.LastGoalSfxAt or 0) > .75 then
+		self.LastGoalSfxAt = os.clock()
+		playOneShot(GOAL_SOUNDS[math.random(1, #GOAL_SOUNDS)], 0.7, 1)
+		playOneShot("rbxassetid://75642333208760", 0.58, 1)
+	end
+	task.delay(0.12, function()
 		playOneShot(GOAL_COMMENTATORS[math.random(1, #GOAL_COMMENTATORS)], 0.76, 1)
 	end)
+end
+
+function Controller:PlayGoalPreview()
+	if os.clock() - (self.LastGoalSfxAt or 0) <= .75 then return end
+	self.LastGoalSfxAt = os.clock()
+	playOneShot(GOAL_SOUNDS[math.random(1, #GOAL_SOUNDS)], 0.64, 1)
+	playOneShot("rbxassetid://75642333208760", 0.52, 1)
 end
 
 function Controller:PlayFinalWhistle()

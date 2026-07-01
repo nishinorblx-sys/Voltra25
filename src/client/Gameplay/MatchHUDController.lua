@@ -683,9 +683,12 @@ function Controller:SetState(_value: string)
 end
 
 function Controller:SetStamina(value: number,endurance:number?)
-	local enduranceRatio=math.clamp(endurance or 1,0,1);local reserveRatio=math.clamp(value,0,enduranceRatio)
-	self.EnduranceFill.Size=UDim2.fromScale(enduranceRatio,1)
-	self.Fill.Size=UDim2.fromScale(enduranceRatio>.001 and reserveRatio/enduranceRatio or 0,.5)
+	local reserveRatio=math.clamp(value,0,1)
+	if self.EnduranceFill then
+		self.EnduranceFill.Visible=false
+		self.EnduranceFill.Size=UDim2.fromScale(1,1)
+	end
+	self.Fill.Size=UDim2.fromScale(reserveRatio,1)
 end
 
 function Controller:SetOpponent(model: Model?)

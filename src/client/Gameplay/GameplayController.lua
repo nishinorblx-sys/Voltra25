@@ -59,11 +59,61 @@ local function clearGreenScreenEffects()
 		Lighting.ColorShift_Bottom = Color3.new(0, 0, 0)
 	end
 end
+local function clearGreenScreenEffects()
+	local function cleanContainer(container: Instance)
+		for _, inst in ipairs(container:GetDescendants()) do
+			if inst:IsA("ColorCorrectionEffect") then
+				inst.Enabled = false
+				inst.TintColor = Color3.new(1,1,1)
+				inst.Saturation = 0
+				inst.Contrast = 0
+				inst.Brightness = 0
+			elseif inst:IsA("Atmosphere") then
+				local color = inst.Color
+				local decay = inst.Decay
+				if color.G > color.R + .06 and color.G > color.B + .06 then
+					inst.Color = Color3.fromRGB(198, 198, 198)
+				end
+				if decay.G > decay.R + .06 and decay.G > decay.B + .06 then
+					inst.Decay = Color3.fromRGB(106, 112, 120)
+				end
+			end
+		end
+	end
+	cleanContainer(Lighting)
+	if workspace.CurrentCamera then cleanContainer(workspace.CurrentCamera) end
+	Lighting.ColorShift_Top = Color3.new(0,0,0)
+	Lighting.ColorShift_Bottom = Color3.new(0,0,0)
+	local playerGui = Players.LocalPlayer:FindFirstChild("PlayerGui")
+	if playerGui then
+		local screenSize = workspace.CurrentCamera and workspace.CurrentCamera.ViewportSize or Vector2.new(1920,1080)
+		for _, item in ipairs(playerGui:GetDescendants()) do
+			if item:IsA("GuiObject") then
+				local color = item.BackgroundColor3
+				local huge = item.AbsoluteSize.X >= screenSize.X * .72 and item.AbsoluteSize.Y >= screenSize.Y * .72
+				local green = color.G > color.R + .08 and color.G > color.B + .08
+				if huge and green and item.BackgroundTransparency < 1 then
+					item.BackgroundTransparency = 1
+					item.Visible = false
+				end
+			end
+		end
+	end
+end
+
 local function setMenuVisible(visible:boolean)
-	local gui=Players.LocalPlayer.PlayerGui:FindFirstChild("VTR25");local root=gui and gui:FindFirstChild("Root");if not root or not root:IsA("Frame")then return end
+	local gui=Players.LocalPlayer.PlayerGui:FindFirstChild("VTR25")
+	if gui and gui:IsA("ScreenGui") then gui.Enabled=true end
+	local root=gui and gui:FindFirstChild("Root")
+	if not root or not root:IsA("Frame")then return end
+	root.Visible=true
 	root.BackgroundTransparency=visible and 0 or 1
-	local energy=root:FindFirstChild("BackgroundEnergy");if energy and energy:IsA("GuiObject")then energy.Visible=visible end
-	for _,name in{"Sidebar","Topbar","Content"}do local item=root:FindFirstChild(name);if item and item:IsA("GuiObject")then item.Visible=visible end end
+	local energy=root:FindFirstChild("BackgroundEnergy")
+	if energy and energy:IsA("GuiObject")then energy.Visible=visible end
+	for _,name in{"Sidebar","Topbar","Content"}do
+		local item=root:FindFirstChild(name)
+		if item and item:IsA("GuiObject")then item.Visible=visible end
+	end
 end
 local TACTIC_DEBUG_GROUPS:{[string]:string}={
 	AttackingWidth="Width",DefensiveWidth="Width",WidthDiscipline="Width",
@@ -402,6 +452,7 @@ function Controller:_state(payload:any)
 	elseif payload.Type=="GoalkeeperSave"then if self.HUD then self.HUD:ResolveShotChance(false)end;if self.Visual then self.Visual:StopShotTrail()end;if self.GoalTarget then self.GoalTarget:Unlock()end;if self.Camera and self.Camera.EndCutscene then task.delay(1.5,function()if self.Camera then self.Camera:EndCutscene()end end)end;self.HUD:Flash("GREAT SAVE",.9)
 	elseif payload.Type=="Clock"then workspace:SetAttribute("VTRMatchHalf",tonumber(payload.Half)or 1);self.Stamina=tonumber(payload.Stamina)or self.Stamina;self.Endurance=tonumber(payload.Endurance)or self.Endurance;self.HUD:SetClock(payload.GameSeconds or 0,payload.Home,payload.Away,payload.AddedMinutes,payload.InAddedTime,payload.AddedElapsed);self.HUD:UpdateActiveRating()
 	elseif payload.Type=="Kickoff"then if self.MatchSounds then self.MatchSounds:PlayKickoff()end;if self.Visual then self.Visual:StopShotTrail()end;self.HUD:Flash("Kick Off",1)
+	elseif payload.Type=="GoalSoundPreview"then if self.MatchSounds and self.MatchSounds.PlayGoalPreview then self.MatchSounds:PlayGoalPreview()end
 	elseif payload.Type=="Goal"then if self.MatchSounds then self.MatchSounds:PlayGoal()end;if self.CrowdAmbience then self.CrowdAmbience:Boost(3.2)end;if self.HUD then self.HUD:ResolveShotChance(true)end;self.MatchInPlay=false;if self.Visual then self.Visual:ClearLock();self.Visual:HoldShotTrail()end;if self.GoalTarget then self.GoalTarget:Unlock()end;if self.Trainer then self.Trainer:SetMatchActive(false)end;self.Minimap:SetMatchActive(false);self.AimLine:SetMatchActive(false);self.GoalTarget:SetMatchActive(false);self.HUD:SetClock(payload.GameSeconds or 0,payload.Home,payload.Away,payload.AddedMinutes,payload.InAddedTime,payload.AddedElapsed);self.HUD:RememberGoalScorer(payload);self.ReplayBlocking=true;self.ReplayQueuedPayloads={};self.ReplayQueuedClock=nil;if self.ReplayController then self.ReplayController:PlayGoalReplay(function()self:_finishGoalPresentation(payload)end)else self:_finishGoalPresentation(payload)end
 	elseif payload.Type=="Info"then if payload.Important==true then self.HUD:Flash(payload.Message,1.3)end
 	elseif payload.Type=="MatchEnded"then
@@ -439,7 +490,10 @@ function Controller:_state(payload:any)
 end
 function Controller:_cleanup(restoreMenu:boolean)
 	RunService:UnbindFromRenderStep("VTRMatchGameplay");if self.PauseConnection then self.PauseConnection:Disconnect();self.PauseConnection=nil end;if self.CornerAim then self.CornerAim:Destroy();self.CornerAim=nil end;if self.CornerCamera then self.CornerCamera:Destroy();self.CornerCamera=nil end;if self.Input then self.Input:Destroy()end;if self.InputLock then self.InputLock:Destroy()end;if self.Camera then self.Camera:Destroy()end;if self.Visual then self.Visual:Destroy()end;if self.BallRoll then self.BallRoll:Destroy()end;if self.FlightMarker then self.FlightMarker:Destroy();self.FlightMarker=nil end;if self.ReplayController then self.ReplayController:Destroy();self.ReplayController=nil end;if self.MatchSounds then self.MatchSounds:Destroy();self.MatchSounds=nil end;if self.CrowdAmbience then self.CrowdAmbience:Destroy();self.CrowdAmbience=nil end;if self.Commentary then self.Commentary:Destroy();self.Commentary=nil end;for _,controller in self.AnimationCache or{}do controller:Destroy()end;self.AnimationCache={};self.Animation=nil;if self.TeamControl then self.TeamControl:Destroy()end;if self.Indicators then self.Indicators:Destroy()end;if self.Trainer then self.Trainer:Destroy()end;if self.Minimap then self.Minimap:Destroy()end;if self.AimLine then self.AimLine:Destroy()end;if self.GoalTarget then self.GoalTarget:Destroy()end;if self.Cutscenes then self.Cutscenes:Destroy()end;if self.HUD then self.HUD:Destroy()end;if self.Controls then self.Controls:Enable()end;self.Active=false
-	if restoreMenu then setMenuVisible(true)
-	clearGreenScreenEffects()end
+	if restoreMenu then
+		Players.LocalPlayer:SetAttribute("VTRInMatch",false)
+		setMenuVisible(true)
+		clearGreenScreenEffects()
+	end
 end
 return Controller
