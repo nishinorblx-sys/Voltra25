@@ -9,7 +9,6 @@ local CLICK_SOUNDS = {
 }
 
 local HOVER_SOUNDS = {
-	"rbxassetid://114921985760826",
 	"rbxassetid://98484565371608",
 }
 

@@ -286,7 +286,9 @@ function Service:Kick(model: Model, kind: string, direction: Vector3, charge: nu
 		model:SetAttribute("VTRShotDistanceStuds",shotDistance)
 		self.LastShotChance=shotChance
 		self.LastShotChancePercent=math.floor(shotChance*100+.5)
-		self.LastShotXG=xg;self.LastShooter=model;self.Stats:RecordShot(model,targetPoint~=nil,xg)
+		self.LastShotXG=shotChance
+		self.LastShooter=model
+		self.Stats:RecordShot(model,targetPoint~=nil,shotChance)
 	elseif kind == "Skill" then
 		self.Ball:SetAttribute("VTRPassStartedAt", nil)
 		self.Ball:SetAttribute("VTRPassTeam", nil)
@@ -310,7 +312,7 @@ function Service:Kick(model: Model, kind: string, direction: Vector3, charge: nu
 		eventPayload.ScoringChance=self.LastShotChance
 		eventPayload.ScoringChancePercent=self.LastShotChancePercent
 		eventPayload.ShotXG=self.LastShotChance
-		eventPayload.StatsXG=self.LastShotXG
+		eventPayload.StatsXG=self.LastShotChance
 	end
 	self.Remote:FireAllClients(eventPayload)
 	return true

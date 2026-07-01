@@ -148,25 +148,21 @@ local function saveProbability(keeper:Model,rectangle:any,target:Vector3,time:nu
 		goalChance=distanceGoalChance(distance)
 	end
 	goalChance=math.clamp(goalChance,0,1)
-	if goalChance>=.995 then
-		if shooter then
-			shooter:SetAttribute("VTRShotXG",1)
-			shooter:SetAttribute("VTRShotSaveChance",0)
-		end
-		return 0
-	end
-	if goalChance<=.005 then
-		if shooter then
-			shooter:SetAttribute("VTRShotXG",0)
-			shooter:SetAttribute("VTRShotSaveChance",.99)
-		end
-		return .99
+	local saveChance=1-goalChance
+	if goalChance>=.999 then
+		goalChance=1
+		saveChance=0
+	elseif goalChance<=.001 then
+		goalChance=0
+		saveChance=.99
+	else
+		saveChance=math.clamp(saveChance,.01,.99)
 	end
 	if shooter then
 		shooter:SetAttribute("VTRShotXG",goalChance)
-		shooter:SetAttribute("VTRShotSaveChance",1-goalChance)
+		shooter:SetAttribute("VTRShotSaveChance",saveChance)
 	end
-	return 1-goalChance
+	return saveChance
 end
 
 function Service.new(ball: BasePart, teams: any, pitchCFrame: CFrame, width: number, length: number, ballService: any, animations: any, remote: RemoteEvent,aiService:any?)
@@ -239,7 +235,14 @@ function Service:_begin(attackingSide: string, shotId: number)
 	if not keeper or not rectangle or not target or not time then return end
 	local chance=saveProbability(keeper,rectangle,target,time,self.BallService.LastShotChance,self.BallService.LastShooter)
 	keeper:SetAttribute("VTRLastSaveChance",math.floor(chance*100+.5))
-	local willSave=self.Random:NextNumber()<=chance
+	local willSave=false
+	if chance<=0 then
+		willSave=false
+	elseif chance>=1 then
+		willSave=true
+	else
+		willSave=self.Random:NextNumber()<=chance
+	end
 	local shotPlan=self.BallService.ShotPlan
 	local penaltySlot=shotPlan and shotPlan.PenaltySlot
 	if penaltySlot then
@@ -305,6 +308,10 @@ function Service:_miss(save:any)
 end
 
 function Service:_finish(save: any)
+	if save and save.WillSave==false then
+		self:_miss(save)
+		return
+	end
 	local keeper: Model = save.Keeper
 	local keeperRoot = root(keeper)
 	if not keeperRoot then self.ActiveSave = nil return end

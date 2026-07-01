@@ -39,7 +39,9 @@ function Service:_teleportSoloCampaign(player:Player,action:string):(boolean,str
 	if not ok or not code then return false,"Could not reserve a solo campaign server.",nil end
 	local options=Instance.new("TeleportOptions")
 	options.ReservedServerAccessCode=code
-	options:SetTeleportData({MatchMode="AICampaignSolo",Action=action,ReturnPlaceId=game.PlaceId})
+	local profile=self.Profiles:GetProfile(player)
+	local setupSnapshot=profile and profile.MatchSetup and table.clone(profile.MatchSetup) or nil
+	options:SetTeleportData({MatchMode="AICampaignSolo",Action=action,ReturnPlaceId=game.PlaceId,Setup=setupSnapshot})
 	local sent,teleportErr=pcall(function()TeleportService:TeleportAsync(game.PlaceId,{player},options)end)
 	if not sent then return false,tostring(teleportErr),nil end
 	return true,"Teleporting to solo campaign server.",{Teleporting=true,SoloCampaign=true,Action=action}
@@ -50,19 +52,34 @@ function Service:HandleSoloCampaignTeleport(player:Player):boolean
 	local teleportData=joinData and joinData.TeleportData
 	if type(teleportData)~="table" or teleportData.MatchMode~="AICampaignSolo" then return false end
 	player:SetAttribute("VTRAICampaignSoloServer",true)
+	player:SetAttribute("VTRAICampaignAutoStarting",true)
 	task.spawn(function()
 		local started=os.clock()
-		while player.Parent==Players and os.clock()-started<35 do
-			if self.Profiles:GetProfile(player) and player.Character and player.Character:FindFirstChildOfClass("Humanoid") then
-				if teleportData.Action=="Manage" then
-					self:WatchMatch(player)
-				else
-					self:StartMatch(player)
+		local action=tostring(teleportData.Action or "Manual")
+		while player.Parent==Players and os.clock()-started<45 do
+			local profile=self.Profiles:GetProfile(player)
+			if profile then
+				if type(teleportData.Setup)=="table" then
+					profile.MatchSetup=table.clone(teleportData.Setup)
+					profile.MatchSetup.Completed=true
 				end
-				return
+				local character=player.Character
+				if character and character:FindFirstChildOfClass("Humanoid") then
+					local ok,message,data
+					if action=="Manage" then
+						ok,message,data=self:WatchMatch(player)
+					else
+						ok,message,data=self:StartMatch(player)
+					end
+					if ok then
+						player:SetAttribute("VTRAICampaignAutoStarting",false)
+						return
+					end
+				end
 			end
-			task.wait(.25)
+			task.wait(.35)
 		end
+		player:SetAttribute("VTRAICampaignAutoStarting",false)
 	end)
 	return true
 end
