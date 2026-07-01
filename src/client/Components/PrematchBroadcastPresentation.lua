@@ -3,6 +3,7 @@ local DeviceScaleService = require(script:FindFirstAncestor("VTRClient").Service
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
+local SoundService = game:GetService("SoundService")
 local MATCHUP_PANEL_DELAY = 0.85
 
 local Theme = require(ReplicatedStorage.VTR.Shared.Theme)
@@ -10,6 +11,24 @@ local PlayerPortraitService = require(script.Parent.Parent.Services.PlayerPortra
 
 local Presentation = {}
 local TOTAL_DURATION = 66.0
+local STARTING_XI_SOUND_ONE = "rbxassetid://111250989374137"
+local STARTING_XI_SOUND_TWO = "rbxassetid://76843129252399"
+
+local function playPresentationSound(soundId: string, volume: number?)
+	local sound = Instance.new("Sound")
+	sound.Name = "VTRStartingXIAudio"
+	sound.SoundId = soundId
+	sound.Volume = volume or .62
+	sound.RollOffMode = Enum.RollOffMode.InverseTapered
+	sound.Parent = SoundService
+	sound.Ended:Connect(function()
+		if sound.Parent then sound:Destroy() end
+	end)
+	sound:Play()
+	task.delay(8, function()
+		if sound.Parent then sound:Destroy() end
+	end)
+end
 
 local function shortCode(name: string): string
 	local words = string.split(string.upper(name), " ")
@@ -1103,6 +1122,7 @@ function Presentation.Play(data: any, onComplete: (() -> ())?)
 		end)
 	end
 	task.delay(31.0, function()
+		playPresentationSound(STARTING_XI_SOUND_ONE,.66)
 		slideOut(playerCard, UDim2.fromScale(0.37, 0.86))
 		slideOut(formation, UDim2.fromScale(-0.32, 0.13))
 		updateTeamSheet("Home")
@@ -1116,6 +1136,7 @@ function Presentation.Play(data: any, onComplete: (() -> ())?)
 		slideIn(playerCard, UDim2.fromScale(0.37, 0.13), UDim2.fromScale(0.37, 0.86))
 	end)
 	task.delay(51.0, function()
+		playPresentationSound(STARTING_XI_SOUND_TWO,.66)
 		slideOut(playerCard, UDim2.fromScale(0.37, 0.86))
 		slideOut(formation, UDim2.fromScale(-0.32, 0.13))
 		updateTeamSheet("Away")

@@ -9,7 +9,7 @@ local KICK_SOUND = "rbxassetid://107963207460422"
 local KICKOFF_SOUND = "rbxassetid://99361731737732"
 local GOAL_COMMENTATOR = "rbxassetid://103341909626250"
 local FINAL_WHISTLE = "rbxassetid://72085323238660"
-local DRIBBLE_SOUND = "rbxassetid://108255149267958"
+local DRIBBLE_SOUND = "rbxassetid://108878640377793"
 
 local GOAL_SOUNDS = {
 	"rbxassetid://78442706550929",
@@ -113,7 +113,7 @@ function Controller:_step()
 	local moving = Vector3.new(root.AssemblyLinearVelocity.X, 0, root.AssemblyLinearVelocity.Z).Magnitude
 	if moving < 4 then return end
 	self.LastDribble = os.clock()
-	playOneShot(DRIBBLE_SOUND, 0.18, math.random(96, 104) / 100)
+	playOneShot(DRIBBLE_SOUND, 0.24, math.random(96, 104) / 100)
 end
 
 function Controller:Destroy()

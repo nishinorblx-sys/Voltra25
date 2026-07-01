@@ -137,8 +137,6 @@ local function shooterRating(shooter: Model?): number
 end
 
 local function saveProbability(keeper:Model,rectangle:any,target:Vector3,time:number,xg:number?,shooter:Model?):number
-	local rating=keeperRating(keeper)
-	local shooterStat=shooterRating(shooter)
 	local shooterRoot=root(shooter)
 	local goalChance=tonumber(xg)
 	if goalChance==nil or goalChance<=0 then
@@ -147,18 +145,23 @@ local function saveProbability(keeper:Model,rectangle:any,target:Vector3,time:nu
 			local goalCenter=GoalModelResolver.Point(rectangle,(rectangle.Left+rectangle.RightBound)*.5,(rectangle.Bottom+rectangle.Top)*.5)
 			distance=Vector3.new(shooterRoot.Position.X-goalCenter.X,0,shooterRoot.Position.Z-goalCenter.Z).Magnitude
 		end
-		if distance<=70 then
-			goalChance=1
-		elseif distance>=190 then
-			goalChance=.01
-		elseif distance>=160 then
-			goalChance=.01+(190-distance)/30*.29
-		else
-			goalChance=.30+(160-distance)/90*.70
-		end
+		goalChance=distanceGoalChance(distance)
 	end
-	local statBias=math.clamp((shooterStat-rating)/320,-.05,.05)
-	goalChance=math.clamp(goalChance+statBias,.01,.99)
+	goalChance=math.clamp(goalChance,0,1)
+	if goalChance>=.995 then
+		if shooter then
+			shooter:SetAttribute("VTRShotXG",1)
+			shooter:SetAttribute("VTRShotSaveChance",0)
+		end
+		return 0
+	end
+	if goalChance<=.005 then
+		if shooter then
+			shooter:SetAttribute("VTRShotXG",0)
+			shooter:SetAttribute("VTRShotSaveChance",.99)
+		end
+		return .99
+	end
 	if shooter then
 		shooter:SetAttribute("VTRShotXG",goalChance)
 		shooter:SetAttribute("VTRShotSaveChance",1-goalChance)
@@ -234,7 +237,7 @@ function Service:_begin(attackingSide: string, shotId: number)
 	local keeper = goalkeeper(self.Teams[defendingSide])
 	local rectangle, target, time = self:_prediction(attackingSide)
 	if not keeper or not rectangle or not target or not time then return end
-	local chance=saveProbability(keeper,rectangle,target,time,self.BallService.LastShotXG,self.BallService.LastShooter)
+	local chance=saveProbability(keeper,rectangle,target,time,self.BallService.LastShotChance,self.BallService.LastShooter)
 	keeper:SetAttribute("VTRLastSaveChance",math.floor(chance*100+.5))
 	local willSave=self.Random:NextNumber()<=chance
 	local shotPlan=self.BallService.ShotPlan
