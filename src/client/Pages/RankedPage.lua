@@ -154,6 +154,7 @@ function RankedPage.new(context: any): CanvasGroup
 	local explainer = Panel.new({Name = "WatchFormat", Position = UDim2.new(.56, 10, 0, 396), Size = UDim2.new(.44, -10, 0, 170)})
 	explainer.Parent = scroll
 	text(explainer, "GLOBAL WATCH MATCH", UDim2.fromOffset(20, 18), UDim2.new(1, -40, 0, 28), 17, Theme.Colors.White, Theme.Fonts.Display)
+	explainer.Visible = false
 	text(explainer, "Your built squad queues for a ranked opponent, then both teams play as AI. You watch the match instead of controlling a player.", UDim2.fromOffset(20, 54), UDim2.new(1, -40, 0, 62), 10, Theme.Colors.Silver, Theme.Fonts.Body)
 	text(explainer, "BOTTOM-RIGHT PLAY STARTS SEARCH", UDim2.fromOffset(20, 122), UDim2.new(1, -40, 0, 24), 8, Theme.Colors.Electric, Theme.Fonts.Strong)
 
