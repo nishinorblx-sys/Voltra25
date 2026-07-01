@@ -462,15 +462,28 @@ local function orientDive(save:any,rectangle:any,keeperRoot:BasePart,rootTarget:
 end
 
 local function diveCatchFrame(position:Vector3,lookVector:Vector3,upAxis:Vector3,fallbackForward:Vector3):CFrame
-	local look=lookVector.Magnitude>.05 and lookVector.Unit or fallbackForward
-	local right=look:Cross(upAxis)
-	if right.Magnitude<.05 then
-		right=Vector3.new(look.Z,0,-look.X)
+	local forward=fallbackForward.Magnitude>.05 and fallbackForward.Unit or Vector3.zAxis
+	local aim=lookVector.Magnitude>.05 and lookVector.Unit or forward
+	local lateral=aim-forward*aim:Dot(forward)-upAxis*aim:Dot(upAxis)
+	if lateral.Magnitude<.05 then
+		lateral=upAxis:Cross(forward)
 	end
-	right=right.Magnitude>.05 and right.Unit or Vector3.xAxis
-	local up=right:Cross(look)
-	up=up.Magnitude>.05 and up.Unit or upAxis
-	return CFrame.fromMatrix(position,right,up,-look)
+	if lateral.Magnitude<.05 then
+		lateral=Vector3.xAxis
+	end
+	local lateralDirection=lateral.Unit
+	local lift=math.abs(aim:Dot(upAxis))
+	local bodyUp=(lateralDirection+upAxis*math.clamp(.08+lift*.18,.08,.26)).Unit
+	local bodyLook=(forward*.74+aim*.26)
+	bodyLook-=bodyUp*bodyLook:Dot(bodyUp)
+	if bodyLook.Magnitude<.05 then
+		bodyLook=forward-bodyUp*forward:Dot(bodyUp)
+	end
+	if bodyLook.Magnitude<.05 then
+		bodyLook=bodyUp:Cross(upAxis)
+	end
+	bodyLook=bodyLook.Magnitude>.05 and bodyLook.Unit or forward
+	return CFrame.lookAt(position,position+bodyLook,bodyUp)
 end
 
 local function createLateralDrive(save:any,keeperRoot:BasePart,lateralAxis:Vector3,lateralSpeed:number)
@@ -620,6 +633,8 @@ function Service:Step(dt:number?)
 		local liveAim=target-position
 		local blend=liveAim.Magnitude>.05 and diveLook:Lerp(liveAim,.35) or diveLook
 		local desiredFrame=diveCatchFrame(position,blend,upAxis,forward)
+		save.Keeper:SetAttribute("VTRSidewaysDive",true)
+		save.Keeper:SetAttribute("VTRDiveBodyAngle",math.floor(math.deg(math.acos(math.clamp(desiredFrame.UpVector:Dot(upAxis),-1,1)))+.5))
 		save.Keeper:PivotTo(desiredFrame)
 		self.Animations:SyncActionToArrival(save.Keeper,"GoalkeeperDive",time)
 	end

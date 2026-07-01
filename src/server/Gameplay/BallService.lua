@@ -309,7 +309,8 @@ function Service:Kick(model: Model, kind: string, direction: Vector3, charge: nu
 	if kind=="Shot"then
 		eventPayload.ScoringChance=self.LastShotChance
 		eventPayload.ScoringChancePercent=self.LastShotChancePercent
-		eventPayload.ShotXG=self.LastShotXG
+		eventPayload.ShotXG=self.LastShotChance
+		eventPayload.StatsXG=self.LastShotXG
 	end
 	self.Remote:FireAllClients(eventPayload)
 	return true
