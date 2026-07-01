@@ -108,7 +108,7 @@ function Controller:_startRecording()
 		self.Replay:Destroy()
 	end
 	self.Replay = Replay.New({
-		FrameFrequency = 2,
+		FrameFrequency = 12,
 		Rounding = 3,
 		MaxReplayTime = BUFFER_SECONDS,
 	}, self.ActiveModels, self.StaticModels)
@@ -168,7 +168,8 @@ function Controller:_updateShotReplayCamera(timeNow: number, shotTime: number)
 		local fallbackLook = Vector3.new(shooterRoot.CFrame.LookVector.X, 0, shooterRoot.CFrame.LookVector.Z)
 		local shotVector = Vector3.new(ballPos.X - shooterPos.X, 0, ballPos.Z - shooterPos.Z)
 		self.ReplayShotDirection = shotVector.Magnitude > 0.08 and shotVector.Unit or (fallbackLook.Magnitude > 0.08 and fallbackLook.Unit or Vector3.zAxis)
-		self.ReplayShotSide = Vector3.new(-self.ReplayShotDirection.Z, 0, self.ReplayShotDirection.X).Unit
+		self.ReplayShotSide = Vector3.new(-self.ReplayShotDirection.Z, 0, self.ReplayShotDirection.X)
+		if self.ReplayShotSide.Magnitude < .05 then self.ReplayShotSide = Vector3.xAxis else self.ReplayShotSide = self.ReplayShotSide.Unit end
 		self.ReplayCameraPosition = nil
 		self.ReplayCameraTarget = nil
 		self.ReplayCameraLastTime = nil
@@ -196,13 +197,13 @@ function Controller:_updateShotReplayCamera(timeNow: number, shotTime: number)
 	end
 	local dt = math.clamp(timeNow - (self.ReplayCameraLastTime or timeNow), 0, 0.08)
 	self.ReplayCameraLastTime = timeNow
-	local alpha = 1 - math.exp(-dt * 9)
+	local blend = 1 - math.exp(-dt * 8)
 	if not self.ReplayCameraPosition then
 		self.ReplayCameraPosition = desiredPosition
 		self.ReplayCameraTarget = desiredTarget
 	else
-		self.ReplayCameraPosition = self.ReplayCameraPosition:Lerp(desiredPosition, alpha)
-		self.ReplayCameraTarget = self.ReplayCameraTarget:Lerp(desiredTarget, alpha)
+		self.ReplayCameraPosition = self.ReplayCameraPosition:Lerp(desiredPosition, blend)
+		self.ReplayCameraTarget = self.ReplayCameraTarget:Lerp(desiredTarget, blend)
 	end
 	camera.FieldOfView = desiredFov
 	camera.CFrame = CFrame.lookAt(self.ReplayCameraPosition, self.ReplayCameraTarget)

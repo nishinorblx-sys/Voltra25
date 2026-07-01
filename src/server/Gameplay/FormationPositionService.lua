@@ -68,11 +68,11 @@ function Service.ThrowIn(teams: any, restartTeam: string, location: Vector3, pit
 			table.insert(markers, model)
 		end
 	end
-	for index = 1, math.min(4, #options) do
+	for index = 1, math.min(2, #options) do
 		local option = options[index]
 		local optionPosition = world(pitchCFrame, x - touchSign * (index == 1 and 13 or index == 2 and 20 or 26), z + (index == 1 and 0 or index == 2 and -17 or index == 3 and 18 or 36))
 		move(option, optionPosition, spot)
-		local marker = markers[index + 4] or markers[index]
+		local marker = markers[index + 2] or markers[index]
 		if marker then
 			move(marker, world(pitchCFrame, x - touchSign * (index == 1 and 18 or index == 2 and 25 or 30), z + (index == 1 and 2 or index == 2 and -14 or index == 3 and 15 or 32)), optionPosition)
 		end
@@ -86,9 +86,9 @@ function Service.ThrowIn(teams: any, restartTeam: string, location: Vector3, pit
 			end
 		end
 	end
-	for index = 1, math.min(4, #options) do
+	for index = 1, math.min(2, #options) do
 		protected[options[index]] = true
-		local marker = markers[index + 4] or markers[index]
+		local marker = markers[index + 2] or markers[index]
 		if marker then
 			protected[marker] = true
 		end
@@ -97,8 +97,8 @@ function Service.ThrowIn(teams: any, restartTeam: string, location: Vector3, pit
 		local ownSign = side == "Home" and 1 or -1
 		for index, model in teams[side] do
 			if protected[model] or isKeeper(model) then continue end
-			local lane = ((index - 1) % 5 - 2) * width * 0.17
-			local depth = math.clamp(z + ownSign * (28 + math.floor((index - 1) / 4) * 22), -length / 2 + 16, length / 2 - 16)
+			local lane = ((index - 1) % 5 - 2) * width * 0.16
+			local depth = math.clamp(z + ownSign * (46 + math.floor((index - 1) / 4) * 28), -length / 2 + 28, length / 2 - 28)
 			local fromRestart = Vector2.new(lane - x, depth - z)
 			if fromRestart.Magnitude < Spacing.ThrowIn.Radius + 4 then
 				local direction = fromRestart.Magnitude > 0.1 and fromRestart.Unit or Vector2.new(-touchSign, 0)

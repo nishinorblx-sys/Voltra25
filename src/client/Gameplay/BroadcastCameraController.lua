@@ -107,7 +107,7 @@ function Controller:Start()
 	self.Camera.FieldOfView = PRESETS[self.Mode].Fov
 	local root = activeRoot(self.Active)
 	local presentationCenter = presentationGroupCenter({WalkForward = true, LineupIdle = true, KickoffReady = true})
-	local initial = presentationCenter or self.Ball.Position
+	local initial = presentationCenter or self.PitchCFrame:PointToWorldSpace(Vector3.new(0, 8, 0))
 	if not presentationCenter and root then
 		local localRoot = self.PitchCFrame:PointToObjectSpace(root.Position)
 		if math.abs(localRoot.X) <= self.Width * 0.75 and math.abs(localRoot.Z) <= self.Length * 0.75 then
@@ -116,7 +116,7 @@ function Controller:Start()
 	end
 	self.SmoothedTarget = self.PitchCFrame:PointToObjectSpace(initial)
 	self.SmoothedLookTarget = self.Ball.Position
-	self.Camera.CFrame = self:_desiredFrame(PRESETS[self.Mode], initial, 0, 0)
+	self.Camera.CFrame = CFrame.lookAt(self.PitchCFrame:PointToWorldSpace(Vector3.new(self.Width*.92,240,self.Length*.38)), self.PitchCFrame:PointToWorldSpace(Vector3.new(0,8,0)), self.PitchCFrame.UpVector)
 	self.ReferenceBallDistance=(self.Camera.CFrame.Position-self.Ball.Position).Magnitude
 	if workspace:GetAttribute("VTRKickoffDebug") ~= false then
 		print("[VTR KICKOFF][Camera] broadcast camera started", "mode", self.Mode, "initial", initial, "ball", self.Ball.Position, "cameraType", self.Camera.CameraType.Name)
@@ -222,11 +222,13 @@ function Controller:Aim(kind: string?): Vector3
 	local currentMove = self.CurrentMove or Vector3.zero
 	if kind == "Shot" and root then
 		local side = tostring(self.Active:GetAttribute("VTRTeam") or "Home")
-		local goalZ = side == "Home" and -self.Length / 2 or self.Length / 2
-		local goal = self.PitchCFrame:PointToWorldSpace(Vector3.new(0, 2, goalZ))
-		local goalDirection = Vector3.new(goal.X - root.Position.X, 0, goal.Z - root.Position.Z).Unit
+		local half = tonumber(workspace:GetAttribute("VTRMatchHalf")) or 1
+		local attackSign = side == "Home" and (half >= 2 and 1 or -1) or (half >= 2 and -1 or 1)
+		local goal = self.PitchCFrame:PointToWorldSpace(Vector3.new(0, 2, attackSign * self.Length / 2))
+		local goalDirection = Vector3.new(goal.X - root.Position.X, 0, goal.Z - root.Position.Z)
+		goalDirection = goalDirection.Magnitude > .05 and goalDirection.Unit or self.LastMove
 		if currentMove.Magnitude > 0.1 then
-			return (goalDirection * 0.76 + currentMove.Unit * 0.24).Unit
+			return (goalDirection * 0.82 + currentMove.Unit * 0.18).Unit
 		end
 		return goalDirection
 	end

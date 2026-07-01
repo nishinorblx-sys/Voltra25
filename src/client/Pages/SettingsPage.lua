@@ -178,7 +178,7 @@ local function renderTab(context: any, scroll: ScrollingFrame, active: string)
 	end
 	if active == "Controls" then
 		local box = panel(scroll, "Controls", UDim2.fromOffset(0, 154), UDim2.new(1, 0, 0, 220))
-		keybind(box, context, "PauseKey", "PAUSE", "Click the key button, then press a letter or number.", 52, true)
+		keybind(box, context, "PauseKey", "ManualPassKey", "LobbedPassKey", "ChangePlayerKey", "TackleKey", "SlideTackleKey", "PAUSE", "Click the key button, then press a letter or number.", 52, true)
 		keybind(box, context, "SkipKey", "SKIP", "Prematch and replay skip is Space.", 126, false)
 	elseif active == "Audio" then
 		local mix = panel(scroll, "Audio Mix", UDim2.fromOffset(0, 154), UDim2.new(.5, -10, 0, 242))

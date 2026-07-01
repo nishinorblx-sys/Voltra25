@@ -9,8 +9,22 @@ local DeviceScaleService = require(script:FindFirstAncestor("VTRClient").Service
 local Controller = {}
 Controller.__index = Controller
 
+local function keyFromSetting(value:any,fallback:Enum.KeyCode):Enum.KeyCode
+	if typeof(value)=="EnumItem" and value.EnumType==Enum.KeyCode then return value end
+	if type(value)~="string"or value==""then return fallback end
+	local map={Ctrl=Enum.KeyCode.LeftControl,Control=Enum.KeyCode.LeftControl,Alt=Enum.KeyCode.LeftAlt,Shift=Enum.KeyCode.LeftShift,MouseRight=Enum.KeyCode.Unknown}
+	local mapped=map[value]
+	if mapped then return mapped end
+	local ok,key=pcall(function()return Enum.KeyCode[value]end)
+	return ok and key or fallback
+end
+
+local function down(keys:{[Enum.KeyCode]:boolean},key:Enum.KeyCode):boolean
+	return key~=Enum.KeyCode.Unknown and keys[key]==true
+end
+
 function Controller.new(remote: RemoteEvent, aim: (string?,number?) -> any)
-	return setmetatable({Remote = remote, Aim = aim, Keys = {}, Charge = nil, Connections = {}, AutoSwitch = "Assisted", ReceiverAssist = "Light", FreeKickCurve = 0, FreeKickLift = 0, LastFreeKickAt = 0}, Controller)
+	return setmetatable({Remote = remote, Aim = aim, Keys = {}, Charge = nil, Connections = {}, AutoSwitch = "Assisted", ReceiverAssist = "Light", FreeKickCurve = 0, FreeKickLift = 0, LastFreeKickAt = 0, ManualPassKey = Enum.KeyCode.LeftControl, LobbedPassKey = Enum.KeyCode.LeftAlt, ChangePlayerKey = Enum.KeyCode.Q, TackleKey = Enum.KeyCode.E, SlideTackleKey = Enum.KeyCode.F}, Controller)
 end
 
 function Controller:SetAutoSwitch(mode: string?)
@@ -19,6 +33,15 @@ end
 
 function Controller:SetReceiverAssist(mode: string?)
 	self.ReceiverAssist = mode == "Off" and "Off" or mode == "Assisted" and "Assisted" or "Light"
+end
+
+function Controller:SetControlsSettings(settings:any)
+	settings=settings or{}
+	self.ManualPassKey=keyFromSetting(settings.ManualPassKey or settings.ManualPassModifier or settings.ManualPass,Enum.KeyCode.LeftControl)
+	self.LobbedPassKey=keyFromSetting(settings.LobbedPassKey or settings.LobPassKey or settings.LobbedPass,Enum.KeyCode.LeftAlt)
+	self.ChangePlayerKey=keyFromSetting(settings.ChangePlayerKey or settings.SwitchPlayerKey or settings.SwitchKey,Enum.KeyCode.Q)
+	self.TackleKey=keyFromSetting(settings.TackleKey,Enum.KeyCode.E)
+	self.SlideTackleKey=keyFromSetting(settings.SlideTackleKey or settings.SlideKey,Enum.KeyCode.F)
 end
 
 function Controller:SetSuppressed(suppressed:boolean)
@@ -63,8 +86,8 @@ function Controller:_chargeEnd(kind: string)
 	if kind == "Shot" then
 		self.Remote:FireServer({Type = "Shot", Direction = aim.Direction, AimPosition = aim.Position, GoalTarget = aim.GoalTarget, Charge = charge, FreeKickCurve = aim.FreeKickCurve, FreeKickLift = aim.FreeKickLift, PenaltySlot = aim.PenaltySlot})
 	else
-		local altDown = self.Keys[Enum.KeyCode.LeftAlt] == true or self.Keys[Enum.KeyCode.RightAlt] == true
-		local ctrlDown = self.Keys[Enum.KeyCode.LeftControl] == true or self.Keys[Enum.KeyCode.RightControl] == true
+		local altDown = down(self.Keys,self.LobbedPassKey) or self.Keys[Enum.KeyCode.RightAlt] == true
+		local ctrlDown = down(self.Keys,self.ManualPassKey) or self.Keys[Enum.KeyCode.RightControl] == true
 		local manualLobbed = altDown and ctrlDown
 		local manual = ctrlDown and not manualLobbed
 		local lofted = altDown and not ctrlDown
@@ -96,17 +119,18 @@ function Controller:Start()
 		if key == Enum.KeyCode.W or key == Enum.KeyCode.A or key == Enum.KeyCode.S or key == Enum.KeyCode.D
 			or key == Enum.KeyCode.LeftShift or key == Enum.KeyCode.RightShift
 			or key == Enum.KeyCode.LeftAlt or key == Enum.KeyCode.RightAlt
-			or key == Enum.KeyCode.LeftControl or key == Enum.KeyCode.RightControl then
+			or key == Enum.KeyCode.LeftControl or key == Enum.KeyCode.RightControl
+			or key == self.ManualPassKey or key == self.LobbedPassKey then
 			self.Keys[key] = true
-		elseif key == Enum.KeyCode.E then
+		elseif key == self.TackleKey then
 			self.Remote:FireServer({Type = "Tackle"})
-		elseif key==Enum.KeyCode.F then
+		elseif key==self.SlideTackleKey then
 			self.Remote:FireServer({Type="SlideTackle"})
 		elseif key==Enum.KeyCode.C then
 			local aim=self:_aim("Skill");self.Remote:FireServer({Type="DribbleMove",Direction=aim.Direction})
 		elseif key==Enum.KeyCode.R then
 			self.Remote:FireServer({Type="Block",Active=true})
-		elseif key == Enum.KeyCode.Q then
+		elseif key == self.ChangePlayerKey then
 			local aim=self:_aim("Switch");self.Remote:FireServer({Type = "Switch",TargetModel=aim.TargetModel,AimPosition=aim.Position})
 		elseif key == Enum.KeyCode.L then
 			self.Remote:FireServer({Type = "DebugFreeKick"})
@@ -130,7 +154,8 @@ function Controller:Start()
 		if key == Enum.KeyCode.W or key == Enum.KeyCode.A or key == Enum.KeyCode.S or key == Enum.KeyCode.D
 			or key == Enum.KeyCode.LeftShift or key == Enum.KeyCode.RightShift
 			or key == Enum.KeyCode.LeftAlt or key == Enum.KeyCode.RightAlt
-			or key == Enum.KeyCode.LeftControl or key == Enum.KeyCode.RightControl then
+			or key == Enum.KeyCode.LeftControl or key == Enum.KeyCode.RightControl
+			or key == self.ManualPassKey or key == self.LobbedPassKey then
 			self.Keys[key] = nil
 		elseif key==Enum.KeyCode.R then
 			self.Remote:FireServer({Type="Block",Active=false})

@@ -219,14 +219,22 @@ function Controller:_activate(data:any)
 	bootCover.Name = "VTRMatchBootCover"
 	bootCover.IgnoreGuiInset = true
 	bootCover.ResetOnSpawn = false
-	bootCover.DisplayOrder = 980
+	bootCover.DisplayOrder = 2200
 	bootCover.Parent = player:WaitForChild("PlayerGui")
 	local bootFrame = Instance.new("Frame")
 	bootFrame.BackgroundColor3 = Color3.fromHex("020402")
 	bootFrame.BorderSizePixel = 0
 	bootFrame.Size = UDim2.fromScale(1, 1)
 	bootFrame.Parent = bootCover
-	task.delay(1.2, function()
+	task.spawn(function()
+		local started=os.clock()
+		while bootCover.Parent and os.clock()-started<8 do
+			if player.PlayerGui:FindFirstChild("VTRPrematchBroadcast") then
+				task.wait(.18)
+				break
+			end
+			task.wait(.05)
+		end
 		if bootCover.Parent then bootCover:Destroy() end
 	end)
 	self.Active=true;self.Ball=ball;self.TeamModels=data.TeamModels;self.ControlledSide=data.ControlledSide or"Home";self.WatchMode=data.WatchMode==true;self.Paused=false;self.Ranked=data.Ranked==true;self.MatchInPlay=false;self.PrematchActive=true;self.PrematchSkipRequested=false;self.TacticalMode=false;self.TacticalPanelOpen=true;GuiService.SelectedObject=nil;local playerModule=require(player.PlayerScripts:WaitForChild("PlayerModule"));self.Controls=playerModule:GetControls();self.Controls:Disable();self.HUD=MatchHUDController.new(data);self.Commentary=CommentaryController.new(self.HUD.Gui);self.Camera=BroadcastCameraController.new(data.PitchCFrame,data.PitchWidth,data.PitchLength,ball,active);self.MouseAim=MouseAimController.new(workspace.CurrentCamera,data.PitchCFrame,data.PitchWidth,data.PitchLength);self.Input=InputController.new(self.Action,function(kind,charge)return self:_aimPayload(kind,charge)end);self.InputLock=MatchInputLockController.new(self.Action);self.TeamControl=TeamControlController.new(self.Action,self.Camera,self.HUD,active);self.BallRoll=BallRollVisualController.new(ball);self:_createTacticalPanel()
@@ -245,11 +253,11 @@ function Controller:_activate(data:any)
 	self.HUD:SetManualPositionSwapCallback(function(modelA:Model,modelB:Model)
 		self.Action:FireServer({Type="ManualPositionSwap",ModelA=modelA,ModelB=modelB})
 	end)
-	local uiState=UIStateService:Get();local settings=uiState and uiState.Settings or {};self.PauseKey=keyCodeFromSetting(settings.PauseKey,Enum.KeyCode.M);self.Input:SetAutoSwitch(UserInputService.TouchEnabled and "Instant" or settings.PassReceiverAutoSwitch or "Assisted");self.Input:SetReceiverAssist(UserInputService.TouchEnabled and "Assisted" or settings.ReceiverAssist or "Light");self.Indicators=PlayerIndicatorController.new(data.TeamModels,ball,self.HUD,"Off");self.Trainer=TrainerController.new(self.HUD.Gui,ball,settings.Trainer or "Basic");self.Minimap=MinimapController.new(self.HUD.Gui,data.PitchCFrame,data.PitchWidth,data.PitchLength,data.TeamModels,ball,settings.Minimap or "Medium",settings.MinimapOrientation or "Broadcast",settings.CameraSide or "Near",self.ControlledSide);self.AimLine=AimLineController.new(data.TeamModels,ball);self.GoalTarget=GoalReticleController.new(workspace.CurrentCamera,ball);self.FlightMarker=BallFlightMarkerController.new(ball);self.Cutscenes=MatchCutsceneController.new(self.Camera,self.HUD);self.Camera:SetMode(settings.CameraPreset or "Broadcast");self.Camera:ApplySettings(settings)
+	local uiState=UIStateService:Get();local settings=uiState and uiState.Settings or {};self.ManualPassKey="LeftControl",LobbedPassKey="LeftAlt",ChangePlayerKey="Q",TackleKey="E",SlideTackleKey="F",PauseKey=keyCodeFromSetting(settings.PauseKey,Enum.KeyCode.M);self.Input:SetAutoSwitch(UserInputService.TouchEnabled and "Instant" or settings.PassReceiverAutoSwitch or "Assisted");self.Input:SetReceiverAssist(UserInputService.TouchEnabled and "Assisted" or settings.ReceiverAssist or "Light");if self.Input.SetControlsSettings then self.Input:SetControlsSettings(settings)end;self.Indicators=PlayerIndicatorController.new(data.TeamModels,ball,self.HUD,"Off");self.Trainer=TrainerController.new(self.HUD.Gui,ball,settings.Trainer or "Basic");self.Minimap=MinimapController.new(self.HUD.Gui,data.PitchCFrame,data.PitchWidth,data.PitchLength,data.TeamModels,ball,settings.Minimap or "Medium",settings.MinimapOrientation or "Broadcast",settings.CameraSide or "Near",self.ControlledSide);self.AimLine=AimLineController.new(data.TeamModels,ball);self.GoalTarget=GoalReticleController.new(workspace.CurrentCamera,ball);self.FlightMarker=BallFlightMarkerController.new(ball);self.Cutscenes=MatchCutsceneController.new(self.Camera,self.HUD);self.Camera:SetMode(settings.CameraPreset or "Broadcast");self.Camera:ApplySettings(settings)
 	self.AnimationCache={};for _,side in data.TeamModels do for _,footballer in side do self.AnimationCache[footballer]=AnimationController.new(footballer)end end
 	if self.ReplayController then self.ReplayController:Destroy()end;self.ReplayController=ReplayController.new(data,ball)
 	self.HUD:SetResumeCallback(function()self:_setPaused(false)end);self.PauseConnection=UserInputService.InputBegan:Connect(function(input,processed)if not self.Active then return end;if input.KeyCode==Enum.KeyCode.Six and not processed then self:_toggleTacticalMode();return end;if input.KeyCode==Enum.KeyCode.ButtonStart or input.KeyCode==(self.PauseKey or Enum.KeyCode.M) then self:_setPaused(not self.Paused);return end;if input.KeyCode==Enum.KeyCode.Space and not processed and self.PrematchActive and not self.PrematchSkipRequested then self.PrematchSkipRequested=true;self.Action:FireServer({Type="PrematchSkip"});if self.HUD then self.HUD:Flash(self.Ranked and"SKIP QUEUED"or"SKIPPING INTRO",.9)end;return end end)
-	self.Camera:Start();self.Cutscenes:StadiumIntro(data);self.InputLock:Start();self.Input:Start();if self.WatchMode then self.Input:SetSuppressed(true)end;self:_bindFootballer(active,active:GetAttribute("DisplayName"),active:GetAttribute("position"))
+	self.Camera:Start();if self.Camera.BeginStadiumIntro then self.Camera:BeginStadiumIntro(6.2)end;self.Cutscenes:StadiumIntro(data);self.InputLock:Start();self.Input:Start();if self.WatchMode then self.Input:SetSuppressed(true)end;self:_bindFootballer(active,active:GetAttribute("DisplayName"),active:GetAttribute("position"))
 	RunService:BindToRenderStep("VTRMatchGameplay",Enum.RenderPriority.Camera.Value+1,function(dt)self:_update(dt)end)
 end
 function Controller:_setPaused(paused:boolean)

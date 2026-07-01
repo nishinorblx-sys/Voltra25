@@ -137,30 +137,33 @@ local function shooterRating(shooter: Model?): number
 end
 
 local function saveProbability(keeper:Model,rectangle:any,target:Vector3,time:number,xg:number?,shooter:Model?):number
-	local shooterRoot = root(shooter)
-	if shooter and (tonumber(shooter:GetAttribute("VTRFreeKickGoalChanceUntil")) or 0) >= os.clock() then
-		local goalChance = math.clamp(tonumber(shooter:GetAttribute("VTRFreeKickGoalChance")) or .3, .01, .99)
+	local rating=keeperRating(keeper)
+	local shooterStat=shooterRating(shooter)
+	local shooterRoot=root(shooter)
+	local goalChance=tonumber(xg)
+	if goalChance==nil or goalChance<=0 then
+		local distance=160
 		if shooterRoot then
-			shooter:SetAttribute("VTRShotDistanceGoalChance", goalChance)
-			shooter:SetAttribute("VTRShotDistancePercent", math.floor(goalChance * 100 + .5))
+			local goalCenter=GoalModelResolver.Point(rectangle,(rectangle.Left+rectangle.RightBound)*.5,(rectangle.Bottom+rectangle.Top)*.5)
+			distance=Vector3.new(shooterRoot.Position.X-goalCenter.X,0,shooterRoot.Position.Z-goalCenter.Z).Magnitude
 		end
-		keeper:SetAttribute("VTRDistanceGoalChance", math.floor(goalChance * 100 + .5))
-		return 1 - goalChance
+		if distance<=70 then
+			goalChance=1
+		elseif distance>=190 then
+			goalChance=.01
+		elseif distance>=160 then
+			goalChance=.01+(190-distance)/30*.29
+		else
+			goalChance=.30+(160-distance)/90*.70
+		end
 	end
-	local distance = 190
-	if shooterRoot then
-		local goalCenter = GoalModelResolver.Point(rectangle, (rectangle.Left + rectangle.RightBound) * 0.5, (rectangle.Bottom + rectangle.Top) * 0.5)
-		local targetDistance = Vector3.new(shooterRoot.Position.X - target.X, 0, shooterRoot.Position.Z - target.Z).Magnitude
-		local goalDistance = Vector3.new(shooterRoot.Position.X - goalCenter.X, 0, shooterRoot.Position.Z - goalCenter.Z).Magnitude
-		distance = math.min(targetDistance, goalDistance)
-		shooter:SetAttribute("VTRShotDistanceGoalChance", distanceGoalChance(distance))
-		shooter:SetAttribute("VTRShotDistanceStuds", distance)
-		shooter:SetAttribute("VTRShotDistancePercent", math.floor(distanceGoalChance(distance) * 100 + 0.5))
+	local statBias=math.clamp((shooterStat-rating)/320,-.05,.05)
+	goalChance=math.clamp(goalChance+statBias,.01,.99)
+	if shooter then
+		shooter:SetAttribute("VTRShotXG",goalChance)
+		shooter:SetAttribute("VTRShotSaveChance",1-goalChance)
 	end
-	local goalChance = distanceGoalChance(distance)
-	keeper:SetAttribute("VTRDistanceGoalChance", math.floor(goalChance * 100 + 0.5))
-	keeper:SetAttribute("VTRDistanceShotStuds", distance)
-	return 1 - goalChance
+	return 1-goalChance
 end
 
 function Service.new(ball: BasePart, teams: any, pitchCFrame: CFrame, width: number, length: number, ballService: any, animations: any, remote: RemoteEvent,aiService:any?)

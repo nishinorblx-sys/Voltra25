@@ -19,6 +19,15 @@ local function attackSignFor(active: Model?): number
 	return half >= 2 and -1 or 1
 end
 
+local function attackSignFor(active: Model?): number
+	local side = active and tostring(active:GetAttribute("VTRTeam") or "Home") or "Home"
+	local half = tonumber(workspace:GetAttribute("VTRMatchHalf")) or 1
+	if side == "Home" then
+		return half >= 2 and 1 or -1
+	end
+	return half >= 2 and -1 or 1
+end
+
 function Service:GetGoalRectangle(active: Model?): any
 	local side = active and tostring(active:GetAttribute("VTRTeam") or "Home") or "Home"
 	local half = tonumber(workspace:GetAttribute("VTRMatchHalf")) or 1
