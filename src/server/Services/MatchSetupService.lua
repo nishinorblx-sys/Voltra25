@@ -24,7 +24,7 @@ function Service:GetTeams(_player:Player,country:any,league:any):any?if type(cou
 function Service:Save(player:Player,payload:any):(boolean,string,any?)local profile=self.Profiles:GetProfile(player);if not profile or type(payload)~="table"then return false,"Profile unavailable.",nil end;local nextSetup=table.clone(self:_ensure(profile));for key,value in payload do if nextSetup[key]~=nil then nextSetup[key]=value end end;local valid,message=self:_validate(nextSetup);if not valid then return false,message,nil end;nextSetup.Completed=true;nextSetup.SavedAt=os.time();local home,away=TeamDatabase.Get(nextSetup.HomeTeamId),TeamDatabase.Get(nextSetup.AwayTeamId);nextSetup.KitConflict=colorDistance(home.kits[nextSetup.HomeKit].Primary,away.kits[nextSetup.AwayKit].Primary)<.35;profile.MatchSetup=nextSetup;return true,"Match settings saved.",table.clone(nextSetup)end
 function Service:StartMatch(player:Player):(boolean,string,any?)
 	local profile=self.Profiles:GetProfile(player);if not profile then return false,"Profile unavailable.",nil end;local setup=self:_ensure(profile);local valid,message=self:_validate(setup);if not valid or not setup.Completed then return false,message,nil end
-	local success,text,data=self.Runtime:StartMatch(player,setup);if not success then return false,text,nil end
+	local success,text,data=self.Runtime:StartMatch(player,setup);if not success then return false,text,nil end;if data then data.AIMatchTeleport=true;data.MatchLaunchType="Manual"end
 	local session=self.Runtime:GetSession(player);if session then
 		session.OnBeforeResult=function(ended:any)
 			local homeScore=ended.World.HomeScore.Value
@@ -55,7 +55,7 @@ function Service:WatchMatch(player:Player):(boolean,string,any?)
 		watchSetup.HomeTeamId=roster.Team.teamId
 		watchSetup.HomeKit="Home"
 	end
-	local success,text,data=self.Runtime:StartMatch(player,watchSetup,nil,nil,homeRoster,nil);if not success then return false,text,nil end
+	local success,text,data=self.Runtime:StartMatch(player,watchSetup,nil,nil,homeRoster,nil);if not success then return false,text,nil end;if data then data.AIMatchTeleport=true;data.MatchLaunchType="Manage"end
 	local session=self.Runtime:GetSession(player)
 	if session and type(watchSetup.CampaignTeamId)=="string" and watchSetup.CampaignTeamId~="" then
 		local teamId=watchSetup.CampaignTeamId
