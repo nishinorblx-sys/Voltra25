@@ -25,7 +25,7 @@ local PRESETS = {
 	["End to End"] = {Height = 174, Side = 0, Fov = 42, Smooth = 0.12},
 	["Co-op"] = {Height = BROADCAST_HEIGHT, Side = BROADCAST_SIDE_OFFSET, Fov = BROADCAST_FOV, Smooth = 0.12},
 	Tactical = {Height = 208, Side = 252, Fov = 53, Smooth = 0.14},
-	Pro = {Height = 115, Side = 145, Fov = 34, Smooth = 0.10},
+	Pro = {Height = 16, Side = 34, Fov = 55, Smooth = 0.075},
 }
 
 local ZOOM_MODES = {
@@ -192,6 +192,33 @@ function Controller:_updateTactical(dt: number)
 	self.TacticalCFrame = CFrame.lookAt(position, focus, self.PitchCFrame.UpVector)
 	self.Camera.CFrame = self.Camera.CFrame:Lerp(self.TacticalCFrame, 1 - math.exp(-10 * dt))
 	self.Camera.FieldOfView += (58 - self.Camera.FieldOfView) * (1 - math.exp(-7 * dt))
+end
+
+function Controller:_updatePro(dt: number, root: BasePart)
+	local move = self.CurrentMove or self.LastMove or root.CFrame.LookVector
+	local flatMove = Vector3.new(move.X, 0, move.Z)
+	local facing = Vector3.new(root.CFrame.LookVector.X, 0, root.CFrame.LookVector.Z)
+	local ballOffset = Vector3.new(self.Ball.Position.X - root.Position.X, 0, self.Ball.Position.Z - root.Position.Z)
+	local forward = flatMove.Magnitude > .12 and flatMove.Unit or facing.Magnitude > .12 and facing.Unit or self.PitchCFrame.LookVector
+	local ballBlend = ballOffset.Magnitude > 10 and math.clamp(ballOffset.Magnitude / 70, 0, .38) or 0
+	local lookDirection = (forward * (1 - ballBlend) + (ballOffset.Magnitude > .1 and ballOffset.Unit or forward) * ballBlend)
+	if lookDirection.Magnitude < .1 then lookDirection = forward end
+	lookDirection = lookDirection.Unit
+	local speed = Vector3.new(root.AssemblyLinearVelocity.X, 0, root.AssemblyLinearVelocity.Z).Magnitude
+	local distance = math.clamp(28 + speed * .34 + ballOffset.Magnitude * .06, 28, 43)
+	local height = math.clamp(11.5 + speed * .05, 11.5, 16.5)
+	local side = self.PitchCFrame.RightVector * math.clamp(ballOffset:Dot(self.PitchCFrame.RightVector) * .05, -3.2, 3.2)
+	local desired = root.Position - lookDirection * distance + Vector3.new(0, height, 0) + side
+	local target = root.Position + lookDirection * math.clamp(17 + speed * .18, 16, 26) + Vector3.new(0, 5.2, 0)
+	if ballOffset.Magnitude < 38 then
+		target = target:Lerp(self.Ball.Position + Vector3.new(0, 2.4, 0), .34)
+	end
+	local alpha = 1 - math.exp(-dt / .075)
+	local current = self.Camera.CFrame.Position
+	local position = current:Lerp(desired, alpha)
+	self.Camera.CFrame = CFrame.lookAt(position, target, self.PitchCFrame.UpVector)
+	local fov = math.clamp(55 + speed * .05 + math.clamp(ballOffset.Magnitude / 26, 0, 4), 55, 61)
+	self.Camera.FieldOfView += (fov - self.Camera.FieldOfView) * (1 - math.exp(-dt / .12))
 end
 
 function Controller:CycleMode(): string
@@ -471,6 +498,10 @@ function Controller:Update(dt: number)
 	end
 	local root = activeRoot(self.Active)
 	if not root or not self.Ball.Parent or self:_updateCutscene(dt) then
+		return
+	end
+	if self.Mode == "Pro" then
+		self:_updatePro(dt, root)
 		return
 	end
 	local preset = PRESETS[self.Mode]

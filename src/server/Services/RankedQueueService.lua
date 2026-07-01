@@ -12,6 +12,7 @@ Service.__index = Service
 
 local QUEUE_MAP = "VTR25_GlobalRankedQueue_v1"
 local MATCH_MAP = "VTR25_GlobalRankedMatches_v1"
+local RESULT_MAP = "VTR25_GlobalRankedResults_v1"
 local QUEUE_TTL = 150
 local MATCH_TTL = 180
 local POLL_SECONDS = 1.75
@@ -103,6 +104,87 @@ function Service:_matchMap(): any?
 		return MemoryStoreService:GetSortedMap(MATCH_MAP)
 	end)
 	return ok and map or nil
+end
+
+function Service:_resultMap(): any?
+	local ok, map = pcall(function()
+		return MemoryStoreService:GetSortedMap(RESULT_MAP)
+	end)
+	return ok and map or nil
+end
+
+function Service:_resultKey(player: Player): string
+	return "ranked-result:" .. tostring(player.UserId)
+end
+
+function Service:_publishMenuData(player: Player)
+	if self.Publish and self.RankedProfiles and self.RankedProfiles.GetClientData then
+		pcall(function()
+			self.Publish(player, "Ranked", self.RankedProfiles:GetClientData(player))
+		end)
+	end
+	if self.Publish and self.Progression then
+		if self.Progression.GetClientData then
+			pcall(function()
+				self.Publish(player, "Progression", self.Progression:GetClientData(player))
+			end)
+		end
+		if self.Progression.Inventory and self.Progression.Inventory.GetClientData then
+			pcall(function()
+				self.Publish(player, "Inventory", self.Progression.Inventory:GetClientData(player))
+			end)
+		end
+	end
+end
+
+function Service:_grantSpecificRankedPack(player: Player, packId: string?): boolean
+	local id = tostring(packId or "bronze_pack")
+	local granted = false
+	if self.Progression and self.Progression.Inventory and self.Progression.Inventory.AddPack then
+		local ok, result = pcall(function()
+			return self.Progression.Inventory:AddPack(player, id, id, "RankedWin", 1)
+		end)
+		granted = ok and result ~= nil and result ~= false
+	end
+	if not granted then
+		local reward = RankedWinPackReward.Grant(self.Progression, player, self.Publish)
+		granted = type(reward) == "table" and reward.PackGranted == true
+	end
+	self:_publishMenuData(player)
+	return granted
+end
+
+function Service:_writePendingRankedResult(player: Player, payload: any)
+	local map = self:_resultMap()
+	if not map then return end
+	pcall(function()
+		map:SetAsync(self:_resultKey(player), payload, 900, os.time())
+	end)
+end
+
+function Service:_consumePendingRankedResult(player: Player)
+	local map = self:_resultMap()
+	if not map then return end
+	local ok, payload = pcall(function()
+		return map:GetAsync(self:_resultKey(player))
+	end)
+	if not ok or type(payload) ~= "table" then return end
+	local profile = self.Profiles:GetProfile(player)
+	if not profile then return end
+	local result = tostring(payload.Result or "")
+	local opponent = tostring(payload.Opponent or "Opponent")
+	local score = tostring(payload.Score or "0-0")
+	local resultId = tostring(payload.ResultId or payload.MatchId or "")
+	local matchStats = type(payload.MatchStats) == "table" and payload.MatchStats or {}
+	matchStats.ResultId = resultId
+	local applied = self.RankedProfiles:RecordServerResult(player, result, 0, opponent, score, matchStats)
+	if applied and (result == "Win" or result == "ForfeitWin") then
+		self:_grantSpecificRankedPack(player, tostring(payload.PackId or "bronze_pack"))
+	end
+	self:_publishMenuData(player)
+	pcall(function()
+		map:RemoveAsync(self:_resultKey(player))
+	end)
 end
 
 function Service:_removeGlobal(player: Player)
@@ -202,12 +284,14 @@ function Service:_attachResultHandlers(session: any, home: Player, away: Player)
 		end
 		updateObjectives(home, "Home")
 		updateObjectives(away, "Away")
-		local function personal(side: string): any
+		session.MatchId = tostring(session.MatchId or HttpService:GenerateGUID(false))
+	local function personal(side: string): any
 			local best = nil
 			for _, entry in serialized.PlayerRatings or {} do
 				if entry.Team == side and (not best or entry.Rating > best.Rating) then best = entry end
 			end
 			return {
+				ResultId = session.MatchId .. ":" .. side,
 				PlayerRating = best and best.Rating or 6,
 				Team = side,
 				Match = side == "Home" and serialized.Home or serialized.Away,
@@ -217,10 +301,16 @@ function Service:_attachResultHandlers(session: any, home: Player, away: Player)
 		end
 		if ended.RankedResultsRecorded==true then return end
 		ended.RankedResultsRecorded=true
-		self.RankedProfiles:RecordServerResult(home, homeResult, rpFor(homeResult), away.Name, score, personal("Home"))
-		self.RankedProfiles:RecordServerResult(away, awayResult, rpFor(awayResult), home.Name, tostring(awayScore) .. "-" .. tostring(homeScore), personal("Away"))
-		if homeResult=="Win" or homeResult=="ForfeitWin" then session.RankedWinPackGrant(session,home) end
-		if awayResult=="Win" or awayResult=="ForfeitWin" then session.RankedWinPackGrant(session,away) end
+		local homePersonal = personal("Home")
+		local awayPersonal = personal("Away")
+		local homeApplied = self.RankedProfiles:RecordServerResult(home, homeResult, rpFor(homeResult), away.Name, score, homePersonal)
+		local awayApplied = self.RankedProfiles:RecordServerResult(away, awayResult, rpFor(awayResult), home.Name, tostring(awayScore) .. "-" .. tostring(homeScore), awayPersonal)
+		local homePack = nil
+		local awayPack = nil
+		if homeResult=="Win" or homeResult=="ForfeitWin" then homePack = session.RankedWinPackGrant(session,home) end
+		if awayResult=="Win" or awayResult=="ForfeitWin" then awayPack = session.RankedWinPackGrant(session,away) end
+		self:_writePendingRankedResult(home,{MatchId=session.MatchId,ResultId=homePersonal.ResultId,Result=homeResult,Opponent=away.Name,Score=score,MatchStats=homePersonal,PackId=homePack and homePack.PackId or nil,AppliedInMatchServer=homeApplied})
+		self:_writePendingRankedResult(away,{MatchId=session.MatchId,ResultId=awayPersonal.ResultId,Result=awayResult,Opponent=home.Name,Score=tostring(awayScore).."-"..tostring(homeScore),MatchStats=awayPersonal,PackId=awayPack and awayPack.PackId or nil,AppliedInMatchServer=awayApplied})
 		if self.Publish and self.RankedProfiles.GetClientData then
 			pcall(function()self.Publish(home,"Ranked",self.RankedProfiles:GetClientData(home))end)
 			pcall(function()self.Publish(away,"Ranked",self.RankedProfiles:GetClientData(away))end)
@@ -235,16 +325,22 @@ function Service:_attachResultHandlers(session: any, home: Player, away: Player)
 		if ended.RankedResultsRecorded~=true then
 			ended.RankedResultsRecorded=true
 			local score=tostring(homeScore).."-"..tostring(awayScore)
+			ended.MatchId = tostring(ended.MatchId or session.MatchId or HttpService:GenerateGUID(false))
+			session.MatchId = ended.MatchId
 			local serialized=ended.Stats:Serialize(homeScore,awayScore,ended.Clock:Payload().GameSeconds)
 			local function personal(side:string):any
 				local best=nil
 				for _,entry in serialized.PlayerRatings or{}do
 					if entry.Team==side and (not best or entry.Rating>best.Rating)then best=entry end
 				end
-				return{PlayerRating=best and best.Rating or 6,Team=side,Match=side=="Home"and serialized.Home or serialized.Away,Full=serialized,MOTM=serialized.MOTM}
+				return{ResultId=session.MatchId..":"..side,PlayerRating=best and best.Rating or 6,Team=side,Match=side=="Home"and serialized.Home or serialized.Away,Full=serialized,MOTM=serialized.MOTM}
 			end
-			self.RankedProfiles:RecordServerResult(home,homeResult,rpFor(homeResult),away.Name,score,personal("Home"))
-			self.RankedProfiles:RecordServerResult(away,awayResult,rpFor(awayResult),home.Name,tostring(awayScore).."-"..tostring(homeScore),personal("Away"))
+			local homePersonal=personal("Home")
+			local awayPersonal=personal("Away")
+			local homeApplied=self.RankedProfiles:RecordServerResult(home,homeResult,rpFor(homeResult),away.Name,score,homePersonal)
+			local awayApplied=self.RankedProfiles:RecordServerResult(away,awayResult,rpFor(awayResult),home.Name,tostring(awayScore).."-"..tostring(homeScore),awayPersonal)
+			self:_writePendingRankedResult(home,{MatchId=session.MatchId,ResultId=homePersonal.ResultId,Result=homeResult,Opponent=away.Name,Score=score,MatchStats=homePersonal,AppliedInMatchServer=homeApplied})
+			self:_writePendingRankedResult(away,{MatchId=session.MatchId,ResultId=awayPersonal.ResultId,Result=awayResult,Opponent=home.Name,Score=tostring(awayScore).."-"..tostring(homeScore),MatchStats=awayPersonal,AppliedInMatchServer=awayApplied})
 			if self.Publish and self.RankedProfiles.GetClientData then
 				pcall(function()self.Publish(home,"Ranked",self.RankedProfiles:GetClientData(home))end)
 				pcall(function()self.Publish(away,"Ranked",self.RankedProfiles:GetClientData(away))end)
@@ -280,6 +376,9 @@ function Service:_attachResultHandlers(session: any, home: Player, away: Player)
 					packReward=RankedWinPackReward.Grant(self.Progression,participant,self.Publish)
 					session.RankedWinRewards[participant.UserId]=packReward
 				end
+				local side = participant == home and "Home" or "Away"
+				local resultId = tostring(session.MatchId or ended.MatchId or HttpService:GenerateGUID(false)) .. ":" .. side
+				self:_writePendingRankedResult(participant,{MatchId=tostring(session.MatchId or ended.MatchId or ""),ResultId=resultId,Result=result,Opponent=participant==home and away.Name or home.Name,Score=participant==home and tostring(homeScore).."-"..tostring(awayScore) or tostring(awayScore).."-"..tostring(homeScore),MatchStats={ResultId=resultId,Team=side},PackId=packReward and packReward.PackId or nil})
 				reward=reward or{}
 				for key,value in packReward do
 					reward[key]=value
@@ -536,6 +635,7 @@ function Service:_tryStartTeleportRanked()
 	local session = self.Runtime:GetSession(homePlayer)
 	if session then
 		session.PrivateRankedMatch = true
+		session.MatchId = tostring(data.MatchId or HttpService:GenerateGUID(false))
 		session.ReturnPlaceId = tonumber(data.ReturnPlaceId) or tonumber(data.PlaceId) or game.PlaceId
 		self:_attachResultHandlers(session, homePlayer, awayPlayer)
 	end
@@ -560,6 +660,11 @@ function Service:_startGlobalPoll()
 		while true do
 			task.wait(POLL_SECONDS)
 			if self.GlobalEnabled then
+				for _, online in Players:GetPlayers() do
+					if online:GetAttribute("VTRInMatch") ~= true then
+						self:_consumePendingRankedResult(online)
+					end
+				end
 				for player in self.GlobalQueued do
 					if player.Parent ~= Players or player:GetAttribute("VTRInMatch") == true then
 						self:_removeGlobal(player)
