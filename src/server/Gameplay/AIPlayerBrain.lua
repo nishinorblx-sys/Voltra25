@@ -306,6 +306,40 @@ function Service:_carrierDecision(context: any, carrier: any, assignment: any)
 
 	self.NextDecision[carrier.Model] = now + math.max(0.04, math.min(AIDifficultyService.NextDecisionDelay(self.Difficulty) * (0.72 - passTempo * 0.42), holdLimit * 0.65))
 
+	if carrier.Role == "Winger" and wingerWide and carrier.Pitch.Z >= 520 and pressure.Closest > 18 then
+		local diagonalX = carrier.Pitch.X < PitchConfig.HALF_WIDTH and 154 or 270
+		local diagonalZ = math.min(PitchConfig.PITCH_LENGTH - 45, math.max(carrier.Pitch.Z + 36, 650))
+		local diagonalPitch = PitchConfig.ClampInsidePitch(Vector3.new(diagonalX, 3, diagonalZ))
+		local straightPitch = PitchConfig.ClampInsidePitch(Vector3.new(carrier.Pitch.X, 3, PitchConfig.PITCH_LENGTH - 20))
+		local diagonalSpace = AIContextBuilder.SpaceAt(context, carrier.Side, diagonalPitch, 22)
+		local straightSpace = AIContextBuilder.SpaceAt(context, carrier.Side, straightPitch, 24)
+		if diagonalSpace then
+			local target = PitchConfig.TeamPitchPositionToWorld(diagonalPitch, carrier.Side, context.Options)
+			assignment.TargetWorld = target
+			assignment.MovementTarget = target
+			assignment.PrimaryAssignment = "WingerDiagonalGoalCarry"
+			assignment.MovementUrgency = 1
+			assignment.SprintAllowed = true
+			carrier.Model:SetAttribute("AIWingerAttackLane", "DiagonalGoal")
+			carrier.Model:SetAttribute("AIWingerTargetGoalDistance", PitchConfig.PITCH_LENGTH - diagonalPitch.Z)
+			self.LastAction[carrier.Model] = "WingerDiagonalGoalCarry"
+			return
+		elseif straightSpace and carrier.Pitch.Z < PitchConfig.PITCH_LENGTH - 24 then
+			local target = PitchConfig.TeamPitchPositionToWorld(straightPitch, carrier.Side, context.Options)
+			assignment.TargetWorld = target
+			assignment.MovementTarget = target
+			assignment.PrimaryAssignment = "WingerEndLineCarry"
+			assignment.MovementUrgency = 1
+			assignment.SprintAllowed = true
+			carrier.Model:SetAttribute("AIWingerAttackLane", "EndLine")
+			carrier.Model:SetAttribute("AIWingerTargetGoalDistance", PitchConfig.PITCH_LENGTH - straightPitch.Z)
+			self.LastAction[carrier.Model] = "WingerEndLineCarry"
+			return
+		else
+			carrier.Model:SetAttribute("AIWingerAttackLane", "")
+		end
+	end
+
 	local boxCross = chooseBoxCross(context, carrier)
 	local wingerPass = boxCross or AIPassingDecisionService.ChooseWingerWide(context, carrier, self.Style, self.Difficulty)
 	carrier.Model:SetAttribute("AIWingerWideDecision", wingerPass and wingerPass.PassKind or "")
@@ -318,6 +352,34 @@ function Service:_carrierDecision(context: any, carrier: any, assignment: any)
 
 	local strikerInDangerZone = carrier.Role == "ST" and PitchConfig.InZone(carrier.Pitch, "OpponentBox")
 	local strikerUnderClosePressure = carrier.Role == "ST" and pressure.Closest <= 15
+	local strikerGoalDistance = PitchConfig.PITCH_LENGTH - carrier.Pitch.Z
+	local strikerCanDriveDeeper = false
+	local strikerDriveChance = 0
+	if carrier.Role == "ST" and strikerInDangerZone and not strikerUnderClosePressure and strikerGoalDistance > 50 then
+		local depthAlpha = math.clamp((132 - strikerGoalDistance) / 82, 0, 1)
+		strikerDriveChance = math.clamp(0.3 + depthAlpha * 0.7, 0.3, 1)
+		local deeperZ = math.max(carrier.Pitch.Z + 18, PitchConfig.PITCH_LENGTH - math.max(50, strikerGoalDistance - 24))
+		local deeperPitch = PitchConfig.ClampInsidePitch(Vector3.new(carrier.Pitch.X + (PitchConfig.HALF_WIDTH - carrier.Pitch.X) * 0.18, 3, math.min(deeperZ, PitchConfig.PITCH_LENGTH - 45)))
+		strikerCanDriveDeeper = AIContextBuilder.SpaceAt(context, carrier.Side, deeperPitch, 18)
+		carrier.Model:SetAttribute("AIStrikerDriveDeeperChance", strikerDriveChance)
+		carrier.Model:SetAttribute("AIStrikerGoalDistance", strikerGoalDistance)
+		carrier.Model:SetAttribute("AIStrikerDriveDeeperSpace", strikerCanDriveDeeper)
+		if strikerCanDriveDeeper and self.Random:NextNumber() <= strikerDriveChance then
+			local target = PitchConfig.TeamPitchPositionToWorld(deeperPitch, carrier.Side, context.Options)
+			assignment.TargetWorld = target
+			assignment.MovementTarget = target
+			assignment.PrimaryAssignment = "StrikerDriveDeeperForShot"
+			assignment.MovementUrgency = 1
+			assignment.SprintAllowed = true
+			carrier.Model:SetAttribute("AIStrikerBoxShootNow", false)
+			self.LastAction[carrier.Model] = "StrikerDriveDeeperForShot"
+			return
+		end
+	else
+		carrier.Model:SetAttribute("AIStrikerDriveDeeperChance", 0)
+		carrier.Model:SetAttribute("AIStrikerGoalDistance", strikerGoalDistance)
+		carrier.Model:SetAttribute("AIStrikerDriveDeeperSpace", false)
+	end
 	if strikerInDangerZone then
 		local immediateShot = AIShootingDecisionService.Evaluate(context, carrier, self.Style, self.Difficulty)
 		carrier.Model:SetAttribute("AIStrikerBoxShootNow", true)
