@@ -7,7 +7,14 @@ Controller.__index = Controller
 
 local KICK_SOUND = "rbxassetid://107963207460422"
 local KICKOFF_SOUND = "rbxassetid://99361731737732"
-local GOAL_COMMENTATOR = "rbxassetid://103341909626250"
+local GOAL_COMMENTATORS = {
+	"rbxassetid://103341909626250",
+	"rbxassetid://74702312530338",
+	"rbxassetid://103290564397158",
+	"rbxassetid://85367905011258",
+	"rbxassetid://117754134274157",
+	"rbxassetid://72037349498821",
+}
 local FINAL_WHISTLE = "rbxassetid://72085323238660"
 local DRIBBLE_SOUND = "rbxassetid://108878640377793"
 
@@ -83,7 +90,7 @@ end
 function Controller:PlayGoal()
 	playOneShot(GOAL_SOUNDS[math.random(1, #GOAL_SOUNDS)], 0.7, 1)
 	task.delay(0.22, function()
-		playOneShot(GOAL_COMMENTATOR, 0.76, 1)
+		playOneShot(GOAL_COMMENTATORS[math.random(1, #GOAL_COMMENTATORS)], 0.76, 1)
 	end)
 end
 
