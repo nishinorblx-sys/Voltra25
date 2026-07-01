@@ -541,11 +541,11 @@ local function attackingRoleTarget(context: any, info: any, ballPitch: Vector3, 
 			return "AttackBox", Vector3.new(strikerX, 3, math.clamp(ballPitch.Z + 30, 615, 656)), 0.96, true
 		end
 		local _, nearest = AIContextBuilder.NearestOpponent(context, info)
-		local tightlyMarked = nearest <= 13
+		local tightlyMarked = nearest <= 15
 		if safe and facingForward then
 			return "RunBehind", runBehindTarget(context, info), 1, true
 		elseif tightlyMarked or not facingForward then
-			return "ComeShort", Vector3.new(PitchConfig.HALF_WIDTH, 3, math.max(340, ballPitch.Z - 30)), 0.84, false
+			return "ComeShortToEscapePressure", Vector3.new(PitchConfig.HALF_WIDTH + (info.Pitch.X < PitchConfig.HALF_WIDTH and 28 or -28), 3, math.max(340, ballPitch.Z - 38)), 0.92, true
 		end
 		return "PinCenterBacks", Vector3.new(PitchConfig.HALF_WIDTH, 3, onsideZ(context, info.Side, math.max(base.Z, ballPitch.Z + 62))), 0.88, true
 	end
