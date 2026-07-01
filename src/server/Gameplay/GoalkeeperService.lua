@@ -236,7 +236,12 @@ function Service:_begin(attackingSide: string, shotId: number)
 	local chance=saveProbability(keeper,rectangle,target,time,self.BallService.LastShotChance,self.BallService.LastShooter)
 	keeper:SetAttribute("VTRLastSaveChance",math.floor(chance*100+.5))
 	local willSave=false
-	if chance<=0 then
+	local shotPlan=self.BallService and self.BallService.ShotPlan
+	if shotPlan and shotPlan.GuaranteedGoal==true then
+		willSave=false
+	elseif shotPlan and shotPlan.ForcedMiss==true then
+		willSave=true
+	elseif chance<=0 then
 		willSave=false
 	elseif chance>=1 then
 		willSave=true

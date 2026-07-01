@@ -270,6 +270,8 @@ function Service:Handle(player: Player, payload: any)
 			end
 		end
 	elseif kind == "Shot" and validDirection(payload.Direction) then
+		active:SetAttribute("VTRFreeKickCurve", tonumber(payload.FreeKickCurve) or 0)
+		active:SetAttribute("VTRFreeKickLift", tonumber(payload.FreeKickLift) or 0)
 		local aimPoint = self:_aimPoint(active, payload.AimPosition, payload.GoalTarget == true)
 		local activeRoot = root(active)
 		if payload.GoalTarget~=true and not self:_isShotNearGoal(active, aimPoint)then
