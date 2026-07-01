@@ -257,7 +257,20 @@ function Service:Kick(model: Model, kind: string, direction: Vector3, charge: nu
 		self.ShotPlan=targetPoint and{Target=targetPoint,Started=os.clock(),EffectiveGravity=TARGETED_SHOT_GRAVITY,PenaltySlot=penaltySlot~=""and penaltySlot or nil,PenaltyMissHigh=model:GetAttribute("VTRPenaltyMissHigh")==true}or nil
 		local horizontalVelocity=Vector3.new(velocity.X,0,velocity.Z);local horizontalDistance=targetPoint and Vector3.new(targetPoint.X-self.Ball.Position.X,0,targetPoint.Z-self.Ball.Position.Z).Magnitude or 65;local flightTime=tonumber(model:GetAttribute("VTRFreeKickFlightTime")) or horizontalDistance/math.max(horizontalVelocity.Magnitude,1)
 		velocity+=self.Curve:StartShot(model,direction,flightTime)
-		local shotRoot=self:_root(model);local xg=self.Stats:CalculateXG(model,shotRoot and shotRoot.Position or self.Ball.Position,self:_pressure(model),nil)
+		local shotRoot=self:_root(model)
+		local xg=self.Stats:CalculateXG(model,shotRoot and shotRoot.Position or self.Ball.Position,self:_pressure(model),nil)
+		local shotChance=math.clamp(tonumber(xg)or 0,.01,.99)
+		if shotRoot and targetPoint and Vector3.new(shotRoot.Position.X-targetPoint.X,0,shotRoot.Position.Z-targetPoint.Z).Magnitude<=70 then
+			shotChance=.95
+		elseif (tonumber(model:GetAttribute("VTROpenDangerShotChanceUntil"))or 0)>=os.clock() then
+			shotChance=math.clamp(tonumber(model:GetAttribute("VTROpenDangerShotChance"))or .9,.01,.99)
+		elseif (tonumber(model:GetAttribute("VTRLongShotChanceUntil"))or 0)>=os.clock() then
+			shotChance=math.clamp(tonumber(model:GetAttribute("VTRLongShotGoalChance"))or .18,.01,.99)
+		end
+		model:SetAttribute("VTRLastShotScoringChance",shotChance)
+		model:SetAttribute("VTRLastShotScoringPercent",math.floor(shotChance*100+.5))
+		self.LastShotChance=shotChance
+		self.LastShotChancePercent=math.floor(shotChance*100+.5)
 		self.LastShotXG=xg;self.LastShooter=model;self.Stats:RecordShot(model,targetPoint~=nil,xg)
 	elseif kind == "Skill" then
 		self.Ball:SetAttribute("VTRPassStartedAt", nil)
@@ -277,7 +290,13 @@ function Service:Kick(model: Model, kind: string, direction: Vector3, charge: nu
 	self.Ball:SetAttribute("VTRMotionKind",kind)
 	self.Possession:Release(velocity, kind == "Shot" and 0.55 or 0.25)
 	if kind == "Pass" and self.PendingCurve then self.Curve:Start(self.PendingCurve.Model,self.PendingCurve.Direction,self.PendingCurve.Speed,self.PendingCurve.Distance);self.PendingCurve=nil elseif not (kind=="Pass" and self.PassCurveStarted==true) and (kind=="Pass"or kind~="Shot")then self.Curve:Stop()end;self.PassCurveStarted=nil
-	self.Remote:FireAllClients({Type = kind, Actor = model, Receiver = receiver, Charge = amount})
+	local eventPayload={Type=kind,Actor=model,Receiver=receiver,Charge=amount}
+	if kind=="Shot"then
+		eventPayload.ScoringChance=self.LastShotChance
+		eventPayload.ScoringChancePercent=self.LastShotChancePercent
+		eventPayload.ShotXG=self.LastShotXG
+	end
+	self.Remote:FireAllClients(eventPayload)
 	return true
 end
 

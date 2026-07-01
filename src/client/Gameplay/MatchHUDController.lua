@@ -639,6 +639,79 @@ function Controller:Flash(message: string, duration: number?)
 	end)
 end
 
+function Controller:ShowShotChance(chance: any, shooter: Model?)
+	local value = tonumber(chance) or tonumber(shooter and shooter:GetAttribute("VTRLastShotScoringChance")) or 0
+	if value > 1 then value /= 100 end
+	value = math.clamp(value, 0, .99)
+	local percent = math.floor(value * 100 + .5)
+	if self.ShotChancePopup then self.ShotChancePopup:Destroy();self.ShotChancePopup=nil end
+	local box = Instance.new("CanvasGroup")
+	box.Name = "ShotChancePopup"
+	box.AnchorPoint = Vector2.new(.5, 0)
+	box.Position = UDim2.new(.5, 0, 0, 116)
+	box.Size = UDim2.fromOffset(318, 46)
+	box.BackgroundColor3 = Theme.Colors.Black
+	box.BackgroundTransparency = .06
+	box.BorderSizePixel = 0
+	box.GroupTransparency = 1
+	box.ZIndex = 70
+	box.Parent = self.Gui
+	corner(box, 8)
+	stroke(box, Theme.Colors.Electric, .18)
+	local text = label(box, string.format("[%%%d SCORING CHANCE]", percent), UDim2.fromOffset(0, 6), UDim2.new(1, 0, 1, -12), 17)
+	text.TextXAlignment = Enum.TextXAlignment.Center
+	text.TextColor3 = Theme.Colors.White
+	text.ZIndex = 71
+	local tag = label(box, "SHOT QUALITY", UDim2.fromOffset(0, 30), UDim2.new(1, 0, 0, 12), 7)
+	tag.TextXAlignment = Enum.TextXAlignment.Center
+	tag.TextColor3 = Theme.Colors.Electric
+	tag.ZIndex = 71
+	local scale = Instance.new("UIScale")
+	scale.Scale = .82
+	scale.Parent = box
+	self.ShotChancePopup = box
+	self.ShotChanceResolved = false
+	TweenService:Create(box, TweenInfo.new(.14, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {GroupTransparency = 0, Position = UDim2.new(.5, 0, 0, 104)}):Play()
+	TweenService:Create(scale, TweenInfo.new(.2, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Scale = 1}):Play()
+	task.delay(2.35, function()
+		if self.ShotChancePopup == box and not self.ShotChanceResolved then
+			self:ResolveShotChance(false)
+		end
+	end)
+end
+
+function Controller:ResolveShotChance(scored: boolean)
+	local box = self.ShotChancePopup
+	if not box or not box.Parent then return end
+	self.ShotChanceResolved = true
+	local color = scored and Color3.fromHex("21FF72") or Color3.fromHex("FF4056")
+	box.BackgroundColor3 = color
+	for _, child in box:GetDescendants() do
+		if child:IsA("TextLabel") then
+			child.TextColor3 = Theme.Colors.Black
+		elseif child:IsA("UIStroke") then
+			child.Color = color
+			child.Transparency = 0
+		end
+	end
+	local scale = box:FindFirstChildOfClass("UIScale")
+	if scale then
+		TweenService:Create(scale, TweenInfo.new(.12, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Scale = 1.08}):Play()
+		task.delay(.14, function()
+			if scale.Parent then TweenService:Create(scale, TweenInfo.new(.14), {Scale = 1}):Play() end
+		end)
+	end
+	task.delay(scored and 1.05 or .82, function()
+		if self.ShotChancePopup == box then
+			TweenService:Create(box, TweenInfo.new(.18, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {GroupTransparency = 1, Position = box.Position - UDim2.fromOffset(0, 14)}):Play()
+			task.delay(.2, function()
+				if self.ShotChancePopup == box then self.ShotChancePopup = nil end
+				if box.Parent then box:Destroy() end
+			end)
+		end
+	end)
+end
+
 function Controller:ShowFoulBanner(payload:any)
 	if self.FoulBanner then self.FoulBanner:Destroy();self.FoulBanner=nil end
 	local overlay=Instance.new("Frame")
