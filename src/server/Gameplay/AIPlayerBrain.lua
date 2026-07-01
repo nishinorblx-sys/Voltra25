@@ -70,6 +70,31 @@ local function predictReceivePoint(context: any, receiverInfo: any, requestedTar
 	return Vector3.new(bestPoint.X, receiverPosition.Y, bestPoint.Z)
 end
 
+local function cutPassCoursePoint(context: any, receiverInfo: any, requestedTarget: Vector3): Vector3
+	local velocity=flat(context.BallVelocity or Vector3.zero)
+	local ball=context.BallWorld
+	if velocity.Magnitude<2 then
+		return requestedTarget
+	end
+	local direction=velocity.Unit
+	local toTarget=flat(requestedTarget-ball)
+	local remaining=toTarget.Magnitude
+	if remaining<3 then
+		return requestedTarget
+	end
+	local cutDistance=math.clamp(remaining*.9,5,58)
+	if remaining<18 then
+		cutDistance=math.max(remaining*.58,3.5)
+	end
+	local cut=ball+direction*cutDistance
+	local receiverToCut=PitchConfig.GetDistanceStuds(receiverInfo.World,cut)
+	local receiverToTarget=PitchConfig.GetDistanceStuds(receiverInfo.World,requestedTarget)
+	if receiverToCut>receiverToTarget+26 and remaining>22 then
+		cut=ball+direction*math.clamp(remaining*.72,5,42)
+	end
+	return Vector3.new(cut.X,receiverInfo.World.Y,cut.Z)
+end
+
 local function chooseBoxCross(context: any, carrier: any): any?
 	if carrier.Role ~= "Winger" or carrier.Pitch.Z < 610 or not (carrier.Pitch.X < 105 or carrier.Pitch.X > 319) then
 		return nil
@@ -577,16 +602,19 @@ function Service:_receiverOverrides(context: any, assignmentsBySide: any, onlySi
 				info.Model:SetAttribute("AIDebugExpectedPass", nil)
 				info.Model:SetAttribute("AIDebugPassTarget", nil)
 			elseif typeof(receiveTarget) == "Vector3" and not info.IsUserControlled then
-				local target = predictReceivePoint(context, info, receiveTarget)
+				local passKind=tostring(info.Model:GetAttribute("AIDebugPassKind") or "")
+				local lobbed=passKind=="Lofted" or passKind=="FarPostCross" or (context.Ball and context.Ball:GetAttribute("VTRLobPassActive")==true)
+				local target = lobbed and predictReceivePoint(context, info, receiveTarget) or cutPassCoursePoint(context, info, receiveTarget)
 				local assignment = assignmentsBySide[side][info.Model]
 				if assignment then
-					assignment.PrimaryAssignment = "ReceivePass"
+					assignment.PrimaryAssignment = lobbed and "WaitForLobbedPass" or "CutPassCourse"
 					assignment.TargetWorld = target
 					assignment.MovementTarget = target
-					assignment.MovementUrgency = 1
-					assignment.SprintAllowed = true
+					assignment.MovementUrgency = lobbed and .92 or 1
+					assignment.SprintAllowed = not lobbed or PitchConfig.GetDistanceStuds(info.World,target)>10
 					assignment.FaceWorld = context.BallWorld
 					info.Model:SetAttribute("VTRReceiveIntercept", target)
+					info.Model:SetAttribute("VTRReceiveMode", lobbed and "WaitLob" or "CutCourse")
 					info.Model:SetAttribute("VTRReceiveBallSpeed", flat(context.BallVelocity or Vector3.zero).Magnitude)
 					info.Model:SetAttribute("VTRReceiveDistance", PitchConfig.GetDistanceStuds(info.World, target))
 				end

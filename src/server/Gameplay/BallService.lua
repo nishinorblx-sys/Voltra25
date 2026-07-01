@@ -209,15 +209,22 @@ function Service:Kick(model: Model, kind: string, direction: Vector3, charge: nu
 			local effectiveGravity=72;local preferredSpeed=52+amount*30+math.clamp(distance/10,0,18)
 			velocity=ballisticVelocity(self.Ball.Position,destination,preferredSpeed,effectiveGravity)or(direction.Unit*finalSpeed+Vector3.yAxis*32)
 			local horizontalVelocity=Vector3.new(velocity.X,0,velocity.Z);local flightTime=distance/math.max(horizontalVelocity.Magnitude,1)
+			velocity+=self.Curve:StartPass(model,destination-self.Ball.Position,horizontalVelocity.Magnitude,distance,true,flightTime)
+			self.PassCurveStarted=true
 			self.PendingCurve=nil;self.PassTargetPoint=destination;self.PassPlan={Target=destination,Distance=math.max(distance,1),InitialSpeed=horizontalVelocity.Magnitude,ArrivalRatio=1,Started=os.clock(),Lofted=true,EffectiveGravity=effectiveGravity,FlightTime=flightTime}
 			self.Ball:SetAttribute("VTRLobTarget", destination)
 			self.Ball:SetAttribute("VTRLobPassActive", true)
 		else
 			local passAmount=passType=="Through"and math.min(amount,.46)or amount
 			local lift=PassingPower.LiftForDistance(distance,passAmount,false)
-			velocity = (flat(direction) + Vector3.new(0,lift,0)).Unit * finalSpeed
-			self.PendingCurve=passType=="Manual"and nil or{Model = model, Direction = direction, Speed = finalSpeed, Distance = distance}
-			self.PassTargetPoint=modelRoot and(modelRoot.Position+direction)or nil
+			local destination=targetPoint or(modelRoot and(modelRoot.Position+direction))or(self.Ball.Position+direction)
+			local groundDirection=destination-self.Ball.Position
+			velocity = (flat(groundDirection) + Vector3.new(0,lift,0)).Unit * finalSpeed
+			local groundFlightTime=distance/math.max(finalSpeed,1)
+			velocity+=self.Curve:StartPass(model,groundDirection,finalSpeed,distance,false,groundFlightTime)
+			self.PassCurveStarted=true
+			self.PendingCurve=nil
+			self.PassTargetPoint=destination
 			self.PassPlan=self.PassTargetPoint and{Target=self.PassTargetPoint,Distance=math.max(distance,1),InitialSpeed=finalSpeed,ArrivalRatio=PassingPower.ArrivalSpeedRatio(passAmount),Started=os.clock()}or nil
 			if self.PassTargetPoint then self.Ball:SetAttribute("VTRPassTarget", self.PassTargetPoint) end
 			self.Ball:SetAttribute("VTRLobTarget", nil)
@@ -269,7 +276,7 @@ function Service:Kick(model: Model, kind: string, direction: Vector3, charge: nu
 	self.MotionStarted = os.clock()
 	self.Ball:SetAttribute("VTRMotionKind",kind)
 	self.Possession:Release(velocity, kind == "Shot" and 0.55 or 0.25)
-	if kind == "Pass" and self.PendingCurve then self.Curve:Start(self.PendingCurve.Model,self.PendingCurve.Direction,self.PendingCurve.Speed,self.PendingCurve.Distance);self.PendingCurve=nil elseif kind=="Pass"or kind~="Shot"then self.Curve:Stop()end
+	if kind == "Pass" and self.PendingCurve then self.Curve:Start(self.PendingCurve.Model,self.PendingCurve.Direction,self.PendingCurve.Speed,self.PendingCurve.Distance);self.PendingCurve=nil elseif not (kind=="Pass" and self.PassCurveStarted==true) and (kind=="Pass"or kind~="Shot")then self.Curve:Stop()end;self.PassCurveStarted=nil
 	self.Remote:FireAllClients({Type = kind, Actor = model, Receiver = receiver, Charge = amount})
 	return true
 end

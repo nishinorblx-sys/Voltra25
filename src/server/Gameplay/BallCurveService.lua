@@ -21,6 +21,23 @@ function Service:Start(model: Model, direction: Vector3, speed: number, distance
 	self.Ball.AssemblyAngularVelocity += Vector3.new(0, footSign * strength * 1.8, 0)
 end
 
+function Service:StartPass(model:Model,direction:Vector3,speed:number,distance:number,lofted:boolean?,flightTime:number?):Vector3
+	local flatDirection=Vector3.new(direction.X,0,direction.Z)
+	if flatDirection.Magnitude<.1 then return Vector3.zero end
+	local passing=math.clamp(tonumber(model:GetAttribute("PAS"))or 60,1,99)
+	local curveStat=math.clamp(tonumber(model:GetAttribute("Curve"))or passing,1,99)
+	local footSign=model:GetAttribute("PreferredFoot")=="Left"and-1 or 1
+	local lateral=flatDirection.Unit:Cross(Vector3.yAxis)*footSign
+	local duration=math.clamp(flightTime or distance/math.max(speed,1),lofted and .7 or .22,lofted and 2.45 or 1.05)
+	local base=lofted and 5.2 or 3.2
+	local strength=(base+curveStat*.045+math.clamp(distance,0,120)/120*(lofted and 3.2 or 2.1))*(1.1-passing/900)
+	local decay=lofted and .46 or .82
+	self.Active={Lateral=lateral,Strength=strength,Remaining=duration,Decay=decay}
+	local displacement=strength/decay*duration-strength/(decay*decay)*(1-math.exp(-decay*duration))
+	self.Ball.AssemblyAngularVelocity+=Vector3.new(0,footSign*strength*(lofted and 1.8 or 1.45),0)
+	return -lateral*(displacement/duration)
+end
+
 function Service:StartShot(model:Model,direction:Vector3,flightTime:number):Vector3
 	local flat=Vector3.new(direction.X,0,direction.Z);if flat.Magnitude<.1 then return Vector3.zero end
 	local curve=math.clamp(tonumber(model:GetAttribute("Curve"))or tonumber(model:GetAttribute("SHO"))or 60,1,99)

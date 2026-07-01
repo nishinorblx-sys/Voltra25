@@ -11,7 +11,8 @@ local laneOpenTo: (any, any, number) -> boolean
 
 local function goalTarget(context: any, shooter: any): Vector3
 	local attackSign = context.AttackSigns and context.AttackSigns[shooter.Side] or PitchConfig.GetAttackDirection(shooter.Side, context.Options)
-	local rectangle = GoalModelResolver.ResolveByAttackSign(attackSign, context.PitchCFrame, context.Width, context.Length)	local goalPitch = Vector3.new(PitchConfig.HALF_WIDTH, 3, PitchConfig.PITCH_LENGTH)
+	local rectangle = GoalModelResolver.ResolveByAttackSign(attackSign, context.PitchCFrame, context.Width, context.Length)
+	local goalPitch = Vector3.new(PitchConfig.HALF_WIDTH, 3, PitchConfig.PITCH_LENGTH)
 	local center = PitchConfig.TeamPitchPositionToWorld(goalPitch, shooter.Side, context.Options)
 	local distance = PitchConfig.GetDistanceStuds(shooter.World, center)
 	local pressure = AIContextBuilder.Pressure(context, shooter)
@@ -19,17 +20,29 @@ local function goalTarget(context: any, shooter: any): Vector3
 	local rightOpen = laneOpenTo(context, shooter, 244)
 	local width = math.max(1, rectangle.RightBound - rectangle.Left)
 	local height = math.max(1, rectangle.Top - rectangle.Bottom)
-	local closeAlpha = math.clamp((150 - distance) / 120, 0, 1)
-	local cornerInset = math.clamp(width * (0.1 + pressure.Score * 0.04), 0.25, width * 0.18)
-	local leftX = rectangle.Left + cornerInset
-	local rightX = rectangle.RightBound - cornerInset
+	local edgeInset = math.clamp(width * (0.06 + pressure.Score * 0.018), 0.18, width * 0.13)
+	local leftX = rectangle.Left + edgeInset
+	local rightX = rectangle.RightBound - edgeInset
 	local sideBias = shooter.Pitch.X < PitchConfig.HALF_WIDTH and rightX or leftX
 	if leftOpen ~= rightOpen then
 		sideBias = leftOpen and leftX or rightX
+	elseif math.floor((context.Now or os.clock()) * 10 + #shooter.Model.Name) % 2 == 0 then
+		sideBias = leftX
+	else
+		sideBias = rightX
 	end
-	local top = math.clamp(rectangle.Top - height * math.clamp(0.12 + pressure.Score * 0.08, 0.12, 0.26), rectangle.Bottom, rectangle.Top)
-	local low = math.clamp(rectangle.Bottom + height * 0.24, rectangle.Bottom, rectangle.Top)
-	local vertical = closeAlpha > 0.68 and low or top
+	local highEdge = rectangle.Top - height * math.clamp(0.08 + pressure.Score * 0.03, 0.08, 0.18)
+	local lowEdge = rectangle.Bottom + height * math.clamp(0.16 + math.clamp((90 - distance) / 160, 0, .08), 0.16, 0.24)
+	local vertical
+	if distance < 62 then
+		vertical = lowEdge
+	elseif pressure.Heavy then
+		vertical = highEdge
+	elseif math.floor((context.Now or os.clock()) * 7 + shooter.Stats.shooting) % 2 == 0 then
+		vertical = highEdge
+	else
+		vertical = lowEdge
+	end
 	return GoalModelResolver.Point(rectangle, sideBias, vertical)
 end
 
