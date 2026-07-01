@@ -68,6 +68,7 @@ function Controller.new(ball: BasePart, teamModels: any)
 	self.MatchActive = false
 	self.LastDribble = 0
 	self.LastGoalSfxAt = 0
+	self.LastKickoffAt = 0
 	self.Connection = nil
 	return self
 end
@@ -88,6 +89,8 @@ function Controller:PlayKick()
 end
 
 function Controller:PlayKickoff()
+	if os.clock() - (self.LastKickoffAt or 0) < 1.2 then return end
+	self.LastKickoffAt = os.clock()
 	playOneShot(KICKOFF_SOUND, 0.62, 1)
 end
 

@@ -81,6 +81,7 @@ function Controls.new(controller: any)
 	self.Gui.ResetOnSpawn = false
 	self.Gui.DisplayOrder = 170
 	self.Gui.Parent = Players.LocalPlayer.PlayerGui
+	self.Gui.Enabled = false
 
 	local root = Instance.new("Frame")
 	root.BackgroundTransparency = 1
@@ -205,6 +206,12 @@ function Controls:_bindChargeButton(button: TextButton, kind: string, passMode: 
 		pressed(button, false)
 		touch = nil
 	end)
+end
+
+function Controls:SetVisible(visible: boolean)
+	if self.Gui then
+		self.Gui.Enabled = visible == true
+	end
 end
 
 function Controls:SetDefending(defending: boolean)

@@ -16,6 +16,7 @@ function Service.new(ball: BasePart, possession: any, remote: RemoteEvent)
 end
 
 function Service:Expect(player: Player, receiver: Model, receivePoint: Vector3)
+	if (tonumber(receiver:GetAttribute("VTRCannotRecoverBallUntil")) or 0) > os.clock() or (tonumber(receiver:GetAttribute("VTRStunnedUntil")) or 0) > os.clock() then return end
 	local receiverRoot = root(receiver)
 	if not receiverRoot then return end
 	ReceiverMovementService.SetTarget(receiver, receivePoint)
@@ -25,7 +26,7 @@ end
 function Service:Step()
 	for player, entry in self.Pending do
 		local receiver: Model = entry.Model
-		if not receiver.Parent or os.clock() - entry.Started > 4.2 then
+		if not receiver.Parent or os.clock() - entry.Started > 4.2 or (tonumber(receiver:GetAttribute("VTRCannotRecoverBallUntil")) or 0) > os.clock() or (tonumber(receiver:GetAttribute("VTRStunnedUntil")) or 0) > os.clock() then
 			if receiver.Parent then clearReceiver(receiver) end
 			self.Pending[player] = nil
 			continue

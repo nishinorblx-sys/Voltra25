@@ -195,30 +195,31 @@ function Controller:_updateTactical(dt: number)
 end
 
 function Controller:_updatePro(dt: number, root: BasePart)
-	local move = self.CurrentMove or self.LastMove or root.CFrame.LookVector
-	local flatMove = Vector3.new(move.X, 0, move.Z)
-	local facing = Vector3.new(root.CFrame.LookVector.X, 0, root.CFrame.LookVector.Z)
 	local ballOffset = Vector3.new(self.Ball.Position.X - root.Position.X, 0, self.Ball.Position.Z - root.Position.Z)
-	local forward = flatMove.Magnitude > .12 and flatMove.Unit or facing.Magnitude > .12 and facing.Unit or self.PitchCFrame.LookVector
-	local ballBlend = ballOffset.Magnitude > 10 and math.clamp(ballOffset.Magnitude / 70, 0, .38) or 0
-	local lookDirection = (forward * (1 - ballBlend) + (ballOffset.Magnitude > .1 and ballOffset.Unit or forward) * ballBlend)
-	if lookDirection.Magnitude < .1 then lookDirection = forward end
-	lookDirection = lookDirection.Unit
-	local speed = Vector3.new(root.AssemblyLinearVelocity.X, 0, root.AssemblyLinearVelocity.Z).Magnitude
-	local distance = math.clamp(28 + speed * .34 + ballOffset.Magnitude * .06, 28, 43)
-	local height = math.clamp(11.5 + speed * .05, 11.5, 16.5)
-	local side = self.PitchCFrame.RightVector * math.clamp(ballOffset:Dot(self.PitchCFrame.RightVector) * .05, -3.2, 3.2)
-	local desired = root.Position - lookDirection * distance + Vector3.new(0, height, 0) + side
-	local target = root.Position + lookDirection * math.clamp(17 + speed * .18, 16, 26) + Vector3.new(0, 5.2, 0)
-	if ballOffset.Magnitude < 38 then
-		target = target:Lerp(self.Ball.Position + Vector3.new(0, 2.4, 0), .34)
+	local side = tostring(self.Active and self.Active:GetAttribute("VTRTeam") or "Home")
+	local half = tonumber(workspace:GetAttribute("VTRMatchHalf")) or 1
+	local attackSign = side == "Home" and (half >= 2 and 1 or -1) or (half >= 2 and -1 or 1)
+	local attackDirection = self.PitchCFrame:VectorToWorldSpace(Vector3.new(0, 0, attackSign))
+	local facing = Vector3.new(root.CFrame.LookVector.X, 0, root.CFrame.LookVector.Z)
+	local lookDirection = ballOffset.Magnitude > 2.5 and ballOffset.Unit or Vector3.new(attackDirection.X, 0, attackDirection.Z).Unit
+	if lookDirection.Magnitude < .1 then
+		lookDirection = facing.Magnitude > .1 and facing.Unit or self.PitchCFrame.LookVector
 	end
-	local alpha = 1 - math.exp(-dt / .075)
-	local current = self.Camera.CFrame.Position
-	local position = current:Lerp(desired, alpha)
+	local speed = Vector3.new(root.AssemblyLinearVelocity.X, 0, root.AssemblyLinearVelocity.Z).Magnitude
+	local ballDistance = ballOffset.Magnitude
+	local distance = math.clamp(31 + speed * .26 + math.clamp(ballDistance - 10, 0, 46) * .07, 30, 42)
+	local height = math.clamp(12 + speed * .04, 12, 16)
+	local sideOffset = self.PitchCFrame.RightVector * math.clamp(ballOffset:Dot(self.PitchCFrame.RightVector) * .035, -2.2, 2.2)
+	local desired = root.Position - lookDirection * distance + Vector3.new(0, height, 0) + sideOffset
+	local target = self.Ball.Position + Vector3.new(0, 2.7, 0)
+	if ballDistance > 45 then
+		target = target:Lerp(root.Position + lookDirection * 22 + Vector3.new(0, 4.8, 0), .24)
+	end
+	local alpha = 1 - math.exp(-dt / .078)
+	local position = self.Camera.CFrame.Position:Lerp(desired, alpha)
 	self.Camera.CFrame = CFrame.lookAt(position, target, self.PitchCFrame.UpVector)
-	local fov = math.clamp(55 + speed * .05 + math.clamp(ballOffset.Magnitude / 26, 0, 4), 55, 61)
-	self.Camera.FieldOfView += (fov - self.Camera.FieldOfView) * (1 - math.exp(-dt / .12))
+	local fov = math.clamp(55 + speed * .04 + math.clamp(ballDistance / 34, 0, 3), 55, 60)
+	self.Camera.FieldOfView += (fov - self.Camera.FieldOfView) * (1 - math.exp(-dt / .13))
 end
 
 function Controller:CycleMode(): string

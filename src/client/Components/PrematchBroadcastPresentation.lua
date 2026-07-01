@@ -4,10 +4,13 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
 local SoundService = game:GetService("SoundService")
+local UserInputService = game:GetService("UserInputService")
 local MATCHUP_PANEL_DELAY = 0.85
 
 local Theme = require(ReplicatedStorage.VTR.Shared.Theme)
 local PlayerPortraitService = require(script.Parent.Parent.Services.PlayerPortraitService)
+local UISoundService = require(script.Parent.Parent.Services.UISoundService)
+local Remotes = require(ReplicatedStorage.VTR.Shared.Remotes)
 
 local Presentation = {}
 local TOTAL_DURATION = 66.0
@@ -138,6 +141,38 @@ local function applyPresentationBadge(target: TextLabel, primary: Color3, logoTe
 	outline.Transparency = .18
 	outline.Thickness = 1
 	outline.Parent = shield
+	local logoValue = tostring(logoText or "")
+	local imageId = ""
+	if string.match(logoValue, "^rbxassetid://") then
+		imageId = logoValue
+	elseif tonumber(logoValue) then
+		imageId = "rbxassetid://" .. logoValue
+	end
+	if imageId ~= "" then
+		local image = Instance.new("ImageLabel")
+		image.Name = "LogoImage"
+		image.BackgroundTransparency = 1
+		image.Image = imageId
+		image.ScaleType = Enum.ScaleType.Fit
+		image.Position = UDim2.fromScale(.16, .17)
+		image.Size = UDim2.fromScale(.68, .66)
+		image.ZIndex = shield.ZIndex + 4
+		image.Parent = shield
+	else
+		local mark = Instance.new("TextLabel")
+		mark.Name = "LogoText"
+		mark.BackgroundTransparency = 1
+		mark.Text = logoValue ~= "" and string.sub(string.upper(logoValue), 1, 4) or "VTR"
+		mark.TextColor3 = accent
+		mark.TextSize = 22
+		mark.Font = Enum.Font.GothamBlack
+		mark.TextXAlignment = Enum.TextXAlignment.Center
+		mark.TextYAlignment = Enum.TextYAlignment.Center
+		mark.Position = UDim2.fromScale(.12, .22)
+		mark.Size = UDim2.fromScale(.76, .52)
+		mark.ZIndex = shield.ZIndex + 4
+		mark.Parent = shield
+	end
 end
 
 local function label(parent: Instance, text: string, pos: UDim2, size: UDim2, textSize: number, textColor: Color3?, font: Enum.Font?): TextLabel
@@ -178,6 +213,7 @@ local function panel(parent: Instance, name: string, pos: UDim2, size: UDim2): C
 end
 
 local function slideIn(item: GuiObject, pos: UDim2, from: UDim2, duration: number?)
+	UISoundService.PlayTransition()
 	item.Position = from
 	item.Visible = true
 	TweenService:Create(item, TweenInfo.new(duration or 0.36, Theme.Animation.EasingStyle, Theme.Animation.EasingDirection), {Position = pos}):Play()
@@ -886,6 +922,7 @@ local function showPlayerGroupPreview(container: Frame, models: {Model}, players
 			nameLabel.TextXAlignment = Enum.TextXAlignment.Center
 			task.delay((order - 1) * 0.08, function()
 				if not slot.Parent then return end
+				UISoundService.PlayTransition()
 				TweenService:Create(slot, TweenInfo.new(0.36, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
 					Position = targetPosition,
 					GroupTransparency = 0,
@@ -952,6 +989,44 @@ function Presentation.Play(data: any, onComplete: (() -> ())?)
 	root.Size = UDim2.fromScale(1, 1)
 	root.ZIndex = 200
 	root.Parent = gui
+	if UserInputService.TouchEnabled then
+		local actionRemote: RemoteEvent? = nil
+		task.spawn(function()
+			pcall(function()
+				actionRemote = select(1, Remotes.Wait())
+			end)
+		end)
+		local skip = Instance.new("TextButton")
+		skip.Name = "MobileSkipIntro"
+		skip.AnchorPoint = Vector2.new(1, 0)
+		skip.Position = UDim2.new(1, -18, 0, 18)
+		skip.Size = UDim2.fromOffset(128, 42)
+		skip.BackgroundColor3 = Theme.Colors.Black
+		skip.BackgroundTransparency = .12
+		skip.BorderSizePixel = 0
+		skip.AutoButtonColor = false
+		skip.Text = "SKIP"
+		skip.TextColor3 = Theme.Colors.White
+		skip.TextSize = 14
+		skip.Font = Theme.Fonts.Display
+		skip.ZIndex = 260
+		skip.Parent = root
+		local corner = Instance.new("UICorner")
+		corner.CornerRadius = UDim.new(0, 14)
+		corner.Parent = skip
+		local stroke = Instance.new("UIStroke")
+		stroke.Color = Theme.Colors.Electric
+		stroke.Transparency = .25
+		stroke.Thickness = 1.5
+		stroke.Parent = skip
+		skip.Activated:Connect(function()
+			UISoundService.PlayTransition()
+			if actionRemote then
+				actionRemote:FireServer({Type = "PrematchSkip"})
+			end
+			skip.Text = "SKIP SENT"
+		end)
+	end
 
 	local home = tostring(data.Home or "HOME")
 	local away = tostring(data.Away or "AWAY")

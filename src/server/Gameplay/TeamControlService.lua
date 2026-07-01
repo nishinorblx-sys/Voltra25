@@ -58,6 +58,7 @@ function Service:GetActive(player: Player): Model?
 end
 
 function Service:_set(player: Player, model: Model, reason: string)
+	if (tonumber(model:GetAttribute("VTRStunnedUntil")) or 0) > os.clock() then return end
 	local previous = self.Active[player]
 	if previous == model then return end
 	if previous then
