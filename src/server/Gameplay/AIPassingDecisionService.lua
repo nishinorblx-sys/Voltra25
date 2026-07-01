@@ -213,7 +213,7 @@ function Service.ScoreReceiver(context: any, passer: any, receiver: any, style: 
 		targetKind = "Lofted"
 	end
 	local receiverAssignment = tostring(receiver.Model:GetAttribute("SupportRole") or receiver.Model:GetAttribute("currentAssignment") or "")
-	local trailingCover = receiverAssignment == "TrailStrikerCover" or receiverAssignment == "TrailMidfielderCover" or receiverAssignment == "TrailingPassBack"
+	local trailingCover = receiverAssignment == "TrailStrikerCover" or receiverAssignment == "TrailMidfielderCover" or receiverAssignment == "TrailStrikerCoverWide" or receiverAssignment == "TrailMidfielderCoverWide" or receiverAssignment == "TrailingPassBack"
 	if trailingCover and forwardGain <= -8 then
 		targetKind = "BackPass"
 	end
@@ -423,7 +423,7 @@ function Service.Choose(context: any, passer: any, style: any, difficulty: any, 
 			local scored = Service.ScoreReceiver(context, passer, receiver, style, difficulty)
 			if scored then
 				local assignment = tostring(receiver.Model:GetAttribute("SupportRole") or receiver.Model:GetAttribute("currentAssignment") or "")
-				local isTrailing = assignment == "TrailStrikerCover" or assignment == "TrailMidfielderCover" or assignment == "TrailingPassBack"
+				local isTrailing = assignment == "TrailStrikerCover" or assignment == "TrailMidfielderCover" or assignment == "TrailStrikerCoverWide" or assignment == "TrailMidfielderCoverWide" or assignment == "TrailingPassBack"
 				if scored.LaneClear and scored.Score > -4 and (not fallback or scored.Score > fallback.Score) then
 					fallback = scored
 				end

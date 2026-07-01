@@ -316,6 +316,21 @@ function Service:_carrierDecision(context: any, carrier: any, assignment: any)
 		end
 	end
 
+	if carrier.Role == "ST" and pressure.Closest <= 15 then
+		local strikerEscapePass = AIPassingDecisionService.Choose(context, carrier, self.Style, self.Difficulty, true)
+		carrier.Model:SetAttribute("AIStrikerEscapePressure", true)
+		carrier.Model:SetAttribute("AIStrikerEscapePassReceiver", strikerEscapePass and strikerEscapePass.Receiver and strikerEscapePass.Receiver.Model.Name or "")
+		carrier.Model:SetAttribute("AIStrikerEscapePassKind", strikerEscapePass and strikerEscapePass.PassKind or "")
+		if strikerEscapePass and self:_kickPass(context, carrier, strikerEscapePass) then
+			self.CarrySince[carrier.Model] = nil
+			return
+		end
+	else
+		carrier.Model:SetAttribute("AIStrikerEscapePressure", false)
+		carrier.Model:SetAttribute("AIStrikerEscapePassReceiver", "")
+		carrier.Model:SetAttribute("AIStrikerEscapePassKind", "")
+	end
+
 	local shot = AIShootingDecisionService.Evaluate(context, carrier, self.Style, self.Difficulty)
 	carrier.Model:SetAttribute("AIShotScore", shot.Score)
 	carrier.Model:SetAttribute("AIShotGood", shot.Good)

@@ -270,14 +270,18 @@ local function attackingTrailCover(context: any, info: any, ballPitch: Vector3):
 		end
 	end
 	if best then
-		local behind = best.Role == "ST" and 30 or 24
-		local lateral = best.Pitch.X < PitchConfig.HALF_WIDTH and 18 or -18
+		local behind = best.Role == "ST" and 34 or 26
+		local lateralSide = info.Pitch.X < PitchConfig.HALF_WIDTH and -1 or 1
+		if math.abs(info.Pitch.X - PitchConfig.HALF_WIDTH) < 14 then
+			lateralSide = ballPitch.X < PitchConfig.HALF_WIDTH and 1 or -1
+		end
+		local lateral = best.Role == "ST" and lateralSide * 44 or lateralSide * 32
 		local target = Vector3.new(
-			math.clamp(best.Pitch.X + lateral, 112, 312),
+			math.clamp(best.Pitch.X + lateral, 86, 338),
 			3,
-			math.clamp(best.Pitch.Z - behind, math.max(175, ballPitch.Z - 44), math.max(230, ballPitch.Z + 42))
+			math.clamp(best.Pitch.Z - behind, math.max(175, ballPitch.Z - 48), math.max(230, ballPitch.Z + 38))
 		)
-		return best.Role == "ST" and "TrailStrikerCover" or "TrailMidfielderCover", target
+		return best.Role == "ST" and "TrailStrikerCoverWide" or "TrailMidfielderCoverWide", target
 	end
 	local fallbackX = PitchConfig.HALF_WIDTH + (info.BasePitch.X < PitchConfig.HALF_WIDTH and -28 or 28)
 	return "TrailingPassBack", Vector3.new(fallbackX, 3, math.max(190, ballPitch.Z - 28))
