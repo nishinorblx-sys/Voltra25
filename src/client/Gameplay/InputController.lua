@@ -71,8 +71,11 @@ function Controller:_chargeEnd(kind: string)
 		local through=not manualLobbed and not manual and not lofted and self.Keys[Enum.KeyCode.W] == true and charge >= 0.18
 		local mobileMode = self:MobilePassMode()
 		local passType=mobileMode or manualLobbed and"ManualLobbed"or manual and"Manual"or lofted and"Lofted"or through and"Through"or"Ground"
+		local isMobile = self.MobileControls ~= nil
 		local isManual = manual or manualLobbed or self:MobileManualAim("Pass")
-		self.Remote:FireServer({Type = "Pass", Direction = aim.Direction, AimPosition = aim.Position, TargetModel = isManual and nil or aim.TargetModel, Charge = charge, PassType = passType, AutoSwitch = isManual and"Off"or self.AutoSwitch, ReceiverAssist = isManual and"Off"or self.ReceiverAssist})
+		local autoSwitch = isMobile and "Off" or (isManual and "Off" or self.AutoSwitch)
+		local receiverAssist = isMobile and "Off" or (isManual and "Off" or self.ReceiverAssist)
+		self.Remote:FireServer({Type = "Pass", Direction = aim.Direction, AimPosition = aim.Position, TargetModel = isManual and nil or aim.TargetModel, Charge = charge, PassType = passType, AutoSwitch = autoSwitch, ReceiverAssist = receiverAssist})
 	end
 end
 
@@ -161,8 +164,14 @@ function Controller:MobilePassMode(): string?
 	return self.MobileControls and self.MobileControls:ConsumePassMode() or nil
 end
 
+function Controller:SetMobileDefending(defending: boolean)
+	if self.MobileControls and self.MobileControls.SetDefending then
+		self.MobileControls:SetDefending(defending)
+	end
+end
+
 function Controller:Sprinting(): boolean
-	return self.Keys[Enum.KeyCode.LeftShift] == true or self.Keys[Enum.KeyCode.RightShift] == true
+	return true
 end
 
 function Controller:ChargeValue(): number
