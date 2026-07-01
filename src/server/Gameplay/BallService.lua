@@ -7,6 +7,7 @@ local Scaling = require(ReplicatedStorage.VTR.Shared.StatScalingConfig)
 local BallCurveService = require(script.Parent.BallCurveService)
 local PassInterceptService = require(script.Parent.PassInterceptService)
 local FreeKickTrajectory = require(ReplicatedStorage.VTR.Shared.FreeKickTrajectory)
+local AIPassingDecisionService = require(script.Parent.AIPassingDecisionService)
 
 local Service = {}
 Service.__index = Service
@@ -618,8 +619,13 @@ function Service:Step(dt: number)
 		local team = nearest:GetAttribute("VTRTeam")
 		if self.OffsideCandidate and nearest==self.OffsideCandidate and self.Offside then self.Offside:Call(nearest);self.OffsideCandidate=nil;self.LastPassTeam=nil;self.LastPasser=nil;self.LastPassOrigin=nil;self.ExpectedReceiver=nil;self.PassPlan=nil;self.Ball:SetAttribute("VTRPassTarget",nil);self.Ball:SetAttribute("VTRPassStartedAt",nil);self.Ball:SetAttribute("VTRPassTeam",nil);self.Ball:SetAttribute("VTRPassReceiver",nil);return end
 		if self.LastPassTeam then
-			if self.LastPassTeam==team and self.LastPasser then self.Stats:RecordPassCompleted(self.LastPasser,nearest,self.LastPassOrigin,self.Ball.Position)
-			elseif self.LastPasser then self.Stats:RecordPassFailed(self.LastPasser,nearest)end
+			if self.LastPassTeam==team and self.LastPasser then
+				self.Stats:RecordPassCompleted(self.LastPasser,nearest,self.LastPassOrigin,self.Ball.Position)
+				if AIPassingDecisionService.RecordPassOutcome then AIPassingDecisionService.RecordPassOutcome(self.LastPasser,nearest,true) end
+			elseif self.LastPasser then
+				self.Stats:RecordPassFailed(self.LastPasser,nearest)
+				if AIPassingDecisionService.RecordPassOutcome then AIPassingDecisionService.RecordPassOutcome(self.LastPasser,nearest,false) end
+			end
 		end
 		self.LastPassTeam = nil
 		self.LastPasser=nil;self.LastPassOrigin=nil
