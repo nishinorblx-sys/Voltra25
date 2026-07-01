@@ -5,6 +5,7 @@ local MemoryStoreService = game:GetService("MemoryStoreService")
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local TeleportService = game:GetService("TeleportService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Service = {}
 Service.__index = Service
@@ -17,6 +18,22 @@ local POLL_SECONDS = 1.75
 
 local WEATHER = { "Clear", "Cloudy", "Rain" }
 local TIMES = { "Day", "Evening", "Night" }
+
+local function rankedFoundRemote(): RemoteEvent
+	local folder = ReplicatedStorage:FindFirstChild("Remotes")
+	if not folder then
+		folder = Instance.new("Folder")
+		folder.Name = "Remotes"
+		folder.Parent = ReplicatedStorage
+	end
+	local remote = folder:FindFirstChild("RankedMatchFound")
+	if not remote then
+		remote = Instance.new("RemoteEvent")
+		remote.Name = "RankedMatchFound"
+		remote.Parent = folder
+	end
+	return remote :: RemoteEvent
+end
 
 function Service.new(profiles: any, runtime: any, rankedProfiles: any, notifications: any, rankedSquads: any, progression: any?)
 	local self = setmetatable({
@@ -147,13 +164,29 @@ function Service:_nextPair(): (Player?, Player?)
 end
 
 function Service:_attachResultHandlers(session: any, home: Player, away: Player)
+	session.RankedWinPackGrant=function(_,winner:Player)
+		return RankedWinPackReward.Grant(self.Progression,winner,self.Publish)
+	end
+	local function resultFor(player: Player, side: string, homeScore: number, awayScore: number): string
+		if session.RankedForceLossUserId==player.UserId or session.ForfeitBy==player.UserId then
+			return "ForfeitLoss"
+		elseif session.ForfeitBy then
+			return "ForfeitWin"
+		end
+		if homeScore==awayScore then return "Draw" end
+		local won=(side=="Home" and homeScore>awayScore)or(side=="Away" and awayScore>homeScore)
+		return won and "Win" or "Loss"
+	end
+	local function rpFor(result: string): number
+		if result=="Win" or result=="ForfeitWin" then return 35 end
+		if result=="Draw" then return 12 end
+		return -20
+	end
 	session.OnRankedEnded = function(ended: any)
 		local homeScore = ended.World.HomeScore.Value
 		local awayScore = ended.World.AwayScore.Value
-		local homeResult = homeScore > awayScore and "Win" or homeScore < awayScore and "Loss" or "Draw"
-		local awayResult = home(Result == "Win" or Result == "ForfeitWin") and "Loss" or home(Result == "Loss" or Result == "ForfeitLoss") and "Win" or "Draw"
-		local homeRP = home(Result == "Win" or Result == "ForfeitWin") and 35 or homeResult == "Draw" and 12 or -20
-		local awayRP = away(Result == "Win" or Result == "ForfeitWin") and 35 or awayResult == "Draw" and 12 or -20
+		local homeResult = resultFor(home,"Home",homeScore,awayScore)
+		local awayResult = resultFor(away,"Away",homeScore,awayScore)
 		local score = tostring(homeScore) .. "-" .. tostring(awayScore)
 		local serialized = ended.Stats:Serialize(homeScore, awayScore, ended.Clock:Payload().GameSeconds)
 		local function updateObjectives(target: Player, side: string)
@@ -175,25 +208,41 @@ function Service:_attachResultHandlers(session: any, home: Player, away: Player)
 				MOTM = serialized.MOTM,
 			}
 		end
-		self.RankedProfiles:RecordServerResult(home, homeResult, homeRP, away.Name, score, personal("Home"))
-		self.RankedProfiles:RecordServerResult(away, awayResult, awayRP, home.Name, tostring(awayScore) .. "-" .. tostring(homeScore), personal("Away"))
+		self.RankedProfiles:RecordServerResult(home, homeResult, rpFor(homeResult), away.Name, score, personal("Home"))
+		self.RankedProfiles:RecordServerResult(away, awayResult, rpFor(awayResult), home.Name, tostring(awayScore) .. "-" .. tostring(homeScore), personal("Away"))
+		if self.Publish and self.RankedProfiles.GetClientData then
+			pcall(function()self.Publish(home,"Ranked",self.RankedProfiles:GetClientData(home))end)
+			pcall(function()self.Publish(away,"Ranked",self.RankedProfiles:GetClientData(away))end)
+		end
 	end
 	session.OnBeforeResult = function(ended: any)
 		local rewards = {}
-		local homeWon = ended.World.HomeScore.Value > ended.World.AwayScore.Value
-		local awayWon = ended.World.AwayScore.Value > ended.World.HomeScore.Value
-		local draw = ended.World.HomeScore.Value == ended.World.AwayScore.Value
-		for participant, won in { [home] = homeWon, [away] = awayWon } do
+		local homeScore=ended.World.HomeScore.Value
+		local awayScore=ended.World.AwayScore.Value
+		local homeResult=resultFor(home,"Home",homeScore,awayScore)
+		local awayResult=resultFor(away,"Away",homeScore,awayScore)
+		for participant, result in {[home]=homeResult,[away]=awayResult} do
+			local won=result=="Win" or result=="ForfeitWin"
+			local draw=result=="Draw"
 			local coins = 900 + (won and 900 or draw and 450 or 225)
 			local xp = 140 + (won and 110 or draw and 55 or 25)
+			local reward=nil
 			if self.Progression then
-				local reward = self.Progression:GrantMatchRewards(participant, {
+				reward = self.Progression:GrantMatchRewards(participant, {
 					Title = won and "RANKED VICTORY" or draw and "RANKED DRAW" or "RANKED MATCH",
 					Coins = coins,
 					XP = xp,
 				})
-				if reward then rewards[participant.UserId] = reward end
 			end
+			if won then
+				local packReward=RankedWinPackReward.Grant(self.Progression,participant,self.Publish)
+				reward=reward or{}
+				for key,value in packReward do
+					reward[key]=value
+				end
+				reward.Title="RANKED VICTORY"
+			end
+			if reward then rewards[participant.UserId] = reward end
 		end
 		return rewards
 	end
@@ -323,6 +372,18 @@ function Service:_teleportToAssignment(player: Player, assignment: any)
 	self.QueuedAt[player] = nil
 	player:SetAttribute("VTRRankedQueued", nil)
 	self.Notifications:Send(player, "OPPONENT FOUND", "Reserved 1v1 match server ready.", "Info")
+	rankedFoundRemote():FireClient(player,{
+		Opponent = player.UserId == tonumber(assignment.HomeUserId) and assignment.AwayName or assignment.HomeName,
+		HomeName = assignment.HomeName,
+		AwayName = assignment.AwayName,
+		HomeTeamName = assignment.HomeTeamName,
+		AwayTeamName = assignment.AwayTeamName,
+		HomeOverall = assignment.HomeOverall,
+		AwayOverall = assignment.AwayOverall,
+		Role = assignment.Role,
+		MatchId = assignment.MatchId,
+	})
+	task.wait(3.15)
 	local options = Instance.new("TeleportOptions")
 	options.ReservedServerAccessCode = assignment.AccessCode
 	options:SetTeleportData(assignment)

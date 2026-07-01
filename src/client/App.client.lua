@@ -4,6 +4,7 @@ local DeviceScaleService = require(script:FindFirstAncestor("VTRClient").Service
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Players = game:GetService("Players")
 local TeleportService = game:GetService("TeleportService")
+local TweenService = game:GetService("TweenService")
 local GameplayConfig = require(ReplicatedStorage.VTR.Shared.GameplayConfig)
 local Theme = require(ReplicatedStorage.VTR.Shared.Theme)
 local FocusController = require(script.Parent.Controllers.FocusController)
@@ -11,6 +12,98 @@ local MatchGameplayController = require(script.Parent.Gameplay.GameplayControlle
 
 FocusController.new():Start(Players.LocalPlayer:WaitForChild("PlayerGui"))
 MatchGameplayController.new():Start()
+
+local function showRankedMatchFoundTeleport(data:any)
+	local playerGui=Players.LocalPlayer:WaitForChild("PlayerGui")
+	local old=playerGui:FindFirstChild("VTRRankedTeleportFound")
+	if old then old:Destroy()end
+	local gui=Instance.new("ScreenGui")
+	gui.Name="VTRRankedTeleportFound"
+	gui.IgnoreGuiInset=true
+	gui.ResetOnSpawn=false
+	gui.DisplayOrder=500
+	gui.Parent=playerGui
+	local overlay=Instance.new("CanvasGroup")
+	overlay.Size=UDim2.fromScale(1,1)
+	overlay.BackgroundColor3=Theme.Colors.Black
+	overlay.GroupTransparency=1
+	overlay.ZIndex=500
+	overlay.Parent=gui
+	local title=Instance.new("TextLabel")
+	title.BackgroundTransparency=1
+	title.AnchorPoint=Vector2.new(.5,.5)
+	title.Position=UDim2.fromScale(.5,.3)
+	title.Size=UDim2.fromScale(.86,.1)
+	title.Font=Theme.Fonts.Display
+	title.Text="MATCH FOUND"
+	title.TextColor3=Theme.Colors.Electric
+	title.TextSize=46
+	title.ZIndex=505
+	title.Parent=overlay
+	local sub=Instance.new("TextLabel")
+	sub.BackgroundTransparency=1
+	sub.AnchorPoint=Vector2.new(.5,.5)
+	sub.Position=UDim2.fromScale(.5,.39)
+	sub.Size=UDim2.fromScale(.8,.05)
+	sub.Font=Theme.Fonts.Strong
+	sub.Text="RANKED 1V1  /  VOLTRA SERVER LOCKED"
+	sub.TextColor3=Theme.Colors.White
+	sub.TextSize=12
+	sub.ZIndex=505
+	sub.Parent=overlay
+	local vs=Instance.new("TextLabel")
+	vs.BackgroundTransparency=1
+	vs.AnchorPoint=Vector2.new(.5,.5)
+	vs.Position=UDim2.fromScale(.5,.55)
+	vs.Size=UDim2.fromScale(.82,.1)
+	vs.Font=Theme.Fonts.Display
+	vs.Text=string.upper(tostring(data.HomeTeamName or data.HomeName or"HOME")).."   VS   "..string.upper(tostring(data.AwayTeamName or data.AwayName or"AWAY"))
+	vs.TextColor3=Theme.Colors.White
+	vs.TextSize=28
+	vs.ZIndex=505
+	vs.Parent=overlay
+	local core=Instance.new("Frame")
+	core.AnchorPoint=Vector2.new(.5,.5)
+	core.Position=UDim2.fromScale(.5,.55)
+	core.Size=UDim2.fromOffset(28,28)
+	core.BackgroundColor3=Theme.Colors.Electric
+	core.BorderSizePixel=0
+	core.Rotation=45
+	core.ZIndex=504
+	core.Parent=overlay
+	local coreStroke=Instance.new("UIStroke")
+	coreStroke.Color=Theme.Colors.White
+	coreStroke.Thickness=2
+	coreStroke.Transparency=.1
+	coreStroke.Parent=core
+	for index=1,28 do
+		local ray=Instance.new("Frame")
+		ray.AnchorPoint=Vector2.new(.5,.5)
+		ray.Position=UDim2.fromScale(.5,.55)
+		ray.Size=UDim2.fromOffset(math.random(8,22),math.random(80,180))
+		ray.BackgroundColor3=index%3==0 and Theme.Colors.White or Theme.Colors.Electric
+		ray.BackgroundTransparency=.22
+		ray.BorderSizePixel=0
+		ray.Rotation=(360/28)*index
+		ray.ZIndex=502
+		ray.Parent=overlay
+		TweenService:Create(ray,TweenInfo.new(.78,Enum.EasingStyle.Quart,Enum.EasingDirection.Out),{Position=UDim2.new(.5,math.cos(math.rad(ray.Rotation))*math.random(180,470),.55,math.sin(math.rad(ray.Rotation))*math.random(80,260)),BackgroundTransparency=1,Size=UDim2.fromOffset(2,18)}):Play()
+	end
+	TweenService:Create(overlay,TweenInfo.new(.18),{GroupTransparency=0}):Play()
+	TweenService:Create(core,TweenInfo.new(.8,Enum.EasingStyle.Back,Enum.EasingDirection.Out),{Size=UDim2.fromOffset(190,190),BackgroundTransparency=.88,Rotation=405}):Play()
+	task.delay(2.8,function()
+		if overlay.Parent then TweenService:Create(overlay,TweenInfo.new(.28),{GroupTransparency=1}):Play()end
+		task.delay(.3,function()if gui.Parent then gui:Destroy()end end)
+	end)
+end
+
+task.defer(function()
+	local remotes=ReplicatedStorage:WaitForChild("Remotes",10)
+	local rankedFound=remotes and remotes:WaitForChild("RankedMatchFound",10)
+	if rankedFound and rankedFound:IsA("RemoteEvent")then
+		rankedFound.OnClientEvent:Connect(showRankedMatchFoundTeleport)
+	end
+end)
 
 local teleportData = TeleportService:GetLocalPlayerTeleportData()
 local reservedRankedBoot = type(teleportData) == "table" and teleportData.MatchMode == "Ranked1v1"

@@ -634,6 +634,27 @@ function Service:_checkQueuedPause(session:any)
 	end
 end
 
+function Service:_autoReleaseSetPiece(session:any,controller:Player?)
+	if not session or session.Ended or session.Running then return end
+	local phase=session.Phase
+	if phase=="Corner" then
+		local active=session.SetPieces and session.SetPieces.ActiveCorner
+		if active and session.SetPieces._releaseCorner then
+			local data=active.Data
+			local target=data and data.PitchCFrame and data.PitchCFrame:PointToWorldSpace(Vector3.new(0,.15,(tonumber(data.GoalSign)or 1)*((tonumber(data.Length)or session.World.Length)*.5-18))) or session.World.Ball.Position
+			session.SetPieces:_releaseCorner(active.Player,{Delivery="Cross",Power=.65,Target=target,ServerAI=true})
+		end
+	elseif phase=="FreeKick" then
+		self:_releaseAIFieldRestart(session)
+	elseif phase=="GoalKick" then
+		self:_releaseGoalKickClearance(session,controller or session.StepOwner)
+	elseif phase=="ThrowIn" then
+		self:_releaseAIThrowIn(session)
+	elseif phase=="Penalty" then
+		self:_releaseAIPenalty(session)
+	end
+end
+
 function Service:_startSetPiece(session:any,kind:string,restartTeam:string,location:Vector3,forcedTaker:Model?)
 	if session.Ended then return end
 	if kind~="Kickoff"then session.Clock:Record(kind)end
@@ -652,12 +673,22 @@ function Service:_startSetPiece(session:any,kind:string,restartTeam:string,locat
 	if session.Referee and session.Referee.SetHalf then session.Referee:SetHalf(currentHalf)end
 	if session.Offside and session.Offside.SetHalf then session.Offside:SetHalf(currentHalf)end
 	if session.Goalkeepers and session.Goalkeepers.SetHalf then session.Goalkeepers:SetHalf(currentHalf)end
+	session.SetPieceAutoSeq=(session.SetPieceAutoSeq or 0)+1
+	local setPieceAutoSeq=session.SetPieceAutoSeq
 	session.SetPieces:Start(controller,kind,restartTeam,location,function()
 		if session.Ended then return end
 		if kind=="Kickoff"then debugKickoff("ready callback","team",restartTeam,"owner",session.Possession:GetOwner()and session.Possession:GetOwner().Name or"nil","ballSpeed",math.floor(session.World.Ball.AssemblyLinearVelocity.Magnitude*10)/10)end
 		session.OutOfBounds:Reset();session.Goals:Unlock();session.Phase="IN PLAY";session.AI:SetExternalPhase(nil);self:_setPlayersFrozen(session,session.Paused==true);if not session.Paused then self:_releasePlayersForLive(session);self:_stabilizePlayers(session);task.delay(.18,function()if not session.Ended and session.Running then self:_releasePlayersForLive(session);self:_stabilizePlayers(session)end end)end;session.Running=true;self:_syncPositions(session);broadcast(self.State,session,{Type="Phase",Phase="IN PLAY"})
 		if kind=="Kickoff"then debugKickoff("phase broadcast","phase",session.Phase,"running",session.Running,"externalPhaseCleared",true)end
 	end,sideController~=nil,forcedTaker)
+	if kind~="Kickoff" then
+		task.delay(10,function()
+			if session.Ended or session.Running or session.SetPieceAutoSeq~=setPieceAutoSeq then return end
+			if session.Phase==kind then
+				self:_autoReleaseSetPiece(session,controller)
+			end
+		end)
+	end
 	if kind=="Corner"and session.SetPieces.ActiveCorner then session.Animations:ForceIdle(session.SetPieces.ActiveCorner.Data.Taker)end
 	if session.Setup and session.Setup.WatchMode==true or sideController==nil then
 		if kind=="Penalty"then
@@ -1209,6 +1240,13 @@ function Service:_action(player:Player,payload:any)
 	if not session.Running and not session.Paused and (session.Phase=="FreeKick"or session.Phase=="Penalty"or session.Phase=="GoalKick"or session.Phase=="ThrowIn") then
 		local releaseAction=payload.Type=="Pass"or payload.Type=="Shot"or payload.Type=="Clearance"
 		if releaseAction then
+			local restartTeam=session.SetPieces and session.SetPieces.RestartTeam
+			local playerSide=session.PlayerSides[player]or"Home"
+			local penaltyKeeperAction=session.Phase=="Penalty" and payload.Type=="Shot" and restartTeam and playerSide~=restartTeam
+			if restartTeam and playerSide~=restartTeam and not penaltyKeeperAction then
+				self.State:FireClient(player,{Type="Info",Message="Opponent set piece. Waiting for their decision.",Important=true})
+				return
+			end
 			if session.Phase=="FreeKick" and session.SetPieces and session.SetPieces.RestartMode=="LongFreeKick" and payload.Type~="Pass" then
 				self.State:FireClient(player,{Type="Info",Message="Long free kick: choose a pass target.",Important=true})
 				return
