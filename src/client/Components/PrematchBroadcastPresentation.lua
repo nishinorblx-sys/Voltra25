@@ -155,27 +155,119 @@ local function teamLogoText(data: any, side: string, fallback: string): string
 	return tostring(value or fallback)
 end
 
-local FORMATION_COORDS = {
-	[1] = Vector2.new(0.50, 0.86),
-	[2] = Vector2.new(0.18, 0.68),
-	[3] = Vector2.new(0.39, 0.64),
-	[4] = Vector2.new(0.61, 0.64),
-	[5] = Vector2.new(0.82, 0.68),
-	[6] = Vector2.new(0.31, 0.47),
-	[7] = Vector2.new(0.50, 0.40),
-	[8] = Vector2.new(0.69, 0.47),
-	[9] = Vector2.new(0.22, 0.24),
-	[10] = Vector2.new(0.50, 0.18),
-	[11] = Vector2.new(0.78, 0.24),
-}
+local function positionFromEntry(entry: any): string
+	if type(entry) ~= "table" then return "" end
+	return string.upper(tostring(entry.Position or entry.bestPosition or entry.position or entry.role or ""))
+end
 
-local function formationDots(parent: Instance)
+local function positionFromModel(model: Model?): string
+	if not model then return "" end
+	return string.upper(tostring(model:GetAttribute("position") or model:GetAttribute("bestPosition") or ""))
+end
+
+local function lineGroupForPosition(position: string): string
+	if position == "GK" then return "GK" end
+	if position == "CB" or position == "LB" or position == "RB" or position == "LWB" or position == "RWB" then return "DEF" end
+	if position == "ST" or position == "CF" or position == "SS" or position == "LW" or position == "RW" then return "ATT" end
+	return "MID"
+end
+
+local function roleKey(position: string): string
+	if position == "GK" then return "GK" end
+	if position == "LB" or position == "LWB" then return "LB" end
+	if position == "RB" or position == "RWB" then return "RB" end
+	if position == "CB" then return "CB" end
+	if position == "CDM" then return "CDM" end
+	if position == "CAM" then return "CAM" end
+	if position == "CM" then return "CM" end
+	if position == "LM" then return "LM" end
+	if position == "RM" then return "RM" end
+	if position == "LW" then return "LW" end
+	if position == "RW" then return "RW" end
+	if position == "ST" or position == "CF" or position == "SS" then return "ST" end
+	return "OTHER"
+end
+
+local function spread(key: string, baseX: number, counts: any, seen: any): number
+	seen[key] = (seen[key] or 0) + 1
+	local count = counts[key] or 1
+	if count <= 1 then return baseX end
+	local gap = math.min(0.22, 0.68 / math.max(1, count - 1))
+	return math.clamp(baseX + (seen[key] - (count + 1) / 2) * gap, 0.1, 0.9)
+end
+
+local function coordForPosition(position: string, counts: any, seen: any, index: number): Vector2
+	local key = roleKey(position)
+	if key == "GK" then return Vector2.new(0.50, 0.88) end
+	if key == "LB" then return Vector2.new(0.18, 0.69) end
+	if key == "RB" then return Vector2.new(0.82, 0.69) end
+	if key == "CB" then return Vector2.new(spread("CB", 0.50, counts, seen), 0.69) end
+	if key == "CDM" then return Vector2.new(spread("CDM", 0.50, counts, seen), 0.55) end
+	if key == "CM" then return Vector2.new(spread("CM", 0.50, counts, seen), 0.45) end
+	if key == "CAM" then return Vector2.new(spread("CAM", 0.50, counts, seen), 0.34) end
+	if key == "LM" then return Vector2.new(0.18, 0.36) end
+	if key == "RM" then return Vector2.new(0.82, 0.36) end
+	if key == "LW" then return Vector2.new(0.18, 0.23) end
+	if key == "RW" then return Vector2.new(0.82, 0.23) end
+	if key == "ST" then return Vector2.new(spread("ST", 0.50, counts, seen), 0.16) end
+	return Vector2.new(0.18 + ((index - 1) % 4) * 0.21, 0.28 + math.floor((index - 1) / 4) * 0.18)
+end
+
+local function formationEntries(data: any, side: string): {any}
+	local models = sortedModels(data, side)
+	local players = lineupData(data, side)
+	local result = {}
+	for index = 1, 11 do
+		local model = models[index]
+		local player = players[index]
+		local position = positionFromModel(model)
+		if position == "" then position = positionFromEntry(player) end
+		if position == "" then
+			local fallback = {"GK", "LB", "CB", "CB", "RB", "CDM", "CM", "CM", "LW", "ST", "RW"}
+			position = fallback[index] or "CM"
+		end
+		table.insert(result, {Model = model, Player = player, Position = position, Index = index})
+	end
+	return result
+end
+
+local function groupRange(data: any, side: string, groupName: string, fallbackFirst: number, fallbackLast: number): (number, number)
+	local entries = formationEntries(data, side)
+	local first = nil
+	local last = nil
+	for index, entry in entries do
+		if lineGroupForPosition(entry.Position) == groupName then
+			first = first or index
+			last = index
+		end
+	end
+	return first or fallbackFirst, last or fallbackLast
+end
+
+local function updateFormationDots(dots: {Frame}, data: any, side: string)
+	local entries = formationEntries(data, side)
+	local counts = {}
+	for _, entry in entries do
+		local key = roleKey(entry.Position)
+		counts[key] = (counts[key] or 0) + 1
+	end
+	local seen = {}
+	for index, dot in dots do
+		local entry = entries[index]
+		local coord = coordForPosition(entry.Position, counts, seen, index)
+		dot.Position = UDim2.fromScale(coord.X, coord.Y)
+		dot:SetAttribute("VTRLineGroup", lineGroupForPosition(entry.Position))
+		dot:SetAttribute("VTRPosition", entry.Position)
+		dot.BackgroundColor3 = Theme.Colors.White
+		dot.Size = UDim2.fromOffset(11, 11)
+	end
+end
+
+local function formationDots(parent: Instance, data: any, side: string)
 	local dots = {}
 	for index = 1, 11 do
-		local coord = FORMATION_COORDS[index]
 		local dot = Instance.new("Frame")
 		dot.AnchorPoint = Vector2.new(0.5, 0.5)
-		dot.Position = UDim2.fromScale(coord.X, coord.Y)
 		dot.Size = UDim2.fromOffset(11, 11)
 		dot.BackgroundColor3 = Theme.Colors.White
 		dot.BorderSizePixel = 0
@@ -191,17 +283,24 @@ local function formationDots(parent: Instance)
 		stroke.Parent = dot
 		table.insert(dots, dot)
 	end
+	updateFormationDots(dots, data, side)
+	return dots
+end
 	return dots
 end
 
-local function setLineHighlight(dots: {Frame}, first: number, last: number)
+local function setLineHighlight(dots: {Frame}, groupName: string, first: number, last: number)
 	for index, dot in dots do
-		local active = index >= first and index <= last
+		local active = dot:GetAttribute("VTRLineGroup") == groupName
+		if not active and groupName == "" then
+			active = index >= first and index <= last
+		end
 		TweenService:Create(dot, TweenInfo.new(0.22), {
 			BackgroundColor3 = active and Theme.Colors.Electric or Theme.Colors.White,
 			Size = active and UDim2.fromOffset(16, 16) or UDim2.fromOffset(11, 11),
 		}):Play()
 	end
+end
 end
 
 local function makePitchLine(parent: Instance, pos: UDim2, size: UDim2)
@@ -525,7 +624,7 @@ function Presentation.Play(data: any, onComplete: (() -> ())?)
 	local centerCorner = Instance.new("UICorner")
 	centerCorner.CornerRadius = UDim.new(1, 0)
 	centerCorner.Parent = centerCircle
-	local dots = formationDots(pitch)
+	local dots = formationDots(pitch, data, "Home")
 
 	local playerCard = panel(root, "PlayerCard", UDim2.fromScale(0.37, 0.13), UDim2.fromScale(0.58, 0.62))
 	playerCard.BackgroundColor3 = Color3.fromHex("0A0F08")
@@ -592,25 +691,31 @@ function Presentation.Play(data: any, onComplete: (() -> ())?)
 		slideIn(playerCard, UDim2.fromScale(0.37, 0.13), UDim2.fromScale(0.37, 0.86))
 	end)
 	local lineGroups = {
-		{16.2, "HOME GOALKEEPER", "Home", 1, 1},
-		{20.1, "HOME DEFENDERS", "Home", 2, 5},
-		{24.0, "HOME MIDFIELDERS", "Home", 6, 8},
-		{27.9, "HOME ATTACKERS", "Home", 9, 11},
-		{36.0, "AWAY GOALKEEPER", "Away", 1, 1},
-		{39.9, "AWAY DEFENDERS", "Away", 2, 5},
-		{43.8, "AWAY MIDFIELDERS", "Away", 6, 8},
-		{47.7, "AWAY ATTACKERS", "Away", 9, 11},
+		{16.2, "HOME GOALKEEPER", "Home", 1, 1, "GK"},
+		{20.1, "HOME DEFENDERS", "Home", 2, 5, "DEF"},
+		{24.0, "HOME MIDFIELDERS", "Home", 6, 8, "MID"},
+		{27.9, "HOME ATTACKERS", "Home", 9, 11, "ATT"},
+		{36.0, "AWAY GOALKEEPER", "Away", 1, 1, "GK"},
+		{39.9, "AWAY DEFENDERS", "Away", 2, 5, "DEF"},
+		{43.8, "AWAY MIDFIELDERS", "Away", 6, 8, "MID"},
+		{47.7, "AWAY ATTACKERS", "Away", 9, 11, "ATT"},
 	}
 	for _, group in lineGroups do
 		task.delay(group[1], function()
 			local side = group[3]
 			if side == "Away" and formationTitle.Text ~= shortCode(away) then
 				formationTitle.Text = shortCode(away)
+				updateFormationDots(dots, data, side)
+			elseif side == "Home" and formationTitle.Text ~= shortCode(home) then
+				formationTitle.Text = shortCode(home)
+				updateFormationDots(dots, data, side)
 			end
-			setLineHighlight(dots, group[4], group[5])
+			setLineHighlight(dots, group[6], group[4], group[5])
 			local list = sortedModels(data, side)
+			local players = lineupData(data, side)
+			local firstIndex, lastIndex = groupRange(data, side, group[6], group[4], group[5])
 			introTitle.Text = group[2]
-			showPlayerGroupPreview(groupPreview, list, lineupData(data, side), group[4], group[5])
+			showPlayerGroupPreview(groupPreview, list, players, firstIndex, lastIndex)
 		end)
 	end
 	task.delay(31.0, function()
@@ -622,6 +727,7 @@ function Presentation.Play(data: any, onComplete: (() -> ())?)
 	task.delay(35.1, function()
 		slideOut(sheet, UDim2.fromScale(0.09, 1.04), 0.3)
 		formationTitle.Text = shortCode(away)
+		updateFormationDots(dots, data, "Away")
 		slideIn(formation, UDim2.fromScale(0.04, 0.13), UDim2.fromScale(-0.32, 0.13))
 		slideIn(playerCard, UDim2.fromScale(0.37, 0.13), UDim2.fromScale(0.37, 0.86))
 	end)
