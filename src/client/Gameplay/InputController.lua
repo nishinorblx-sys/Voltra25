@@ -148,9 +148,6 @@ function Controller:Move(): Vector2
 	return keyboard.Magnitude > 0.05 and keyboard or mobile
 end
 
-	local mobile = self.MobileControls and self.MobileControls:MoveVector() or Vector2.zero
-	return keyboard.Magnitude > 0.05 and keyboard or mobile
-end
 
 function Controller:MobileAimVector(kind: string?): Vector2?
 	return self.MobileControls and self.MobileControls:AimVector(kind) or nil
