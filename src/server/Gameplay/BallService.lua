@@ -460,6 +460,9 @@ function Service:Tackle(model: Model,slide:boolean?): boolean
 	local foulChance=approach=="Behind"and.8 or approach=="Side"and.4 or 0
 	local forceCard=false
 	local redChance:number?=nil
+	if self.Referee and self.Referee.IsPenaltyFoul and self.Referee:IsPenaltyFoul(model, owner, ownerRoot.Position) then
+		foulChance = math.max(foulChance, slide and 1 or .85)
+	end
 	if slide then
 		foulChance=approach=="Behind"and 1 or approach=="Side"and.4 or.12
 		if duringSkill then foulChance=1 end

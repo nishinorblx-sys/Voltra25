@@ -925,7 +925,9 @@ local function showPlayerGroupPreview(container: Frame, models: {Model}, players
 			nameLabel.TextXAlignment = Enum.TextXAlignment.Center
 			task.delay((order - 1) * 0.08, function()
 				if not slot.Parent then return end
-				UISoundService.PlayTransition()
+				if order == 1 then
+					UISoundService.PlayTransition()
+				end
 				TweenService:Create(slot, TweenInfo.new(0.36, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
 					Position = targetPosition,
 					GroupTransparency = 0,
