@@ -3,6 +3,7 @@ local UserInputService = game:GetService("UserInputService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Config = require(ReplicatedStorage.VTR.Shared.GameplayConfig)
+local VoltraLiteMobileControls = require(script:FindFirstAncestor("VTRClient").Components.VoltraLiteMobileControls)
 local DeviceScaleService = require(script:FindFirstAncestor("VTRClient").Services.DeviceScaleService)
 
 local Controller = {}
@@ -213,6 +214,9 @@ function Controller:_createMobileControls()
 end
 
 function Controller:Start()
+	if UserInputService.TouchEnabled then
+		self.MobileControls = VoltraLiteMobileControls.new(self)
+	end
 	self:_createMobileControls()
 	table.insert(self.Connections, UserInputService.InputBegan:Connect(function(input, processed)
 		local isMouseAction = input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.MouseButton2
@@ -277,6 +281,9 @@ function Controller:Move(): Vector2
 	if keyboard.Magnitude > 1 then
 		keyboard = keyboard.Unit
 	end
+	local mobile = self.MobileControls and self.MobileControls:MoveVector() or Vector2.zero
+	return keyboard.Magnitude > 0.05 and keyboard or mobile
+end
 	local touch = self.TouchVector or Vector2.zero
 	return keyboard.Magnitude > 0.05 and keyboard or touch
 end
