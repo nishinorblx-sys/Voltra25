@@ -6,10 +6,10 @@ local PitchConfig = require(script.Parent.PitchConfig)
 local Service = {}
 Service.__index = Service
 
-local DIVE_LEAD_TIME = 1.35
+local DIVE_LEAD_TIME = 0.72
 local EMERGENCY_SAVE_TIME = 0.025
-local CATCH_RADIUS = 3.25
-local MAX_DIVE_SPEED = 46
+local CATCH_RADIUS = 3.55
+local MAX_DIVE_SPEED = 58
 local SAFE_ROOT_HEIGHT = 3.05
 
 local function root(model: Model?): BasePart?
@@ -459,6 +459,18 @@ local function orientDive(save:any,rectangle:any,keeperRoot:BasePart,rootTarget:
 	save.DiveAttachment=attachment;save.DiveAlign=align
 end
 
+local function diveCatchFrame(position:Vector3,lookVector:Vector3,upAxis:Vector3,fallbackForward:Vector3):CFrame
+	local look=lookVector.Magnitude>.05 and lookVector.Unit or fallbackForward
+	local right=look:Cross(upAxis)
+	if right.Magnitude<.05 then
+		right=Vector3.new(look.Z,0,-look.X)
+	end
+	right=right.Magnitude>.05 and right.Unit or Vector3.xAxis
+	local up=right:Cross(look)
+	up=up.Magnitude>.05 and up.Unit or upAxis
+	return CFrame.fromMatrix(position,right,up,-look)
+end
+
 local function createLateralDrive(save:any,keeperRoot:BasePart,lateralAxis:Vector3,lateralSpeed:number)
 	local attachment=save.DiveAttachment
 	if not attachment then attachment=Instance.new("Attachment");attachment.Name="VTRKeeperDiveAttachment";attachment.Parent=keeperRoot;save.DiveAttachment=attachment end
@@ -546,12 +558,12 @@ function Service:Step(dt:number?)
 		-- Difficult corners get a measured pre-dive shuffle along the goal line.
 		-- Depth and height stay fixed, so the keeper never backs into the net.
 		local lateral=(rootTarget-keeperRoot.Position):Dot(lateralAxis)
-		if math.abs(lateral)>7 and time>requiredTime+.4 then
-			humanoid.WalkSpeed=2
+		if math.abs(lateral)>8 and time>requiredTime+.62 then
+			humanoid.WalkSpeed=1.15
 			humanoid:MoveTo(keeperRoot.Position+lateralAxis*math.clamp(lateral,-.6,.6))
 		end
 	end
-	if not save.Launched and time<=math.min(DIVE_LEAD_TIME,requiredTime+.34)then
+	if not save.Launched and time<=math.min(DIVE_LEAD_TIME,requiredTime+.12)then
 		save.Launched=true
 		save.DivePlayed=true
 		save.Keeper:SetAttribute("VTRGoalkeeperState","Diving")
@@ -559,13 +571,15 @@ function Service:Step(dt:number?)
 		humanoid.PlatformStand=true
 		-- Close-range attempts use their real remaining time instead of the old
 		-- 0.18 second minimum, allowing an immediate reflex dive.
-		local flightTime=math.clamp(time,.06,1.2)
+		local flightTime=math.clamp(time,.09,.92)
 		save.DiveStartedAt=os.clock()
 		save.DiveDuration=flightTime
 		save.InitialInterceptTime=math.max(time,.01)
 		save.Progress=0
 		save.StartPosition=keeperRoot.Position
 		save.RootTarget=rootTarget
+		save.DiveLook=(rootTarget-keeperRoot.Position)
+		save.DiveAim=target
 		save.FixedDiveDepth=(keeperRoot.Position-rectangle.PlanePoint):Dot(forward)
 		save.LateralAxis=candidateAxis
 		lateralAxis=candidateAxis
@@ -579,10 +593,12 @@ function Service:Step(dt:number?)
 		local jumpHeight=math.max(4, math.abs(endVertical-startVertical)*0.55+2.5)
 		save.ApexPosition=control+upAxis*(math.max(startVertical,endVertical)+jumpHeight-controlVertical)
 		keeperRoot.Anchored=true
-		self.Animations:PlayActionTimed(save.Keeper,"GoalkeeperDive",flightTime+.08)
+		self.Animations:PlayActionTimed(save.Keeper,"GoalkeeperDive",math.max(.22,flightTime+.04))
 		save.Keeper:SetAttribute("VTRDiveLateralDistance",lateralDistance)
 		save.Keeper:SetAttribute("VTRDiveLateralSpeed",math.abs(lateralDistance)/flightTime)
 		save.Keeper:SetAttribute("VTRDiveTarget",rootTarget)
+		save.Keeper:SetAttribute("VTRDiveAim",target)
+		save.Keeper:SetAttribute("VTRDiveLaunchTime",time)
 		save.Keeper:SetAttribute("VTRDiveAxis",lateralAxis)
 		save.Keeper:SetAttribute("VTRSavePredictedHeight",(target-rectangle.PlanePoint):Dot(upAxis))
 	end
@@ -598,11 +614,10 @@ function Service:Step(dt:number?)
 		local inverse=1-progress
 		local position=startPosition*(inverse*inverse)+apexPosition*(2*inverse*progress)+endPosition*(progress*progress)
 		local tangent=(apexPosition-startPosition)*(2*inverse)+(endPosition-apexPosition)*(2*progress)
-		local planeTangent=tangent-forward*tangent:Dot(forward)
-		local bodyUp=planeTangent.Magnitude>.05 and planeTangent.Unit or upAxis
-		local back=-forward
-		local bodyRight=bodyUp:Cross(back);if bodyRight.Magnitude<.05 then bodyRight=save.LateralAxis else bodyRight=bodyRight.Unit end
-		local desiredFrame=CFrame.fromMatrix(position,bodyRight,bodyUp,back)
+		local diveLook=save.DiveLook or (endPosition-startPosition)
+		local liveAim=target-position
+		local blend=liveAim.Magnitude>.05 and diveLook:Lerp(liveAim,.35) or diveLook
+		local desiredFrame=diveCatchFrame(position,blend,upAxis,forward)
 		save.Keeper:PivotTo(desiredFrame)
 		self.Animations:SyncActionToArrival(save.Keeper,"GoalkeeperDive",time)
 	end
