@@ -69,8 +69,9 @@ function Controller:_chargeEnd(kind: string)
 		local manual = ctrlDown and not manualLobbed
 		local lofted = altDown and not ctrlDown
 		local through=not manualLobbed and not manual and not lofted and self.Keys[Enum.KeyCode.W] == true and charge >= 0.18
-		local passType=manualLobbed and"ManualLobbed"or manual and"Manual"or lofted and"Lofted"or through and"Through"or"Ground"
-		local isManual = manual or manualLobbed
+		local mobileMode = self:MobilePassMode()
+		local passType=mobileMode or manualLobbed and"ManualLobbed"or manual and"Manual"or lofted and"Lofted"or through and"Through"or"Ground"
+		local isManual = manual or manualLobbed or self:MobileManualAim("Pass")
 		self.Remote:FireServer({Type = "Pass", Direction = aim.Direction, AimPosition = aim.Position, TargetModel = isManual and nil or aim.TargetModel, Charge = charge, PassType = passType, AutoSwitch = isManual and"Off"or self.AutoSwitch, ReceiverAssist = isManual and"Off"or self.ReceiverAssist})
 	end
 end
@@ -145,6 +146,22 @@ function Controller:Move(): Vector2
 	end
 	local mobile = self.MobileControls and self.MobileControls:MoveVector() or Vector2.zero
 	return keyboard.Magnitude > 0.05 and keyboard or mobile
+end
+
+	local mobile = self.MobileControls and self.MobileControls:MoveVector() or Vector2.zero
+	return keyboard.Magnitude > 0.05 and keyboard or mobile
+end
+
+function Controller:MobileAimVector(kind: string?): Vector2?
+	return self.MobileControls and self.MobileControls:AimVector(kind) or nil
+end
+
+function Controller:MobileManualAim(kind: string?): boolean
+	return self.MobileControls and self.MobileControls:IsManualAim(kind) or false
+end
+
+function Controller:MobilePassMode(): string?
+	return self.MobileControls and self.MobileControls:ConsumePassMode() or nil
 end
 
 function Controller:Sprinting(): boolean

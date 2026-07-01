@@ -213,20 +213,95 @@ local function coordForPosition(position: string, counts: any, seen: any, index:
 	return Vector2.new(0.18 + ((index - 1) % 4) * 0.21, 0.28 + math.floor((index - 1) / 4) * 0.18)
 end
 
+local function formationRoleOrder(position: string): number
+	local key = roleKey(position)
+	local order = {
+		GK = 1,
+		LB = 2,
+		CB = 3,
+		RB = 4,
+		LWB = 2,
+		RWB = 4,
+		CDM = 5,
+		LM = 6,
+		CM = 7,
+		RM = 8,
+		CAM = 9,
+		LW = 10,
+		RW = 11,
+		ST = 12,
+	}
+	return order[key] or 20
+end
+
+local function formationGroupOrder(position: string): number
+	local group = lineGroupForPosition(position)
+	if group == "GK" then return 1 end
+	if group == "DEF" then return 2 end
+	if group == "MID" then return 3 end
+	if group == "ATT" then return 4 end
+	return 5
+end
+
+local function modelNameKey(model: Model?): string
+	if not model then return "" end
+	return string.lower(tostring(model:GetAttribute("DisplayName") or model.Name))
+end
+
+local function playerNameKey(player: any): string
+	if type(player) ~= "table" then return "" end
+	return string.lower(tostring(player.DisplayName or player.Name or player.name or player.playerName or ""))
+end
+
 local function formationEntries(data: any, side: string): {any}
 	local models = sortedModels(data, side)
 	local players = side == "Home" and (data.HomeLineup or {}) or (data.AwayLineup or {})
+	local usedModels: {[Model]: boolean} = {}
 	local result = {}
 	for index = 1, 11 do
-		local model = models[index]
 		local player = players[index]
-		local position = positionFromModel(model)
-		if position == "" then position = positionFromEntry(player) end
+		local position = positionFromEntry(player)
+		local matched: Model? = nil
+		local playerKey = playerNameKey(player)
+		if playerKey ~= "" then
+			for _, model in models do
+				if not usedModels[model] and modelNameKey(model) == playerKey then
+					matched = model
+					break
+				end
+			end
+		end
+		if not matched then
+			matched = models[index]
+		end
+		if matched then
+			usedModels[matched] = true
+		end
+		if position == "" then position = positionFromModel(matched) end
 		if position == "" then
-			local fallback = {"GK", "LB", "CB", "CB", "RB", "CDM", "CM", "CM", "LW", "ST", "RW"}
+			local fallback = {"GK", "LB", "CB", "CB", "RB", "CDM", "CDM", "CAM", "LM", "RM", "ST"}
 			position = fallback[index] or "CM"
 		end
-		table.insert(result, {Model = model, Player = player, Position = position, Index = index})
+		table.insert(result, {Model = matched, Player = player, Position = position, OriginalIndex = index})
+	end
+	table.sort(result, function(a, b)
+		local groupA = formationGroupOrder(a.Position)
+		local groupB = formationGroupOrder(b.Position)
+		if groupA ~= groupB then return groupA < groupB end
+		local roleA = formationRoleOrder(a.Position)
+		local roleB = formationRoleOrder(b.Position)
+		if roleA ~= roleB then return roleA < roleB end
+		return (a.OriginalIndex or 0) < (b.OriginalIndex or 0)
+	end)
+	return result
+end
+
+local function entriesForGroup(data: any, side: string, groupName: string): {any}
+	local result = {}
+	for _, entry in formationEntries(data, side) do
+		if lineGroupForPosition(entry.Position) == groupName then
+			table.insert(result, entry)
+		end
 	end
 	return result
 end
@@ -498,6 +573,16 @@ local function showPlayerGroupPreview(container: Frame, models: {Model}, players
 	end)
 end
 
+local function showEntryGroupPreview(container: Frame, entries: {any})
+	local models = {}
+	local players = {}
+	for _, entry in entries do
+		table.insert(models, entry.Model)
+		table.insert(players, entry.Player)
+	end
+	showPlayerGroupPreview(container, models, players, 1, math.max(1, #entries))
+end
+
 function Presentation.Duration(): number
 	return TOTAL_DURATION
 end
@@ -639,7 +724,7 @@ function Presentation.Play(data: any, onComplete: (() -> ())?)
 	groupPreview.Size = UDim2.fromScale(0.88, 0.82)
 	groupPreview.ZIndex = 207
 	groupPreview.Parent = playerCard
-	showPlayerGroupPreview(groupPreview, sortedModels(data, "Home"), lineupData(data, "Home"), 1, 1)
+	showEntryGroupPreview(groupPreview, entriesForGroup(data, "Home", "GK"))
 
 	local sheet = panel(root, "TeamSheet", UDim2.fromScale(0.09, 0.14), UDim2.fromScale(0.82, 0.68))
 	sheet.BackgroundColor3 = Color3.fromHex("090B07")
@@ -708,11 +793,8 @@ function Presentation.Play(data: any, onComplete: (() -> ())?)
 				updateFormationDots(dots, data, side)
 			end
 			setLineHighlight(dots, group[6], group[4], group[5])
-			local list = sortedModels(data, side)
-			local players = lineupData(data, side)
-			local firstIndex, lastIndex = groupRange(data, side, group[6], group[4], group[5])
 			introTitle.Text = group[2]
-			showPlayerGroupPreview(groupPreview, list, players, firstIndex, lastIndex)
+			showEntryGroupPreview(groupPreview, entriesForGroup(data, side, group[6]))
 		end)
 	end
 	task.delay(31.0, function()

@@ -69,9 +69,65 @@ function Controller:_reticleSwitchTarget(point:Vector3?):Model?
 	for _,teammate in self.TeamModels[side]or{}do if teammate~=self.ActiveModel then local teammateRoot=teammate:FindFirstChild("HumanoidRootPart")::BasePart?;if teammateRoot then local distance=Vector3.new(teammateRoot.Position.X-point.X,0,teammateRoot.Position.Z-point.Z).Magnitude;if distance<bestDistance then best=teammate;bestDistance=distance end end end end
 	return best
 end
+
+function Controller:_mobileAimPayload(kind:string?,charge:number?,root:BasePart):any?
+	if not self.Input or not self.Input.MobileAimVector then return nil end
+	local vector=self.Input:MobileAimVector(kind)
+	if not vector or vector.Magnitude<=0.08 then return nil end
+	local camera=workspace.CurrentCamera
+	if not camera then return nil end
+	local look=Vector3.new(camera.CFrame.LookVector.X,0,camera.CFrame.LookVector.Z)
+	local right=Vector3.new(camera.CFrame.RightVector.X,0,camera.CFrame.RightVector.Z)
+	if look.Magnitude<0.01 then look=Vector3.new(0,0,-1)end
+	if right.Magnitude<0.01 then right=Vector3.new(1,0,0)end
+	look=look.Unit;right=right.Unit
+	local direction=right*vector.X+look*vector.Y
+	if direction.Magnitude<0.01 then return nil end
+	direction=direction.Unit
+	local amount=math.clamp(charge or 0,0,1)
+	local distance=20+amount*92
+	if kind=="Shot"then distance=92+amount*90 end
+	local position=root.Position+direction*distance
+	local goalTarget=false
+	if kind=="Shot"then
+		local pitch=self.Camera and self.Camera.PitchCFrame
+		local width=self.Camera and self.Camera.Width or 424
+		local length=self.Camera and self.Camera.Length or 742
+		if pitch then
+			local goalA=pitch:PointToWorldSpace(Vector3.new(0,3,-length*.5))
+			local goalB=pitch:PointToWorldSpace(Vector3.new(0,3,length*.5))
+			local toA=Vector3.new(goalA.X-root.Position.X,0,goalA.Z-root.Position.Z)
+			local toB=Vector3.new(goalB.X-root.Position.X,0,goalB.Z-root.Position.Z)
+			local dotA=toA.Magnitude>1 and direction:Dot(toA.Unit)or-1
+			local dotB=toB.Magnitude>1 and direction:Dot(toB.Unit)or-1
+			local chosen=dotA>dotB and goalA or goalB
+			local chosenDot=math.max(dotA,dotB)
+			local chosenDistance=Vector3.new(chosen.X-root.Position.X,0,chosen.Z-root.Position.Z).Magnitude
+			if chosenDot>.42 and chosenDistance<=170 then
+				local localGoal=pitch:PointToObjectSpace(chosen)
+				local side=direction:Dot(pitch.RightVector)>=0 and 1 or -1
+				local high=((math.floor(os.clock()*10)+math.floor(root.Position.X))%2)==0
+				position=pitch:PointToWorldSpace(Vector3.new(side*11,high and 6.2 or 2.45,localGoal.Z))
+				goalTarget=true
+			else
+				position=root.Position+direction*(90+amount*80)
+				goalTarget=false
+			end
+		end
+	end
+	return{Direction=direction,Position=position,GoalTarget=goalTarget,TargetModel=kind=="Pass"and self:_reticleSwitchTarget(position)or nil}
+end
 function Controller:_aimPayload(kind:string?,shotCharge:number?):any
+	local root=self.ActiveModel and self.ActiveModel:FindFirstChild("HumanoidRootPart")::BasePart?
+	if root then
+		local mobile=self:_mobileAimPayload(kind or "",shotCharge or 0,root)
+		if mobile then
+			if mobile.GoalTarget and mobile.Position and self.GoalTarget then self.GoalTarget:Lock(mobile.Position)end
+			return mobile
+		end
+	end
 	local position=self.MouseAim:GetAimWorldPosition();local switchTarget=kind=="Switch"and self:_reticleSwitchTarget(position)or nil
-	local root=self.ActiveModel and self.ActiveModel:FindFirstChild("HumanoidRootPart")::BasePart?;if not root then return{Direction=self.Camera:Aim(kind),Position=position,GoalTarget=false,TargetModel=switchTarget or(kind=="Pass"and self.LockedPassTarget or nil)}end
+	if not root then return{Direction=self.Camera:Aim(kind),Position=position,GoalTarget=false,TargetModel=switchTarget or(kind=="Pass"and self.LockedPassTarget or nil)}end
 	local goalTarget=kind=="Shot"and self.MouseAim:IsAimingAtGoal();position=goalTarget and self.MouseAim:GetGoalAimPoint(shotCharge or 0)or position
 	local penaltySlot=nil
 	if kind=="Shot" and (self.SetPieceMode=="Penalty"or self.SetPieceMode=="PenaltyDefense") then
@@ -198,7 +254,7 @@ function Controller:_updateTeamAnimations()
 end
 function Controller:_update(dt:number)
 	if not self.Active or not self.ActiveModel or not self.ActiveModel.Parent then return end
-	self.Camera:Update(dt);if self.CornerAim then self.CornerAim:Update();self.CornerCamera:SetTarget(self.CornerAim:GetTarget());self.CornerCamera:Update(dt);return end;self.MouseAim:Update();local root=self.ActiveModel:FindFirstChild("HumanoidRootPart")::BasePart?;local hasBall=self.Ball:GetAttribute("OwnerModel")==self.ActiveModel.Name or self.SetPieceMode=="PenaltyDefense";local charge=self.Input:ChargeValue();local chargeKind=self.Input:ChargeKind();local aimingAtGoal=self.MouseAim:IsAimingAtGoal();local goalPoint=self.MouseAim:GetGoalAimPoint(chargeKind=="Shot"and charge or 0);local aimPosition=aimingAtGoal and goalPoint or self.MouseAim:GetAimWorldPosition();if (self.SetPieceMode=="Penalty"or self.SetPieceMode=="PenaltyDefense")then local goalSign=tonumber(self.Ball:GetAttribute("VTRPenaltyGoalSign"))or(self.ControlledSide=="Home"and-1 or 1);local slot=PenaltyConfig.SlotFromGoalPoint(self.Camera.PitchCFrame,self.Camera.Length,goalSign,aimPosition,self.Camera.Width);aimPosition=PenaltyConfig.PointForSlot(self.Camera.PitchCFrame,self.Camera.Length,goalSign,slot,self.Camera.Width);aimingAtGoal=true end;local aimDirection=root and aimPosition and(aimPosition-root.Position).Magnitude>.01 and(aimPosition-root.Position).Unit or root and self.MouseAim:GetAimDirectionFromPlayer(root.Position)or self.Camera:Aim();self.Indicators:SetAimDirection(aimDirection);self.Indicators:Update(dt);local freeKickCurve,freeKickLift=0,0;if self.SetPieceMode=="DirectShotFreeKick"and self.Input and self.Input.FreeKickModifiers then freeKickCurve,freeKickLift=self.Input:FreeKickModifiers()end;local preview=self.AimLine:Update(dt,aimPosition,hasBall,chargeKind,charge,aimingAtGoal,freeKickCurve,freeKickLift,self.SetPieceMode);self.LockedPassTarget=preview;self.Indicators:SetPassTarget(preview,self.AimLine:IsTargetFallback());self.GoalTarget:Update(hasBall,true,aimingAtGoal,aimPosition);self.Trainer:SetBusy(chargeKind~=""or self.ActiveModel:GetAttribute("VTRSprinting")==true);self.Trainer:Update();self.Minimap:Update(dt)
+	self.Camera:Update(dt);if self.CornerAim then self.CornerAim:Update();self.CornerCamera:SetTarget(self.CornerAim:GetTarget());self.CornerCamera:Update(dt);return end;self.MouseAim:Update();local root=self.ActiveModel:FindFirstChild("HumanoidRootPart")::BasePart?;local hasBall=self.Ball:GetAttribute("OwnerModel")==self.ActiveModel.Name or self.SetPieceMode=="PenaltyDefense";local charge=self.Input:ChargeValue();local chargeKind=self.Input:ChargeKind();local aimingAtGoal=self.MouseAim:IsAimingAtGoal();local goalPoint=self.MouseAim:GetGoalAimPoint(chargeKind=="Shot"and charge or 0);local aimPosition=aimingAtGoal and goalPoint or self.MouseAim:GetAimWorldPosition();local mobilePreview=root and self:_mobileAimPayload(chargeKind~=""and chargeKind or"Pass",charge,root)or nil;if mobilePreview then aimPosition=mobilePreview.Position;aimingAtGoal=mobilePreview.GoalTarget end;if (self.SetPieceMode=="Penalty"or self.SetPieceMode=="PenaltyDefense")then local goalSign=tonumber(self.Ball:GetAttribute("VTRPenaltyGoalSign"))or(self.ControlledSide=="Home"and-1 or 1);local slot=PenaltyConfig.SlotFromGoalPoint(self.Camera.PitchCFrame,self.Camera.Length,goalSign,aimPosition,self.Camera.Width);aimPosition=PenaltyConfig.PointForSlot(self.Camera.PitchCFrame,self.Camera.Length,goalSign,slot,self.Camera.Width);aimingAtGoal=true end;local aimDirection=root and aimPosition and(aimPosition-root.Position).Magnitude>.01 and(aimPosition-root.Position).Unit or root and self.MouseAim:GetAimDirectionFromPlayer(root.Position)or self.Camera:Aim();self.Indicators:SetAimDirection(aimDirection);self.Indicators:Update(dt);local freeKickCurve,freeKickLift=0,0;if self.SetPieceMode=="DirectShotFreeKick"and self.Input and self.Input.FreeKickModifiers then freeKickCurve,freeKickLift=self.Input:FreeKickModifiers()end;local preview=self.AimLine:Update(dt,aimPosition,hasBall,chargeKind,charge,aimingAtGoal,freeKickCurve,freeKickLift,self.SetPieceMode);self.LockedPassTarget=preview;self.Indicators:SetPassTarget(preview,self.AimLine:IsTargetFallback());self.GoalTarget:Update(hasBall,true,aimingAtGoal,aimPosition);self.Trainer:SetBusy(chargeKind~=""or self.ActiveModel:GetAttribute("VTRSprinting")==true);self.Trainer:Update();self.Minimap:Update(dt)
 	if self.Paused then return end
 	if not self.MatchInPlay and self.ActiveModel:GetAttribute("VTRForceIdle")==true then
 		self.Animation:Play(self.ActiveModel:GetAttribute("position")=="GK"and"GoalkeeperIdle"or"Idle")
