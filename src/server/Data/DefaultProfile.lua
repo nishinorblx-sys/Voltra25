@@ -1,5 +1,5 @@
 --!strict
-local VTRPendingPackAnimation = require(script.Parent.Services:WaitForChild("PendingPackAnimationService"))
+local VTRPendingPackAnimation = require(script.Parent.Parent.Services:WaitForChild("PendingPackAnimationService"))
 local ReplicatedStorage=game:GetService("ReplicatedStorage")
 local EconomyConfig=require(ReplicatedStorage.VTR.Shared.EconomyConfig)
 return table.freeze({

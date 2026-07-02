@@ -1,5 +1,5 @@
 --!strict
-local VTRPendingPackAnimation = require(script.Parent.Services:WaitForChild("PendingPackAnimationService"))
+local VTRPendingPackAnimation = require(script.Parent.Parent.Services:WaitForChild("PendingPackAnimationService"))
 
 return {
 	{
