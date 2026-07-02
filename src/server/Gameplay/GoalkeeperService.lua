@@ -1,4 +1,22 @@
 --!strict
+local function vtrXGPercent(value)
+	local n = tonumber(value) or 0
+	if n <= 1 then
+		n = n * 100
+	end
+	if n < 0 then
+		return 0
+	end
+	if n > 100 then
+		return 100
+	end
+	return n
+end
+
+local function vtrXGIsGoal(threshold, rolled)
+	return vtrXGPercent(rolled) <= vtrXGPercent(threshold)
+end
+
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local GoalModelResolver = require(ReplicatedStorage.VTR.Shared.GoalModelResolver)
 local PitchConfig = require(script.Parent.PitchConfig)
@@ -240,25 +258,16 @@ local function saveProbability(keeper:Model,rectangle:any,target:Vector3,time:nu
 	return saveChance,goalChance
 end
 
-local function goalPercentChance(service:any,keeper:Model,chance:number):boolean
-	chance=math.clamp(chance,0,1)
-	if chance<=0 then
-		return false
+local function goalPercentChance(service, keeper, chance, rollOverride)
+	local rolled = rollOverride
+	if rolled == nil then
+		if service and service.Random and typeof(service.Random.NextNumber) == "function" then
+			rolled = service.Random:NextNumber(0, 100)
+		else
+			rolled = math.random() * 100
+		end
 	end
-	if chance>=1 then
-		return true
-	end
-	local bank=service.GoalChanceBank[keeper]
-	if bank==nil then
-		bank=.5
-	end
-	bank+=chance
-	if bank>=1 then
-		service.GoalChanceBank[keeper]=bank-1
-		return true
-	end
-	service.GoalChanceBank[keeper]=bank
-	return false
+	return vtrXGIsGoal(chance, rolled)
 end
 
 function Service.new(ball: BasePart, teams: any, pitchCFrame: CFrame, width: number, length: number, ballService: any, animations: any, remote: RemoteEvent,aiService:any?)
@@ -276,6 +285,7 @@ function Service.new(ball: BasePart, teams: any, pitchCFrame: CFrame, width: num
 		MissedShots = {},
 		LineFacing = {},
 		GoalChanceBank = {},
+		Random = Random.new(),
 		AI=aiService,
 		Half=1,
 	}, Service)
@@ -330,23 +340,38 @@ function Service:_begin(attackingSide: string, shotId: number)
 	local rectangle, target, time = self:_prediction(attackingSide)
 	if not keeper or not rectangle or not target or not time then return end
 	local chance,goalChance=saveProbability(keeper,rectangle,target,time,self.BallService.LastGoalChance or self.BallService.LastShotChance,self.BallService.LastShooter)
-	keeper:SetAttribute("VTRLastSaveChance",math.floor(chance*100+.5))
+	keeper:SetAttribute("VTRLastSaveChance",math.floor((chance or 0)*100+.5))
 	local willSave=false
+	if rolled ~= nil and goalChance ~= nil then
+		willSave = not vtrXGIsGoal(goalChance, rolled)
+	end
 	local shotPlan=self.BallService and self.BallService.ShotPlan
 	local penaltySlot=shotPlan and shotPlan.PenaltySlot
 	local keeperGuess=keeper:GetAttribute("VTRPenaltyGuessSlot")
 	local penaltyDuel=type(penaltySlot)=="string"and penaltySlot~=""and type(keeperGuess)=="string"and keeperGuess~=""
 	if penaltyDuel then
 		willSave=keeperGuess==penaltySlot
+		if rolled ~= nil and goalChance ~= nil then
+			willSave = not vtrXGIsGoal(goalChance, rolled)
+		end
 		keeper:SetAttribute("VTRLastSaveChance",willSave and 100 or 0)
 	elseif shotPlan and shotPlan.GuaranteedGoal==true then
 		willSave=false
+		if rolled ~= nil and goalChance ~= nil then
+			willSave = not vtrXGIsGoal(goalChance, rolled)
+		end
 		keeper:SetAttribute("VTRLastSaveChance",0)
 	elseif shotPlan and shotPlan.ForcedMiss==true then
 		willSave=true
+		if rolled ~= nil and goalChance ~= nil then
+			willSave = not vtrXGIsGoal(goalChance, rolled)
+		end
 		keeper:SetAttribute("VTRLastSaveChance",100)
 	else
 		willSave=not goalPercentChance(self,keeper,goalChance)
+		if rolled ~= nil and goalChance ~= nil then
+			willSave = not vtrXGIsGoal(goalChance, rolled)
+		end
 	end
 	keeper:SetAttribute("VTRGoalkeeperSaving", true)
 	keeper:SetAttribute("VTRSaveTarget", target)

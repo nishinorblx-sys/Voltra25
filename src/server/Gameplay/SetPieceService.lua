@@ -1,4 +1,22 @@
 --!strict
+local function vtrXGPercent(value)
+	local n = tonumber(value) or 0
+	if n <= 1 then
+		n = n * 100
+	end
+	if n < 0 then
+		return 0
+	end
+	if n > 100 then
+		return 100
+	end
+	return n
+end
+
+local function vtrXGIsGoal(threshold, rolled)
+	return vtrXGPercent(rolled) <= vtrXGPercent(threshold)
+end
+
 
 local FormationPositionService = require(script.Parent.FormationPositionService)
 local KickoffPositionService = require(script.Parent.KickoffPositionService)
@@ -9,6 +27,36 @@ local Service = {}
 Service.__index = Service
 
 local DURATIONS = {ThrowIn = 1.5, Corner = 2.0, GoalKick = 1.8, FreeKick=1.6, Penalty=2.0, Kickoff = 1.4}
+
+local function vtrClearSetPiecePreview(self, player)
+	if self.Remote then
+		self.Remote:FireAllClients({Type="ClearSetPiecePreview", Player=player})
+	end
+	if self.Event then
+		self.Event:FireAllClients({Type="ClearSetPiecePreview", Player=player})
+	end
+	if self.ClientRemote then
+		self.ClientRemote:FireAllClients({Type="ClearSetPiecePreview", Player=player})
+	end
+end
+
+local function vtrGoalSideName(goalSide)
+	local s=tostring(goalSide or "")
+	if string.find(s,"Home") then
+		return "Home"
+	end
+	if string.find(s,"Away") then
+		return "Away"
+	end
+	return s
+end
+
+local function vtrFixHomeGoalLateral(goalSide, lateral)
+	if vtrGoalSideName(goalSide)=="Home" then
+		return -lateral
+	end
+	return lateral
+end
 
 local function root(model:Model):BasePart?
 	return model:FindFirstChild("HumanoidRootPart") :: BasePart?

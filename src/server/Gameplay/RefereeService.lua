@@ -1,4 +1,22 @@
 --!strict
+local function vtrXGPercent(value)
+	local n = tonumber(value) or 0
+	if n <= 1 then
+		n = n * 100
+	end
+	if n < 0 then
+		return 0
+	end
+	if n > 100 then
+		return 100
+	end
+	return n
+end
+
+local function vtrXGIsGoal(threshold, rolled)
+	return vtrXGPercent(rolled) <= vtrXGPercent(threshold)
+end
+
 local Service = {}
 Service.__index = Service
 
