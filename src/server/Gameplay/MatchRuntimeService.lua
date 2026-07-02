@@ -958,7 +958,57 @@ function Service:_setPenaltyKeeperGuess(session:any,defendingSide:string,slot:st
 	keeper:SetAttribute("VTRPenaltyGuessPoint",PenaltyConfig.PointForSlot(session.World.PitchCFrame,session.World.Length,goalSign,guess,session.World.Width))
 end
 
+function Service:_latestPenaltyAim(session:any, taker:Model?): Vector3?
+	local source = taker
+	local player = nil
+	if taker then
+		for participant, model in session.TeamControl.Active do
+			if model == taker then
+				player = participant
+				break
+			end
+		end
+	end
+	local updated = source and tonumber(source:GetAttribute("VTRPenaltyAimUpdatedAt")) or 0
+	if player then
+		updated = math.max(updated, tonumber(player:GetAttribute("VTRPenaltyAimUpdatedAt")) or 0)
+	end
+	if os.clock() - updated > 12 then return nil end
+	local x = source and tonumber(source:GetAttribute("VTRPenaltyAimX")) or nil
+	local y = source and tonumber(source:GetAttribute("VTRPenaltyAimY")) or nil
+	local z = source and tonumber(source:GetAttribute("VTRPenaltyAimZ")) or nil
+	if player then
+		x = tonumber(player:GetAttribute("VTRPenaltyAimX")) or x
+		y = tonumber(player:GetAttribute("VTRPenaltyAimY")) or y
+		z = tonumber(player:GetAttribute("VTRPenaltyAimZ")) or z
+	end
+	if x and y and z then
+		return Vector3.new(x, y, z)
+	end
+	return nil
+end
+
 function Service:_releaseAIPenalty(session:any)
+	local pending = session.PendingAIPenalty
+	local taker = pending and pending.Taker or session.SetPieces and session.SetPieces.RestartTaker
+	local aim = self:_latestPenaltyAim(session, taker)
+	if aim and taker and taker.Parent then
+		session.Possession:ForcePickup(taker)
+		local direction = aim - ((taker:FindFirstChild("HumanoidRootPart") :: BasePart).Position)
+		session.BallService:Kick(taker, "Shot", direction, 1, nil, "Penalty", direction.Magnitude, aim)
+		if session.SetPieces and session.SetPieces.ReleaseRestartTaker then session.SetPieces:ReleaseRestartTaker() end
+		session.PendingAIPenalty = nil
+		session.OutOfBounds:Reset()
+		session.Goals:Unlock()
+		session.Phase = "IN PLAY"
+		session.AI:SetExternalPhase(nil)
+		self:_setPlayersFrozen(session, session.Paused == true)
+		if not session.Paused then self:_releasePlayersForLive(session); self:_stabilizePlayers(session) end
+		session.Running = true
+		self:_syncPositions(session)
+		broadcast(self.State, session, {Type = "Phase", Phase = "IN PLAY"})
+		return
+	end
 	local setPieces=session.SetPieces
 	local taker=setPieces and setPieces.RestartTaker
 	local takerRoot=taker and taker:FindFirstChild("HumanoidRootPart")::BasePart?
