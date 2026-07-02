@@ -110,6 +110,7 @@ function ProgressionService:_grantObjectiveReward(player: Player, profile: any, 
 		self:_addXP(profile, reward.Amount)
 	elseif reward.Type == "Pack" then
 		return self.Inventory:AddPack(player, reward.ItemId or "voltage_standard", "OBJECTIVE REWARD PACK", "Objective", reward.Amount or 1)
+	end
 		if player and typeof(player) == "Instance" and player:IsA("Player") then
 			VTRPendingPackAnimation.Queue(player, reward.ItemId or "voltage_standard")
 		end
