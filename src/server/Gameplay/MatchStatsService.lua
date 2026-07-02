@@ -3,6 +3,12 @@ local MatchRatingService=require(script.Parent.MatchRatingService)
 local Service={};Service.__index=Service
 local KEYS={"Possession","Shots","ShotsOnTarget","Goals","ExpectedGoals","Passes","CompletedPasses","Tackles","CompletedTackles","Interceptions","Saves","Corners","Fouls","Offsides","YellowCards","RedCards","CornersIntoBox","CornerReachedTeammate","CornerGoals","Blocks","Clearances","Crosses","CompletedCrosses","Dribbles","CompletedDribbles","KeyPasses","BigChancesCreated","Errors"}
 local function bucket():any local value={};for _,key in KEYS do value[key]=0 end;return value end
+local function distanceChance(distance:number):number
+	if distance<=70 then return .95-(distance/70)*.06 end
+	if distance<=160 then return .89-((distance-70)/90)*.69 end
+	if distance<=190 then return .2-((distance-160)/30)*.19 end
+	return .01
+end
 function Service.new(models:{Model},pitchCFrame:CFrame,width:number,length:number)
 	return setmetatable({Home=bucket(),Away=bucket(),Goals={},PassMap={Home={},Away={}},ShotMap={Home={},Away={}},PositionMap={},PitchCFrame=pitchCFrame,Width=width,Length=length,Ratings=MatchRatingService.new(models),LastGameSeconds=0,PositionAccumulator=0},Service)
 end
@@ -21,10 +27,13 @@ function Service:RecordPassCompleted(model:Model,receiver:Model?,startPoint:Vect
 end
 function Service:RecordPassFailed(model:Model,interceptor:Model?)self:Event(model,"BadPass");self:Event(model,"PossessionLost");if interceptor then self:Add(tostring(interceptor:GetAttribute("VTRTeam")or"Home"),"Interceptions");self:Event(interceptor,"Interception")end end
 function Service:CalculateXG(model:Model,position:Vector3,pressure:number?,shotType:string?):number
-	local team=tostring(model:GetAttribute("VTRTeam")or"Home");local localPosition=self.PitchCFrame:PointToObjectSpace(position);local goalZ=team=="Home"and-self.Length*.5 or self.Length*.5;local depth=math.abs(goalZ-localPosition.Z);local wide=math.abs(localPosition.X);local base=depth<=9 and wide<=10 and.55 or depth<=28 and wide<=18 and.3 or depth<=28 and.12 or depth<=42 and.08 or depth<=70 and.03 or.02
-	if shotType=="Penalty"then base=.76 end;if wide>self.Width*.42 then base=.02 end
+	local team=tostring(model:GetAttribute("VTRTeam")or"Home");local localPosition=self.PitchCFrame:PointToObjectSpace(position);local goalZ=team=="Home"and-self.Length*.5 or self.Length*.5;local depth=math.abs(goalZ-localPosition.Z);local wide=math.abs(localPosition.X);local distance=math.sqrt(depth*depth+(wide*.58)*(wide*.58));local base=distanceChance(distance)
+	if shotType=="Penalty"then base=.76 end
+	if shotType~="Penalty" and distance<=70 then return .95 end
+	local widePenalty=math.clamp((wide-18)/math.max(1,self.Width*.32),0,.62)
+	base*=1-widePenalty
 	base-=math.clamp(pressure or 0,0,1)*.15;if model:GetAttribute("VTRSprinting")==true then base-=.05 end
-	return math.clamp(base*2,.01,.95)
+	return math.clamp(base,.01,.95)
 end
 function Service:RecordShot(model:Model,onTarget:boolean,xg:number)
 	local team=tostring(model:GetAttribute("VTRTeam")or"Home");self:Add(team,"Shots");self:Add(team,"ExpectedGoals",xg);self:Event(model,"Shot");self.Ratings:Record(model,"ExpectedGoals",xg);if onTarget then self:Add(team,"ShotsOnTarget");self:Event(model,"ShotOnTarget")else self:Event(model,"ShotOffTarget")end;if xg>=.3 then model:SetAttribute("VTRLastBigChance",true)end

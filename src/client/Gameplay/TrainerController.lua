@@ -61,7 +61,8 @@ function Controller:Update()
 	local activeRoot = self.Active:FindFirstChild("HumanoidRootPart") :: BasePart?
 	local camera = workspace.CurrentCamera
 	if not activeRoot or not camera then self.Prompt:SetVisible(false) return end
-	local screenPoint, onScreen = camera:WorldToViewportPoint(activeRoot.Position)
+	local sidePoint = activeRoot.Position + camera.CFrame.RightVector * 4 + Vector3.new(0, 3.2, 0)
+	local screenPoint, onScreen = camera:WorldToViewportPoint(sidePoint)
 	if not onScreen or screenPoint.Z <= 0 then self.Prompt:SetVisible(false) return end
 	local ownerName = self.Ball:GetAttribute("OwnerModel")
 	local state = ownerName == self.Active.Name and "Possession" or ownerName == "" and "Loose" or "Defending"

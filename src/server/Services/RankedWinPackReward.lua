@@ -1,21 +1,60 @@
 --!strict
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Catalog = require(ReplicatedStorage.VTR.Shared.Catalog)
 local PackInstanceFactory = require(script.Parent.Parent.Data.PackInstanceFactory)
 
 local Service = {}
 
-local Packs = {
-	{PackId = "bronze_pack", Name = "Voltra Spark Pack", Rarity = "Common", Weight = 800},
-	{PackId = "silver_pack", Name = "Street Pulse Pack", Rarity = "Rare", Weight = 90},
-	{PackId = "gold_pack", Name = "Neon Tactics Pack", Rarity = "Rare", Weight = 50},
-	{PackId = "elite_pack", Name = "Elite Matchday Pack", Rarity = "Epic", Weight = 35},
-	{PackId = "champion_pack", Name = "Voltra Vault Pack", Rarity = "Epic", Weight = 18},
-	{PackId = "hero_pack", Name = "Ranked Champion Pack", Rarity = "Mythic", Weight = 6},
-	{PackId = "voltra_pack", Name = "Icon Voltage Pack", Rarity = "Mythic", Weight = 1},
+local PackWeights = {
+	common_pack = 260,
+	bronze_pack = 190,
+	silver_pack = 150,
+	gold_pack = 115,
+	rare_pack = 84,
+	elite_pack = 62,
+	rising_star_pack = 48,
+	totw_pack = 40,
+	voltra_pack = 32,
+	event_pack = 26,
+	hero_pack = 18,
+	champion_pack = 13,
+	legendary_pack = 8,
+	icon_pack = 4,
+	limited_pack = 3,
+	mythic_storm_pack = 2,
+	mythic_pack = 1,
 }
 
-local Fallbacks = {"voltra_pack", "hero_pack", "champion_pack", "elite_pack", "gold_pack", "silver_pack", "bronze_pack"}
+local function packRarity(definition: any): string
+	local odds = definition and definition.Odds or {}
+	if (tonumber(odds.Mythic) or 0) > 0 then return "Mythic" end
+	if (tonumber(odds.Icon) or 0) > 0 then return "Icon" end
+	if (tonumber(odds.Legendary) or 0) > 0 then return "Legendary" end
+	if (tonumber(odds.Elite) or 0) > 0 then return "Elite" end
+	if (tonumber(odds.Rare) or 0) > 0 then return "Rare" end
+	if (tonumber(odds.Gold) or 0) > 0 then return "Gold" end
+	if (tonumber(odds.Silver) or 0) > 0 then return "Silver" end
+	return "Common"
+end
+
+local function storePacks(): {any}
+	local packs = {}
+	for id, definition in Catalog.Packs do
+		if definition.PriceCoins and definition.PriceCoins > 0 and not string.find(id, "starter", 1, true) and id ~= "voltage_standard" and id ~= "elite_electrum" then
+			table.insert(packs, {
+				PackId = id,
+				Name = definition.Name,
+				Rarity = packRarity(definition),
+				Weight = PackWeights[id] or math.max(1, math.floor(100000 / math.max(tonumber(definition.PriceCoins) or 10000, 1))),
+			})
+		end
+	end
+	table.sort(packs, function(a, b) return tostring(a.PackId) < tostring(b.PackId) end)
+	return packs
+end
 
 function Service.Roll(): any
+	local Packs = storePacks()
 	local total = 0
 	for _, pack in Packs do
 		total += pack.Weight
@@ -62,18 +101,24 @@ function Service.Grant(progression: any, player: Player, publish: ((Player, stri
 	local grantedInstance = nil
 	if progression and progression.Inventory and progression.Inventory.AddPack then
 		local attempts = {pack.PackId}
-		for _, fallback in Fallbacks do
-			if fallback ~= pack.PackId then
-				table.insert(attempts, fallback)
+		for _, fallback in storePacks() do
+			if fallback.PackId ~= pack.PackId then
+				table.insert(attempts, fallback.PackId)
 			end
 		end
 		for _, packId in attempts do
 			local ok, result = pcall(function()
-				return progression.Inventory:AddPack(player, packId, packId, "RankedWin", 1)
+				local definition = Catalog.Packs[packId]
+				return progression.Inventory:AddPack(player, packId, definition and definition.Name or packId, "RankedWin", 1)
 			end)
 			if ok and result then
 				granted = true
 				grantedId = packId
+				if Catalog.Packs[packId] then
+					pack.PackId = packId
+					pack.Name = Catalog.Packs[packId].Name
+					pack.Rarity = packRarity(Catalog.Packs[packId])
+				end
 				if type(result) == "table" then
 					grantedInstance = result[1]
 				end

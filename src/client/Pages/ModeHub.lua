@@ -67,17 +67,26 @@ function ModeHub.new(context: any, service: any): CanvasGroup
 		local gridY = 54
 		if spec.Id == "Ranked" and activeTab.Id == "Division" then
 			local ranked = (context.Data.Progression and context.Data.Progression.Ranked) or context.Data.Ranked or {}
-			local wins = math.clamp(tonumber(ranked.DivisionWins or ranked.RP) or 0, 0, 10)
-			local protected = math.clamp(tonumber(ranked.ProtectedWins) or 0, 0, 10)
+			local run = (context.Data.Progression and context.Data.Progression.RankedRun) or ranked.RankedRun or ranked.Run or {}
+			local results = type(run.Results) == "table" and run.Results or {}
+			local games = math.clamp(#results, 0, 7)
+			local wins = 0
+			local draws = 0
+			local losses = 0
+			for _, result in results do
+				if result == "Win" then wins += 1 elseif result == "Draw" then draws += 1 elseif result == "Loss" then losses += 1 end
+			end
 			local track = Panel.new({Name="RivalsReloadedProgress",Size=UDim2.new(1,0,0,92)})
 			track.Position = UDim2.fromOffset(0, 52)
 			track.Parent = body
 			PageBase.text(track, tostring(ranked.Division or "DIVISION 10"), UDim2.fromOffset(18, 12), UDim2.new(.32, 0, 0, 28), 18, Theme.Colors.White, Theme.Fonts.Display)
-			PageBase.text(track, "STEP "..tostring(wins).." / 10", UDim2.fromOffset(18, 44), UDim2.new(.25, 0, 0, 20), 10, Theme.Colors.Electric, Theme.Fonts.Strong)
+			PageBase.text(track, "7-GAME PATH  "..tostring(games).." / 7  -  "..tostring(wins).."W "..tostring(draws).."D "..tostring(losses).."L", UDim2.fromOffset(18, 44), UDim2.new(.3, 0, 0, 20), 10, Theme.Colors.Electric, Theme.Fonts.Strong)
 			local bar = Instance.new("Frame");bar.Position=UDim2.new(.34,0,.5,-5);bar.Size=UDim2.new(.62,-24,0,10);bar.BackgroundColor3=Color3.fromHex("2B3128");bar.BorderSizePixel=0;bar.Parent=track;local bc=Instance.new("UICorner");bc.CornerRadius=UDim.new(1,0);bc.Parent=bar
-			local fill=Instance.new("Frame");fill.Size=UDim2.fromScale(wins/10,1);fill.BackgroundColor3=Theme.Colors.Electric;fill.BorderSizePixel=0;fill.Parent=bar;local fc=bc:Clone();fc.Parent=fill
-			for step=1,10 do
-				local dot=Instance.new("Frame");dot.AnchorPoint=Vector2.new(.5,.5);dot.Position=UDim2.fromScale((step-1)/9,.5);dot.Size=UDim2.fromOffset(14,14);dot.BackgroundColor3=step<=wins and Theme.Colors.Electric or step<=protected and Color3.fromHex("D9D9D9") or Color3.fromHex("111111");dot.BorderSizePixel=0;dot.Parent=bar;local dc=Instance.new("UICorner");dc.CornerRadius=UDim.new(1,0);dc.Parent=dot;local ds=Instance.new("UIStroke");ds.Thickness=1;ds.Color=Theme.Colors.Electric;ds.Transparency=step<=wins and .05 or .58;ds.Parent=dot
+			local fill=Instance.new("Frame");fill.Size=UDim2.fromScale(games/7,1);fill.BackgroundColor3=Theme.Colors.Electric;fill.BorderSizePixel=0;fill.Parent=bar;local fc=bc:Clone();fc.Parent=fill
+			for step=1,7 do
+				local result=results[step]
+				local color=result=="Win"and Theme.Colors.Electric or result=="Loss"and Theme.Colors.Danger or result=="Draw"and Color3.fromHex("2F6BFF") or Color3.fromHex("111111")
+				local dot=Instance.new("Frame");dot.AnchorPoint=Vector2.new(.5,.5);dot.Position=UDim2.fromScale((step-1)/6,.5);dot.Size=UDim2.fromOffset(14,14);dot.BackgroundColor3=color;dot.BorderSizePixel=0;dot.Parent=bar;local dc=Instance.new("UICorner");dc.CornerRadius=UDim.new(1,0);dc.Parent=dot;local ds=Instance.new("UIStroke");ds.Thickness=1;ds.Color=result and color or Theme.Colors.Electric;ds.Transparency=result and .05 or .58;ds.Parent=dot
 			end
 			gridY = 160
 		end

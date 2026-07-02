@@ -12,7 +12,16 @@ local legacySymbols = {
 }
 
 local function resolvedColor(value: any): Color3
+	if typeof(value) == "Color3" then return value end
 	return Color3.fromHex(Config.ResolveColor(value))
+end
+
+local function syncZIndex(root: GuiObject)
+	for _, descendant in root:GetDescendants() do
+		if descendant:IsA("GuiObject") then
+			descendant.ZIndex = root.ZIndex
+		end
+	end
 end
 
 function BadgePreview.new(parent: Instance, identity: any, size: UDim2?): Frame
@@ -32,6 +41,10 @@ function BadgePreview.new(parent: Instance, identity: any, size: UDim2?): Frame
 
 	local selected=identity.BadgeSymbol or"Lightning Bolt"
 	BadgeSymbolLibrary.render(inner,legacySymbols[selected]or selected,{Primary=primary,Secondary=secondary,Accent=accent},UDim2.fromScale(.78,.78))
+	syncZIndex(root)
+	root:GetPropertyChangedSignal("ZIndex"):Connect(function()
+		syncZIndex(root)
+	end)
 	return root
 end
 

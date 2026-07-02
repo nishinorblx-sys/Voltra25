@@ -149,9 +149,12 @@ function Controller:Update(dt: number, move: Vector3, sprinting: boolean)
 	if owns and root then
 		local facing=Vector3.new(root.CFrame.LookVector.X,0,root.CFrame.LookVector.Z)
 		local direction=move.Magnitude>.1 and move.Unit or facing.Magnitude>.1 and facing.Unit or Vector3.zAxis
-		local distance=Config.Ball.DribbleDistance+(sprinting and 1.15 or 0)
+		local rootVelocity=Vector3.new(root.AssemblyLinearVelocity.X,0,root.AssemblyLinearVelocity.Z)
+		local lead=rootVelocity.Magnitude>6 and rootVelocity.Unit:Dot(direction)>.35 and math.clamp(rootVelocity.Magnitude*.045,0,sprinting and 1.25 or .75)or 0
+		local distance=Config.Ball.DribbleDistance+(sprinting and 2.15 or .45)+lead
 		local control=root.Position+direction*distance-Vector3.new(0,Config.Ball.DribbleVerticalOffset,0)
-		target=Vector3.new(target.X+(control.X-target.X)*.08,predictedPosition.Y,target.Z+(control.Z-target.Z)*.08)
+		local alpha=sprinting and .72 or .58
+		target=Vector3.new(target.X+(control.X-target.X)*alpha,predictedPosition.Y,target.Z+(control.Z-target.Z)*alpha)
 	end
 	local travel = Vector3.new(target.X - self.LastVisualPosition.X, 0, target.Z - self.LastVisualPosition.Z)
 	self.LastVisualPosition = target

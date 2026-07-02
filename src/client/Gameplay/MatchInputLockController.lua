@@ -19,6 +19,7 @@ function Controller:_setSprint(active: boolean)
 	end
 	self.Sprinting = active
 	self.Remote:FireServer({Type = "Sprint", Active = active})
+	self.Remote:FireServer({Type = "ReceiverAssistOverride", Active = active})
 end
 
 function Controller:Start()
@@ -32,9 +33,7 @@ function Controller:Start()
 	UserInputService.MouseIconEnabled = true
 	ContextActionService:BindActionAtPriority(ACTION, function(_, state)
 		if state == Enum.UserInputState.Begin and self.SprintEnabled then
-			self:_setSprint(true)
-		elseif state == Enum.UserInputState.End or state == Enum.UserInputState.Cancel then
-			self:_setSprint(false)
+			self:_setSprint(not self.Sprinting)
 		end
 		return Enum.ContextActionResult.Sink
 	end, false, Enum.ContextActionPriority.High.Value + 100, Enum.KeyCode.LeftShift, Enum.KeyCode.RightShift)

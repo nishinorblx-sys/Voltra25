@@ -41,6 +41,7 @@ function ProgressionService:GetClientData(player: Player): any?
 		Currency = copy(profile.Currency),
 		Objectives = ObjectiveService.Serialize(profile.Objectives),
 		Ranked = copy(profile.Ranked),
+		RankedRun = copy(profile.RankedRun),
 		RankedRewards = copy(profile.RankedRewards),
 		RewardsInbox = copy(profile.RewardsInbox),
 		PackInventory = copy(profile.PackInventory),

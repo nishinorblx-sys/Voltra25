@@ -47,12 +47,19 @@ function Service:_teleportSoloCampaign(player:Player,action:string):(boolean,str
 	return true,"Teleporting to solo campaign server.",{Teleporting=true,SoloCampaign=true,Action=action}
 end
 
+function Service:_tagSoloCampaignSession(player:Player,session:any?)
+	if not session or player:GetAttribute("VTRAICampaignSoloServer")~=true then return end
+	session.PrivateAICampaignMatch=true
+	session.ReturnPlaceId=tonumber(player:GetAttribute("VTRAICampaignReturnPlaceId")) or game.PlaceId
+end
+
 function Service:HandleSoloCampaignTeleport(player:Player):boolean
 	local joinData=player:GetJoinData()
 	local teleportData=joinData and joinData.TeleportData
 	if type(teleportData)~="table" or teleportData.MatchMode~="AICampaignSolo" then return false end
 	player:SetAttribute("VTRAICampaignSoloServer",true)
 	player:SetAttribute("VTRAICampaignAutoStarting",true)
+	player:SetAttribute("VTRAICampaignReturnPlaceId",tonumber(teleportData.ReturnPlaceId) or game.PlaceId)
 	task.spawn(function()
 		local started=os.clock()
 		local action=tostring(teleportData.Action or "Manual")
@@ -97,6 +104,7 @@ function Service:StartMatch(player:Player):(boolean,string,any?)
 	end
 	local success,text,data=self.Runtime:StartMatch(player,setup);if not success then return false,text,nil end;if data then data.AIMatchTeleport=true;data.MatchLaunchType="Manual"end
 	local session=self.Runtime:GetSession(player);if session then
+		self:_tagSoloCampaignSession(player,session)
 		session.OnBeforeResult=function(ended:any)
 			local homeScore=ended.World.HomeScore.Value
 			local awayScore=ended.World.AwayScore.Value
@@ -132,6 +140,7 @@ function Service:WatchMatch(player:Player):(boolean,string,any?)
 	end
 	local success,text,data=self.Runtime:StartMatch(player,watchSetup,nil,nil,homeRoster,nil);if not success then return false,text,nil end;if data then data.AIMatchTeleport=true;data.MatchLaunchType="Manage"end
 	local session=self.Runtime:GetSession(player)
+	self:_tagSoloCampaignSession(player,session)
 	if session and type(watchSetup.CampaignTeamId)=="string" and watchSetup.CampaignTeamId~="" then
 		local teamId=watchSetup.CampaignTeamId
 		local tierIndex=math.clamp(tonumber(watchSetup.CampaignTier)or 1,1,#VTRLiteConfig.CampaignDifficulties)

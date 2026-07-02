@@ -8,9 +8,11 @@ local UserInputService = game:GetService("UserInputService")
 local MATCHUP_PANEL_DELAY = 0.85
 
 local Theme = require(ReplicatedStorage.VTR.Shared.Theme)
+local BadgePreview = require(script.Parent.BadgePreview)
 local PlayerPortraitService = require(script.Parent.Parent.Services.PlayerPortraitService)
 local UISoundService = require(script.Parent.Parent.Services.UISoundService)
 local Remotes = require(ReplicatedStorage.VTR.Shared.Remotes)
+local FormationConfig = require(ReplicatedStorage.VTR.Shared.FormationConfig)
 
 local Presentation = {}
 local TOTAL_DURATION = 66.0
@@ -73,7 +75,13 @@ local function shortCode(name: string): string
 end
 
 local function color(value: any, fallback: Color3): Color3
-	return typeof(value) == "Color3" and value or fallback
+	if typeof(value) == "Color3" then return value end
+	if type(value) == "string" then
+		local clean = string.gsub(value, "#", "")
+		local ok, result = pcall(Color3.fromHex, clean)
+		if ok then return result end
+	end
+	return fallback
 end
 
 local function badgeAccent(primary: Color3): Color3
@@ -83,12 +91,50 @@ local function badgeAccent(primary: Color3): Color3
 	return brightness > 1.65 and dark or bright
 end
 
-local function applyPresentationBadge(target: TextLabel, primary: Color3, logoText: string?)
+local function teamBadgeIdentity(data: any, side: string): any
+	local summary = side == "Home" and data.HomeSummary or data.AwaySummary
+	local source = side == "Home" and data.HomeBadgeIdentity or data.AwayBadgeIdentity
+	if type(source) ~= "table" and type(summary) == "table" then source = summary.BadgeIdentity or summary.badgeIdentity end
+	source = type(source) == "table" and source or {}
+	local colors = type(summary) == "table" and summary.colors or nil
+	local primary = source.PrimaryColor or (colors and colors.Primary) or (side == "Home" and data.HomeColor or data.AwayColor) or "B7FF1A"
+	local secondary = source.SecondaryColor or (colors and colors.Secondary) or "050505"
+	local accent = source.AccentColor or (colors and colors.Accent) or "F5F7F2"
+	return {
+		PrimaryColor = primary,
+		SecondaryColor = secondary,
+		AccentColor = accent,
+		BadgePreset = source.BadgePreset or "Modern",
+		BadgeShape = source.BadgeShape or source.Shape or "Shield",
+		BadgeSymbol = source.BadgeSymbol or source.Symbol or "Lightning Bolt",
+		BadgeColorBehavior = source.BadgeColorBehavior or "Tri Color",
+	}
+end
+
+local function syncBadgeZ(root: Instance, zIndex: number, strokeLimit: number?)
+	for _, descendant in root:GetDescendants() do
+		if descendant:IsA("GuiObject") then
+			descendant.ZIndex = zIndex
+		elseif strokeLimit and descendant:IsA("UIStroke") then
+			descendant.Thickness = math.min(descendant.Thickness, strokeLimit)
+		end
+	end
+end
+
+local function applyPresentationBadge(target: TextLabel, primary: Color3, logoText: string?, identity: any?, strokeLimit: number?)
 	target.Text = ""
 	target.BackgroundTransparency = 1
 	target.ClipsDescendants = true
 	for _, child in target:GetChildren() do
-		if child.Name == "VTRPresentationBadgeArt" or child.Name == "BadgeArt" then child:Destroy() end
+		if child.Name == "VTRPresentationBadgeArt" or child.Name == "BadgeArt" or child.Name == "GeneratedBadge" then child:Destroy() end
+	end
+	if type(identity) == "table" then
+		local badge = BadgePreview.new(target, identity, UDim2.fromScale(1, 1))
+		badge.Name = "VTRPresentationBadgeArt"
+		badge.Position = UDim2.fromScale(0, 0)
+		badge.ZIndex = target.ZIndex + 1
+		syncBadgeZ(badge, badge.ZIndex, strokeLimit)
+		return
 	end
 	local accent = Color3.fromHex("F5F7F2")
 	local art = Instance.new("Frame")
@@ -323,6 +369,8 @@ local function cleanPosition(value: any): string
 	if position == "ATTACKINGMID" or position == "ATTACKINGMIDFIELDER" then return "CAM" end
 	if position == "LEFTMID" then return "LM" end
 	if position == "RIGHTMID" then return "RM" end
+	if position == "LAM" then return "LW" end
+	if position == "RAM" then return "RW" end
 	if position == "LEFTWING" then return "LW" end
 	if position == "RIGHTWING" then return "RW" end
 	if position == "STRIKER" or position == "FORWARD" then return "ST" end
@@ -449,29 +497,6 @@ local function formationEntries(data: any, side: string): {any}
 	return result
 end
 
-local function entriesForGroup(data: any, side: string, groupName: string): {any}
-	local result = {}
-	for _, entry in ipairs(formationEntries(data, side)) do
-		if lineGroupForPosition(entry.Position) == groupName then
-			table.insert(result, entry)
-		end
-	end
-	return result
-end
-
-local function groupRange(data: any, side: string, groupName: string, fallbackFirst: number, fallbackLast: number): (number, number)
-	local entries = formationEntries(data, side)
-	local first = nil
-	local last = nil
-	for index, entry in ipairs(entries) do
-		if lineGroupForPosition(entry.Position) == groupName then
-			first = first or index
-			last = index
-		end
-	end
-	return first or fallbackFirst, last or fallbackLast
-end
-
 local function formationText(data: any, side: string): string
 	local sideSetup = side == "Home" and data.HomeSetup or data.AwaySetup
 	local function valid(value: any): string?
@@ -485,6 +510,12 @@ local function formationText(data: any, side: string): string
 		or valid(data.Formation)
 		or valid(data.FormationName)
 		or ""
+end
+
+local function formationDefinition(name: string): any?
+	local clean = string.upper(tostring(name or ""))
+	clean = string.gsub(clean, "%s+", "")
+	return FormationConfig.Formations[clean]
 end
 
 local function formationSpecRows(name: string): {any}?
@@ -627,6 +658,48 @@ local function takeRow(entries: {any}, used: any, rowName: string, count: number
 	return {Name = rowName, Entries = row, Y = y}
 end
 
+local function entryForSlot(entriesByIndex: any, entriesBySlot: any, slotName: string, fallbackIndex: number): any
+	return entriesBySlot[slotName] or entriesByIndex[fallbackIndex] or {Position = slotName, OriginalIndex = fallbackIndex}
+end
+
+local function slotRowsFromFormation(data: any, side: string): {any}?
+	local name = formationText(data, side)
+	local formation = formationDefinition(name)
+	local specRows = formationSpecRows(name)
+	if not formation or not specRows then return nil end
+	local entriesByIndex = {}
+	local entriesBySlot = {}
+	for _, entry in ipairs(formationEntries(data, side)) do
+		entriesByIndex[entry.OriginalIndex or 0] = entry
+		local player = entry.Player or {}
+		local slotName = player.FormationSlot or player.PositionSlot or player.SquadSlot
+		if type(slotName) == "string" and slotName ~= "" then
+			entriesBySlot[slotName] = entry
+		end
+	end
+	local usedSlots = {}
+	local rows = {}
+	for _, spec in ipairs(specRows) do
+		local rowSlots = {}
+		for index, slotName in ipairs(FormationConfig.Order) do
+			local definition = formation[slotName]
+			local label = definition and tostring(definition.Label or definition.Expected or slotName) or slotName
+			if definition and not usedSlots[slotName] and rowAccepts(spec.Name, label) and #rowSlots < spec.Count then
+				usedSlots[slotName] = true
+				local entry = entryForSlot(entriesByIndex, entriesBySlot, slotName, index)
+				entry.Position = tostring(type(entry.Position) == "string" and entry.Position ~= "" and entry.Position or label)
+				table.insert(rowSlots, {Entry = entry, X = definition.X, Y = definition.Y, Slot = slotName, Label = label})
+			end
+		end
+		table.sort(rowSlots, function(a, b)
+			if a.X ~= b.X then return a.X < b.X end
+			return tostring(a.Slot) < tostring(b.Slot)
+		end)
+		table.insert(rows, {Name = spec.Name, Slots = rowSlots, Y = spec.Y})
+	end
+	return rows
+end
+
 local function dynamicRows(entries: {any}): {any}
 	local rowsByName = {GK = {}, DEF = {}, DM = {}, MID = {}, AM = {}, FWD = {}}
 	local hasAM = false
@@ -672,6 +745,10 @@ local function dynamicRows(entries: {any}): {any}
 end
 
 local function buildDotRows(data: any, side: string): {any}
+	local slotRows = slotRowsFromFormation(data, side)
+	if slotRows then
+		return slotRows
+	end
 	local entries = formationEntries(data, side)
 	local specRows = formationSpecRows(formationText(data, side))
 	if not specRows then
@@ -692,16 +769,55 @@ local function buildDotRows(data: any, side: string): {any}
 	return rows
 end
 
+local function entriesForGroup(data: any, side: string, groupName: string): {any}
+	local rows = buildDotRows(data, side)
+	local result = {}
+	for _, row in ipairs(rows) do
+		local rowGroup = row.Name == "FWD" and "ATT" or row.Name == "GK" and "GK" or row.Name == "DEF" and "DEF" or "MID"
+		if rowGroup == groupName then
+			if row.Slots then
+				for _, slot in ipairs(row.Slots) do
+					table.insert(result, slot.Entry)
+				end
+			else
+				for _, entry in ipairs(row.Entries or {}) do
+					table.insert(result, entry)
+				end
+			end
+		end
+	end
+	return result
+end
+
 local function updateFormationDots(dots: {Frame}, data: any, side: string)
 	local rows = buildDotRows(data, side)
 	local dotIndex = 1
 	for _, row in ipairs(rows) do
+		local rowGroup = row.Name == "FWD" and "ATT" or row.Name == "GK" and "GK" or row.Name == "DEF" and "DEF" or "MID"
+		local slots = row.Slots
+		if slots then
+			for _, slot in ipairs(slots) do
+				local dot = dots[dotIndex]
+				if dot then
+					local entry = slot.Entry or {}
+					dot.Position = UDim2.fromScale(slot.X, slot.Y)
+					dot:SetAttribute("VTRLineGroup", rowGroup)
+					dot:SetAttribute("VTRPosition", tostring(slot.Label or entry.Position or slot.Slot))
+					dot:SetAttribute("VTRShapeRow", row.Name)
+					dot.BackgroundColor3 = Theme.Colors.White
+					dot.Size = UDim2.fromOffset(11, 11)
+					dot.Visible = true
+				end
+				dotIndex += 1
+			end
+			continue
+		end
 		local count = #row.Entries
-		for rowIndex, entry in ipairs(row.Entries) do
+		for rowIndex, entry in ipairs(row.Entries or {}) do
 			local dot = dots[dotIndex]
 			if dot then
 				dot.Position = UDim2.fromScale(xFor(row.Name, rowIndex, count), row.Y)
-				dot:SetAttribute("VTRLineGroup", lineGroupForPosition(entry.Position))
+				dot:SetAttribute("VTRLineGroup", rowGroup)
 				dot:SetAttribute("VTRPosition", entry.Position)
 				dot:SetAttribute("VTRShapeRow", row.Name)
 				dot.BackgroundColor3 = Theme.Colors.White
@@ -972,11 +1088,11 @@ function Presentation.Play(data: any, onComplete: (() -> ())?)
 	local playerGui = Players.LocalPlayer:WaitForChild("PlayerGui")
 	local old = playerGui:FindFirstChild("VTRPrematchBroadcast")
 	if old then old:Destroy() end
-	for _, overlayName in ipairs({"VTRMatchTeleport","VTRRankedTeleportFound","VTRRankedTeleportMatchFound","VTRMatchupConfirmed","VTRMatchupConfirm","VTRRankedReservedBoot"}) do
+	for _, overlayName in ipairs({"VTRMatchTeleport","VTRMatchLoadSyncCover","VTRRankedTeleportFound","VTRRankedTeleportMatchFound","VTRMatchupConfirmed","VTRMatchupConfirm","VTRRankedReservedBoot"}) do
 		local overlay = playerGui:FindFirstChild(overlayName)
 		if overlay then overlay:Destroy() end
 	end
-	for _, overlayName in ipairs({"VTRMatchTeleport","VTRRankedTeleportFound","VTRRankedTeleportMatchFound","VTRMatchupConfirmed","VTRMatchupConfirm","VTRRankedReservedBoot"}) do
+	for _, overlayName in ipairs({"VTRMatchTeleport","VTRMatchLoadSyncCover","VTRRankedTeleportFound","VTRRankedTeleportMatchFound","VTRMatchupConfirmed","VTRMatchupConfirm","VTRRankedReservedBoot"}) do
 		local overlay = playerGui:FindFirstChild(overlayName)
 		if overlay then overlay:Destroy() end
 	end
@@ -1080,12 +1196,12 @@ function Presentation.Play(data: any, onComplete: (() -> ())?)
 	homeBadge.BackgroundColor3 = homeColor
 	homeBadge.BackgroundTransparency = 0
 	homeBadge.TextXAlignment = Enum.TextXAlignment.Center
-	applyPresentationBadge(homeBadge, homeColor, tostring(data.HomeLogo or "V"))
+	applyPresentationBadge(homeBadge, homeColor, tostring(data.HomeLogo or "V"), teamBadgeIdentity(data, "Home"), 3)
 	local awayBadge = label(rightPanel, tostring(data.AwayLogo or shortCode(away)), UDim2.fromScale(0.29, 0.58), UDim2.fromScale(0.42, 0.23), 24, Theme.Colors.White, Theme.Fonts.Display)
 	awayBadge.BackgroundColor3 = awayColor
 	awayBadge.BackgroundTransparency = 0
 	awayBadge.TextXAlignment = Enum.TextXAlignment.Center
-	applyPresentationBadge(awayBadge, awayColor, tostring(data.AwayLogo or "V"))
+	applyPresentationBadge(awayBadge, awayColor, tostring(data.AwayLogo or "V"), teamBadgeIdentity(data, "Away"), 3)
 	for _, spec in {
 		{UDim2.fromScale(0.47, 0.55), UDim2.fromScale(0.08, 0.01)},
 		{UDim2.fromScale(0.87, 0.55), UDim2.fromScale(0.13, 0.01)},
@@ -1169,8 +1285,7 @@ function Presentation.Play(data: any, onComplete: (() -> ())?)
 	sheetLogo.BackgroundColor3 = Theme.Colors.White
 	sheetLogo.BackgroundTransparency = 0
 	sheetLogo.TextXAlignment = Enum.TextXAlignment.Center
-	applyPresentationBadge(sheetLogo, homeColor, teamLogoText(data, "Home", "V"))
-	applyPresentationBadge(sheetLogo, homeColor, teamLogoText(data, "Home", "V"))
+	applyPresentationBadge(sheetLogo, homeColor, teamLogoText(data, "Home", "V"), teamBadgeIdentity(data, "Home"), 3)
 	local sheetTeamCode = label(sheetLogoPanel, shortCode(home), UDim2.fromScale(0.12, 0.08), UDim2.fromScale(0.76, 0.12), 34, Theme.Colors.Black, Theme.Fonts.Display)
 	sheetTeamCode.TextXAlignment = Enum.TextXAlignment.Center
 	local sheetStartTitle = label(sheet, "STARTING 11", UDim2.fromScale(0.36, 0.12), UDim2.fromScale(0.25, 0.08), 25, Theme.Colors.White, Theme.Fonts.Display)
@@ -1182,14 +1297,18 @@ function Presentation.Play(data: any, onComplete: (() -> ())?)
 		local teamColor = side == "Home" and homeColor or awayColor
 		sheetLogoPanel.BackgroundColor3 = teamColor
 		sheetLogo.Text = teamLogoText(data, side, shortCode(teamName))
-		applyPresentationBadge(sheetLogo, teamColor, teamLogoText(data, side, "V"))
+		applyPresentationBadge(sheetLogo, teamColor, teamLogoText(data, side, "V"), teamBadgeIdentity(data, side), 3)
 		sheetTeamCode.Text = shortCode(teamName)
 		sheetStartList.Text = teamSheetFromPlayers(lineupData(data, side), teamSheet(data, side))
 		sheetSubsList.Text = benchSheetFromPlayers(side == "Home" and (data.HomeBench or {}) or (data.AwayBench or {}), benchSheet(data, side))
 	end
 
 	local kickoff = panel(root, "KickoffScoreboard", UDim2.fromScale(0.18, 1.04), UDim2.fromScale(0.64, 0.12))
-	label(kickoff, shortCode(home) .. "   0       VTR       0   " .. shortCode(away), UDim2.fromScale(0.08, 0.16), UDim2.fromScale(0.84, 0.68), 26).TextXAlignment = Enum.TextXAlignment.Center
+	local kickoffHomeBadge = label(kickoff, "", UDim2.fromScale(0.04, 0.17), UDim2.fromScale(0.08, 0.66), 12, Theme.Colors.White, Theme.Fonts.Display)
+	applyPresentationBadge(kickoffHomeBadge, homeColor, teamLogoText(data, "Home", "V"), teamBadgeIdentity(data, "Home"), 2)
+	local kickoffAwayBadge = label(kickoff, "", UDim2.fromScale(0.88, 0.17), UDim2.fromScale(0.08, 0.66), 12, Theme.Colors.White, Theme.Fonts.Display)
+	applyPresentationBadge(kickoffAwayBadge, awayColor, teamLogoText(data, "Away", "V"), teamBadgeIdentity(data, "Away"), 2)
+	label(kickoff, shortCode(home) .. "   0       VTR       0   " .. shortCode(away), UDim2.fromScale(0.13, 0.16), UDim2.fromScale(0.74, 0.68), 26).TextXAlignment = Enum.TextXAlignment.Center
 
 	task.delay(0.4, function()
 		slideIn(matchup, UDim2.fromScale(0.25, 0.16), UDim2.fromScale(0.25, 1.05), 0.42)

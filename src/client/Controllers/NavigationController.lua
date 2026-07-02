@@ -2,7 +2,6 @@
 
 local GuiService = game:GetService("GuiService")
 local TweenService = game:GetService("TweenService")
-local UserInputService = game:GetService("UserInputService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Theme = require(ReplicatedStorage.VTR.Shared.Theme)
@@ -17,7 +16,6 @@ function NavigationController.new(breadcrumb: TextLabel)
 	self.Items = {}
 	self.Current = nil
 	self.TransitionId = 0
-	self.GamepadConnection = nil
 	return self
 end
 
@@ -74,12 +72,7 @@ function NavigationController:FinalizeSelectionOrder(order: { string })
 		end
 	end
 
-	GuiService.AutoSelectGuiEnabled = false
-	self.GamepadConnection = UserInputService.InputBegan:Connect(function(input)
-		if input.UserInputType.Name:find("Gamepad") then
-			GuiService.SelectedObject = nil
-		end
-	end)
+	GuiService.AutoSelectGuiEnabled = true
 end
 
 function NavigationController:Navigate(id: string)
@@ -110,6 +103,7 @@ function NavigationController:Navigate(id: string)
 
 	incoming.Visible = true
 	incoming.Active = true
+	GuiService.SelectedObject = nil
 	incoming.GroupTransparency = 1
 	incoming.Position = UDim2.fromOffset(26, 0)
 	TweenService:Create(incoming, TweenInfo.new(Theme.Animation.Page, Theme.Animation.EasingStyle, Theme.Animation.EasingDirection), {

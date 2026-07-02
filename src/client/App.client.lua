@@ -237,6 +237,7 @@ if GameplayConfig.AutoStartTestMatch then
 	local GameplayController = require(script.Parent.Controllers.GameplayController)
 	GameplayController.new():Start()
 elseif reservedRankedBoot then
+	showMatchLoadSyncCover()
 	showReservedRankedBoot()
 else
 	local UIController = require(script.Parent.Controllers.UIController)

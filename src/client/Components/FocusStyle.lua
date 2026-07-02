@@ -18,13 +18,17 @@ function FocusStyle.apply(target: GuiButton)
 	if target:GetAttribute("VTRFocusStyled") then return end
 	target:SetAttribute("VTRFocusStyled", true)
 	target.AutoButtonColor = false
-	target.Selectable = false
 
-	-- Never add selection-image children to controls: layout objects treat them
-	-- as content. VTR draws its own focus border and glow below.
 	local legacySuppressor = target:FindFirstChild("VTRTransparentSelection")
 	if legacySuppressor then legacySuppressor:Destroy() end
-	target.SelectionImageObject = nil
+	local selectionImage = Instance.new("Frame")
+	selectionImage.Name = "VTRSelectionImage"
+	selectionImage.BackgroundTransparency = 1
+	selectionImage.BorderSizePixel = 0
+	selectionImage.Size = UDim2.fromScale(1, 1)
+	selectionImage.Visible = false
+	selectionImage.Parent = target
+	target.SelectionImageObject = selectionImage
 
 	local border = Instance.new("UIStroke")
 	border.Name = "VTRFocusBorder"
@@ -52,9 +56,9 @@ function FocusStyle.apply(target: GuiButton)
 	end
 	local function render()
 		if focused then
-			tween(border, 0.05, 1)
-			tween(glow, 0.78, 3)
-			TweenService:Create(scale, TweenInfo.new(Theme.Animation.Hover, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), { Scale = 1.025 }):Play()
+			tween(border, 0, 3)
+			tween(glow, 0.48, 7)
+			TweenService:Create(scale, TweenInfo.new(Theme.Animation.Hover, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), { Scale = 1.04 }):Play()
 		elseif hovered then
 			tween(border, 0.38, 1)
 			tween(glow, 0.92, 2)

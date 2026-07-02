@@ -30,12 +30,13 @@ function Service:_errorRadius(passer: Model, distance: number, pressure: number)
 	local passing = math.clamp(tonumber(passer:GetAttribute("PAS")) or 60, 1, 99)
 	local weakFoot = math.clamp(tonumber(passer:GetAttribute("WeakFoot")) or 3, 1, 5)
 	local balance = math.clamp(tonumber(passer:GetAttribute("Balance")) or 65, 1, 99)
-	local base = passing >= 85 and 0.12 or passing >= 70 and 0.32 or passing >= 55 and 0.68 or 1.15
-	local longError = math.max(0, distance - 35) * 0.009
-	local pressureError = pressure * 2.15
-	local sprintError = passer:GetAttribute("VTRSprinting") == true and 0.42 or 0
-	local weakFootError = (5 - weakFoot) * 0.12
-	local balanceError = (100 - balance) / 190
+	local accuracy = passing / 99
+	local base = 1.05 * (1 - accuracy) ^ 1.45 + 0.045
+	local longError = math.max(0, distance - 35) * (0.012 * (1 - accuracy) + 0.0025)
+	local pressureError = pressure * (1.45 - accuracy * 0.62)
+	local sprintError = passer:GetAttribute("VTRSprinting") == true and (0.30 - accuracy * 0.14) or 0
+	local weakFootError = (5 - weakFoot) * 0.085
+	local balanceError = (100 - balance) / 260
 	return base + longError + pressureError + sprintError + weakFootError + balanceError
 end
 

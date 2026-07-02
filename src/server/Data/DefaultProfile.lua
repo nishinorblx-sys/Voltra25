@@ -19,7 +19,7 @@ return table.freeze({
 	RankedRewards={{Id="rookie_welcome",Title="ROOKIE WELCOME",Description="1,000 Coins",Claimed=false}},RewardsInbox={{Id="launch_welcome",Title="WELCOME TO VTR 25",Description="500 Coins + 50 Bolts",Type="Welcome",Claimed=false}},
 	PackInventory={},PlayerCardInventory={},Squad={},Bench={},Reserves={},PlayerCardMeta={},Formation="4-3-3",
 	CampaignProgress={UnlockedDifficulty=1,CompletedTeams={},RewardsClaimed={}},
-	RankedRun={Active=false,Wins=0,Losses=0,Ended=false,RewardClaimed=false},
+	RankedRun={Active=false,Results={},Wins=0,Draws=0,Losses=0,Target=7,Ended=false,RewardClaimed=false},
 	UnopenedPacks={},OwnedPlayers={},
 	TeamTactics={Identity="Balanced",Sliders={BuildUpSpeed=50,PassingDirectness=50,AttackingWidth=50,DefensiveWidth=50,DefensiveDepth=50,PressingIntensity=45,CounterAttackFrequency=45,OverlapFrequency=45,CrossingFrequency=45,LongShotFrequency=35,DribblingFreedom=45,RiskLevel=45}},
 	PlayerInstructions={},CustomTactics={},

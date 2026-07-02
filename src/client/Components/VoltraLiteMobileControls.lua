@@ -1,6 +1,7 @@
 --!strict
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
+local Workspace = game:GetService("Workspace")
 
 local Controls = {}
 Controls.__index = Controls
@@ -25,6 +26,13 @@ local function stroke(parent: Instance, color: Color3, transparency: number, thi
 	return item
 end
 
+local function controlScale(): number
+	local camera = Workspace.CurrentCamera
+	local viewport = camera and camera.ViewportSize or Vector2.new(1920, 1080)
+	local scale = math.min(viewport.X / 1920, viewport.Y / 1080)
+	return math.clamp(scale, .78, 1.08)
+end
+
 local function circle(parent: Instance, name: string, size: number, pos: UDim2, text: string, textSize: number, color: Color3?): TextButton
 	local button = Instance.new("TextButton")
 	button.Name = name
@@ -38,6 +46,7 @@ local function circle(parent: Instance, name: string, size: number, pos: UDim2, 
 	button.Text = text
 	button.TextColor3 = WHITE
 	button.TextSize = textSize
+	button.TextWrapped = true
 	button.Font = Enum.Font.GothamBlack
 	button.ZIndex = 210
 	button.Parent = parent
@@ -88,28 +97,31 @@ function Controls.new(controller: any)
 	root.Size = UDim2.fromScale(1, 1)
 	root.Parent = self.Gui
 	self.Root = root
+	local scale = controlScale()
+	local function px(value:number):number return math.floor(value*scale+.5)end
+	self.ControlScale = scale
 
 	local base = Instance.new("Frame")
 	base.Name = "MovementJoystick"
 	base.AnchorPoint = Vector2.new(0.5, 0.5)
-	base.Position = UDim2.new(0, 98, 1, -108)
-	base.Size = UDim2.fromOffset(130, 130)
+	base.Position = UDim2.new(0, px(126), 1, -px(136))
+	base.Size = UDim2.fromOffset(px(164), px(164))
 	base.BackgroundColor3 = BLACK
 	base.BackgroundTransparency = 0.32
 	base.BorderSizePixel = 0
 	base.Active = true
 	base.ZIndex = 205
 	base.Parent = root
-	corner(base, 130)
+	corner(base, px(164))
 	stroke(base, GREEN, 0.32, 1)
 
 	local arrows = Instance.new("TextLabel")
 	arrows.BackgroundTransparency = 1
 	arrows.Size = UDim2.fromScale(1, 1)
-	arrows.Text = "▲\n◀     ▶\n▼"
+	arrows.Text = "^\n<     >\nv"
 	arrows.TextColor3 = GREEN
 	arrows.TextTransparency = 0.16
-	arrows.TextSize = 20
+	arrows.TextSize = px(24)
 	arrows.Font = Enum.Font.GothamBlack
 	arrows.ZIndex = 206
 	arrows.Parent = base
@@ -118,26 +130,27 @@ function Controls.new(controller: any)
 	knob.Name = "Knob"
 	knob.AnchorPoint = Vector2.new(0.5, 0.5)
 	knob.Position = UDim2.fromScale(0.5, 0.5)
-	knob.Size = UDim2.fromOffset(56, 56)
+	knob.Size = UDim2.fromOffset(px(70), px(70))
 	knob.BackgroundColor3 = GREEN
 	knob.BackgroundTransparency = 0.03
 	knob.BorderSizePixel = 0
 	knob.ZIndex = 207
 	knob.Parent = base
-	corner(knob, 56)
+	corner(knob, px(70))
 	stroke(knob, WHITE, 0.62, 1)
 
 	self.Joystick = base
 	self.Knob = knob
 
-	self.PassButton = circle(root, "PassButton", 78, UDim2.new(1, -188, 1, -104), "PASS", 16, GREEN)
-	self.ShootButton = circle(root, "ShootButton", 86, UDim2.new(1, -102, 1, -184), "SHOOT", 17, GREEN)
-	self.LobButton = circle(root, "LobButton", 64, UDim2.new(1, -218, 1, -190), "LOB", 15, GREEN)
+	self.PassButton = circle(root, "PassButton", px(132), UDim2.new(1, -px(266), 1, -px(128)), "PASS", px(22), GREEN)
+	self.ShootButton = circle(root, "ShootButton", px(150), UDim2.new(1, -px(132), 1, -px(226)), "SHOOT", px(23), GREEN)
+	self.LobButton = circle(root, "LobButton", px(110), UDim2.new(1, -px(350), 1, -px(224)), "LOB", px(20), GREEN)
 
-	self.TackleButton = circle(root, "TackleButton", 82, UDim2.new(1, -110, 1, -132), "TACKLE", 13, RED)
-	self.SlideButton = circle(root, "SlideButton", 72, UDim2.new(1, -205, 1, -112), "SLIDE", 13, RED)
+	self.TackleButton = circle(root, "TackleButton", px(154), UDim2.new(1, -px(138), 1, -px(182)), "TACKLE", px(24), RED)
+	self.SlideButton = circle(root, "SlideButton", px(148), UDim2.new(1, -px(304), 1, -px(174)), "SLIDE", px(23), RED)
 
-	self.SwitchButton = circle(root, "SwitchButton", 56, UDim2.new(1, -78, 1, -276), "SWITCH", 9, GREEN)
+	self.SwitchButton = circle(root, "SwitchButton", px(126), UDim2.new(1, -px(86), 1, -px(370)), "SWITCH", px(22), GREEN)
+	self.SprintButton = circle(root, "SprintButton", px(112), UDim2.new(1, -px(212), 1, -px(378)), "SPRINT", px(18), GREEN)
 
 	local moveTouch: InputObject? = nil
 	local function updateMove(input: InputObject)
@@ -185,6 +198,13 @@ function Controls.new(controller: any)
 		controller.Remote:FireServer({Type = "Switch", TargetModel = aim.TargetModel, AimPosition = aim.Position})
 	end)
 
+	self.SprintButton.Activated:Connect(function()
+		if controller.ToggleSprint then
+			controller:ToggleSprint()
+			pressed(self.SprintButton, controller.SprintToggle == true)
+		end
+	end)
+
 	self:SetDefending(false)
 
 	return self
@@ -216,12 +236,17 @@ end
 
 function Controls:SetDefending(defending: boolean)
 	self.Defending = defending == true
+	local scale = self.ControlScale or 1
+	local function px(value:number):number return math.floor(value*scale+.5)end
 	self.PassButton.Visible = not self.Defending
 	self.ShootButton.Visible = not self.Defending
 	self.LobButton.Visible = not self.Defending
 	self.TackleButton.Visible = self.Defending
 	self.SlideButton.Visible = self.Defending
 	self.SwitchButton.Visible = true
+	self.SwitchButton.Position = self.Defending and UDim2.new(1, -px(420), 1, -px(72)) or UDim2.new(1, -px(86), 1, -px(370))
+	self.SprintButton.Visible = true
+	self.SprintButton.Position = self.Defending and UDim2.new(1, -px(250), 1, -px(74)) or UDim2.new(1, -px(212), 1, -px(378))
 end
 
 function Controls:MoveVector(): Vector2

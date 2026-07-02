@@ -1,4 +1,23 @@
---!strict
+from pathlib import Path
+import re
+
+prematch_path = Path("src/client/Components/PrematchBroadcastPresentation.lua")
+prematch = prematch_path.read_text(encoding="utf-8")
+
+prematch = prematch.replace(
+'''				UISoundService.PlayTransition()
+				TweenService:Create(slot, TweenInfo.new(0.36, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {''',
+'''				if order == 1 then
+					UISoundService.PlayTransition()
+				end
+				TweenService:Create(slot, TweenInfo.new(0.36, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {''',
+1
+)
+
+prematch_path.write_text(prematch, encoding="utf-8", newline="\n")
+
+ref_path = Path("src/server/Gameplay/RefereeService.lua")
+ref_path.write_text('''--!strict
 local Service = {}
 Service.__index = Service
 
@@ -45,8 +64,7 @@ end
 
 function Service:CallFoul(offender: Model, victim: Model, kind: string, location: Vector3, forceCard: boolean?, redChance: number?): (boolean, string?)
 	local team = tostring(offender:GetAttribute("VTRTeam") or "Home")
-	local victimTeam = tostring(victim:GetAttribute("VTRTeam") or "")
-	local restartTeam = (victimTeam == "Home" or victimTeam == "Away") and victimTeam or (team == "Home" and "Away" or "Home")
+	local restartTeam = team == "Home" and "Away" or "Home"
 	self.Fouls[offender] = (self.Fouls[offender] or 0) + 1
 	self.Stats:Add(team, "Fouls")
 	self.Stats:Event(offender, "FoulCommitted")
@@ -99,7 +117,6 @@ function Service:CallFoul(offender: Model, victim: Model, kind: string, location
 		SecondYellow = secondYellow,
 		Location = location,
 		RestartKind = restartKind,
-		RestartTeam = restartTeam,
 		FouledPlayerName = tostring(victim:GetAttribute("DisplayName") or victim.Name),
 		OffenderName = tostring(offender:GetAttribute("DisplayName") or offender.Name),
 		FouledPlayer = victim,
@@ -123,3 +140,24 @@ function Service.Enforce(models: {Model}, pitchCFrame: CFrame, width: number, le
 end
 
 return Service
+''', encoding="utf-8", newline="\n")
+
+ball_path = Path("src/server/Gameplay/BallService.lua")
+ball = ball_path.read_text(encoding="utf-8")
+
+ball = ball.replace(
+'''	local foulChance=approach=="Behind"and.8 or approach=="Side"and.4 or 0
+	local forceCard=false
+	local redChance:number?=nil''',
+'''	local foulChance=approach=="Behind"and.8 or approach=="Side"and.4 or 0
+	local forceCard=false
+	local redChance:number?=nil
+	if self.Referee and self.Referee.IsPenaltyFoul and self.Referee:IsPenaltyFoul(model, owner, ownerRoot.Position) then
+		foulChance = math.max(foulChance, slide and 1 or .85)
+	end''',
+1
+)
+
+ball_path.write_text(ball, encoding="utf-8", newline="\n")
+
+print("fixed presentation transition sounds per position group and made defensive box fouls use penalty shooting")

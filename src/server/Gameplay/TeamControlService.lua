@@ -43,14 +43,38 @@ function Service.new(remote: RemoteEvent, teams: any, ball: BasePart, possession
 		Remote = remote, Teams = teams, Ball = ball, Possession = possession, BallService = ballService,
 		Passing = PassingService.new(ballService, targeting, remote, teams),
 		Receiving = ReceiveBallService.new(ball, possession, remote), Smoothing = MovementSmoothingService.new(),
-		PitchCFrame = pitchCFrame, Width = width, Length = length, Active = {}, PlayerSides = {}, PendingReceiver = {}, PassIntent = {}, ReceiverAssist = {}, LastMovementAt = {}, LastPossessionOwner = nil, ManualSwitchAwayUntil = {},
+		PitchCFrame = pitchCFrame, Width = width, Length = length, Active = {}, PlayerSides = {}, PendingReceiver = {}, PassIntent = {}, ReceiverAssist = {}, ManualReceiveOverride = {}, LastMovementAt = {}, LastPossessionOwner = nil, ManualSwitchAwayUntil = {},
 	}, Service)
 end
 
 function Service:_beginReceiverAssist(player: Player, model: Model, point: Vector3, mode: string)
 	if mode == "Off" then return end
+	if self.ManualReceiveOverride[player] == true then return end
 	model:SetAttribute("VTRReceiverAssist", mode)
 	self.ReceiverAssist[player] = {Model = model, Point = point, Until = os.clock() + (mode == "Assisted" and 0.9 or 0.48)}
+end
+
+function Service:SetManualReceiveOverride(player: Player, active: boolean)
+	self.ManualReceiveOverride[player] = active == true or nil
+	local model = self.Active[player]
+	if model and model.Parent then
+		model:SetAttribute("VTRManualReceiveOverride", active == true)
+		if active == true then
+			model:SetAttribute("VTRReceiverAssist", nil)
+			self.ReceiverAssist[player] = nil
+		end
+	end
+	local intent = self.PassIntent[player]
+	if intent and intent.Model and intent.Model.Parent then
+		intent.Model:SetAttribute("VTRManualReceiveOverride", active == true)
+		if active == true then
+			intent.Model:SetAttribute("VTRReceiverAssist", nil)
+		end
+	end
+	local pending = self.PendingReceiver[player]
+	if pending and pending.Model and pending.Model.Parent then
+		pending.Model:SetAttribute("VTRManualReceiveOverride", active == true)
+	end
 end
 
 function Service:GetActive(player: Player): Model?
@@ -66,6 +90,7 @@ function Service:_set(player: Player, model: Model, reason: string)
 		previous:SetAttribute("aiControlled", true)
 		previous:SetAttribute("VTRUserId", nil)
 		previous:SetAttribute("VTRCloseControl", false)
+		previous:SetAttribute("VTRManualReceiveOverride", false)
 		self.Smoothing:Clear(previous)
 		if self.Possession:GetOwner() == previous then self.Ball:SetAttribute("OwnerUserId", 0) end
 	end
@@ -85,6 +110,7 @@ function Service:_set(player: Player, model: Model, reason: string)
 	model:SetAttribute("VTRCloseControl", false)
 	model:SetAttribute("VTRControlSwitchedAt",os.clock())
 	model:SetAttribute("VTRImmediateControlUntil",os.clock()+.9)
+	model:SetAttribute("VTRManualReceiveOverride", self.ManualReceiveOverride[player] == true)
 	if self.Possession:GetOwner() == model then self.Ball:SetAttribute("OwnerUserId", player.UserId) end
 	self.Remote:FireClient(player, {Type = "ActivePlayer", Model = model, Name = model:GetAttribute("DisplayName"), Position = model:GetAttribute("position"), Reason = reason})
 end
@@ -174,7 +200,7 @@ function Service:_aimPoint(active: Model, value: any, goalTarget: boolean?): Vec
 		local homePoint = GoalModelResolver.ClampPoint(homeRectangle, value)
 		local awayPoint = GoalModelResolver.ClampPoint(awayRectangle, value)
 		local rectangle = (homePoint - value).Magnitude <= (awayPoint - value).Magnitude and homeRectangle or awayRectangle
-		local clamped=GoalModelResolver.ClampPoint(rectangle,value);local offset=clamped-rectangle.PlanePoint;local x=math.clamp(offset:Dot(rectangle.Right),rectangle.Left,rectangle.RightBound);local safeBottom=math.min(rectangle.Top,rectangle.Bottom+GameplayConfig.Ball.Radius*.95);local safeTop=math.max(safeBottom,rectangle.Top-math.min(.8,(rectangle.Top-rectangle.Bottom)*.08));local y=math.clamp(offset:Dot(rectangle.Up),safeBottom,safeTop);return GoalModelResolver.Point(rectangle,x,y)
+		local clamped=GoalModelResolver.ClampPoint(rectangle,value);local offset=clamped-rectangle.PlanePoint;local x=math.clamp(offset:Dot(rectangle.Right),rectangle.Left+GameplayConfig.Ball.Radius*.12,rectangle.RightBound-GameplayConfig.Ball.Radius*.12);local safeBottom=math.min(rectangle.Top,rectangle.Bottom+GameplayConfig.Ball.Radius*.45);local safeTop=math.max(safeBottom,rectangle.Top-GameplayConfig.Ball.Radius*.18);local y=math.clamp(offset:Dot(rectangle.Up),safeBottom,safeTop);return GoalModelResolver.Point(rectangle,x,y)
 	else
 		localPoint = Vector3.new(math.clamp(localPoint.X, -self.Width / 2, self.Width / 2), 0.15, math.clamp(localPoint.Z, -self.Length / 2, self.Length / 2))
 	end
@@ -229,7 +255,14 @@ function Service:Handle(player: Player, payload: any)
 					debugKickoff("owner move input","player",player.Name,"owner",active.Name,"magnitude",math.floor(magnitude*100)/100,"direction",raw)
 				end
 			end
-			if magnitude > 0.08 and self.ReceiverAssist[player] then active:SetAttribute("VTRReceiverAssist", nil);self.ReceiverAssist[player] = nil end
+			if self.ManualReceiveOverride[player] == true and self.ReceiverAssist[player] then active:SetAttribute("VTRReceiverAssist", nil);self.ReceiverAssist[player] = nil end
+			local receiveAssist = self.ReceiverAssist[player]
+			if receiveAssist and receiveAssist.Model == active and os.clock() < receiveAssist.Until then
+				active:SetAttribute("VTRMoveMagnitude", math.max(magnitude, 0.85))
+				active:SetAttribute("VTRMoveDirection", validDirection(payload.Direction) and Vector3.new(payload.Direction.X, 0, payload.Direction.Z) or Vector3.zero)
+				humanoid:MoveTo(Vector3.new(receiveAssist.Point.X, activeRoot.Position.Y, receiveAssist.Point.Z))
+				return
+			end
 			local ownsBall = self.Possession:GetOwner() == active
 			local sprinting = active:GetAttribute("VTRSprinting") == true
 			local smoothed, penalty = self.Smoothing:Update(active, raw, ownsBall, sprinting)
@@ -266,16 +299,8 @@ function Service:Handle(player: Player, payload: any)
 			local activeRoot=root(active)
 			local offset=activeRoot and aimPoint and(aimPoint-activeRoot.Position)or nil
 			if activeRoot and aimPoint and offset and offset.Magnitude>1 then
-				local target = self:_closestTeammateToPoint(player, active, aimPoint)
-				local kicked = self.BallService:Kick(active,"Pass",offset,tonumber(payload.Charge)or 0,target,payload.PassType=="ManualLobbed"and"Lofted"or"Manual",offset.Magnitude,aimPoint)
+				local kicked = self.BallService:Kick(active,"Pass",offset,tonumber(payload.Charge)or 0,nil,payload.PassType=="ManualLobbed"and"Lofted"or"Manual",offset.Magnitude,aimPoint)
 				if kicked then self:_switchDefenseToPassTarget(tostring(active:GetAttribute("VTRTeam") or self.PlayerSides[player] or "Home"), aimPoint) end
-				if kicked and target then
-					self.Receiving:Expect(player, target, aimPoint)
-					self.PassIntent[player] = {Model = target, Passer = active, Until = os.clock() + 4.2, AutoSwitch = "Instant"}
-					self.Remote:FireClient(player, {Type = "SwitchTarget", Model = target, ReceivePoint = aimPoint})
-					self:_set(player, target, "ManualPassTarget")
-					self:_beginReceiverAssist(player, target, aimPoint, "Light")
-				end
 			end
 			return
 		end
@@ -389,7 +414,7 @@ function Service:Step()
 	end
 	for player, assist in self.ReceiverAssist do
 		local model: Model = assist.Model
-		if self.Active[player] ~= model or not model.Parent or os.clock() >= assist.Until then
+		if self.ManualReceiveOverride[player] == true or self.Active[player] ~= model or not model.Parent or os.clock() >= assist.Until then
 			if model.Parent then model:SetAttribute("VTRReceiverAssist", nil) end
 			self.ReceiverAssist[player] = nil
 			continue
@@ -411,6 +436,7 @@ function Service:Destroy(player: Player)
 	self.PendingReceiver[player] = nil
 	self.PassIntent[player] = nil
 	self.ReceiverAssist[player] = nil
+	self.ManualReceiveOverride[player] = nil
 	self.LastMovementAt[player] = nil
 	self.ManualSwitchAwayUntil[player] = nil
 	self.PlayerSides[player] = nil

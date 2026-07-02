@@ -564,6 +564,9 @@ function Service:_defensiveActions(context: any, assignmentsBySide: any, onlySid
 		for model, assignment in pairs(assignmentsBySide[side]) do
 			local defender = context.Players[model]
 			if defender then
+				if defender.IsUserControlled then
+					continue
+				end
 				local primary = assignment.PrimaryAssignment
 				local strikerEmergencyTackle = carrier.Role == "ST" and PitchConfig.GetDistanceStuds(defender.World, carrier.World) <= 18
 				if strikerEmergencyTackle or primary == "PressBallCarrier" or primary == "ContainBallCarrier" or primary == "CoverPresser" or primary == "CloseLongCarryGap" or primary == "EarlyCBPressPassTarget" or primary == "EarlyClosePassTargetPressure" or primary == "CenterBackPressureStriker" or primary == "AggressiveCBPressStriker" or primary == "AggressiveCBStepOut" then

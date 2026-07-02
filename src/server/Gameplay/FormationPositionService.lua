@@ -76,6 +76,22 @@ function Service.ThrowIn(teams: any, restartTeam: string, location: Vector3, pit
 		local depth = math.clamp(z + (restartTeam == "Home" and 1 or -1) * (46 + math.floor((index - 1) / 4) * 28), -length / 2 + 28, length / 2 - 28)
 		move(model, world(pitchCFrame, lane, depth), spot)
 	end
+	local defending = restartTeam == "Home" and "Away" or "Home"
+	local marker: Model? = nil
+	local markerDistance = math.huge
+	for _, model in teams[defending] do
+		local modelRoot = root(model)
+		if modelRoot and not isKeeper(model) then
+			local distance = (modelRoot.Position - spot).Magnitude
+			if distance < markerDistance then
+				markerDistance = distance
+				marker = model
+			end
+		end
+	end
+	if marker then
+		move(marker, world(pitchCFrame, x - touchSign * 25, z + 2), spot)
+	end
 	return taker
 end
 

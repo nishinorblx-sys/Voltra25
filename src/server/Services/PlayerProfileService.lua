@@ -18,7 +18,7 @@ function PlayerProfileService:Start()
 	Players.PlayerRemoving:Connect(function(player) self.Store:Release(player.UserId) end)
 	for _, player in Players:GetPlayers() do task.spawn(load, player) end
 	game:BindToClose(function()
-		for _, player in Players:GetPlayers() do self.Store:SaveAsync(player.UserId) end
+		for _, player in Players:GetPlayers() do self.Store:SaveAsync(player.UserId, true) end
 	end)
 end
 

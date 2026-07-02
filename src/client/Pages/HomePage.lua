@@ -34,18 +34,36 @@ local function stat(parent: Instance, title: string, value: string, position: UD
 	return card
 end
 
+local function rankedRunSummary(run: any): (string, number)
+	local results = type(run.Results) == "table" and run.Results or {}
+	local wins = 0
+	local draws = 0
+	local losses = 0
+	for _, value in results do
+		if value == "Win" then wins += 1 elseif value == "Draw" then draws += 1 elseif value == "Loss" then losses += 1 end
+	end
+	if #results == 0 then
+		wins = tonumber(run.Wins) or 0
+		draws = tonumber(run.Draws) or 0
+		losses = tonumber(run.Losses) or 0
+	end
+	local games = math.clamp(#results > 0 and #results or wins + draws + losses, 0, 7)
+	return tostring(games) .. "/7  " .. tostring(wins) .. "W - " .. tostring(draws) .. "D - " .. tostring(losses) .. "L", games / 7
+end
+
 function HomePage.new(context: any): CanvasGroup
 	local profile = context.Data.Profile
 	local progression = context.Data.Progression
 	local campaign = progression.CampaignProgress or {UnlockedDifficulty = 1, CompletedTeams = {}}
 	local rankedRun = progression.RankedRun or {Wins = 0, Losses = 0}
+	local rankedSummary, rankedProgress = rankedRunSummary(rankedRun)
 	local squadResponse = SquadService:GetSquad()
 	local squad = squadResponse.Success and squadResponse.Data or {Rating = 0, Chemistry = 0, TeamName = "NO CLUB"}
 	local unopened = 0
 	for _, pack in progression.PackInventory or {} do if (pack.status or pack.Status) == "unopened" then unopened += 1 end end
 	local difficulty = LiteConfig.CampaignDifficulties[math.clamp(tonumber(campaign.UnlockedDifficulty) or 1, 1, #LiteConfig.CampaignDifficulties)]
 	local group, scroll = PageBase.new("Home", 720)
-	PageBase.heading(scroll, "VTR LITE", "WELCOME BACK, " .. string.upper(profile.Username), "Build your squad through Campaign, open packs, then chase the seven-win Ranked tournament.")
+	PageBase.heading(scroll, "VTR LITE", "WELCOME BACK, " .. string.upper(profile.Username), "Build your squad through Campaign, open packs, then chase the seven-game Ranked path.")
 
 	local hero = Panel.new({Name = "LiteDashboard", Position = UDim2.fromOffset(0, 96), Size = UDim2.new(1, 0, 0, 242)})
 	hero.Parent = scroll
@@ -55,9 +73,9 @@ function HomePage.new(context: any): CanvasGroup
 	stat(hero, "CHEMISTRY", tostring(squad.Chemistry or 0), UDim2.new(.25, 24, 0, 100))
 	stat(hero, "CAMPAIGN", difficulty.Name, UDim2.new(.5, 24, 0, 100))
 	stat(hero, "PACKS", tostring(unopened), UDim2.new(.75, 24, 0, 100))
-	local ranked = text(hero, "RANKED RUN  " .. tostring(rankedRun.Wins or 0) .. "W - " .. tostring(rankedRun.Losses or 0) .. "L", UDim2.new(.62, 0, 0, 26), UDim2.new(.34, 0, 0, 24), 11, Theme.Colors.Electric, Theme.Fonts.Strong)
+	local ranked = text(hero, "RANKED PATH  " .. rankedSummary, UDim2.new(.62, 0, 0, 26), UDim2.new(.34, 0, 0, 24), 11, Theme.Colors.Electric, Theme.Fonts.Strong)
 	ranked.TextXAlignment = Enum.TextXAlignment.Right
-	local runBar = ProgressBar.new((tonumber(rankedRun.Wins) or 0) / 7)
+	local runBar = ProgressBar.new(rankedProgress)
 	runBar.Position = UDim2.new(.62, 0, 0, 58)
 	runBar.Size = UDim2.new(.34, 0, 0, 7)
 	runBar.Parent = hero

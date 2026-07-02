@@ -19,6 +19,85 @@ local POLL_SECONDS = 1.75
 
 local WEATHER = { "Clear", "Cloudy", "Rain" }
 local TIMES = { "Day", "Evening", "Night" }
+local TEAM_STAT_KEYS = {"Possession","Shots","ShotsOnTarget","ShotsOffTarget","BlockedShots","ExpectedGoals","PassesAttempted","PassesCompleted","PassAccuracy","KeyPasses","BigChanceCreated","BigChancesCreated","Crosses","CompletedCrosses","DribblesCompleted","DribbleAccuracy","TacklesAttempted","TacklesCompleted","Interceptions","Clearances","Errors","Saves","Corners","Fouls","Offsides","YellowCards","RedCards","Goals"}
+
+local function pick(source:any,keys:{string}):any
+	local result={}
+	if type(source)~="table"then return result end
+	for _,key in keys do
+		local value=source[key]
+		if type(value)=="number"or type(value)=="string"or type(value)=="boolean"then
+			result[key]=value
+		end
+	end
+	return result
+end
+
+local function compactGoals(goals:any):any
+	local result={}
+	if type(goals)~="table"then return result end
+	for index,goal in goals do
+		if index>24 then break end
+		table.insert(result,{Team=goal.Team,Scorer=goal.Scorer,Assist=goal.Assist,GameSeconds=goal.GameSeconds,OwnGoal=goal.OwnGoal})
+	end
+	return result
+end
+
+local function compactRatings(ratings:any):any
+	local result={}
+	if type(ratings)~="table"then return result end
+	for index,entry in ratings do
+		if index>32 then break end
+		table.insert(result,{Team=entry.Team,Name=entry.Name,Position=entry.Position,Rating=entry.Rating,Goals=entry.Goals,Assists=entry.Assists,Events=pick(entry.Events or{},{"Goal","Assist","ShotOnTarget","KeyPass","BigChanceCreated","SuccessfulPass","BadPass"})})
+	end
+	return result
+end
+
+local function compactMotm(motm:any):any
+	if type(motm)~="table"then return nil end
+	return{Team=motm.Team,Name=motm.Name,Position=motm.Position,Rating=motm.Rating,Goals=motm.Goals,Assists=motm.Assists}
+end
+
+local function compactMatchStats(stats:any):any
+	if type(stats)~="table"then return{}end
+	local full=type(stats.Full)=="table"and stats.Full or{}
+	return{
+		ResultId=stats.ResultId,
+		PlayerRating=stats.PlayerRating,
+		Team=stats.Team,
+		Match=pick(stats.Match or{},TEAM_STAT_KEYS),
+		MOTM=compactMotm(stats.MOTM or full.MOTM),
+		Full={
+			HomeScore=full.HomeScore,
+			AwayScore=full.AwayScore,
+			Home=pick(full.Home or{},TEAM_STAT_KEYS),
+			Away=pick(full.Away or{},TEAM_STAT_KEYS),
+			Goals=compactGoals(full.Goals),
+			PlayerRatings=compactRatings(full.PlayerRatings),
+			MOTM=compactMotm(full.MOTM),
+		},
+	}
+end
+
+local function compactReward(reward:any):any
+	if type(reward)~="table"then return nil end
+	return pick(reward,{"Title","Coins","XP","PackGranted","PackId","PackInstanceId","PackName","Pack","Rarity"})
+end
+
+local function compactPendingResult(payload:any,includeStats:boolean):any
+	return{
+		MatchId=tostring(payload.MatchId or ""),
+		ResultId=tostring(payload.ResultId or payload.MatchId or ""),
+		Result=tostring(payload.Result or ""),
+		Opponent=tostring(payload.Opponent or "Opponent"),
+		Score=tostring(payload.Score or "0-0"),
+		MatchStats=includeStats~=false and compactMatchStats(payload.MatchStats) or nil,
+		Reward=compactReward(payload.Reward),
+		PackId=payload.PackId,
+		PackInstanceId=payload.PackInstanceId,
+		AppliedInMatchServer=payload.AppliedInMatchServer==true,
+	}
+end
 
 local function rankedFoundRemote(): RemoteEvent
 	local folder = ReplicatedStorage:FindFirstChild("Remotes")
@@ -36,7 +115,7 @@ local function rankedFoundRemote(): RemoteEvent
 	return remote :: RemoteEvent
 end
 
-function Service.new(profiles: any, runtime: any, rankedProfiles: any, notifications: any, rankedSquads: any, progression: any?)
+function Service.new(profiles: any, runtime: any, rankedProfiles: any, notifications: any, rankedSquads: any, progression: any?, publish: ((Player, string, any) -> ())?)
 	local self = setmetatable({
 		Profiles = profiles,
 		Runtime = runtime,
@@ -44,6 +123,7 @@ function Service.new(profiles: any, runtime: any, rankedProfiles: any, notificat
 		Notifications = notifications,
 		RankedSquads = rankedSquads,
 		Progression = progression,
+		Publish = publish,
 		Queue = {},
 		QueuedAt = {},
 		QueueSetup = {},
@@ -137,6 +217,29 @@ function Service:_publishMenuData(player: Player)
 	end
 end
 
+function Service:_savePlayer(player: Player)
+	if not self.Profiles or not self.Profiles.Store or not self.Profiles.Store.SaveAsync then return end
+	pcall(function()
+		self.Profiles.Store:SaveAsync(player.UserId)
+	end)
+end
+
+function Service:_savePlayers(players: { Player })
+	for _, player in players do
+		if player and player.Parent == Players then
+			self:_savePlayer(player)
+		end
+	end
+end
+
+local function hasPackInstance(profile: any, packInstanceId: string): boolean
+	if packInstanceId == "" then return false end
+	for _, pack in profile.PackInventory or {} do
+		if tostring(pack.packInstanceId or pack.PackInstanceId or "") == packInstanceId then return true end
+	end
+	return false
+end
+
 function Service:_grantSpecificRankedPack(player: Player, packId: string?): boolean
 	local id = tostring(packId or "bronze_pack")
 	local granted = false
@@ -151,15 +254,22 @@ function Service:_grantSpecificRankedPack(player: Player, packId: string?): bool
 		granted = type(reward) == "table" and reward.PackGranted == true
 	end
 	self:_publishMenuData(player)
+	if granted then self:_savePlayer(player) end
 	return granted
 end
 
 function Service:_writePendingRankedResult(player: Player, payload: any)
 	local map = self:_resultMap()
 	if not map then return end
-	pcall(function()
-		map:SetAsync(self:_resultKey(player), payload, 900, os.time())
+	local compact=compactPendingResult(payload,true)
+	local ok=pcall(function()
+		map:SetAsync(self:_resultKey(player), compact, 900, os.time())
 	end)
+	if not ok then
+		pcall(function()
+			map:SetAsync(self:_resultKey(player), compactPendingResult(payload,false), 900, os.time())
+		end)
+	end
 end
 
 function Service:_consumePendingRankedResult(player: Player)
@@ -178,10 +288,30 @@ function Service:_consumePendingRankedResult(player: Player)
 	local matchStats = type(payload.MatchStats) == "table" and payload.MatchStats or {}
 	matchStats.ResultId = resultId
 	local applied = self.RankedProfiles:RecordServerResult(player, result, 0, opponent, score, matchStats)
-	if applied and (result == "Win" or result == "ForfeitWin") then
-		self:_grantSpecificRankedPack(player, tostring(payload.PackId or "bronze_pack"))
+	local reward = type(payload.Reward) == "table" and payload.Reward or nil
+	if reward then
+		matchStats.Reward = reward
+	end
+	if applied and reward and self.Progression then
+		self.Progression:GrantMatchRewards(player, {
+			Title = reward.Title or (result == "Win" and "RANKED VICTORY" or result == "Draw" and "RANKED DRAW" or "RANKED MATCH"),
+			Coins = tonumber(reward.Coins) or 0,
+			XP = tonumber(reward.XP) or 0,
+		})
+	end
+	if result == "Win" or result == "ForfeitWin" then
+		local packId = tostring(payload.PackId or "")
+		local packInstanceId = tostring(payload.PackInstanceId or "")
+		local matchServerAlreadyPersisted = payload.AppliedInMatchServer == true and (packInstanceId == "" or hasPackInstance(profile, packInstanceId))
+		if packId ~= "" and (applied or not matchServerAlreadyPersisted) then
+			self:_grantSpecificRankedPack(player, packId)
+		end
+	end
+	if reward and resultId ~= "" and self.RankedProfiles.AttachHistoryReward then
+		self.RankedProfiles:AttachHistoryReward(player,resultId,reward)
 	end
 	self:_publishMenuData(player)
+	if applied then self:_savePlayer(player) end
 	pcall(function()
 		map:RemoveAsync(self:_resultKey(player))
 	end)
@@ -322,6 +452,9 @@ function Service:_attachResultHandlers(session: any, home: Player, away: Player)
 		local awayScore=ended.World.AwayScore.Value
 		local homeResult=resultFor(home,"Home",homeScore,awayScore)
 		local awayResult=resultFor(away,"Away",homeScore,awayScore)
+		local appliedByUser:any={}
+		local personalByUser:any={}
+		local scoreByUser:any={[home.UserId]=tostring(homeScore).."-"..tostring(awayScore),[away.UserId]=tostring(awayScore).."-"..tostring(homeScore)}
 		if ended.RankedResultsRecorded~=true then
 			ended.RankedResultsRecorded=true
 			local score=tostring(homeScore).."-"..tostring(awayScore)
@@ -339,8 +472,10 @@ function Service:_attachResultHandlers(session: any, home: Player, away: Player)
 			local awayPersonal=personal("Away")
 			local homeApplied=self.RankedProfiles:RecordServerResult(home,homeResult,rpFor(homeResult),away.Name,score,homePersonal)
 			local awayApplied=self.RankedProfiles:RecordServerResult(away,awayResult,rpFor(awayResult),home.Name,tostring(awayScore).."-"..tostring(homeScore),awayPersonal)
-			self:_writePendingRankedResult(home,{MatchId=session.MatchId,ResultId=homePersonal.ResultId,Result=homeResult,Opponent=away.Name,Score=score,MatchStats=homePersonal,AppliedInMatchServer=homeApplied})
-			self:_writePendingRankedResult(away,{MatchId=session.MatchId,ResultId=awayPersonal.ResultId,Result=awayResult,Opponent=home.Name,Score=tostring(awayScore).."-"..tostring(homeScore),MatchStats=awayPersonal,AppliedInMatchServer=awayApplied})
+			appliedByUser[home.UserId]=homeApplied
+			appliedByUser[away.UserId]=awayApplied
+			personalByUser[home.UserId]=homePersonal
+			personalByUser[away.UserId]=awayPersonal
 			if self.Publish and self.RankedProfiles.GetClientData then
 				pcall(function()self.Publish(home,"Ranked",self.RankedProfiles:GetClientData(home))end)
 				pcall(function()self.Publish(away,"Ranked",self.RankedProfiles:GetClientData(away))end)
@@ -376,17 +511,34 @@ function Service:_attachResultHandlers(session: any, home: Player, away: Player)
 					packReward=RankedWinPackReward.Grant(self.Progression,participant,self.Publish)
 					session.RankedWinRewards[participant.UserId]=packReward
 				end
-				local side = participant == home and "Home" or "Away"
-				local resultId = tostring(session.MatchId or ended.MatchId or HttpService:GenerateGUID(false)) .. ":" .. side
-				self:_writePendingRankedResult(participant,{MatchId=tostring(session.MatchId or ended.MatchId or ""),ResultId=resultId,Result=result,Opponent=participant==home and away.Name or home.Name,Score=participant==home and tostring(homeScore).."-"..tostring(awayScore) or tostring(awayScore).."-"..tostring(homeScore),MatchStats={ResultId=resultId,Team=side},PackId=packReward and packReward.PackId or nil})
 				reward=reward or{}
 				for key,value in packReward do
 					reward[key]=value
 				end
 				reward.Title="RANKED VICTORY"
 			end
+			local side = participant == home and "Home" or "Away"
+			local resultId = tostring(session.MatchId or ended.MatchId or HttpService:GenerateGUID(false)) .. ":" .. side
+			local matchStats = personalByUser[participant.UserId] or {ResultId=resultId,Team=side}
+			local packReward = session.RankedWinRewards and session.RankedWinRewards[participant.UserId] or nil
 			if reward then rewards[participant.UserId] = reward end
+			if reward and self.RankedProfiles.AttachHistoryReward then
+				self.RankedProfiles:AttachHistoryReward(participant,tostring(matchStats.ResultId or resultId),reward)
+			end
+			self:_writePendingRankedResult(participant,{
+				MatchId=tostring(session.MatchId or ended.MatchId or ""),
+				ResultId=tostring(matchStats.ResultId or resultId),
+				Result=result,
+				Opponent=participant==home and away.Name or home.Name,
+				Score=scoreByUser[participant.UserId] or (participant==home and tostring(homeScore).."-"..tostring(awayScore) or tostring(awayScore).."-"..tostring(homeScore)),
+				MatchStats=matchStats,
+				Reward=reward,
+				PackId=packReward and packReward.PackId or nil,
+				PackInstanceId=packReward and packReward.PackInstanceId or nil,
+				AppliedInMatchServer=appliedByUser[participant.UserId]==true,
+			})
 		end
+		self:_savePlayers({home,away})
 		return rewards
 	end
 end
@@ -452,6 +604,7 @@ function Service:_ticketFor(player: Player, profile: any, roster: any, device: s
 		TeamName = roster.Team.teamName,
 		TeamLogo = roster.Team.logo,
 		TeamOverall = roster.Team.overall,
+		TeamBadgeIdentity = roster.Team.BadgeIdentity or roster.Team.badgeIdentity,
 	}
 end
 
@@ -478,6 +631,10 @@ function Service:_makeAssignment(matchId: string, accessCode: string, privateSer
 		AwayName = awayTicket.Name,
 		HomeTeamName = homeTicket.TeamName,
 		AwayTeamName = awayTicket.TeamName,
+		HomeLogo = homeTicket.TeamLogo,
+		AwayLogo = awayTicket.TeamLogo,
+		HomeBadgeIdentity = homeTicket.TeamBadgeIdentity,
+		AwayBadgeIdentity = awayTicket.TeamBadgeIdentity,
 		HomeOverall = homeTicket.TeamOverall,
 		AwayOverall = awayTicket.TeamOverall,
 		Role = role,
@@ -521,6 +678,10 @@ function Service:_teleportToAssignment(player: Player, assignment: any)
 		AwayName = assignment.AwayName,
 		HomeTeamName = assignment.HomeTeamName,
 		AwayTeamName = assignment.AwayTeamName,
+		HomeLogo = assignment.HomeLogo,
+		AwayLogo = assignment.AwayLogo,
+		HomeBadgeIdentity = assignment.HomeBadgeIdentity,
+		AwayBadgeIdentity = assignment.AwayBadgeIdentity,
 		HomeOverall = assignment.HomeOverall,
 		AwayOverall = assignment.AwayOverall,
 		Role = assignment.Role,

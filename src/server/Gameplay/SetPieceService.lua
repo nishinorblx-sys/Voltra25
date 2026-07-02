@@ -231,8 +231,21 @@ local function arrangeSimpleFreeKick(teams:any,restartTeam:string,location:Vecto
 	return goalSign
 end
 
-function Service.new(remote: RemoteEvent, world: any, teams: any, formation: any, possession: any, teamControl: any,ballService:any)
-	return setmetatable({Remote = remote, World = world, Teams = teams, Formation = formation, Possession = possession, TeamControl = teamControl,BallService=ballService, Sequence = 0,ActiveCorner=nil,RestartMode=nil}, Service)
+function Service.new(remote: RemoteEvent, world: any, teams: any, formation: any, possession: any, teamControl: any,ballService:any,isPaused:(() -> boolean)?)
+	return setmetatable({Remote = remote, World = world, Teams = teams, Formation = formation, Possession = possession, TeamControl = teamControl,BallService=ballService, Sequence = 0,ActiveCorner=nil,RestartMode=nil,IsPaused=isPaused}, Service)
+end
+
+function Service:_delayActive(seconds:number,sequence:number,callback:() -> ())
+	task.spawn(function()
+		local remaining=math.max(0,seconds)
+		while remaining>0 do
+			if self.Sequence~=sequence or not self.World.Ball.Parent then return end
+			local step=math.min(.1,remaining)
+			task.wait(step)
+			if not (self.IsPaused and self.IsPaused())then remaining-=step end
+		end
+		if self.Sequence==sequence and self.World.Ball.Parent then callback()end
+	end)
 end
 
 local function cornerAttr(model:Model,key:string,fallback:number):number
@@ -452,13 +465,13 @@ function Service:Start(player: Player, kind: string, restartTeam: string, locati
 	if kind=="Corner"then
 		local data=self.ActiveCorner.Data
 		if userControlled==true and player and player.Parent then self.Remote:FireClient(player,{Type="CornerMode",Team=restartTeam,Taker=taker,Ball=self.World.Ball,Location=ballPosition,CornerSign=data.CornerSign,GoalSign=data.GoalSign,PitchCFrame=self.World.PitchCFrame,PitchWidth=self.World.Width,PitchLength=self.World.Length,TeamModels=self.Teams})
-		else task.delay(1.25,function()if self.ActiveCorner and self.ActiveCorner.Sequence==sequence then local target=self.World.PitchCFrame:PointToWorldSpace(Vector3.new(0,.15,data.GoalSign*(self.World.Length*.5-18)));self:_releaseCorner(player,{Delivery="Cross",Power=.65,Target=target,ServerAI=true})end end)end
+		else self:_delayActive(1.25,sequence,function()if self.ActiveCorner and self.ActiveCorner.Sequence==sequence then local target=self.World.PitchCFrame:PointToWorldSpace(Vector3.new(0,.15,data.GoalSign*(self.World.Length*.5-18)));self:_releaseCorner(player,{Delivery="Cross",Power=.65,Target=target,ServerAI=true})end end)end
 		return
 	end
 	if kind=="FreeKick"or kind=="Penalty"or kind=="GoalKick"or kind=="ThrowIn"then
 		return
 	end
-	task.delay(duration, function()
+	self:_delayActive(duration,sequence,function()
 		if self.Sequence ~= sequence or not self.World.Ball.Parent then
 			return
 		end

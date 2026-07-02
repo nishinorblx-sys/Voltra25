@@ -1,10 +1,12 @@
 --!strict
 local DeviceScaleService = require(script:FindFirstAncestor("VTRClient").Services.DeviceScaleService)
+local GuiService = game:GetService("GuiService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
 local Theme = require(ReplicatedStorage.VTR.Shared.Theme)
+local BadgePreview = require(script.Parent.Parent.Components.BadgePreview)
 local MatchSetupService = require(script.Parent.Parent.Services.MatchSetupService)
 local AvatarPortraitGenerator = require(script.Parent.Parent.Services.PlayerPortraitService)
 
@@ -23,6 +25,7 @@ local function stroke(parent: Instance, color: Color3, transparency: number?)
 	value.Thickness = 1
 	value.Transparency = transparency or 0.65
 	value.Parent = parent
+	return value
 end
 
 local function label(parent: Instance, text: string, position: UDim2, size: UDim2, textSize: number): TextLabel
@@ -69,6 +72,53 @@ local function badgeColor(value: any, fallback: Color3): Color3
 		if ok then return result end
 	end
 	return fallback
+end
+
+local function teamBadgeIdentity(data: any, side: string): any
+	local summary = side == "Home" and data.HomeSummary or data.AwaySummary
+	local source = side == "Home" and data.HomeBadgeIdentity or data.AwayBadgeIdentity
+	if type(source) ~= "table" and type(summary) == "table" then source = summary.BadgeIdentity or summary.badgeIdentity end
+	source = type(source) == "table" and source or {}
+	local colors = type(summary) == "table" and summary.colors or nil
+	local primary = source.PrimaryColor or (colors and colors.Primary) or (side == "Home" and data.HomeColor or data.AwayColor) or "B7FF1A"
+	local secondary = source.SecondaryColor or (colors and colors.Secondary) or "050505"
+	local accent = source.AccentColor or (colors and colors.Accent) or "F5F7F2"
+	return {
+		PrimaryColor = primary,
+		SecondaryColor = secondary,
+		AccentColor = accent,
+		BadgePreset = source.BadgePreset or "Modern",
+		BadgeShape = source.BadgeShape or source.Shape or "Shield",
+		BadgeSymbol = source.BadgeSymbol or source.Symbol or "Lightning Bolt",
+		BadgeColorBehavior = source.BadgeColorBehavior or "Tri Color",
+	}
+end
+
+local function renderTeamBadge(container: GuiObject, data: any, side: string, strokeLimit: number?)
+	container.ClipsDescendants = true
+	if container:IsA("TextLabel") or container:IsA("TextButton") then
+		container.Text = ""
+	end
+	container.BackgroundTransparency = 1
+	for _, child in container:GetChildren() do
+		if child.Name == "GeneratedBadge" or child.Name == "BadgeArt" then child:Destroy() end
+	end
+	local badge = BadgePreview.new(container, teamBadgeIdentity(data, side), UDim2.fromScale(1, 1))
+	badge.AnchorPoint = Vector2.new(.5, .5)
+	badge.Position = UDim2.fromScale(.5, .5)
+	badge.ZIndex = container.ZIndex + 1
+	local aspect = Instance.new("UIAspectRatioConstraint")
+	aspect.AspectRatio = 1
+	aspect.DominantAxis = Enum.DominantAxis.Height
+	aspect.Parent = badge
+	for _, descendant in badge:GetDescendants() do
+		if descendant:IsA("GuiObject") then
+			descendant.ZIndex = badge.ZIndex
+		elseif strokeLimit and descendant:IsA("UIStroke") then
+			descendant.Thickness = math.min(descendant.Thickness, strokeLimit)
+		end
+	end
+	return badge
 end
 
 local function applyBadgeArt(container: GuiObject, primary: Color3, accent: Color3?)
@@ -138,8 +188,8 @@ local function actionButton(parent: Instance, text: string, order: number, callb
 	local button = Instance.new("TextButton")
 	button.Name = text
 	button.LayoutOrder = order
-	button.Size = UDim2.new(1, 0, 0, 42)
-	button.BackgroundColor3 = order == 1 and Theme.Colors.Electric or Theme.Colors.Gunmetal
+	button.Size = UDim2.new(1, 0, 0, 46)
+	button.BackgroundColor3 = order == 1 and Theme.Colors.Electric or Color3.fromHex("07110F")
 	button.BorderSizePixel = 0
 	button.AutoButtonColor = false
 	button.Selectable = false
@@ -149,7 +199,19 @@ local function actionButton(parent: Instance, text: string, order: number, callb
 	button.TextSize = 12
 	button.Font = Theme.Fonts.Display
 	button.Parent = parent
-	corner(button, 5)
+	corner(button, 8)
+	local line=stroke(button,order==1 and Theme.Colors.Electric or Color3.fromHex("26332E"),order==1 and .1 or .24)
+	line.Thickness=order==1 and 2 or 1
+	local accent=Instance.new("Frame")
+	accent.Name="Accent"
+	accent.Position=UDim2.fromOffset(0,0)
+	accent.Size=UDim2.new(0,5,1,0)
+	accent.BackgroundColor3=order==1 and Theme.Colors.Black or Theme.Colors.Electric
+	accent.BackgroundTransparency=order==1 and .18 or .16
+	accent.BorderSizePixel=0
+	accent.ZIndex=(button.ZIndex or 1)+1
+	accent.Parent=button
+	corner(accent,8)
 	button.Activated:Connect(callback)
 	return button
 end
@@ -232,9 +294,9 @@ function Controller.new(data: any)
 	local awayCode = label(main, shortCode(data.Away), UDim2.fromOffset(5, 19), UDim2.fromOffset(34, 18), 12)
 	awayCode.TextColor3 = Theme.Colors.White
 	local homeBadge = label(main, string.sub(tostring(data.HomeLogo or shortCode(data.Home)), 1, 2), UDim2.fromOffset(41, 3), UDim2.fromOffset(14, 11), 6)
-	homeBadge.TextXAlignment = Enum.TextXAlignment.Center;homeBadge.BackgroundColor3=badgeColor(data.HomeColor,Theme.Colors.Electric);homeBadge.BackgroundTransparency=0;homeBadge.TextColor3=Theme.Colors.Black;applyBadgeArt(homeBadge,badgeColor(data.HomeColor,Theme.Colors.Electric),Theme.Colors.White)
+	homeBadge.TextXAlignment = Enum.TextXAlignment.Center;homeBadge.BackgroundColor3=badgeColor(data.HomeColor,Theme.Colors.Electric);homeBadge.BackgroundTransparency=0;homeBadge.TextColor3=Theme.Colors.Black;renderTeamBadge(homeBadge,data,"Home",1)
 	local awayBadge = label(main, string.sub(tostring(data.AwayLogo or shortCode(data.Away)), 1, 2), UDim2.fromOffset(41, 22), UDim2.fromOffset(14, 11), 6)
-	awayBadge.TextXAlignment = Enum.TextXAlignment.Center;awayBadge.BackgroundColor3=badgeColor(data.AwayColor,Theme.Colors.Silver);awayBadge.BackgroundTransparency=0;awayBadge.TextColor3=Theme.Colors.Black;applyBadgeArt(awayBadge,badgeColor(data.AwayColor,Theme.Colors.Silver),Theme.Colors.Electric)
+	awayBadge.TextXAlignment = Enum.TextXAlignment.Center;awayBadge.BackgroundColor3=badgeColor(data.AwayColor,Theme.Colors.Silver);awayBadge.BackgroundTransparency=0;awayBadge.TextColor3=Theme.Colors.Black;renderTeamBadge(awayBadge,data,"Away",1)
 	local homeScoreLabel = label(main, "0", UDim2.fromOffset(86, 0), UDim2.fromOffset(18, 18), 12)
 	homeScoreLabel.TextXAlignment = Enum.TextXAlignment.Center
 	local awayScoreLabel = label(main, "0", UDim2.fromOffset(86, 19), UDim2.fromOffset(18, 18), 12)
@@ -286,8 +348,12 @@ function Controller.new(data: any)
 
 	local activePanel = panel(gui, UDim2.new(0, 22, 1, -92), UDim2.fromOffset(270, 64))
 	activePanel.Visible = false
-	local activeBadge = label(activePanel,string.sub(tostring(data.HomeLogo or shortCode(data.Home)),1,2),UDim2.fromOffset(8,11),UDim2.fromOffset(42,42),13)
-	activeBadge.TextXAlignment=Enum.TextXAlignment.Center;activeBadge.BackgroundColor3=badgeColor(data.HomeColor,Theme.Colors.Electric);activeBadge.BackgroundTransparency=0.08;activeBadge.TextColor3=Theme.Colors.Black;corner(activeBadge,21);applyBadgeArt(activeBadge,badgeColor(data.HomeColor,Theme.Colors.Electric),Theme.Colors.White)
+	local controlledSide = data.ControlledSide == "Away" and "Away" or "Home"
+	local opponentSide = controlledSide == "Home" and "Away" or "Home"
+	local activeLogo = controlledSide == "Away" and data.AwayLogo or data.HomeLogo
+	local activeTeamName = controlledSide == "Away" and data.Away or data.Home
+	local activeBadge = label(activePanel,string.sub(tostring(activeLogo or shortCode(activeTeamName)),1,2),UDim2.fromOffset(8,11),UDim2.fromOffset(42,42),13)
+	activeBadge.TextXAlignment=Enum.TextXAlignment.Center;activeBadge.BackgroundColor3=badgeColor(controlledSide=="Away"and data.AwayColor or data.HomeColor,Theme.Colors.Electric);activeBadge.BackgroundTransparency=0.08;activeBadge.TextColor3=Theme.Colors.Black;corner(activeBadge,21);renderTeamBadge(activeBadge,data,controlledSide,2)
 	local activeName = label(activePanel, "ACTIVE PLAYER", UDim2.fromOffset(60, 34), UDim2.new(1, -70, 0, 20), 12)
 	local activeState = label(activePanel, "ST  9", UDim2.fromOffset(60, 7), UDim2.new(1, -70, 0, 17), 9)
 	activeState.TextColor3 = Theme.Colors.Electric
@@ -318,8 +384,10 @@ function Controller.new(data: any)
 
 	local targetPanel = panel(gui, UDim2.new(1, -272, 1, -92), UDim2.fromOffset(250, 64))
 	targetPanel.Visible = false
-	local opponentBadge = label(targetPanel,string.sub(tostring(data.AwayLogo or shortCode(data.Away)),1,2),UDim2.new(1,-50,0,11),UDim2.fromOffset(42,42),13)
-	opponentBadge.TextXAlignment=Enum.TextXAlignment.Center;opponentBadge.BackgroundColor3=badgeColor(data.AwayColor,Theme.Colors.Silver);opponentBadge.BackgroundTransparency=0.08;opponentBadge.TextColor3=Theme.Colors.Black;corner(opponentBadge,21)
+	local opponentLogo = opponentSide == "Away" and data.AwayLogo or data.HomeLogo
+	local opponentTeamName = opponentSide == "Away" and data.Away or data.Home
+	local opponentBadge = label(targetPanel,string.sub(tostring(opponentLogo or shortCode(opponentTeamName)),1,2),UDim2.new(1,-50,0,11),UDim2.fromOffset(42,42),13)
+	opponentBadge.TextXAlignment=Enum.TextXAlignment.Center;opponentBadge.BackgroundColor3=badgeColor(opponentSide=="Away"and data.AwayColor or data.HomeColor,Theme.Colors.Silver);opponentBadge.BackgroundTransparency=0.08;opponentBadge.TextColor3=Theme.Colors.Black;corner(opponentBadge,21);renderTeamBadge(opponentBadge,data,opponentSide,2)
 	local targetKicker = label(targetPanel, "CB  4", UDim2.fromOffset(12, 7), UDim2.new(1, -68, 0, 15), 8)
 	targetKicker.TextColor3 = Color3.fromHex("FF6975")
 	local targetName = label(targetPanel, "NO TARGET", UDim2.fromOffset(12, 34), UDim2.new(1, -68, 0, 21), 12)
@@ -356,19 +424,32 @@ function Controller.new(data: any)
 	local pauseButton = Instance.new("TextButton")
 	pauseButton.Name = "PauseQueueButton"
 	pauseButton.AnchorPoint = Vector2.new(1, 0)
-	pauseButton.Position = UDim2.new(1, -22, 0, 58)
-	pauseButton.Size = UDim2.fromOffset(142, 36)
-	pauseButton.BackgroundColor3 = Theme.Colors.Electric
+	pauseButton.Position = UDim2.new(1, -24, 0, 60)
+	pauseButton.Size = UDim2.fromOffset(176, 44)
+	pauseButton.BackgroundColor3 = Color3.fromHex("07110F")
 	pauseButton.BorderSizePixel = 0
-	pauseButton.AutoButtonColor = true
-	pauseButton.Text = data.Ranked and "QUEUE PAUSE" or "PAUSE"
-	pauseButton.TextColor3 = Theme.Colors.Black
-	pauseButton.TextSize = 10
+	pauseButton.AutoButtonColor = false
+	pauseButton.Text = data.Ranked and "BACK  /  QUEUE PAUSE" or "BACK  /  PAUSE"
+	pauseButton.TextColor3 = Theme.Colors.White
+	pauseButton.TextSize = 9
 	pauseButton.Font = Theme.Fonts.Display
 	pauseButton.ZIndex = 42
+	pauseButton.Selectable = true
 	pauseButton.Visible = data.WatchMode ~= true
 	pauseButton.Parent = gui
-	corner(pauseButton, 6)
+	corner(pauseButton, 9)
+	local pauseStroke=stroke(pauseButton,Theme.Colors.Electric,.1)
+	pauseStroke.Thickness=2
+	local pauseAccent=Instance.new("Frame")
+	pauseAccent.Name="PauseAccent"
+	pauseAccent.AnchorPoint=Vector2.new(1,.5)
+	pauseAccent.Position=UDim2.new(1,-10,.5,0)
+	pauseAccent.Size=UDim2.fromOffset(34,6)
+	pauseAccent.BackgroundColor3=Theme.Colors.Electric
+	pauseAccent.BorderSizePixel=0
+	pauseAccent.ZIndex=43
+	pauseAccent.Parent=pauseButton
+	corner(pauseAccent,6)
 	local result=setmetatable({
 		Gui = gui,
 		Board = board,
@@ -413,6 +494,14 @@ function Controller.new(data: any)
 		PauseButton = pauseButton,
 		Home = data.Home,
 		Away = data.Away,
+		HomeColor = data.HomeColor,
+		AwayColor = data.AwayColor,
+		HomeLogo = data.HomeLogo,
+		AwayLogo = data.AwayLogo,
+		HomeSummary = data.HomeSummary,
+		AwaySummary = data.AwaySummary,
+		HomeBadgeIdentity = data.HomeBadgeIdentity or (data.HomeSummary and (data.HomeSummary.BadgeIdentity or data.HomeSummary.badgeIdentity)),
+		AwayBadgeIdentity = data.AwayBadgeIdentity or (data.AwaySummary and (data.AwaySummary.BadgeIdentity or data.AwaySummary.badgeIdentity)),
 		HomeLineup = data.HomeLineup or {},
 		AwayLineup = data.AwayLineup or {},
 		HomeCode = shortCode(data.Home),
@@ -899,8 +988,9 @@ function Controller:ShowPauseQueue(playerName:string,queued:boolean)
 	self.PauseQueueBanner=box
 	local text=queued and(string.upper(playerName).." QUEUED A PAUSE")or(string.upper(playerName).." CANCELLED PAUSE QUEUE")
 	if self.PauseButton then
-		self.PauseButton.Text = queued and "CANCEL PAUSE" or "QUEUE PAUSE"
-		self.PauseButton.BackgroundColor3 = queued and Theme.Colors.Silver or Theme.Colors.Electric
+		self.PauseButton.Text = queued and "BACK  /  CANCEL PAUSE" or "BACK  /  QUEUE PAUSE"
+		self.PauseButton.BackgroundColor3 = queued and Color3.fromHex("1E2228") or Color3.fromHex("07110F")
+		self.PauseButton.TextColor3 = Theme.Colors.White
 	end
 	local line=label(box,text,UDim2.fromOffset(12,7),UDim2.new(1,-24,1,-14),11)
 	line.TextXAlignment=Enum.TextXAlignment.Center
@@ -975,7 +1065,7 @@ function Controller:ShowHalfTime(payload: any)
 	local left=panel(value,UDim2.fromScale(0,.03),UDim2.fromScale(.56,.88));left.BackgroundColor3=Color3.fromHex("25003F");left.BackgroundTransparency=.03;left.ZIndex=59
 	local right=panel(value,UDim2.fromScale(.58,0),UDim2.fromScale(.36,.94));right.BackgroundColor3=Theme.Colors.Electric;right.BackgroundTransparency=0;right.ZIndex=59
 	local badge=Instance.new("Frame");badge.Position=UDim2.fromScale(-.06,-.04);badge.Size=UDim2.fromOffset(70,70);badge.BackgroundColor3=Theme.Colors.White;badge.BorderSizePixel=0;badge.ZIndex=62;badge.Parent=value;corner(badge,2)
-	label(badge,entry.Team=="Away"and self.AwayCode or self.HomeCode,UDim2.fromScale(0,0),UDim2.fromScale(1,1),16).TextXAlignment=Enum.TextXAlignment.Center
+	renderTeamBadge(badge,self,entry.Team=="Away"and"Away"or"Home",2)
 	local title=label(left,"PLAYER OF\nTHE HALF",UDim2.fromScale(.07,.06),UDim2.fromScale(.48,.15),27);title.TextColor3=Theme.Colors.White;title.TextWrapped=true
 	local score=label(left,self.HomeCode.."  "..tostring(payload.Home or 0).." - "..tostring(payload.Away or 0).."  "..self.AwayCode,UDim2.fromScale(.62,.07),UDim2.fromScale(.3,.05),13);score.TextXAlignment=Enum.TextXAlignment.Right;score.TextColor3=Theme.Colors.Electric
 	local pitch=Instance.new("Frame");pitch.Position=UDim2.fromScale(.12,.23);pitch.Size=UDim2.fromScale(.42,.38);pitch.BackgroundColor3=Color3.fromHex("101A14");pitch.BackgroundTransparency=.05;pitch.BorderSizePixel=0;pitch.ZIndex=61;pitch.Parent=left;stroke(pitch,Theme.Colors.White,.12)
@@ -1354,6 +1444,14 @@ function Controller:SetPaused(paused: boolean, _cameraController: any, onReturn:
 	menuButton("SETTINGS", 5, function()clearBody("SETTINGS");addRow("Match settings are coming next. This tab is intentionally safe for now.",Theme.Colors.Silver)end)
 	menuButton("LEAVE MATCH", 6, showForfeitAnimation)
 	self.PauseOverlay = overlay
+	task.defer(function()
+		if overlay.Parent and list.Parent then
+			local firstButton = list:FindFirstChildWhichIsA("GuiButton")
+			if firstButton then
+				GuiService.SelectedObject = firstButton
+			end
+		end
+	end)
 end
 
 function Controller:ClearPause()
@@ -1362,6 +1460,9 @@ function Controller:ClearPause()
 		self.TeamManagementPage = nil
 	end
 	if self.PauseOverlay then
+		if GuiService.SelectedObject and GuiService.SelectedObject:IsDescendantOf(self.PauseOverlay) then
+			GuiService.SelectedObject = nil
+		end
 		self.PauseOverlay:Destroy()
 		self.PauseOverlay = nil
 	end
@@ -1564,6 +1665,13 @@ function Controller:ShowShotChance(chance:any, actor:Model?)
 		if oldRoot and oldRoot.Destroy then oldRoot:Destroy() end
 		self.ShotChancePopup = nil
 	end
+	local rollTarget:any = nil
+	local rollValue:any = nil
+	if type(chance) == "table" then
+		rollTarget = chance.RollTarget or chance.GoalRollTargetPercent
+		rollValue = chance.Roll or chance.GoalRollValuePercent
+		chance = chance.XG or chance.Chance or chance.ScoringChance
+	end
 	local number = tonumber(chance) or 0
 	if number > 1 then number /= 100 end
 	number = math.clamp(number, 0, 1)
@@ -1571,7 +1679,7 @@ function Controller:ShowShotChance(chance:any, actor:Model?)
 	root.Name = "ShotChancePopup"
 	root.AnchorPoint = Vector2.new(.5, 0)
 	root.Position = UDim2.fromScale(.5, .12)
-	root.Size = UDim2.fromOffset(260, 62)
+	root.Size = UDim2.fromOffset(310, 78)
 	root.BackgroundColor3 = Theme.Colors.Black
 	root.BackgroundTransparency = .08
 	root.BorderSizePixel = 0
@@ -1584,7 +1692,7 @@ function Controller:ShowShotChance(chance:any, actor:Model?)
 	title.BackgroundTransparency = 1
 	title.Position = UDim2.fromOffset(16, 6)
 	title.Size = UDim2.new(1, -32, 0, 32)
-	title.Text = string.format("%.2f xG", number)
+	title.Text = string.format("%.2f xG  /  %d%%", number, math.floor(number*100+.5))
 	title.TextColor3 = Theme.Colors.Electric
 	title.TextSize = 25
 	title.Font = Theme.Fonts.Display
@@ -1596,9 +1704,17 @@ function Controller:ShowShotChance(chance:any, actor:Model?)
 	subtitle.BackgroundTransparency = 1
 	subtitle.Position = UDim2.fromOffset(16, 36)
 	subtitle.Size = UDim2.new(1, -32, 0, 18)
-	subtitle.Text = "SHOT QUALITY"
+	local targetNumber = tonumber(rollTarget)
+	local rolledNumber = tonumber(rollValue)
+	if targetNumber and rolledNumber then
+		subtitle.Text = string.format("GOAL IF ROLL <= %.2f  /  ROLLED %.2f", targetNumber, rolledNumber)
+	elseif targetNumber then
+		subtitle.Text = string.format("GOAL IF ROLL <= %.2f", targetNumber)
+	else
+		subtitle.Text = "GOAL CHANCE"
+	end
 	subtitle.TextColor3 = Theme.Colors.White
-	subtitle.TextSize = 9
+	subtitle.TextSize = targetNumber and 8 or 9
 	subtitle.Font = Theme.Fonts.Strong
 	subtitle.TextXAlignment = Enum.TextXAlignment.Center
 	subtitle.ZIndex = 63
@@ -1663,6 +1779,10 @@ end
 
 function Controller:ShowResult(payload: any, onReturn: () -> ())
 	self:ClearPause()
+	if self.PauseButton then
+		self.PauseButton.Selectable = false
+		self.PauseButton.Visible = false
+	end
 	local overlay = Instance.new("Frame")
 	overlay.BackgroundColor3 = Theme.Colors.Black
 	overlay.BackgroundTransparency = 0.05
@@ -1773,9 +1893,9 @@ function Controller:ShowResult(payload: any, onReturn: () -> ())
 	end
 	local teamStats=Instance.new("ScrollingFrame");teamStats.BackgroundTransparency=1;teamStats.BorderSizePixel=0;teamStats.Position=UDim2.fromOffset(26,18);teamStats.Size=UDim2.new(1,-52,1,-34);teamStats.AutomaticCanvasSize=Enum.AutomaticSize.Y;teamStats.CanvasSize=UDim2.new();teamStats.ScrollBarThickness=3;teamStats.ScrollBarImageColor3=Theme.Colors.Electric;teamStats.ZIndex=52;teamStats.Parent=content
 	local header=Instance.new("Frame");header.BackgroundTransparency=1;header.Position=UDim2.fromOffset(0,0);header.Size=UDim2.new(1,-8,0,44);header.ZIndex=53;header.Parent=teamStats
-	local homeHeader=label(header,self.HomeCode,UDim2.new(.09,0,0,4),UDim2.new(.20,0,0,28),15);homeHeader.TextXAlignment=Enum.TextXAlignment.Center;homeHeader.BackgroundColor3=Theme.Colors.Electric;homeHeader.BackgroundTransparency=.06;homeHeader.TextColor3=Theme.Colors.Black;homeHeader.ZIndex=54;corner(homeHeader,14)
+	local homeHeader=label(header,self.HomeCode,UDim2.new(.09,0,0,4),UDim2.new(.20,0,0,28),15);homeHeader.TextXAlignment=Enum.TextXAlignment.Center;homeHeader.BackgroundColor3=Theme.Colors.Electric;homeHeader.BackgroundTransparency=.06;homeHeader.TextColor3=Theme.Colors.Black;homeHeader.ZIndex=54;corner(homeHeader,14);renderTeamBadge(homeHeader,self,"Home",2)
 	local titleHeader=label(header,"TEAM STATS",UDim2.new(.35,0,0,7),UDim2.new(.30,0,0,22),13);titleHeader.TextXAlignment=Enum.TextXAlignment.Center;titleHeader.TextColor3=Theme.Colors.White
-	local awayHeader=label(header,self.AwayCode,UDim2.new(.71,0,0,4),UDim2.new(.20,0,0,28),15);awayHeader.TextXAlignment=Enum.TextXAlignment.Center;awayHeader.BackgroundColor3=Color3.fromHex("24C6B8");awayHeader.BackgroundTransparency=.06;awayHeader.TextColor3=Theme.Colors.Black;awayHeader.ZIndex=54;corner(awayHeader,14)
+	local awayHeader=label(header,self.AwayCode,UDim2.new(.71,0,0,4),UDim2.new(.20,0,0,28),15);awayHeader.TextXAlignment=Enum.TextXAlignment.Center;awayHeader.BackgroundColor3=Color3.fromHex("24C6B8");awayHeader.BackgroundTransparency=.06;awayHeader.TextColor3=Theme.Colors.Black;awayHeader.ZIndex=54;corner(awayHeader,14);renderTeamBadge(awayHeader,self,"Away",2)
 	local rows={
 		{"POSSESSION",teamValue(home,"Possession"),teamValue(away,"Possession"),pctText},
 		{"SHOTS",teamValue(home,"Shots"),teamValue(away,"Shots")},
@@ -1813,7 +1933,7 @@ function Controller:ShowResult(payload: any, onReturn: () -> ())
 	local columns={{"TEAM",0,54},{"POS",58,42},{"PLAYER",104,210},{"MR",318,44},{"KP",366,40},{"BC",410,40},{"SOT",454,44},{"SH",502,42},{"DRB",548,72},{"PASS",624,88},{"CROSS",716,80},{"INT",802,44},{"BLK",850,44},{"ERR",898,44}}
 	local function headerRow(y:number,title:string,team:string)
 		local sep=Instance.new("Frame");sep.Position=UDim2.fromOffset(0,y);sep.Size=UDim2.fromOffset(960,34);sep.BackgroundColor3=team=="Home"and Theme.Colors.Electric or Color3.fromHex("24C6B8");sep.BackgroundTransparency=.08;sep.BorderSizePixel=0;sep.ZIndex=53;sep.Parent=ratings;corner(sep,6)
-		local badge=label(sep,team=="Home"and self.HomeCode or self.AwayCode,UDim2.fromOffset(10,6),UDim2.fromOffset(46,20),10);badge.TextXAlignment=Enum.TextXAlignment.Center;badge.TextColor3=Theme.Colors.Black
+		local badge=label(sep,team=="Home"and self.HomeCode or self.AwayCode,UDim2.fromOffset(10,6),UDim2.fromOffset(46,20),10);badge.TextXAlignment=Enum.TextXAlignment.Center;badge.TextColor3=Theme.Colors.Black;renderTeamBadge(badge,self,team,1)
 		local titleLabel=label(sep,title,UDim2.fromOffset(66,6),UDim2.fromOffset(250,20),11);titleLabel.TextColor3=Theme.Colors.Black
 		for _,c in columns do if c[1]~="TEAM"then local h=label(sep,c[1],UDim2.fromOffset(c[2],7),UDim2.fromOffset(c[3],18),8);h.TextXAlignment=Enum.TextXAlignment.Center;h.TextColor3=Theme.Colors.Black end end
 	end
@@ -1874,14 +1994,52 @@ function Controller:ShowResult(payload: any, onReturn: () -> ())
 		end
 		TweenService:Create(rewardScale,TweenInfo.new(.45,Enum.EasingStyle.Back,Enum.EasingDirection.Out),{Scale=1}):Play()
 	end
-	local button = actionButton(overlay, "RETURN TO MENU", 1, function()
-		MatchSetupService:ReturnToMenu()
-		onReturn()
+	local returning = false
+	local button: TextButton?
+	button = actionButton(overlay, "RETURN TO MENU", 1, function()
+		if not button then return end
+		if returning then return end
+		returning = true
+		button.Text = payload.Ranked and "RETURNING..." or "LOADING MENU..."
+		button.AutoButtonColor = false
+		button.Active = false
+		task.spawn(function()
+			local response = MatchSetupService:ReturnToMenu()
+			if payload.Ranked then
+				if type(response) == "table" and response.Success == false then
+					returning = false
+					button.Active = true
+					button.Text = "RETURN FAILED - TRY AGAIN"
+				else
+					button.Text = "TELEPORTING TO MENU..."
+				end
+				return
+			end
+			onReturn()
+		end)
 	end)
 	button.AnchorPoint = Vector2.new(0.5, 0)
 	button.Position = UDim2.fromScale(0.5, 0.90)
 	button.Size = UDim2.fromOffset(230, 48)
 	button.ZIndex = 72
+	button.Selectable = true
+	button.SelectionOrder = 10
+	teamButton.Selectable = true
+	teamButton.SelectionOrder = 1
+	ratingButton.Selectable = true
+	ratingButton.SelectionOrder = 2
+	teamButton.NextSelectionRight = ratingButton
+	teamButton.NextSelectionDown = button
+	ratingButton.NextSelectionLeft = teamButton
+	ratingButton.NextSelectionDown = button
+	button.NextSelectionUp = teamButton
+	button.NextSelectionLeft = teamButton
+	button.NextSelectionRight = ratingButton
+	task.defer(function()
+		if button and button.Parent then
+			GuiService.SelectedObject = button
+		end
+	end)
 end
 
 function Controller:Destroy()

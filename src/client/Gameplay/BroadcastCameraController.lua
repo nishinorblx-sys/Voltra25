@@ -198,7 +198,15 @@ function Controller:_updatePro(dt: number, root: BasePart)
 	local side = tostring(self.Active and self.Active:GetAttribute("VTRTeam") or "Home")
 	local half = tonumber(workspace:GetAttribute("VTRMatchHalf")) or 1
 	local attackSign = side == "Home" and (half >= 2 and 1 or -1) or (half >= 2 and -1 or 1)
-	local attackDirection = self.PitchCFrame:VectorToWorldSpace(Vector3.new(0, 0, attackSign))
+	local ownerName = tostring(self.Ball:GetAttribute("OwnerModel") or "")
+	local hasBall = ownerName == self.Active.Name
+	if hasBall then
+		self.ProViewSign = attackSign
+	elseif ownerName ~= "" then
+		self.ProViewSign = -attackSign
+	end
+	local viewSign = self.ProViewSign or attackSign
+	local attackDirection = self.PitchCFrame:VectorToWorldSpace(Vector3.new(0, 0, viewSign))
 	attackDirection = Vector3.new(attackDirection.X, 0, attackDirection.Z)
 	attackDirection = attackDirection.Magnitude > .1 and attackDirection.Unit or Vector3.zAxis
 
@@ -215,7 +223,7 @@ function Controller:_updatePro(dt: number, root: BasePart)
 	local ballForward = ballOffset:Dot(attackDirection)
 	local ballSide = ballOffset:Dot(right)
 
-	local goalCenter = self.PitchCFrame:PointToWorldSpace(Vector3.new(0, 4.8, attackSign * self.Length * .5))
+	local goalCenter = self.PitchCFrame:PointToWorldSpace(Vector3.new(0, 4.8, viewSign * self.Length * .5))
 	local goalDistance = Vector3.new(goalCenter.X - root.Position.X, 0, goalCenter.Z - root.Position.Z).Magnitude
 	local goalBlend = math.clamp((170 - goalDistance) / 170, 0, 1)
 
@@ -362,6 +370,8 @@ function Controller:Aim(kind: string?): Vector3
 end
 
 function Controller:BeginCutscene(kind: string, location: Vector3, duration: number, goalPosition: Vector3?)
+	self.CutsceneStartCFrame = self.Camera.CFrame
+	self.CutsceneStartFOV = self.Camera.FieldOfView
 	self.CutsceneKind = kind
 	self.CutsceneLocation = location
 	self.CutsceneGoalPosition = goalPosition
@@ -394,6 +404,8 @@ function Controller:EndCutscene()
 	self.CutsceneLocation = nil
 	self.CutsceneGoalPosition = nil
 	self.CutsceneStartedAt = nil
+	self.CutsceneStartCFrame = nil
+	self.CutsceneStartFOV = nil
 end
 
 function Controller:_desiredFrame(preset: any, targetWorld: Vector3, dynamicZoom: number, longitudinalVelocity: number): CFrame
@@ -413,6 +425,20 @@ function Controller:_desiredFrame(preset: any, targetWorld: Vector3, dynamicZoom
 			return CFrame.lookAt(cameraWorld, lookWorld, self.PitchCFrame.UpVector)
 		end
 	end
+	if self.Mode == "End to End" then
+		local half = tonumber(workspace:GetAttribute("VTRMatchHalf")) or 1
+		local lookSign = half >= 2 and 1 or -1
+		local ballLocal = self.PitchCFrame:PointToObjectSpace(targetWorld)
+		local railZ = -lookSign * self.Length * 0.58
+		local cameraX = math.clamp(self.SmoothedTarget.X * 0.34, -self.Width * 0.28, self.Width * 0.28)
+		local cameraLocal = Vector3.new(cameraX, 198 + math.clamp(dynamicZoom * .35, 0, 18), railZ)
+		local goalLocal = Vector3.new(math.clamp(ballLocal.X * 0.22, -self.Width * 0.14, self.Width * 0.14), 7.5, lookSign * self.Length * 0.5)
+		local ballFocusLocal = Vector3.new(math.clamp(ballLocal.X, -self.Width * 0.42, self.Width * 0.42), 6, math.clamp(ballLocal.Z, -self.Length * 0.48, self.Length * 0.48))
+		local focusLocal = ballFocusLocal:Lerp(goalLocal, 0.26)
+		local cameraWorld = self.PitchCFrame:PointToWorldSpace(cameraLocal)
+		local focusWorld = self.PitchCFrame:PointToWorldSpace(focusLocal)
+		return CFrame.lookAt(cameraWorld, focusWorld, self.PitchCFrame.UpVector)
+	end
 	if self.CameraPoint and self.CameraPoint.Parent then
 		local anchorLocal=self.PitchCFrame:PointToObjectSpace(self.CameraPoint.Position)
 		-- The stadium marker owns height and distance from the touchline. The
@@ -424,9 +450,6 @@ function Controller:_desiredFrame(preset: any, targetWorld: Vector3, dynamicZoom
 	end
 	local height = math.clamp(preset.Height + self.HeightOffset + dynamicZoom * 0.45, 108, 220)
 	local side = math.clamp(preset.Side + self.SideOffset + dynamicZoom * 1.2, 132, 260) * self.SideSign
-	if self.Mode == "End to End" then
-		side = self.SmoothedTarget.X * 0.12
-	end
 	local cameraX = side + self.SmoothedTarget.X * 0.38
 	local cameraZ = self.SmoothedTarget.Z * 0.92 - longitudinalVelocity * 0.05
 	local cameraLocal = Vector3.new(cameraX, height, math.clamp(cameraZ, -self.Length * 0.43, self.Length * 0.43))
@@ -440,6 +463,8 @@ function Controller:_updateCutscene(dt: number): boolean
 		self.CutsceneKind = nil
 		self.CutsceneLocation = nil
 		self.CutsceneGoalPosition = nil
+		self.CutsceneStartCFrame = nil
+		self.CutsceneStartFOV = nil
 		return false
 	end
 	local focus = self.CutsceneLocation or self.Ball.Position
@@ -559,6 +584,8 @@ function Controller:_updateCutscene(dt: number): boolean
 		return true
 	end
 	if kind == "FreeKick" or kind == "Penalty" then
+		local started = self.CutsceneStartedAt or os.clock()
+		local elapsed = os.clock() - started
 		local goalLocal = self.CutsceneGoalPosition and self.PitchCFrame:PointToObjectSpace(self.CutsceneGoalPosition)
 		local goalZ = goalLocal and goalLocal.Z or ((self.Active and tostring(self.Active:GetAttribute("VTRTeam") or "Home") or "Home") == "Home" and -self.Length * 0.5 or self.Length * 0.5)
 		local toGoalSign = goalZ >= localFocus.Z and 1 or -1
@@ -568,8 +595,18 @@ function Controller:_updateCutscene(dt: number): boolean
 		local targetLocal = Vector3.new(0, localFocus.Y + (kind == "Penalty" and 3.3 or 5.5), goalZ)
 		local desired = self.PitchCFrame:PointToWorldSpace(cameraLocal)
 		local target = self.PitchCFrame:PointToWorldSpace(targetLocal)
-		self.Camera.CFrame = self.Camera.CFrame:Lerp(CFrame.lookAt(desired, target), 1 - math.exp(-dt / 0.12))
-		self.Camera.FieldOfView += ((kind == "Penalty" and 42 or 47) - self.Camera.FieldOfView) * (1 - math.exp(-dt / 0.16))
+		local desiredFrame = CFrame.lookAt(desired, target)
+		local desiredFov = kind == "Penalty" and 42 or 47
+		local panDuration = math.clamp(tonumber(workspace:GetAttribute("VTRSetPieceCameraPanTime")) or 0.82, 0.25, 1.6)
+		if elapsed < panDuration and self.CutsceneStartCFrame then
+			local alpha = math.clamp(elapsed / panDuration, 0, 1)
+			local eased = alpha * alpha * (3 - 2 * alpha)
+			self.Camera.CFrame = self.CutsceneStartCFrame:Lerp(desiredFrame, eased)
+			self.Camera.FieldOfView = (self.CutsceneStartFOV or self.Camera.FieldOfView) + (desiredFov - (self.CutsceneStartFOV or self.Camera.FieldOfView)) * eased
+		else
+			self.Camera.CFrame = self.Camera.CFrame:Lerp(desiredFrame, 1 - math.exp(-dt / 0.18))
+			self.Camera.FieldOfView += (desiredFov - self.Camera.FieldOfView) * (1 - math.exp(-dt / 0.2))
+		end
 		return true
 	end
 	local offset = kind == "Corner" and Vector3.new(localFocus.X > 0 and -38 or 38, 30, localFocus.Z > 0 and -25 or 25)

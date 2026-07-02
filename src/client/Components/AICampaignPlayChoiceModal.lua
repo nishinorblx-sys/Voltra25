@@ -1,5 +1,7 @@
 --!strict
 local TweenService = game:GetService("TweenService")
+local GuiService = game:GetService("GuiService")
+local UserInputService = game:GetService("UserInputService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Theme = require(ReplicatedStorage.VTR.Shared.Theme)
 local UISoundService = require(script.Parent.Parent.Services.UISoundService)
@@ -46,64 +48,100 @@ local function text(parent: Instance, value: string, position: UDim2, size: UDim
 	return item
 end
 
-local function makeButton(parent: Instance, title: string, subtitle: string, selected: boolean): TextButton
+local function makeButton(parent: Instance, title: string, subtitle: string, selected: boolean, accentColor: Color3): TextButton
 	local button = Instance.new("TextButton")
 	button.AutoButtonColor = false
 	button.Text = ""
-	button.BackgroundColor3 = Color3.fromRGB(6, 12, 10)
-	button.BackgroundTransparency = selected and .06 or .18
+	button.BackgroundColor3 = selected and Color3.fromRGB(14, 24, 18) or Color3.fromRGB(8, 13, 15)
+	button.BackgroundTransparency = selected and .02 or .1
 	button.BorderSizePixel = 0
 	button.ZIndex = 102
+	button.Selectable = true
 	button.Parent = parent
-	corner(button, 24)
+	corner(button, 12)
 
-	local line = stroke(button, selected and Theme.Colors.Electric or Color3.fromRGB(115, 122, 132), selected and .03 or .42, selected and 2.5 or 1.2)
+	local line = stroke(button, selected and accentColor or Color3.fromRGB(105, 119, 118), selected and .02 or .48, selected and 3 or 1.3)
 
 	local glow = Instance.new("Frame")
 	glow.Name = "Glow"
 	glow.AnchorPoint = Vector2.new(.5, .5)
 	glow.Position = UDim2.fromScale(.5, .5)
 	glow.Size = UDim2.fromScale(1.06, 1.1)
-	glow.BackgroundColor3 = Theme.Colors.Electric
-	glow.BackgroundTransparency = selected and .82 or 1
+	glow.BackgroundColor3 = accentColor
+	glow.BackgroundTransparency = selected and .76 or 1
 	glow.BorderSizePixel = 0
 	glow.ZIndex = 101
 	glow.Parent = button
-	corner(glow, 28)
+	corner(glow, 16)
 
-	local titleLabel = text(button, title, UDim2.fromScale(.08, .38), UDim2.fromScale(.84, .2), 31, selected and Theme.Colors.Electric or Theme.Colors.White, Theme.Fonts.Display)
+	local stripe = Instance.new("Frame")
+	stripe.Name = "TopStripe"
+	stripe.Position = UDim2.fromOffset(16, 14)
+	stripe.Size = UDim2.new(1, -32, 0, 12)
+	stripe.BackgroundColor3 = accentColor
+	stripe.BackgroundTransparency = selected and 0 or .28
+	stripe.BorderSizePixel = 0
+	stripe.ZIndex = 103
+	stripe.Parent = button
+	corner(stripe, 7)
+
+	local badge = Instance.new("TextLabel")
+	badge.Name = "ChoiceBadge"
+	badge.AnchorPoint = Vector2.new(.5, 0)
+	badge.Position = UDim2.new(.5, 0, 0, 44)
+	badge.Size = UDim2.fromOffset(64, 64)
+	badge.BackgroundColor3 = Color3.fromRGB(4, 8, 8)
+	badge.BackgroundTransparency = .04
+	badge.BorderSizePixel = 0
+	badge.Text = string.sub(title, 1, 1)
+	badge.TextColor3 = accentColor
+	badge.TextSize = 28
+	badge.Font = Theme.Fonts.Display
+	badge.ZIndex = 103
+	badge.Parent = button
+	corner(badge, 32)
+	stroke(badge, accentColor, .18, 2)
+
+	local titleLabel = text(button, title, UDim2.fromScale(.08, .50), UDim2.fromScale(.84, .16), 25, selected and accentColor or Theme.Colors.White, Theme.Fonts.Display)
 	titleLabel.TextXAlignment = Enum.TextXAlignment.Center
 
-	local subtitleLabel = text(button, subtitle, UDim2.fromScale(.1, .6), UDim2.fromScale(.8, .18), 16, Theme.Colors.Silver, Theme.Fonts.Body)
+	local subtitleLabel = text(button, subtitle, UDim2.fromScale(.11, .68), UDim2.fromScale(.78, .16), 13, Theme.Colors.White, Theme.Fonts.Body)
+	subtitleLabel.TextTransparency = .12
 
-	local accent = Instance.new("Frame")
-	accent.AnchorPoint = Vector2.new(.5, 1)
-	accent.Position = UDim2.new(.5, 0, 1, -14)
-	accent.Size = UDim2.fromOffset(72, 6)
-	accent.BackgroundColor3 = selected and Theme.Colors.Electric or Theme.Colors.Silver
-	accent.BackgroundTransparency = selected and 0 or .38
-	accent.BorderSizePixel = 0
-	accent.ZIndex = 103
-	accent.Parent = button
-	corner(accent, 8)
+	local selectedPip = Instance.new("TextLabel")
+	selectedPip.Name = "SelectedPip"
+	selectedPip.AnchorPoint = Vector2.new(.5, .5)
+	selectedPip.Position = UDim2.new(.5, 0, 1, -22)
+	selectedPip.Size = UDim2.fromOffset(116, 24)
+	selectedPip.BackgroundColor3 = accentColor
+	selectedPip.BackgroundTransparency = selected and .06 or 1
+	selectedPip.BorderSizePixel = 0
+	selectedPip.Text = "SELECTED"
+	selectedPip.TextColor3 = Theme.Colors.Black
+	selectedPip.TextSize = 8
+	selectedPip.Font = Theme.Fonts.Strong
+	selectedPip.ZIndex = 104
+	selectedPip.Parent = button
+	corner(selectedPip, 12)
 
-	button.MouseEnter:Connect(function()
-		UISoundService.PlayHover()
-		tween(button, {BackgroundTransparency = .04}, .1)
-		tween(glow, {BackgroundTransparency = .82}, .1)
-		tween(line, {Color = Theme.Colors.Electric, Transparency = .08, Thickness = 2.1}, .1)
-		tween(titleLabel, {TextColor3 = Theme.Colors.Electric}, .1)
-		tween(accent, {BackgroundColor3 = Theme.Colors.Electric, BackgroundTransparency = 0}, .1)
-	end)
+	local function setFocused(focused: boolean)
+		if focused then UISoundService.PlayHover() end
+		tween(button, {BackgroundTransparency = focused and .01 or (selected and .02 or .1), BackgroundColor3 = focused and Color3.fromRGB(13, 25, 20) or (selected and Color3.fromRGB(14, 24, 18) or Color3.fromRGB(8, 13, 15))}, .1)
+		tween(glow, {BackgroundTransparency = focused and .62 or (selected and .76 or 1)}, .1)
+		tween(line, {Color = accentColor, Transparency = focused and 0 or (selected and .02 or .48), Thickness = focused and 4 or (selected and 3 or 1.3)}, .1)
+		tween(titleLabel, {TextColor3 = focused and accentColor or (selected and accentColor or Theme.Colors.White)}, .1)
+		tween(stripe, {BackgroundTransparency = focused and 0 or (selected and 0 or .28)}, .1)
+		tween(badge, {TextColor3 = accentColor, BackgroundTransparency = focused and 0 or .04}, .1)
+		tween(selectedPip, {BackgroundTransparency = focused and .02 or (selected and .06 or 1)}, .1)
+	end
 
+	button.MouseEnter:Connect(function() setFocused(true) end)
+	button.SelectionGained:Connect(function() setFocused(true) end)
 	button.MouseLeave:Connect(function()
 		if selected then return end
-		tween(button, {BackgroundTransparency = .18}, .1)
-		tween(glow, {BackgroundTransparency = 1}, .1)
-		tween(line, {Color = Color3.fromRGB(115, 122, 132), Transparency = .42, Thickness = 1.2}, .1)
-		tween(titleLabel, {TextColor3 = Theme.Colors.White}, .1)
-		tween(accent, {BackgroundColor3 = Theme.Colors.Silver, BackgroundTransparency = .38}, .1)
+		setFocused(false)
 	end)
+	button.SelectionLost:Connect(function() if not selected then setFocused(false) end end)
 
 	return button
 end
@@ -121,25 +159,25 @@ function Modal.Show(parent: Instance, callbacks: any)
 	local panel = Instance.new("Frame")
 	panel.AnchorPoint = Vector2.new(.5, .5)
 	panel.Position = UDim2.fromScale(.5, .54)
-	panel.Size = UDim2.fromOffset(980, 560)
-	panel.BackgroundColor3 = Color3.fromRGB(5, 10, 10)
-	panel.BackgroundTransparency = .14
+	panel.Size = UDim2.fromOffset(910, 520)
+	panel.BackgroundColor3 = Color3.fromRGB(3, 9, 8)
+	panel.BackgroundTransparency = .04
 	panel.BorderSizePixel = 0
 	panel.ZIndex = 100
 	panel.Parent = overlay
-	corner(panel, 34)
-	stroke(panel, Theme.Colors.Electric, .08, 2)
+	corner(panel, 18)
+	stroke(panel, Theme.Colors.Electric, .02, 2.4)
 
 	local glow = Instance.new("Frame")
 	glow.AnchorPoint = Vector2.new(.5, .5)
 	glow.Position = UDim2.fromScale(.5, .5)
-	glow.Size = UDim2.fromScale(1.025, 1.045)
+	glow.Size = UDim2.fromScale(1.018, 1.036)
 	glow.BackgroundColor3 = Theme.Colors.Electric
 	glow.BackgroundTransparency = .9
 	glow.BorderSizePixel = 0
 	glow.ZIndex = 99
 	glow.Parent = panel
-	corner(glow, 38)
+	corner(glow, 22)
 
 	local top = Instance.new("Frame")
 	top.AnchorPoint = Vector2.new(.5, 0)
@@ -150,13 +188,15 @@ function Modal.Show(parent: Instance, callbacks: any)
 	top.ZIndex = 103
 	top.Parent = panel
 
-	text(panel, "AI CAMPAIGN MATCH", UDim2.fromOffset(0, 66), UDim2.new(1, 0, 0, 24), 18, Theme.Colors.Electric, Theme.Fonts.Strong)
-	text(panel, "CHOOSE HOW TO PLAY", UDim2.fromOffset(0, 110), UDim2.new(1, 0, 0, 74), 55, Theme.Colors.White, Theme.Fonts.Display)
+	text(panel, "AI CAMPAIGN MATCH", UDim2.fromOffset(0, 52), UDim2.new(1, 0, 0, 22), 13, Theme.Colors.Electric, Theme.Fonts.Strong)
+	text(panel, "CHOOSE HOW TO PLAY", UDim2.fromOffset(0, 82), UDim2.new(1, 0, 0, 58), 39, Theme.Colors.White, Theme.Fonts.Display)
+	local hint = text(panel, "A / X SELECT     B / CIRCLE BACK", UDim2.fromOffset(0, 136), UDim2.new(1, 0, 0, 20), 10, Theme.Colors.Silver, Theme.Fonts.Strong)
+	hint.TextTransparency = .08
 
 	local divider = Instance.new("Frame")
 	divider.AnchorPoint = Vector2.new(.5, 0)
-	divider.Position = UDim2.new(.5, 0, 0, 206)
-	divider.Size = UDim2.fromOffset(330, 3)
+	divider.Position = UDim2.new(.5, 0, 0, 174)
+	divider.Size = UDim2.fromOffset(260, 3)
 	divider.BackgroundColor3 = Theme.Colors.Electric
 	divider.BorderSizePixel = 0
 	divider.ZIndex = 103
@@ -172,13 +212,13 @@ function Modal.Show(parent: Instance, callbacks: any)
 	notch.ZIndex = 102
 	notch.Parent = divider
 
-	local manual = makeButton(panel, "MANUALLY PLAY", "Control your squad on the pitch", true)
-	manual.Position = UDim2.fromOffset(86, 268)
-	manual.Size = UDim2.fromOffset(400, 230)
+	local manual = makeButton(panel, "MANUALLY PLAY", "Control your squad on the pitch", true, Theme.Colors.Electric)
+	manual.Position = UDim2.fromOffset(76, 220)
+	manual.Size = UDim2.fromOffset(360, 212)
 
-	local manage = makeButton(panel, "MANAGE MATCH", "AI plays while you manage tactics", false)
-	manage.Position = UDim2.fromOffset(526, 268)
-	manage.Size = UDim2.fromOffset(400, 230)
+	local manage = makeButton(panel, "MANAGE MATCH", "AI plays while you manage tactics", false, Color3.fromHex("24C6B8"))
+	manage.Position = UDim2.fromOffset(474, 220)
+	manage.Size = UDim2.fromOffset(360, 212)
 
 	local cancel = Instance.new("TextButton")
 	cancel.AutoButtonColor = false
@@ -190,18 +230,29 @@ function Modal.Show(parent: Instance, callbacks: any)
 	cancel.BackgroundTransparency = .05
 	cancel.BorderSizePixel = 0
 	cancel.AnchorPoint = Vector2.new(.5, 1)
-	cancel.Position = UDim2.new(.5, 0, 1, -18)
-	cancel.Size = UDim2.fromOffset(300, 58)
+	cancel.Position = UDim2.new(.5, 0, 1, -20)
+	cancel.Size = UDim2.fromOffset(250, 46)
 	cancel.ZIndex = 103
 	cancel.Parent = panel
-	corner(cancel, 16)
+	cancel.Selectable = true
+	corner(cancel, 10)
 	stroke(cancel, Color3.fromRGB(120, 128, 138), .36, 1.2)
+	manual.NextSelectionRight = manage
+	manual.NextSelectionDown = cancel
+	manage.NextSelectionLeft = manual
+	manage.NextSelectionDown = cancel
+	cancel.NextSelectionUp = manual
+	cancel.NextSelectionLeft = manual
+	cancel.NextSelectionRight = manage
 
 	local closing = false
 	local function close(run: (() -> ())?)
 		if closing then return end
 		closing = true
 		UISoundService.PlayClick()
+		if GuiService.SelectedObject and GuiService.SelectedObject:IsDescendantOf(overlay) then
+			GuiService.SelectedObject = nil
+		end
 		tween(overlay, {BackgroundTransparency = 1}, .12)
 		tween(panel, {Position = UDim2.fromScale(.5, .54), BackgroundTransparency = .3}, .14)
 		task.delay(.14, function()
@@ -222,8 +273,68 @@ function Modal.Show(parent: Instance, callbacks: any)
 		close(callbacks and callbacks.OnCancel)
 	end)
 
+	local choices = {manual, manage, cancel}
+	local selectedIndex = 1
+	local lastMoveAt = 0
+	local function selectIndex(index: number)
+		selectedIndex = math.clamp(index, 1, #choices)
+		local target = choices[selectedIndex]
+		if target then
+			GuiService.SelectedObject = target
+			UISoundService.PlayHover()
+		end
+	end
+	local inputConnection: RBXScriptConnection? = nil
+	inputConnection = UserInputService.InputBegan:Connect(function(input, processed)
+		if closing then return end
+		if input.KeyCode == Enum.KeyCode.ButtonA then
+			local selected = GuiService.SelectedObject
+			if selected and selected:IsDescendantOf(overlay) and selected:IsA("GuiButton") then
+				selected:Activate()
+			else
+				choices[selectedIndex]:Activate()
+			end
+		elseif input.KeyCode == Enum.KeyCode.ButtonB then
+			close(callbacks and callbacks.OnCancel)
+		elseif input.KeyCode == Enum.KeyCode.DPadLeft then
+			selectIndex(1)
+		elseif input.KeyCode == Enum.KeyCode.DPadRight then
+			selectIndex(2)
+		elseif input.KeyCode == Enum.KeyCode.DPadDown then
+			selectIndex(3)
+		elseif input.KeyCode == Enum.KeyCode.DPadUp then
+			selectIndex(selectedIndex == 3 and 1 or selectedIndex)
+		end
+	end)
+	local stickConnection: RBXScriptConnection? = nil
+	stickConnection = UserInputService.InputChanged:Connect(function(input)
+		if closing or input.KeyCode ~= Enum.KeyCode.Thumbstick1 then return end
+		local now = os.clock()
+		if now - lastMoveAt < .34 then return end
+		local x = input.Position.X
+		local y = input.Position.Y
+		if math.abs(x) < .62 and math.abs(y) < .62 then return end
+		lastMoveAt = now
+		if y < -.62 then
+			selectIndex(3)
+		elseif y > .62 then
+			selectIndex(selectedIndex == 3 and 1 or selectedIndex)
+		elseif x < -.62 then
+			selectIndex(1)
+		elseif x > .62 then
+			selectIndex(2)
+		end
+	end)
+	overlay.Destroying:Connect(function()
+		if inputConnection then inputConnection:Disconnect();inputConnection=nil end
+		if stickConnection then stickConnection:Disconnect();stickConnection=nil end
+	end)
+
 	tween(overlay, {BackgroundTransparency = .38}, .16)
 	tween(panel, {Position = UDim2.fromScale(.5, .5), BackgroundTransparency = .08}, .22)
+	task.defer(function()
+		selectIndex(1)
+	end)
 end
 
 return Modal

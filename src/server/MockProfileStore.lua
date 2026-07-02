@@ -3,6 +3,7 @@
 local MockProfileStore = {}
 MockProfileStore.__index = MockProfileStore
 local DataStoreService = game:GetService("DataStoreService")
+local SAVE_INTERVAL = 8
 
 local function deepCopy(value: any): any
 	if type(value) ~= "table" then return value end
@@ -20,7 +21,7 @@ local function reconcile(data:any,template:any)
 end
 
 function MockProfileStore.new(template: any, dataStoreName: string?)
-	return setmetatable({ Template = template, Sessions = {}, Saved = {}, DataStore = dataStoreName and DataStoreService:GetDataStore(dataStoreName) or nil }, MockProfileStore)
+	return setmetatable({ Template = template, Sessions = {}, Saved = {}, DataStore = dataStoreName and DataStoreService:GetDataStore(dataStoreName) or nil, LastSaveAt = {}, PendingSnapshots = {}, SaveScheduled = {} }, MockProfileStore)
 end
 
 function MockProfileStore:LoadAsync(userId: number): any
@@ -39,20 +40,72 @@ function MockProfileStore:Get(userId: number): any?
 	return self.Sessions[userId]
 end
 
-function MockProfileStore:SaveAsync(userId: number): boolean
+function MockProfileStore:_hasUpdateBudget(): boolean
+	if not self.DataStore then return true end
+	local ok, budget = pcall(function()
+		return DataStoreService:GetRequestBudgetForRequestType(Enum.DataStoreRequestType.UpdateAsync)
+	end)
+	return not ok or (tonumber(budget) or 0) > 0
+end
+
+function MockProfileStore:_writeSnapshot(userId: number, snapshot: any): boolean
+	if not self.DataStore or userId <= 0 then return true end
+	if not self:_hasUpdateBudget() then return false end
+	local ok = pcall(function()
+		self.DataStore:UpdateAsync("player_" .. userId, function()
+			return snapshot
+		end)
+	end)
+	if ok then
+		self.LastSaveAt[userId] = os.clock()
+	end
+	return ok
+end
+
+function MockProfileStore:_scheduleSave(userId: number)
+	if self.SaveScheduled[userId] then return end
+	self.SaveScheduled[userId] = true
+	task.spawn(function()
+		while self.PendingSnapshots[userId] do
+			local elapsed = os.clock() - (self.LastSaveAt[userId] or 0)
+			task.wait(math.max(1, SAVE_INTERVAL - elapsed))
+			local snapshot = self.PendingSnapshots[userId]
+			if not snapshot then break end
+			if self:_writeSnapshot(userId, snapshot) then
+				if self.PendingSnapshots[userId] == snapshot then
+					self.PendingSnapshots[userId] = nil
+				end
+			else
+				task.wait(3)
+			end
+		end
+		self.SaveScheduled[userId] = nil
+	end)
+end
+
+function MockProfileStore:SaveAsync(userId: number, force: boolean?): boolean
 	local session = self.Sessions[userId]
 	if not session then return false end
-	self.Saved[userId] = deepCopy(session)
+	local snapshot = deepCopy(session)
+	self.Saved[userId] = snapshot
 	if self.DataStore and userId > 0 then
-		local snapshot=deepCopy(session)
-		local ok=pcall(function() self.DataStore:UpdateAsync("player_"..userId,function() return snapshot end) end)
-		if not ok then return false end
+		local elapsed = os.clock() - (self.LastSaveAt[userId] or 0)
+		if force ~= true and elapsed < SAVE_INTERVAL then
+			self.PendingSnapshots[userId] = snapshot
+			self:_scheduleSave(userId)
+			return true
+		end
+		if not self:_writeSnapshot(userId, snapshot) then
+			self.PendingSnapshots[userId] = snapshot
+			self:_scheduleSave(userId)
+			return force ~= true
+		end
 	end
 	return true
 end
 
 function MockProfileStore:Release(userId: number)
-	self:SaveAsync(userId)
+	self:SaveAsync(userId, true)
 	self.Sessions[userId] = nil
 end
 

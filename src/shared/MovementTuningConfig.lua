@@ -1,12 +1,12 @@
 --!strict
 
 return table.freeze({
-	JogMin = 17,
-	JogMax = 20,
-	SprintMin = 25,
-	SprintMax = 32,
-	AccelerationMin = 7,
-	AccelerationMax = 13,
+	JogMin = 15.2,
+	JogMax = 21.4,
+	SprintMin = 21.8,
+	SprintMax = 35.8,
+	AccelerationMin = 5.8,
+	AccelerationMax = 15.8,
 	Deceleration = 15,
 	SprintTurnPenalty = 0.78,
 	SharpTurnDot = 0.35,

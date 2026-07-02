@@ -1,31 +1,111 @@
 --!strict
 local TweenService = game:GetService("TweenService")
 local Theme = require(game:GetService("ReplicatedStorage").VTR.Shared.Theme)
+local Catalog = require(game:GetService("ReplicatedStorage").VTR.Shared.Catalog)
 
 local Presentation = {}
 
-local PACKS = {
-	{Name = "Voltra Spark Pack", Rarity = "Common", Color = Color3.fromHex("B7FF1A"), Accent = Color3.fromHex("050505"), Weight = 800},
-	{Name = "Street Pulse Pack", Rarity = "Rare", Color = Color3.fromHex("1FA2FF"), Accent = Color3.fromHex("F5F7F2"), Weight = 90},
-	{Name = "Neon Tactics Pack", Rarity = "Rare", Color = Color3.fromHex("24C6B8"), Accent = Color3.fromHex("050505"), Weight = 50},
-	{Name = "Elite Matchday Pack", Rarity = "Epic", Color = Color3.fromHex("8E00D6"), Accent = Color3.fromHex("F5F7F2"), Weight = 35},
-	{Name = "Voltra Vault Pack", Rarity = "Epic", Color = Color3.fromHex("FFCB45"), Accent = Color3.fromHex("111111"), Weight = 18},
-	{Name = "Ranked Champion Pack", Rarity = "Mythic", Color = Color3.fromHex("FF477E"), Accent = Color3.fromHex("F5F7F2"), Weight = 6},
-	{Name = "Icon Voltage Pack", Rarity = "Mythic", Color = Color3.fromHex("D9D9D9"), Accent = Color3.fromHex("7D2CFF"), Weight = 1},
+local PACK_COLORS = {
+	Common = Color3.fromHex("B7FF1A"),
+	Bronze = Color3.fromHex("C7834A"),
+	Silver = Color3.fromHex("D9D9D9"),
+	Gold = Color3.fromHex("FFCB45"),
+	Rare = Color3.fromHex("1FA2FF"),
+	Elite = Color3.fromHex("8E00D6"),
+	Legendary = Color3.fromHex("FF477E"),
+	Icon = Color3.fromHex("F5F7F2"),
+	Mythic = Color3.fromHex("24C6B8"),
 }
 
-local function weightedPack(): any
+local PACK_WEIGHTS = {
+	common_pack = 260,
+	bronze_pack = 190,
+	silver_pack = 150,
+	gold_pack = 115,
+	rare_pack = 84,
+	elite_pack = 62,
+	rising_star_pack = 48,
+	totw_pack = 40,
+	voltra_pack = 32,
+	event_pack = 26,
+	hero_pack = 18,
+	champion_pack = 13,
+	legendary_pack = 8,
+	icon_pack = 4,
+	limited_pack = 3,
+	mythic_storm_pack = 2,
+	mythic_pack = 1,
+}
+
+local function packRarity(definition: any): string
+	local odds = definition and definition.Odds or {}
+	if (tonumber(odds.Mythic) or 0) > 0 then return "Mythic" end
+	if (tonumber(odds.Icon) or 0) > 0 then return "Icon" end
+	if (tonumber(odds.Legendary) or 0) > 0 then return "Legendary" end
+	if (tonumber(odds.Elite) or 0) > 0 then return "Elite" end
+	if (tonumber(odds.Rare) or 0) > 0 then return "Rare" end
+	if (tonumber(odds.Gold) or 0) > 0 then return "Gold" end
+	if (tonumber(odds.Silver) or 0) > 0 then return "Silver" end
+	return "Common"
+end
+
+local function decoratePack(pack: any): any
+	local rarity = tostring(pack.Rarity or "Common")
+	pack.Color = pack.Color or PACK_COLORS[rarity] or Theme.Colors.Electric
+	pack.Accent = pack.Accent or (rarity == "Icon" and Color3.fromHex("050505") or Color3.fromHex("050505"))
+	return pack
+end
+
+local function catalogPack(id: string): any?
+	local definition = Catalog.Packs[id]
+	if not definition then return nil end
+	return decoratePack({
+		PackId = id,
+		Name = definition.Name,
+		Rarity = packRarity(definition),
+		Weight = PACK_WEIGHTS[id] or math.max(1, math.floor(100000 / math.max(tonumber(definition.PriceCoins) or 10000, 1))),
+	})
+end
+
+local function storePacks(payload: any?): {any}
+	local result = {}
+	local seen = {}
+	local choices = payload and payload.Reward and payload.Reward.PackChoices or payload and payload.RankedWinPack and payload.RankedWinPack.PackChoices or nil
+	if type(choices) == "table" then
+		for _, choice in choices do
+			local id = tostring(choice.PackId or choice.Id or "")
+			local pack = id ~= "" and catalogPack(id) or nil
+			if not pack and choice.Name then
+				pack = decoratePack({PackId = id, Name = tostring(choice.Name), Rarity = tostring(choice.Rarity or "Common"), Weight = PACK_WEIGHTS[id] or 1})
+			end
+			if pack and not seen[pack.PackId ~= "" and pack.PackId or pack.Name] then
+				seen[pack.PackId ~= "" and pack.PackId or pack.Name] = true
+				table.insert(result, pack)
+			end
+		end
+	end
+	for id, definition in Catalog.Packs do
+		if definition.PriceCoins and definition.PriceCoins > 0 and not string.find(id, "starter", 1, true) and id ~= "voltage_standard" and id ~= "elite_electrum" and not seen[id] then
+			seen[id] = true
+			table.insert(result, catalogPack(id))
+		end
+	end
+	table.sort(result, function(a, b) return tostring(a.PackId or a.Name) < tostring(b.PackId or b.Name) end)
+	return result
+end
+
+local function weightedPack(packs: {any}): any
 	local total = 0
-	for _, pack in PACKS do
+	for _, pack in packs do
 		total += pack.Weight or 1
 	end
 	local roll = math.random() * total
 	local cursor = 0
-	for _, pack in PACKS do
+	for _, pack in packs do
 		cursor += pack.Weight or 1
 		if roll <= cursor then return pack end
 	end
-	return PACKS[1]
+	return packs[1]
 end
 
 local function label(parent: Instance, value: string, pos: UDim2, size: UDim2, textSize: number, color: Color3, z: number): TextLabel
@@ -61,14 +141,23 @@ end
 local function rewardPack(payload: any): any
 	local reward = payload and payload.Reward or {}
 	local ranked = payload and payload.RankedWinPack or {}
+	local packs = storePacks(payload)
+	local wantedId = tostring(reward.PackId or ranked.PackId or "")
+	if wantedId ~= "" then
+		for _, pack in packs do
+			if tostring(pack.PackId or "") == wantedId then return pack end
+		end
+		local fromCatalog = catalogPack(wantedId)
+		if fromCatalog then return fromCatalog end
+	end
 	local wanted = reward.PackName or reward.Pack or reward.packName or ranked.PackName
 	if wanted then
-		for _, pack in PACKS do
+		for _, pack in packs do
 			if string.upper(pack.Name) == string.upper(tostring(wanted)) then return pack end
 		end
-		return {Name = tostring(wanted), Rarity = tostring(reward.Rarity or ranked.Rarity or "Common"), Color = Color3.fromHex("B7FF1A"), Accent = Color3.fromHex("050505"), Weight = 1}
+		return decoratePack({Name = tostring(wanted), Rarity = tostring(reward.Rarity or ranked.Rarity or "Common"), Weight = 1})
 	end
-	return weightedPack()
+	return weightedPack(packs)
 end
 
 local function makePackCard(parent: Instance, pack: any, size: UDim2, z: number): Frame
@@ -125,6 +214,7 @@ function Presentation.Play(gui: ScreenGui, payload: any, onComplete: () -> ())
 		return
 	end
 	local chosen = rewardPack(payload)
+	local packs = storePacks(payload)
 	local old = gui:FindFirstChild("VoltraPackRoulette")
 	if old then old:Destroy() end
 	local overlay = Instance.new("CanvasGroup")
@@ -183,7 +273,7 @@ function Presentation.Play(gui: ScreenGui, payload: any, onComplete: () -> ())
 	local cardWidth = 138
 	local total = 38
 	for i = 1, total do
-		local pack = i == stopIndex and chosen or PACKS[math.random(1, #PACKS)]
+		local pack = i == stopIndex and chosen or packs[math.random(1, #packs)]
 		local holder = Instance.new("Frame")
 		holder.BackgroundTransparency = 1
 		holder.Size = UDim2.fromOffset(cardWidth, 154)

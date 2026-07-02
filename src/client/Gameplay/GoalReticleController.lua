@@ -19,6 +19,19 @@ function Controller.new(camera: Camera,ball:BasePart?)
 	gui.Enabled = false
 	gui.Adornee = anchor
 	gui.Parent = anchor
+	local targetAttachment = Instance.new("Attachment")
+	targetAttachment.Name = "VTRGoalReticleTarget"
+	targetAttachment.Parent = anchor
+	local beam = Instance.new("Beam")
+	beam.Name = "VTRKeeperDiveArrow"
+	beam.Attachment1 = targetAttachment
+	beam.Color = ColorSequence.new(Color3.fromHex("B7FF1A"))
+	beam.Transparency = NumberSequence.new(0.08, 0.18)
+	beam.Width0 = 0.36
+	beam.Width1 = 0.08
+	beam.FaceCamera = true
+	beam.Enabled = false
+	beam.Parent = anchor
 	local circle = Instance.new("Frame")
 	circle.AnchorPoint = Vector2.new(0.5, 0.5)
 	circle.Position = UDim2.fromScale(0.5, 0.5)
@@ -48,12 +61,30 @@ function Controller.new(camera: Camera,ball:BasePart?)
 		cross.BorderSizePixel = 0
 		cross.Parent = gui
 	end
-	return setmetatable({Camera = camera,Ball=ball, Anchor = anchor, Gui = gui, MatchActive = false}, Controller)
+	return setmetatable({Camera = camera,Ball=ball, Anchor = anchor, Gui = gui, Beam = beam, MatchActive = false, Mode = "Shot"}, Controller)
 end
 
 function Controller:SetMatchActive(active: boolean)
 	self.MatchActive = active
-	if not active then self.Gui.Enabled = false end
+	if not active then self.Gui.Enabled = false;if self.Beam then self.Beam.Enabled = false end end
+end
+
+function Controller:SetMode(mode: string?)
+	self.Mode = mode == "PenaltyDefense" and "PenaltyDefense" or "Shot"
+	if self.Mode ~= "PenaltyDefense" and self.Beam then self.Beam.Enabled = false end
+end
+
+function Controller:SetDefenseSource(model: Model?)
+	if self.SourceAttachment then self.SourceAttachment:Destroy();self.SourceAttachment=nil end
+	local root = model and model:FindFirstChild("HumanoidRootPart") :: BasePart?
+	if root then
+		local attachment = Instance.new("Attachment")
+		attachment.Name = "VTRKeeperDiveArrowSource"
+		attachment.Position = Vector3.new(0, 1.1, 0)
+		attachment.Parent = root
+		self.SourceAttachment = attachment
+		if self.Beam then self.Beam.Attachment0 = attachment end
+	end
 end
 
 function Controller:Lock(point:Vector3)
@@ -69,6 +100,7 @@ function Controller:Update(hasBall: boolean, shootingContext: boolean, aimingAtG
 	local displayPoint=self.LockedPoint or goalPoint
 	local visible=self.MatchActive and(self.LockedPoint~=nil or hasBall and aimingAtGoal and goalPoint~=nil)
 	self.Gui.Enabled = visible
+	if self.Beam then self.Beam.Enabled = visible and self.Mode == "PenaltyDefense" and self.SourceAttachment ~= nil end
 	if visible then
 		self.Anchor.Position=displayPoint::Vector3
 		local distance=(self.Camera.CFrame.Position-(displayPoint::Vector3)).Magnitude
@@ -80,6 +112,7 @@ function Controller:Update(hasBall: boolean, shootingContext: boolean, aimingAtG
 end
 
 function Controller:Destroy()
+	if self.SourceAttachment then self.SourceAttachment:Destroy();self.SourceAttachment=nil end
 	self.Anchor:Destroy()
 end
 

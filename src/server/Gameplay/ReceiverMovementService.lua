@@ -14,7 +14,7 @@ function Service.Clear(receiver: Model)
 end
 
 function Service.Step(receiver: Model, point: Vector3, ball: BasePart)
-	if receiver:GetAttribute("controlledByUser") == true and receiver:GetAttribute("aiControlled") ~= true then return end
+	if receiver:GetAttribute("VTRManualReceiveOverride") == true then return end
 	local humanoid = receiver:FindFirstChildOfClass("Humanoid")
 	local receiverRoot = receiver:FindFirstChild("HumanoidRootPart") :: BasePart?
 	if not humanoid or not receiverRoot then return end

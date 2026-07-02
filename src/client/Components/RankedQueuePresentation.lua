@@ -4,6 +4,7 @@ local RunService=game:GetService("RunService")
 local ReplicatedStorage=game:GetService("ReplicatedStorage")
 local Theme=require(ReplicatedStorage.VTR.Shared.Theme)
 local Button=require(script.Parent.Button)
+local BadgePreview=require(script.Parent.BadgePreview)
 local MatchSetupService=require(script.Parent.Parent.Services.MatchSetupService)
 
 local Presentation={}
@@ -15,6 +16,28 @@ end
 
 local function destroyExisting(root:Instance)
 	local old=root:FindFirstChild(OVERLAY_NAME);if old then old:Destroy()end
+end
+
+local function renderBadge(container:GuiObject,summary:any,strokeLimit:number?)
+	if container:IsA("TextLabel")or container:IsA("TextButton")then container.Text=""end
+	container.BackgroundTransparency=1
+	container.ClipsDescendants=true
+	for _,child in container:GetChildren()do if child.Name=="GeneratedBadge"then child:Destroy()end end
+	local identity=type(summary)=="table"and(summary.BadgeIdentity or summary.badgeIdentity)or nil
+	local colors=type(summary)=="table"and summary.colors or nil
+	identity=type(identity)=="table"and identity or{
+		PrimaryColor=colors and colors.Primary or"B7FF1A",
+		SecondaryColor=colors and colors.Secondary or"050505",
+		AccentColor=colors and colors.Accent or"F5F7F2",
+		BadgePreset="Modern",
+		BadgeShape=type(summary)=="table"and summary.badgePreset=="GeneratedHex"and"Hex"or"Shield",
+		BadgeSymbol="Lightning Bolt",
+		BadgeColorBehavior="Tri Color",
+	}
+	local badge=BadgePreview.new(container,identity,UDim2.fromScale(1,1));badge.Position=UDim2.fromScale(0,0);badge.ZIndex=container.ZIndex+1
+	for _,descendant in badge:GetDescendants()do
+		if descendant:IsA("GuiObject")then descendant.ZIndex=badge.ZIndex elseif strokeLimit and descendant:IsA("UIStroke")then descendant.Thickness=math.min(descendant.Thickness,strokeLimit)end
+	end
 end
 
 local function base(root:Instance):CanvasGroup
@@ -51,6 +74,7 @@ local function teamPanel(overlay:CanvasGroup,summary:any,side:string,controlledS
 	local stroke=Instance.new("UIStroke");stroke.Color=side=="Home"and Theme.Colors.Electric or Color3.fromHex("D9D9D9");stroke.Transparency=.35;stroke.Thickness=1;stroke.Parent=panel
 	text(panel,side==controlledSide and"YOUR TEAM"or"OPPONENT",UDim2.fromScale(.08,.015),UDim2.fromScale(.84,.05),Theme.Fonts.Strong,8,side==controlledSide and Theme.Colors.White or Theme.Colors.Muted,247)
 	local badge=Instance.new("TextLabel");badge.AnchorPoint=Vector2.new(.5,0);badge.BackgroundColor3=side=="Home"and Theme.Colors.White or Theme.Colors.Silver;badge.BorderSizePixel=0;badge.Position=UDim2.fromScale(.5,.08);badge.Size=UDim2.fromOffset(74,74);badge.Text=summary.logo or"V";badge.TextColor3=Theme.Colors.Black;badge.TextSize=25;badge.Font=Theme.Fonts.Display;badge.ZIndex=247;badge.Parent=panel;local corner=Instance.new("UICorner");corner.CornerRadius=UDim.new(1,0);corner.Parent=badge
+	renderBadge(badge,summary,2)
 	text(panel,string.upper(summary.teamName or side),UDim2.fromScale(.06,.34),UDim2.fromScale(.88,.1),Theme.Fonts.Display,20,Theme.Colors.White,247)
 	text(panel,(summary.country or"VTR").."  /  "..(summary.league or"RANKED"),UDim2.fromScale(.06,.45),UDim2.fromScale(.88,.06),Theme.Fonts.Strong,8,Theme.Colors.Muted,247)
 	text(panel,tostring(summary.overall or 0),UDim2.fromScale(.34,.55),UDim2.fromScale(.32,.17),Theme.Fonts.Display,42,Theme.Colors.Electric,247)

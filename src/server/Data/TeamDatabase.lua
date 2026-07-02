@@ -185,7 +185,7 @@ function Database.Summary(team: any): any
 		teamId = team.teamId, teamName = team.teamName, country = team.country, league = team.league,
 		overall = team.overall, attack = team.attack, midfield = team.midfield, defense = team.defense,
 		logo = team.logo, colors = table.clone(team.colors), kits = team.kits, formation = team.formation,
-		badgePreset = team.badgePreset, generated = team.generated,
+		badgePreset = team.badgePreset, BadgeIdentity = team.BadgeIdentity or team.badgeIdentity, badgeIdentity = team.badgeIdentity or team.BadgeIdentity, generated = team.generated,
 		starPlayers = playerSummaryList(team.starPlayers),
 	}
 end

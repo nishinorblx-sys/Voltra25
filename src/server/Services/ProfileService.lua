@@ -106,6 +106,7 @@ function ProfileService:_migrate(profile:any):any
 	profile.Version=Config.ProfileVersion;profile.SchemaVersion=Config.ProfileVersion;if type(profile.CreatedAt)~="number" or profile.CreatedAt<=0 then profile.CreatedAt=os.time() end;profile.LastLogin=os.time();profile.OnboardingCompleted=profile.Onboarding and profile.Onboarding.Complete or profile.OnboardingCompleted or false
 	if profile.Ranked.Division=="UNRANKED" and profile.Ranked.Wins+profile.Ranked.Draws+profile.Ranked.Losses==0 then profile.Ranked.Division="DIVISION 10";profile.Ranked.Rank="NEW SEASON";profile.Ranked.PlacementStatus="PLACEMENT READY" end
 	local ranked=profile.Ranked;ranked.DivisionNumber=tonumber(ranked.DivisionNumber)or tonumber(string.match(tostring(ranked.Division),"%d+"))or 10;ranked.DivisionWins=tonumber(ranked.DivisionWins)or 0;ranked.ProtectedWins=tonumber(ranked.ProtectedWins)or 0;ranked.VoltraRating=tonumber(ranked.VoltraRating)or 0;ranked.RequiredRP=ranked.DivisionNumber==0 and 0 or 10;ranked.PlayerStats=ranked.PlayerStats or {MatchesPlayed=0,Goals=0,Assists=0,MOTM=0,AverageRating=0,HatTricks=0,PenaltiesScored=0,FreeKickGoals=0}
+	profile.RankedRun=profile.RankedRun or copy(DefaultProfile.RankedRun);local run=profile.RankedRun;run.Results=type(run.Results)=="table"and run.Results or{};run.Target=math.clamp(math.floor(tonumber(run.Target)or 7),1,20);run.Wins=0;run.Draws=0;run.Losses=0;for index=#run.Results,1,-1 do local value=tostring(run.Results[index]);if value~="Win"and value~="Draw"and value~="Loss"then table.remove(run.Results,index)end end;while#run.Results>run.Target do table.remove(run.Results,1)end;for _,value in run.Results do if value=="Win"then run.Wins+=1 elseif value=="Draw"then run.Draws+=1 elseif value=="Loss"then run.Losses+=1 end end;run.Active=#run.Results>0 and #run.Results<run.Target;run.Ended=#run.Results>=run.Target;run.RewardClaimed=run.RewardClaimed==true
 	profile.ProClubMembership=profile.ProClubMembership or copy(DefaultProfile.ProClubMembership);profile.ProClubsPlayer=profile.ProClubsPlayer or copy(DefaultProfile.ProClubsPlayer)
 	normalizeCardInstances(profile)
 	normalizePackInstances(profile)
@@ -122,7 +123,7 @@ end
 function ProfileService:Start()
 	local function load(player:Player) local raw=self.Store:LoadAsync(player.UserId);local isNew=type(raw.CreatedAt)~="number" or raw.CreatedAt<=0;local profile=self:_migrate(raw);profile.Profile.Avatar.UserId=player.UserId;player:SetAttribute("VTRNewProfile",isNew) end
 	Players.PlayerAdded:Connect(load);Players.PlayerRemoving:Connect(function(player) self.Store:Release(player.UserId) end);for _,player in Players:GetPlayers() do task.spawn(load,player) end
-	game:BindToClose(function() for _,player in Players:GetPlayers() do self.Store:SaveAsync(player.UserId) end end)
+	game:BindToClose(function() for _,player in Players:GetPlayers() do self.Store:SaveAsync(player.UserId,true) end end)
 end
 function ProfileService:GetProfile(player:Player):any?
 	if not player or player.Parent~=Players then return nil end
@@ -131,7 +132,7 @@ function ProfileService:GetProfile(player:Player):any?
 	return profile
 end
 function ProfileService:ResetProfile(player:Player):any?
-	if not player or player.Parent~=Players then return nil end;local profile=copy(self.Store.Template);self.Store.Sessions[player.UserId]=profile;profile=self:_migrate(profile);profile.Profile.Avatar.UserId=player.UserId;player:SetAttribute("VTRNewProfile",true);self.Store:SaveAsync(player.UserId);return profile
+	if not player or player.Parent~=Players then return nil end;local profile=copy(self.Store.Template);self.Store.Sessions[player.UserId]=profile;profile=self:_migrate(profile);profile.Profile.Avatar.UserId=player.UserId;player:SetAttribute("VTRNewProfile",true);self.Store:SaveAsync(player.UserId,true);return profile
 end
 function ProfileService:GetClientData(player:Player):any? local p=self:GetProfile(player);if not p then return nil end;return {Username=player.Name,DisplayName=player.DisplayName,Level=p.Profile.Level,XP=p.Profile.XP,SelectedClub=p.Profile.SelectedClub,ClubIdentity=table.clone(p.ClubMembership),Avatar={UserId=player.UserId,HeadshotType=p.Profile.Avatar.HeadshotType,OutfitId=p.Profile.Avatar.OutfitId}} end
 function ProfileService:GetVersion():number return Config.ProfileVersion end
