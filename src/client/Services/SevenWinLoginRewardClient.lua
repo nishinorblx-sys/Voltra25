@@ -1,10 +1,10 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
-local sharedFolder = ReplicatedStorage:FindFirstChild("Shared")
-local Config = require(sharedFolder and sharedFolder:WaitForChild("SevenWinLoginRewardConfig") or ReplicatedStorage:WaitForChild("SevenWinLoginRewardConfig"))
+local VTRReplicated = require((ReplicatedStorage:FindFirstChild("VTR") and ReplicatedStorage.VTR:FindFirstChild("Shared") or ReplicatedStorage:WaitForChild("Shared")):WaitForChild("VTRReplicated"))
+local Config = require(VTRReplicated.WaitForSharedModule("SevenWinLoginRewardConfig"))
 local Panel = require(script.Parent.Parent.Components.SevenWinLoginRewardPanel)
 
-local remotes = ReplicatedStorage:WaitForChild(Config.RemoteFolderName)
+local remotes = VTRReplicated.GetRemotes():WaitForChild(Config.RemoteFolderName)
 local pendingRemote = remotes:WaitForChild(Config.PendingRemoteName)
 local confirmRemote = remotes:WaitForChild(Config.ConfirmRemoteName)
 

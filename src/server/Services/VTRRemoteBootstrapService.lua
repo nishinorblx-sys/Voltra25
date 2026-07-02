@@ -3,6 +3,9 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local VTRRemoteBootstrapService = {}
 
 local remoteList = {
+	UpdateData = "RemoteEvent",
+	DataUpdated = "RemoteEvent",
+	RequestData = "RemoteFunction",
 	MatchSetupAction = "RemoteEvent",
 	PendingSevenWinLoginReward = "RemoteEvent",
 	ConfirmSevenWinLoginReward = "RemoteFunction",
@@ -80,5 +83,38 @@ function VTRRemoteBootstrapService.Start()
 end
 
 VTRRemoteBootstrapService.Start()
+local function attachDefaultHandlers()
+	local remotes = getRemotes()
+	local requestData = remotes:FindFirstChild("RequestData")
+
+	if requestData and requestData:IsA("RemoteFunction") and requestData.OnServerInvoke == nil then
+		requestData.OnServerInvoke = function(player, key)
+			local data = {}
+
+			if typeof(key) == "string" then
+				data.Key = key
+			end
+
+			local leaderstats = player:FindFirstChild("leaderstats")
+			if leaderstats then
+				for _, value in ipairs(leaderstats:GetChildren()) do
+					if value:IsA("ValueBase") then
+						data[value.Name] = value.Value
+					end
+				end
+			end
+
+			for _, attrName in ipairs({ "Wins", "TotalWins", "Coins", "Rank", "XP", "Level" }) do
+				local attr = player:GetAttribute(attrName)
+				if attr ~= nil then
+					data[attrName] = attr
+				end
+			end
+
+			return data
+		end
+	end
+end
+attachDefaultHandlers()
 
 return VTRRemoteBootstrapService

@@ -1,8 +1,9 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local VTRReplicated = require((ReplicatedStorage:FindFirstChild("VTR") and ReplicatedStorage.VTR:FindFirstChild("Shared") or ReplicatedStorage:WaitForChild("Shared")):WaitForChild("VTRReplicated"))
 
 local Animation = require(script.Parent.Parent.Components.PackRewardFlyinAnimation)
 
-local remotes = ReplicatedStorage:WaitForChild("PackRewardAnimationRemotes")
+local remotes = VTRReplicated.GetRemotes():WaitForChild("PackRewardAnimationRemotes")
 local showRemote = remotes:WaitForChild("ShowPackRewardAnimation")
 local ackRemote = remotes:WaitForChild("AckPackRewardAnimation")
 
@@ -42,3 +43,5 @@ showRemote.OnClientEvent:Connect(function(entries)
 	push(entries)
 	task.defer(drain)
 end)
+
+return true

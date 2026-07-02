@@ -1,6 +1,18 @@
 --!strict
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local function vtrWaitNetworkRemote(name, className)
+	local vtr = ReplicatedStorage:WaitForChild("VTR", 10) or ReplicatedStorage:FindFirstChild("VTR")
+	local remotes = vtr and (vtr:FindFirstChild("Remotes") or vtr:WaitForChild("Remotes", 10))
+	local remote = remotes and (remotes:FindFirstChild(name) or remotes:WaitForChild(name, 10))
+
+	if remote and remote.ClassName == className then
+		return remote
+	end
+
+	warn(name .. " remote missing")
+	return nil
+end
 local NetworkConfig = require(ReplicatedStorage.VTR.Shared.NetworkConfig)
 
 local remotes = ReplicatedStorage.VTR:WaitForChild(NetworkConfig.FolderName)
@@ -18,7 +30,7 @@ end)
 function NetworkClient:Request(serviceName: string): any?
 	if not NetworkConfig.Services[serviceName] then return nil end
 	for attempt = 1, 3 do
-		local ok, response = pcall(function() return requestData:InvokeServer(serviceName) end)
+		local ok, response = pcall(function() return (requestData and requestData:InvokeServer(serviceName) end)
 		if ok and type(response) == "table" and response.Success and type(response.Data) == "table" then
 			self.Cache[serviceName] = response.Data
 			return response.Data
