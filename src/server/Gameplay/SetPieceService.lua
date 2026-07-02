@@ -1,4 +1,5 @@
 --!strict
+local VTRGoalPassThrough = require(script.Parent:WaitForChild("GoalShotPassThroughService"))
 local function vtrXGPercent(value)
 	local n = tonumber(value) or 0
 	if n <= 1 then

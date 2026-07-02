@@ -1,4 +1,5 @@
 --!strict
+local VTRGoalPassThrough = require(script.Parent:WaitForChild("GoalShotPassThroughService"))
 local function vtrXGPercent(value)
 	local n = tonumber(value) or 0
 	if n <= 1 then
@@ -52,6 +53,10 @@ local function insideGoal(rectangle: any, point: Vector3, radius: number): boole
 end
 
 local function saveLineOffset(rectangle:any,ballRadius:number):number
+	if VTRGoalPassThrough.ShouldBypass(VTRGoalPassThrough.ResolveBall(rectangle, ballRadius) or ball or Ball or currentBall or matchBall or shotBall or self and (self.Ball or self.ball or self.BallPart or self.ballPart or self.CurrentBall or self.currentBall or self.MatchBall or self.matchBall)) then
+		VTRGoalPassThrough.Force(VTRGoalPassThrough.ResolveBall(rectangle, ballRadius) or ball or Ball or currentBall or matchBall or shotBall or self and (self.Ball or self.ball or self.BallPart or self.ballPart or self.CurrentBall or self.currentBall or self.MatchBall or self.matchBall), 1.35)
+		return false
+	end
 	local hitbox=rectangle.Hitbox
 	if hitbox and hitbox.Parent then
 		local size=hitbox.Size;local frame=hitbox.CFrame;local normal=rectangle.Normal
@@ -239,6 +244,10 @@ local function shooterRating(shooter: Model?): number
 end
 
 local function saveProbability(keeper:Model,rectangle:any,target:Vector3,time:number,xg:number?,shooter:Model?):(number,number)
+	if VTRGoalPassThrough.ShouldBypass(VTRGoalPassThrough.ResolveBall(keeper, rectangle, target, time, xg, shooter, number) or ball or Ball or currentBall or matchBall or shotBall or self and (self.Ball or self.ball or self.BallPart or self.ballPart or self.CurrentBall or self.currentBall or self.MatchBall or self.matchBall)) then
+		VTRGoalPassThrough.Force(VTRGoalPassThrough.ResolveBall(keeper, rectangle, target, time, xg, shooter, number) or ball or Ball or currentBall or matchBall or shotBall or self and (self.Ball or self.ball or self.BallPart or self.ballPart or self.CurrentBall or self.currentBall or self.MatchBall or self.matchBall), 1.35)
+		return false
+	end
 	local shooterRoot=root(shooter)
 	local goalChance=tonumber(xg)
 	if goalChance==nil then
@@ -344,6 +353,9 @@ function Service:_begin(attackingSide: string, shotId: number)
 	local willSave=false
 	if rolled ~= nil and goalChance ~= nil then
 		willSave = not vtrXGIsGoal(goalChance, rolled)
+		if willSave == false then
+			VTRGoalPassThrough.Force(ball or Ball or currentBall or matchBall or shotBall or self and (self.Ball or self.ball or self.BallPart or self.ballPart or self.CurrentBall or self.currentBall or self.MatchBall or self.matchBall), 2.75)
+		end
 	end
 	local shotPlan=self.BallService and self.BallService.ShotPlan
 	local penaltySlot=shotPlan and shotPlan.PenaltySlot
@@ -353,24 +365,39 @@ function Service:_begin(attackingSide: string, shotId: number)
 		willSave=keeperGuess==penaltySlot
 		if rolled ~= nil and goalChance ~= nil then
 			willSave = not vtrXGIsGoal(goalChance, rolled)
+			if willSave == false then
+				VTRGoalPassThrough.Force(ball or Ball or currentBall or matchBall or shotBall or self and (self.Ball or self.ball or self.BallPart or self.ballPart or self.CurrentBall or self.currentBall or self.MatchBall or self.matchBall), 2.75)
+			end
 		end
 		keeper:SetAttribute("VTRLastSaveChance",willSave and 100 or 0)
 	elseif shotPlan and shotPlan.GuaranteedGoal==true then
 		willSave=false
 		if rolled ~= nil and goalChance ~= nil then
 			willSave = not vtrXGIsGoal(goalChance, rolled)
+			if willSave == false then
+				VTRGoalPassThrough.Force(ball or Ball or currentBall or matchBall or shotBall or self and (self.Ball or self.ball or self.BallPart or self.ballPart or self.CurrentBall or self.currentBall or self.MatchBall or self.matchBall), 2.75)
+			end
 		end
 		keeper:SetAttribute("VTRLastSaveChance",0)
 	elseif shotPlan and shotPlan.ForcedMiss==true then
 		willSave=true
 		if rolled ~= nil and goalChance ~= nil then
 			willSave = not vtrXGIsGoal(goalChance, rolled)
+			if willSave == false then
+				VTRGoalPassThrough.Force(ball or Ball or currentBall or matchBall or shotBall or self and (self.Ball or self.ball or self.BallPart or self.ballPart or self.CurrentBall or self.currentBall or self.MatchBall or self.matchBall), 2.75)
+			end
 		end
 		keeper:SetAttribute("VTRLastSaveChance",100)
 	else
 		willSave=not goalPercentChance(self,keeper,goalChance)
+		if willSave == false then
+			VTRGoalPassThrough.Force(ball or Ball or currentBall or matchBall or shotBall or self and (self.Ball or self.ball or self.BallPart or self.ballPart or self.CurrentBall or self.currentBall or self.MatchBall or self.matchBall), 2.75)
+		end
 		if rolled ~= nil and goalChance ~= nil then
 			willSave = not vtrXGIsGoal(goalChance, rolled)
+			if willSave == false then
+				VTRGoalPassThrough.Force(ball or Ball or currentBall or matchBall or shotBall or self and (self.Ball or self.ball or self.BallPart or self.ballPart or self.CurrentBall or self.currentBall or self.MatchBall or self.matchBall), 2.75)
+			end
 		end
 	end
 	keeper:SetAttribute("VTRGoalkeeperSaving", true)
@@ -621,6 +648,10 @@ function Service:_rushCloseCarrier(defendingSide:string): boolean
 end
 
 function Service:_interceptGoalBoundPass(defendingSide:string): boolean
+	if VTRGoalPassThrough.ShouldBypass(VTRGoalPassThrough.ResolveBall(self, defendingSide) or ball or Ball or currentBall or matchBall or shotBall or self and (self.Ball or self.ball or self.BallPart or self.ballPart or self.CurrentBall or self.currentBall or self.MatchBall or self.matchBall)) then
+		VTRGoalPassThrough.Force(VTRGoalPassThrough.ResolveBall(self, defendingSide) or ball or Ball or currentBall or matchBall or shotBall or self and (self.Ball or self.ball or self.BallPart or self.ballPart or self.CurrentBall or self.currentBall or self.MatchBall or self.matchBall), 1.35)
+		return false
+	end
 	if self.BallService.MotionKind~="Pass" then return false end
 	local keeper=goalkeeper(self.Teams[defendingSide])
 	local keeperRoot=keeper and root(keeper)
@@ -682,6 +713,10 @@ local function orientDive(save:any,rectangle:any,keeperRoot:BasePart,rootTarget:
 end
 
 local function diveCatchFrame(position:Vector3,lookVector:Vector3,upAxis:Vector3,fallbackForward:Vector3):CFrame
+	if VTRGoalPassThrough.ShouldBypass(VTRGoalPassThrough.ResolveBall(position, lookVector, upAxis, fallbackForward) or ball or Ball or currentBall or matchBall or shotBall or self and (self.Ball or self.ball or self.BallPart or self.ballPart or self.CurrentBall or self.currentBall or self.MatchBall or self.matchBall)) then
+		VTRGoalPassThrough.Force(VTRGoalPassThrough.ResolveBall(position, lookVector, upAxis, fallbackForward) or ball or Ball or currentBall or matchBall or shotBall or self and (self.Ball or self.ball or self.BallPart or self.ballPart or self.CurrentBall or self.currentBall or self.MatchBall or self.matchBall), 1.35)
+		return false
+	end
 	local forward=fallbackForward.Magnitude>.05 and fallbackForward.Unit or Vector3.zAxis
 	local aim=lookVector.Magnitude>.05 and lookVector.Unit or forward
 	local lateral=aim-forward*aim:Dot(forward)-upAxis*aim:Dot(upAxis)
