@@ -1,3 +1,10 @@
+local VTRPendingPackAnimation = require(script.Parent.Parent.Services:WaitForChild("PendingPackAnimationService"))
+function VTRSecondHalfNeedsBothReady(readyCount, playerCount, timerExpired)
+	if timerExpired then
+		return true
+	end
+	return readyCount>=math.min(2, math.max(1, playerCount or 2))
+end
 --!strict
 local Players=game:GetService("Players")
 local RunService=game:GetService("RunService")

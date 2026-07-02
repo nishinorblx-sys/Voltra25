@@ -1,3 +1,4 @@
+local VTRPendingPackAnimation = require(script.Parent:WaitForChild("PendingPackAnimationService"))
 local MATCHUP_PANEL_DELAY = 0.85
 --!strict
 local ReplicatedStorage=game:GetService("ReplicatedStorage")
@@ -156,6 +157,9 @@ function Service:WatchMatch(player:Player):(boolean,string,any?)
 			local packId=packIdFor(tier and tier.PackId or"bronze_pack")
 			local packsGranted=0
 			if self.Progression and self.Progression.Inventory and self.Progression.Inventory:AddPack(player,packId,packId,"Campaign",1)then packsGranted+=1 end
+			if player and typeof(player) == "Instance" and player:IsA("Player") then
+				VTRPendingPackAnimation.Queue(player, packId)
+			end
 			local cleared=0;local tierId=tier and tier.Id or"";for completedId,done in progress.CompletedTeams do if done and string.find(tostring(completedId),tierId,1,true)then cleared+=1 end end
 			local firstTierClear=cleared>=4
 			local tierClearKey="campaign_tier_clear_"..tostring(tierId)
@@ -163,6 +167,9 @@ function Service:WatchMatch(player:Player):(boolean,string,any?)
 			if firstTierClear and progress.RewardsClaimed[tierClearKey]~=true then
 				progress.RewardsClaimed[tierClearKey]=true
 				if self.Progression and self.Progression.Inventory and self.Progression.Inventory:AddPack(player,"voltra_pack","voltra_pack","CampaignTierClear",1)then packsGranted+=1;voltraGranted=true end
+				if player and typeof(player) == "Instance" and player:IsA("Player") then
+					VTRPendingPackAnimation.Queue(player, "voltra_pack")
+				end
 			end
 			return{[player.UserId]={Title=firstTierClear and"CAMPAIGN TIER CLEAR"or"CAMPAIGN CLEAR",Coins=0,XP=0,Pack=(tier and tier.Reward or"Campaign Pack")..(voltraGranted and" + Voltra Pack"or""),BonusPack=voltraGranted and"VOLTRA PACK"or nil,VoltraPack=voltraGranted,LeagueClear=voltraGranted,PackId=packId,Packs=packsGranted}}
 		end

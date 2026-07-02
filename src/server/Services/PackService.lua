@@ -1,4 +1,5 @@
 --!strict
+local VTRPendingPackAnimation = require(script.Parent:WaitForChild("PendingPackAnimationService"))
 
 local PackData = require(script.Parent.Parent.Data.Packs)
 local PlayerDatabase = require(script.Parent.Parent.Data.PlayerDatabase)

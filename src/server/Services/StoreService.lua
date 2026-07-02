@@ -1,4 +1,5 @@
 --!strict
+local VTRPendingPackAnimation = require(script.Parent:WaitForChild("PendingPackAnimationService"))
 local ReplicatedStorage=game:GetService("ReplicatedStorage")
 local DeveloperConfig=require(ReplicatedStorage.VTR.Shared.DeveloperConfig)
 local EconomyConfig=require(ReplicatedStorage.VTR.Shared.EconomyConfig)
@@ -13,5 +14,8 @@ function StoreService:Purchase(player:Player,kind:string,id:string,quantity:numb
 	local count=kind=="Pack" and math.clamp(math.floor(tonumber(quantity)or 1),1,25) or 1
 	if not item then return false,"Unknown item." end;if bucket and contains(bucket,id) then return false,"Already owned." end;local coins=(item.PriceCoins or 0)*count;local bolts=(item.PriceBolts or 0)*count;local infiniteCoins=DeveloperConfig.InfiniteCoinsEveryone==true;if (not infiniteCoins and p.Currency.Coins<coins) or p.Currency.Bolts<bolts then return false,"Insufficient currency." end
 	if infiniteCoins then p.Currency.Coins=EconomyConfig.MaximumCoins else p.Currency.Coins-=coins end;p.Currency.Bolts-=bolts;self.LastPurchase[player]=now;if kind=="Pack" then local delivered=self.Inventory:AddPack(player,id,item.Name,"Store",count);if not delivered then if not infiniteCoins then p.Currency.Coins+=coins end;p.Currency.Bolts+=bolts;return false,"Pack delivery failed; currency restored." end else table.insert(bucket,id) end;return true,kind=="Pack" and(count>1 and(count.." packs added to inventory.")or"Pack added to inventory.")or"Purchase complete."
+	if player and typeof(player) == "Instance" and player:IsA("Player") then
+		VTRPendingPackAnimation.Queue(player, id)
+	end
 end
 return StoreService

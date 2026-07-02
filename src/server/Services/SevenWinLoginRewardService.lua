@@ -1,3 +1,4 @@
+local VTRPendingPackAnimation = require(script.Parent:WaitForChild("PendingPackAnimationService"))
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local DataStoreService = game:GetService("DataStoreService")

@@ -1,5 +1,6 @@
 --!strict
 local RankedWinPackReward=require(script.Parent.RankedWinPackReward)
+local VTRPendingPackAnimation = require(script.Parent:WaitForChild("PendingPackAnimationService"))
 local HttpService = game:GetService("HttpService")
 local MemoryStoreService = game:GetService("MemoryStoreService")
 local Players = game:GetService("Players")
@@ -246,6 +247,9 @@ function Service:_grantSpecificRankedPack(player: Player, packId: string?): bool
 	if self.Progression and self.Progression.Inventory and self.Progression.Inventory.AddPack then
 		local ok, result = pcall(function()
 			return self.Progression.Inventory:AddPack(player, id, id, "RankedWin", 1)
+			if player and typeof(player) == "Instance" and player:IsA("Player") then
+				VTRPendingPackAnimation.Queue(player, id)
+			end
 		end)
 		granted = ok and result ~= nil and result ~= false
 	end

@@ -1,4 +1,5 @@
 --!strict
+local VTRPendingPackAnimation = require(script.Parent:WaitForChild("PendingPackAnimationService"))
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
@@ -109,6 +110,9 @@ function ProgressionService:_grantObjectiveReward(player: Player, profile: any, 
 		self:_addXP(profile, reward.Amount)
 	elseif reward.Type == "Pack" then
 		return self.Inventory:AddPack(player, reward.ItemId or "voltage_standard", "OBJECTIVE REWARD PACK", "Objective", reward.Amount or 1)
+		if player and typeof(player) == "Instance" and player:IsA("Player") then
+			VTRPendingPackAnimation.Queue(player, reward.ItemId or "voltage_standard")
+		end
 	elseif reward.Type == "Coins" then
 		self:_addCoins(profile, reward.Amount)
 	elseif reward.Type == "Bolts" then
@@ -176,6 +180,9 @@ function ProgressionService:Claim(player: Player, kind: string, id: string): (bo
 				reward.Claimed = true
 				if string.find(reward.Description, "Pack") then
 					if not self.Inventory:AddPack(player, "elite_pack", string.upper(reward.Description), "Ranked", 1) then return false, "Ranked pack grant failed.", nil end
+					if player and typeof(player) == "Instance" and player:IsA("Player") then
+						VTRPendingPackAnimation.Queue(player, "elite_pack")
+					end
 				elseif string.find(reward.Description, "Coins") then profile.Currency.Coins += 10000 end
 				self:_publishAll(player, profile)
 				return true, "Ranked reward claimed.", nil

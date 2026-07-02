@@ -1,4 +1,5 @@
 --!strict
+local VTRPendingPackAnimation = require(script.Parent:WaitForChild("PendingPackAnimationService"))
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Catalog = require(ReplicatedStorage.VTR.Shared.Catalog)
 local PackInstanceFactory = require(script.Parent.Parent.Data.PackInstanceFactory)
@@ -110,6 +111,9 @@ function Service.Grant(progression: any, player: Player, publish: ((Player, stri
 			local ok, result = pcall(function()
 				local definition = Catalog.Packs[packId]
 				return progression.Inventory:AddPack(player, packId, definition and definition.Name or packId, "RankedWin", 1)
+				if player and typeof(player) == "Instance" and player:IsA("Player") then
+					VTRPendingPackAnimation.Queue(player, packId)
+				end
 			end)
 			if ok and result then
 				granted = true

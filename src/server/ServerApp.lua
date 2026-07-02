@@ -1,3 +1,4 @@
+local VTRPendingPackAnimation = require(script.Parent.Services:WaitForChild("PendingPackAnimationService"))
 local MATCHUP_PANEL_DELAY = 0.85
 --!strict
 

@@ -1,4 +1,5 @@
 --!strict
+local VTRPendingPackAnimation = require(script.Parent:WaitForChild("PendingPackAnimationService"))
 
 local CardFactoryService = require(script.Parent.CardFactoryService)
 local PackInstanceFactory = require(script.Parent.Parent.Data.PackInstanceFactory)

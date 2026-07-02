@@ -1,4 +1,5 @@
 --!strict
+local VTRPendingPackAnimation = require(script.Parent:WaitForChild("PendingPackAnimationService"))
 local Service={};Service.__index=Service
 local function checkpointCount(division:number):number return math.clamp(division+1,2,10)end
 local function protectedThreshold(progress:number,division:number):number
