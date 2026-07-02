@@ -1,5 +1,24 @@
+local Players = game:GetService("Players")
+
+local function vtrClientRoot()
+	local current = script
+
+	while current do
+		if current.Name == "VTRClient" or current.Name == "Client" then
+			return current
+		end
+
+		current = current.Parent
+	end
+
+	local player = Players.LocalPlayer
+	local playerScripts = player and player:FindFirstChild("PlayerScripts")
+	local found = playerScripts and (playerScripts:FindFirstChild("VTRClient") or playerScripts:FindFirstChild("Client"))
+
+	return found or script.Parent
+end
 --!strict
-local PackRouletteAlignmentService = require(game:GetService("ReplicatedStorage"):WaitForChild("Client"):WaitForChild("Services"):WaitForChild("PackRouletteAlignmentService"))
+local PackRouletteAlignmentService = require(vtrClientRoot():WaitForChild("Services"):WaitForChild("PackRouletteAlignmentService"))
 local ReplicatedStorage=game:GetService("ReplicatedStorage")
 local Theme=require(ReplicatedStorage.VTR.Shared.Theme)
 local Panel=require(script.Parent.Parent.Components.Panel)
