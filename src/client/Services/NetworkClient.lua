@@ -30,7 +30,7 @@ end)
 function NetworkClient:Request(serviceName: string): any?
 	if not NetworkConfig.Services[serviceName] then return nil end
 	for attempt = 1, 3 do
-		local ok, response = pcall(function() return (requestData and requestData:InvokeServer(serviceName) end)
+		local ok, response = pcall(function() return requestData:InvokeServer(serviceName) end)
 		if ok and type(response) == "table" and response.Success and type(response.Data) == "table" then
 			self.Cache[serviceName] = response.Data
 			return response.Data
