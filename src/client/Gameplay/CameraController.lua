@@ -3,7 +3,7 @@ local UserInputService=game:GetService("UserInputService")
 local ReplicatedStorage=game:GetService("ReplicatedStorage")
 local Config=require(ReplicatedStorage.VTR.Shared.GameplayConfig)
 local Controller={};Controller.__index=Controller
-function Controller.new(model:Model,ball:BasePart?)local root=model:WaitForChild("HumanoidRootPart")::BasePart;local look=root.CFrame.LookVector;return setmetatable({Camera=workspace.CurrentCamera,Model=model,Root=root,Ball=ball,Yaw=math.atan2(-look.X,-look.Z),Pitch=math.rad(12),BallAware=true},Controller)end
+function Controller.new(model:Model,ball:BasePart?)local root=model:WaitForChild("HumanoidRootPart", 15)::BasePart;local look=root.CFrame.LookVector;return setmetatable({Camera=workspace.CurrentCamera,Model=model,Root=root,Ball=ball,Yaw=math.atan2(-look.X,-look.Z),Pitch=math.rad(12),BallAware=true},Controller)end
 function Controller:Start()self.Camera.CameraType=Enum.CameraType.Scriptable;self.Camera.FieldOfView=Config.Camera.FieldOfView;UserInputService.MouseBehavior=Enum.MouseBehavior.LockCenter;UserInputService.MouseIconEnabled=false end
 function Controller:Forward():Vector3 return Vector3.new(-math.sin(self.Yaw),0,-math.cos(self.Yaw)).Unit end
 function Controller:Right():Vector3 local f=self:Forward();return Vector3.new(-f.Z,0,f.X)end

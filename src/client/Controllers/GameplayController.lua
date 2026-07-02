@@ -26,11 +26,11 @@ function GameplayController:Start()
 	self.Player = player
 	self.ActionRemote = actionRemote
 	self.StateRemote = stateRemote
-	local match = workspace:WaitForChild("VTRTestMatch")
+	local match = workspace:WaitForChild("VTRTestMatch", 15)
 	self.Ball = match:WaitForChild(Config.Ball.Name) :: BasePart
-	self.ScoreFolder = match:WaitForChild("Score")
+	self.ScoreFolder = match:WaitForChild("Score", 15)
 	self:_inferPitch(match)
-	local playerModule = require(player:WaitForChild("PlayerScripts"):WaitForChild("PlayerModule"))
+	local playerModule = require(player:WaitForChild("PlayerScripts", 15):WaitForChild("PlayerModule", 15))
 	playerModule:GetControls():Disable()
 
 	self.CameraController = CameraController.new()
@@ -49,8 +49,8 @@ function GameplayController:Start()
 		end
 	end)
 	self:_createHUD()
-	local homeScore = self.ScoreFolder:WaitForChild("Home") :: IntValue
-	local awayScore = self.ScoreFolder:WaitForChild("Away") :: IntValue
+	local homeScore = self.ScoreFolder:WaitForChild("Home", 15) :: IntValue
+	local awayScore = self.ScoreFolder:WaitForChild("Away", 15) :: IntValue
 	local function syncScore()
 		self.Score.Text = tostring(homeScore.Value) .. "  —  " .. tostring(awayScore.Value)
 	end
@@ -67,7 +67,7 @@ end
 function GameplayController:_bindCharacter(character: Model)
 	self.Character = character
 	self.Humanoid = character:WaitForChild("Humanoid") :: Humanoid
-	self.RootPart = character:WaitForChild("HumanoidRootPart") :: BasePart
+	self.RootPart = character:WaitForChild("HumanoidRootPart", 15) :: BasePart
 	self.Humanoid.AutoRotate = false
 	self.CameraController:Start(character)
 	self:_updatePrediction()

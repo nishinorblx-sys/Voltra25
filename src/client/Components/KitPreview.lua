@@ -1,6 +1,6 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
-local VTR = ReplicatedStorage:WaitForChild("VTR")
+local VTR = ReplicatedStorage:WaitForChild("VTR", 15)
 local Shared = VTR:WaitForChild("Shared")
 local ClubIdentityConfig = require(Shared:WaitForChild("ClubIdentityConfig"))
 

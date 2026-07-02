@@ -3,24 +3,51 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local VTRRemoteBootstrapService = {}
 
 local remoteList = {
-	UpdateData = "RemoteEvent",
-	DataUpdated = "RemoteEvent",
-	RequestData = "RemoteFunction",
-	MatchSetupAction = "RemoteEvent",
-	PendingSevenWinLoginReward = "RemoteEvent",
-	ConfirmSevenWinLoginReward = "RemoteFunction",
-	ShowPackRewardAnimation = "RemoteEvent",
 	AckPackRewardAnimation = "RemoteEvent",
+	Away = "RemoteEvent",
+	CameraAction = "RemoteEvent",
+	ConfirmSevenWinLoginReward = "RemoteFunction",
+	DataUpdated = "RemoteEvent",
+	GameplayAction = "RemoteEvent",
+	Home = "RemoteEvent",
+	HumanoidRootPart = "RemoteEvent",
+	InventoryAction = "RemoteEvent",
+	KickoffAction = "RemoteEvent",
+	MatchAction = "RemoteEvent",
+	MatchSetupAction = "RemoteFunction",
+	PackAction = "RemoteEvent",
+	PackRewardAnimationRemotes = "RemoteEvent",
+	PenaltyAction = "RemoteEvent",
+	PendingSevenWinLoginReward = "RemoteEvent",
+	PlayerModule = "RemoteEvent",
+	PlayerScripts = "RemoteEvent",
+	RankedMatchFound = "RemoteEvent",
+	RequestData = "RemoteFunction",
+	Score = "RemoteEvent",
+	SetPieceAction = "RemoteEvent",
+	ShowPackRewardAnimation = "RemoteEvent",
+	SoundAction = "RemoteEvent",
+	UpdateData = "RemoteEvent",
+	UpdateUIState = "RemoteEvent",
+	VTRReplicated = "RemoteEvent",
+	VTRTestMatch = "RemoteEvent",
+	leaderstats = "RemoteEvent",
 }
 
 local folderGroups = {
-	SevenWinLoginRewardRemotes = {
-		PendingSevenWinLoginReward = "RemoteEvent",
-		ConfirmSevenWinLoginReward = "RemoteFunction",
+	Client = {
+		PackRouletteAlignmentService = "RemoteEvent",
 	},
 	PackRewardAnimationRemotes = {
-		ShowPackRewardAnimation = "RemoteEvent",
 		AckPackRewardAnimation = "RemoteEvent",
+		ShowPackRewardAnimation = "RemoteEvent",
+	},
+	PlayerScripts = {
+		PlayerModule = "RemoteEvent",
+	},
+	SevenWinLoginRewardRemotes = {
+		ConfirmSevenWinLoginReward = "RemoteFunction",
+		PendingSevenWinLoginReward = "RemoteEvent",
 	},
 }
 
@@ -47,11 +74,10 @@ end
 
 local function ensureRemote(parent, name, className)
 	local existing = parent:FindFirstChild(name)
-	if existing and existing.ClassName == className then
-		return existing
-	end
-
 	if existing then
+		if existing.ClassName == className then
+			return existing
+		end
 		existing:Destroy()
 	end
 
@@ -61,11 +87,44 @@ local function ensureRemote(parent, name, className)
 	return remote
 end
 
+local function attachDefaultFunction(remote)
+	if not remote or not remote:IsA("RemoteFunction") then
+		return
+	end
+
+	remote.OnServerInvoke = remote.OnServerInvoke or function(player, key)
+		local data = {}
+
+		if typeof(key) == "string" then
+			data.Key = key
+		end
+
+		local leaderstats = player:FindFirstChild("leaderstats")
+		if leaderstats then
+			for _, value in ipairs(leaderstats:GetChildren()) do
+				if value:IsA("ValueBase") then
+					data[value.Name] = value.Value
+				end
+			end
+		end
+
+		for _, attrName in ipairs({ "Wins", "TotalWins", "Coins", "Rank", "XP", "Level" }) do
+			local attr = player:GetAttribute(attrName)
+			if attr ~= nil then
+				data[attrName] = attr
+			end
+		end
+
+		return data
+	end
+end
+
 function VTRRemoteBootstrapService.Start()
 	local remotes = getRemotes()
 
 	for name, className in pairs(remoteList) do
-		ensureRemote(remotes, name, className)
+		local remote = ensureRemote(remotes, name, className)
+		attachDefaultFunction(remote)
 	end
 
 	for folderName, children in pairs(folderGroups) do
@@ -77,44 +136,12 @@ function VTRRemoteBootstrapService.Start()
 		end
 
 		for name, className in pairs(children) do
-			ensureRemote(folder, name, className)
+			local remote = ensureRemote(folder, name, className)
+			attachDefaultFunction(remote)
 		end
 	end
 end
 
 VTRRemoteBootstrapService.Start()
-local function attachDefaultHandlers()
-	local remotes = getRemotes()
-	local requestData = remotes:FindFirstChild("RequestData")
-
-	if requestData and requestData:IsA("RemoteFunction") and requestData.OnServerInvoke == nil then
-		requestData.OnServerInvoke = function(player, key)
-			local data = {}
-
-			if typeof(key) == "string" then
-				data.Key = key
-			end
-
-			local leaderstats = player:FindFirstChild("leaderstats")
-			if leaderstats then
-				for _, value in ipairs(leaderstats:GetChildren()) do
-					if value:IsA("ValueBase") then
-						data[value.Name] = value.Value
-					end
-				end
-			end
-
-			for _, attrName in ipairs({ "Wins", "TotalWins", "Coins", "Rank", "XP", "Level" }) do
-				local attr = player:GetAttribute(attrName)
-				if attr ~= nil then
-					data[attrName] = attr
-				end
-			end
-
-			return data
-		end
-	end
-end
-attachDefaultHandlers()
 
 return VTRRemoteBootstrapService

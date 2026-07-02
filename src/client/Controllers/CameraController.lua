@@ -30,7 +30,7 @@ end
 
 function CameraController:SetCharacter(character: Model)
 	self.Character = character
-	self.Root = character:WaitForChild("HumanoidRootPart")
+	self.Root = character:WaitForChild("HumanoidRootPart", 15)
 	local look = self.Root.CFrame.LookVector
 	self.Yaw = math.atan2(-look.X, -look.Z)
 end
