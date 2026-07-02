@@ -113,7 +113,6 @@ function ProgressionService:_grantObjectiveReward(player: Player, profile: any, 
 	end
 		if player and typeof(player) == "Instance" and player:IsA("Player") then
 			VTRPendingPackAnimation.Queue(player, reward.ItemId or "voltage_standard")
-		end
 	elseif reward.Type == "Coins" then
 		self:_addCoins(profile, reward.Amount)
 	elseif reward.Type == "Bolts" then

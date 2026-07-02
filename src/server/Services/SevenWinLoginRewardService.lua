@@ -1,22 +1,18 @@
 local VTRPendingPackAnimation = require(script.Parent:WaitForChild("PendingPackAnimationService"))
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local VTRReplicated = require((ReplicatedStorage:FindFirstChild("VTR") and ReplicatedStorage.VTR:FindFirstChild("Shared") or ReplicatedStorage:WaitForChild("Shared")):WaitForChild("VTRReplicated"))
 local DataStoreService = game:GetService("DataStoreService")
 local ServerScriptService = game:GetService("ServerScriptService")
 
-local sharedFolder = ReplicatedStorage:FindFirstChild("Shared")
-local Config = require(sharedFolder and sharedFolder:WaitForChild("SevenWinLoginRewardConfig") or ReplicatedStorage:WaitForChild("SevenWinLoginRewardConfig"))
+local VTRReplicated = require((ReplicatedStorage:FindFirstChild("VTR") and ReplicatedStorage.VTR:FindFirstChild("Shared") or ReplicatedStorage:WaitForChild("Shared")):WaitForChild("VTRReplicated"))
+local Config = require(VTRReplicated.WaitForSharedModule("SevenWinLoginRewardConfig"))
 
 local store = DataStoreService:GetDataStore(Config.ClaimKey)
 local pendingByUserId = {}
 local started = false
 
-local remotes = ReplicatedStorage:FindFirstChild(Config.RemoteFolderName)
-if not remotes then
-	remotes = Instance.new("Folder")
-	remotes.Name = Config.RemoteFolderName
-	remotes.Parent = ReplicatedStorage
-end
+local remotes = VTRReplicated.GetOrCreateRemoteFolder(Config.RemoteFolderName)
 
 local pendingRemote = remotes:FindFirstChild(Config.PendingRemoteName)
 if not pendingRemote then

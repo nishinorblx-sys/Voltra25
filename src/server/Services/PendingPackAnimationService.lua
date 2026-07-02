@@ -1,14 +1,10 @@
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local VTRReplicated = require((ReplicatedStorage:FindFirstChild("VTR") and ReplicatedStorage.VTR:FindFirstChild("Shared") or ReplicatedStorage:WaitForChild("Shared")):WaitForChild("VTRReplicated"))
 local DataStoreService = game:GetService("DataStoreService")
 local HttpService = game:GetService("HttpService")
 
-local folder = ReplicatedStorage:FindFirstChild("PackRewardAnimationRemotes")
-if not folder then
-	folder = Instance.new("Folder")
-	folder.Name = "PackRewardAnimationRemotes"
-	folder.Parent = ReplicatedStorage
-end
+local folder = VTRReplicated.GetOrCreateRemoteFolder("PackRewardAnimationRemotes")
 
 local showRemote = folder:FindFirstChild("ShowPackRewardAnimation")
 if not showRemote then
