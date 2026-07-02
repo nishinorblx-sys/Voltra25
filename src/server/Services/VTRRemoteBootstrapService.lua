@@ -44,6 +44,17 @@ local function getRoot()
 	return rootFolder
 end
 
+local function getShared()
+	local rootFolder = getRoot()
+	local shared = rootFolder:FindFirstChild("Shared") or ReplicatedStorage:FindFirstChild("Shared")
+	if not shared then
+		shared = Instance.new("Folder")
+		shared.Name = "Shared"
+		shared.Parent = rootFolder
+	end
+	return shared
+end
+
 local function getRemotes()
 	local rootFolder = getRoot()
 	local remotes = rootFolder:FindFirstChild("Remotes")
@@ -73,36 +84,20 @@ local function ensureRemote(parent, name, className)
 end
 
 local function defaultData(player, key)
-	local data = {}
-
-	if typeof(key) == "string" then
-		data.Key = key
-	end
-
-	local leaderstats = player:FindFirstChild("leaderstats")
-	if leaderstats then
-		for _, value in ipairs(leaderstats:GetChildren()) do
-			if value:IsA("ValueBase") then
-				data[value.Name] = value.Value
-			end
+	local defaultsModule = getShared():FindFirstChild("VTRDataDefaults")
+	if defaultsModule then
+		local ok, defaults = pcall(require, defaultsModule)
+		if ok and defaults and typeof(defaults.ForKey) == "function" then
+			return defaults.ForKey(player, key)
 		end
 	end
 
-	for _, attrName in ipairs({ "Wins", "TotalWins", "Coins", "Rank", "XP", "Level" }) do
-		local attr = player:GetAttribute(attrName)
-		if attr ~= nil then
-			data[attrName] = attr
-		end
-	end
-
-	return data
+	return {}
 end
 
 local function attachDefaultFunction(remote)
 	if remote and remote:IsA("RemoteFunction") then
-		pcall(function()
-			remote.OnServerInvoke = defaultData
-		end)
+		remote.OnServerInvoke = defaultData
 	end
 end
 

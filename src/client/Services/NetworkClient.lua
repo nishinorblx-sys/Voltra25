@@ -1,6 +1,7 @@
 --!strict
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local VTRDataDefaults = require((ReplicatedStorage:FindFirstChild("VTR") and ReplicatedStorage.VTR:FindFirstChild("Shared") or ReplicatedStorage:WaitForChild("Shared")):WaitForChild("VTRDataDefaults"))
 local function vtrWaitNetworkRemote(name, className)
 	local vtr = ReplicatedStorage:WaitForChild("VTR", 10) or ReplicatedStorage:FindFirstChild("VTR")
 	local remotes = vtr and (vtr:FindFirstChild("Remotes") or vtr:WaitForChild("Remotes", 10))
