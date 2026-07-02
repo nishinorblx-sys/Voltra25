@@ -1,4 +1,5 @@
 --!strict
+local PackRouletteAlignmentService = require(game:GetService("ReplicatedStorage"):WaitForChild("Client"):WaitForChild("Services"):WaitForChild("PackRouletteAlignmentService"))
 local ReplicatedStorage=game:GetService("ReplicatedStorage")
 local Theme=require(ReplicatedStorage.VTR.Shared.Theme)
 local Panel=require(script.Parent.Parent.Components.Panel)
@@ -42,4 +43,54 @@ function Controller:_render()
 	elseif self.Stage==8 then local p=self:_base("SQUAD CONFIRMATION","YOUR FIRST XI IS READY","Cards were granted, the best players were auto-filled and launch objectives are active.");label(p,#self.Reveals.." CARDS ADDED  /  11 STARTERS SELECTED",215,14,Theme.Colors.White,Theme.Fonts.Strong);for index,card in self.Reveals do if index<=5 then label(p,card.Rating.."  "..card.Position.."  "..card.Name,252+(index-1)*27,10,Theme.Colors.Silver,Theme.Fonts.Strong,20)end end;self:_next(p,"VIEW OBJECTIVES",function()self.Stage=9;self:_render()end)
 	else local p=self:_base("OBJECTIVES ACTIVE","THE VOLTRA JOURNEY BEGINS","Progress updates and rewards are controlled by server systems.");for index,objective in self.Progression.Objectives do if index<=4 then label(p,string.upper(objective.Cadence).."  /  "..objective.Title,205+(index-1)*40,11,index==1 and Theme.Colors.White or Theme.Colors.White,Theme.Fonts.Strong,22)end end;self:_next(p,"ENTER HOME",function()if self:_request("CompleteOnboarding")then self.Overlay:Destroy();self.OnComplete()end end)end
 end
+local function vtrFindRouletteGuiObjects(root)
+	local scroller
+	local container
+
+	if typeof(root) ~= "Instance" then
+		return nil, nil
+	end
+
+	for _, obj in ipairs(root:GetDescendants()) do
+		if obj:IsA("ScrollingFrame") then
+			local n = string.lower(obj.Name)
+			if string.find(n, "roulette") or string.find(n, "spin") or string.find(n, "reward") or string.find(n, "pack") then
+				scroller = obj
+				break
+			end
+			scroller = scroller or obj
+		end
+	end
+
+	if scroller then
+		for _, obj in ipairs(scroller:GetDescendants()) do
+			if obj:IsA("GuiObject") then
+				local hasPack = obj:GetAttribute("PackId") or obj:GetAttribute("PackName")
+				local n = string.lower(obj.Name)
+				if hasPack or string.find(n, "pack") or string.find(n, "card") or string.find(n, "item") then
+					container = obj.Parent
+					break
+				end
+			end
+		end
+	end
+
+	return scroller, container
+end
+
+local function vtrForceRouletteWinningCenter(root, winningPack, winningIndex)
+	if not winningPack then
+		return
+	end
+
+	task.defer(function()
+		local scroller, container = vtrFindRouletteGuiObjects(root)
+		if scroller and container then
+			PackRouletteAlignmentService.ForceWinningCenter(scroller, container, winningPack, winningIndex)
+			task.wait(0.05)
+			PackRouletteAlignmentService.ForceWinningCenter(scroller, container, winningPack, winningIndex)
+		end
+	end)
+end
+
 return Controller

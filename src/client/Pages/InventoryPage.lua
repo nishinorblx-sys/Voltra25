@@ -1,4 +1,5 @@
 --!strict
+local PackRouletteAlignmentService = require(script.Parent.Parent.Services:WaitForChild("PackRouletteAlignmentService"))
 local ReplicatedStorage=game:GetService("ReplicatedStorage")
 local Theme=require(ReplicatedStorage.VTR.Shared.Theme)
 local PageBase=require(script.Parent.PageBase)
@@ -77,4 +78,54 @@ function Page.new(context:any):CanvasGroup
 	render=function()if os.clock()<leavingLockedUntil or not isCurrent() then scroll.Visible=false;scroll.Active=false;for _,child in body:GetChildren()do child:Destroy()end;return end;scroll.Visible=true;scroll.Active=true;for _,child in body:GetChildren()do child:Destroy()end;for name,button in tabButtons do Button.setPrimary(button,name==activeTab)end;if activeTab=="Packs"then renderPacks()elseif activeTab=="Players"then renderPlayers()else local items={};for _,list in {data.Cosmetics or{},data.Kits or{},data.Stadiums or{}}do for _,item in list do table.insert(items,item)end end;renderItems(items,"Club Items","Kits, badges and stadium cosmetics appear here.")end end
 	for _,name in TABS do local tab=Button.new({Text=string.upper(name),Variant=name==activeTab and "Primary"or"Secondary",Size=UDim2.fromOffset(name=="Transfer Market"and 145 or 105,36),OnActivated=function()activeTab=name;context.StateService:SetTab("Inventory",name);render()end});tab.Parent=tabs;tabButtons[name]=tab end;render();group:GetPropertyChangedSignal("Visible"):Connect(function()if group.Visible and isCurrent() then leavingLockedUntil=0;refresh();render()else cleanup()end end);return group
 end
+local function vtrFindRouletteGuiObjects(root)
+	local scroller
+	local container
+
+	if typeof(root) ~= "Instance" then
+		return nil, nil
+	end
+
+	for _, obj in ipairs(root:GetDescendants()) do
+		if obj:IsA("ScrollingFrame") then
+			local n = string.lower(obj.Name)
+			if string.find(n, "roulette") or string.find(n, "spin") or string.find(n, "reward") or string.find(n, "pack") then
+				scroller = obj
+				break
+			end
+			scroller = scroller or obj
+		end
+	end
+
+	if scroller then
+		for _, obj in ipairs(scroller:GetDescendants()) do
+			if obj:IsA("GuiObject") then
+				local hasPack = obj:GetAttribute("PackId") or obj:GetAttribute("PackName")
+				local n = string.lower(obj.Name)
+				if hasPack or string.find(n, "pack") or string.find(n, "card") or string.find(n, "item") then
+					container = obj.Parent
+					break
+				end
+			end
+		end
+	end
+
+	return scroller, container
+end
+
+local function vtrForceRouletteWinningCenter(root, winningPack, winningIndex)
+	if not winningPack then
+		return
+	end
+
+	task.defer(function()
+		local scroller, container = vtrFindRouletteGuiObjects(root)
+		if scroller and container then
+			PackRouletteAlignmentService.ForceWinningCenter(scroller, container, winningPack, winningIndex)
+			task.wait(0.05)
+			PackRouletteAlignmentService.ForceWinningCenter(scroller, container, winningPack, winningIndex)
+		end
+	end)
+end
+
 return Page

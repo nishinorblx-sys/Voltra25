@@ -1,5 +1,6 @@
 --!strict
 local DeviceScaleService = require(script:FindFirstAncestor("VTRClient").Services.DeviceScaleService)
+local PackRouletteAlignmentService = require(script.Parent.Parent.Services:WaitForChild("PackRouletteAlignmentService"))
 local Players=game:GetService("Players")
 local RunService=game:GetService("RunService")
 local GuiService=game:GetService("GuiService")
@@ -560,4 +561,91 @@ function Controller:_cleanup(restoreMenu:boolean)
 		clearGreenScreenEffects()
 	end
 end
+local function vtrClearSetPiecePreviewObjects()
+	for _,container in ipairs({workspace, game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui")}) do
+		for _,obj in ipairs(container:GetDescendants()) do
+			local n=string.lower(obj.Name)
+			local isPath=(string.find(n,"preview") or string.find(n,"trajectory") or string.find(n,"pathway") or string.find(n,"aimpath"))
+			local isSetPiece=(string.find(n,"free") or string.find(n,"setpiece") or string.find(n,"penalty") or string.find(n,"vtr"))
+			if isPath and isSetPiece then
+				obj:Destroy()
+			end
+		end
+	end
+end
+
+local function vtrBindSetPiecePreviewClear(remote)
+	if not remote:IsA("RemoteEvent") then
+		return
+	end
+	local n=string.lower(remote.Name)
+	if string.find(n,"setpiece") or string.find(n,"free") or string.find(n,"penalty") or string.find(n,"decision") then
+		remote.OnClientEvent:Connect(function(payload)
+			if typeof(payload)=="table" then
+				local t=tostring(payload.Type or payload.type or "")
+				if string.find(t,"ClearSetPiecePreview") or string.find(t,"Auto") or string.find(t,"Decision") or string.find(t,"Resolved") or string.find(t,"KickTaken") then
+					task.defer(vtrClearSetPiecePreviewObjects)
+					task.delay(.35,vtrClearSetPiecePreviewObjects)
+				end
+			end
+		end)
+	end
+end
+
+for _,remote in ipairs(game:GetService("ReplicatedStorage"):GetDescendants()) do
+	vtrBindSetPiecePreviewClear(remote)
+end
+
+game:GetService("ReplicatedStorage").DescendantAdded:Connect(vtrBindSetPiecePreviewClear)
+
+local function vtrFindRouletteGuiObjects(root)
+	local scroller
+	local container
+
+	if typeof(root) ~= "Instance" then
+		return nil, nil
+	end
+
+	for _, obj in ipairs(root:GetDescendants()) do
+		if obj:IsA("ScrollingFrame") then
+			local n = string.lower(obj.Name)
+			if string.find(n, "roulette") or string.find(n, "spin") or string.find(n, "reward") or string.find(n, "pack") then
+				scroller = obj
+				break
+			end
+			scroller = scroller or obj
+		end
+	end
+
+	if scroller then
+		for _, obj in ipairs(scroller:GetDescendants()) do
+			if obj:IsA("GuiObject") then
+				local hasPack = obj:GetAttribute("PackId") or obj:GetAttribute("PackName")
+				local n = string.lower(obj.Name)
+				if hasPack or string.find(n, "pack") or string.find(n, "card") or string.find(n, "item") then
+					container = obj.Parent
+					break
+				end
+			end
+		end
+	end
+
+	return scroller, container
+end
+
+local function vtrForceRouletteWinningCenter(root, winningPack, winningIndex)
+	if not winningPack then
+		return
+	end
+
+	task.defer(function()
+		local scroller, container = vtrFindRouletteGuiObjects(root)
+		if scroller and container then
+			PackRouletteAlignmentService.ForceWinningCenter(scroller, container, winningPack, winningIndex)
+			task.wait(0.05)
+			PackRouletteAlignmentService.ForceWinningCenter(scroller, container, winningPack, winningIndex)
+		end
+	end)
+end
+
 return Controller
