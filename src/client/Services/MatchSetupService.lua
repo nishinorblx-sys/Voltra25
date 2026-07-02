@@ -1,3 +1,22 @@
+local function vtrWaitForMatchSetupAction()
+	local vtr = ReplicatedStorage:WaitForChild("VTR", 10) or ReplicatedStorage:FindFirstChild("VTR")
+	local remotes = vtr and (vtr:FindFirstChild("Remotes") or vtr:WaitForChild("Remotes", 10))
+	local remote = remotes and (remotes:FindFirstChild("MatchSetupAction") or remotes:WaitForChild("MatchSetupAction", 10))
+
+	if remote then
+		return remote
+	end
+
+	local fallbackRemotes = ReplicatedStorage:FindFirstChild("Remotes")
+	remote = fallbackRemotes and fallbackRemotes:FindFirstChild("MatchSetupAction")
+
+	if remote then
+		return remote
+	end
+
+	warn("MatchSetupAction remote missing")
+	return nil
+end
 local MATCHUP_PANEL_DELAY = 0.85
 --!strict
 local ReplicatedStorage=game:GetService("ReplicatedStorage")
