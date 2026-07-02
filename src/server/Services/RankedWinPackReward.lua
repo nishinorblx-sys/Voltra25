@@ -78,6 +78,9 @@ local function directAddPack(progression: any, player: Player, packId: string): 
 	local instance = PackInstanceFactory.Create(packId, "RankedWin")
 	if not instance then return nil end
 	table.insert(profile.PackInventory, instance)
+	if player and typeof(player) == "Instance" and player:IsA("Player") then
+		VTRPendingPackAnimation.Queue(player, packId)
+	end
 	return instance
 end
 
@@ -110,10 +113,11 @@ function Service.Grant(progression: any, player: Player, publish: ((Player, stri
 		for _, packId in attempts do
 			local ok, result = pcall(function()
 				local definition = Catalog.Packs[packId]
-				return progression.Inventory:AddPack(player, packId, definition and definition.Name or packId, "RankedWin", 1)
-				if player and typeof(player) == "Instance" and player:IsA("Player") then
+				local addResult = progression.Inventory:AddPack(player, packId, definition and definition.Name or packId, "RankedWin", 1)
+				if addResult and player and typeof(player) == "Instance" and player:IsA("Player") then
 					VTRPendingPackAnimation.Queue(player, packId)
 				end
+				return addResult
 			end)
 			if ok and result then
 				granted = true

@@ -246,10 +246,11 @@ function Service:_grantSpecificRankedPack(player: Player, packId: string?): bool
 	local granted = false
 	if self.Progression and self.Progression.Inventory and self.Progression.Inventory.AddPack then
 		local ok, result = pcall(function()
-			return self.Progression.Inventory:AddPack(player, id, id, "RankedWin", 1)
-			if player and typeof(player) == "Instance" and player:IsA("Player") then
+			local addResult = self.Progression.Inventory:AddPack(player, id, id, "RankedWin", 1)
+			if addResult ~= nil and addResult ~= false and player and typeof(player) == "Instance" and player:IsA("Player") then
 				VTRPendingPackAnimation.Queue(player, id)
 			end
+			return addResult
 		end)
 		granted = ok and result ~= nil and result ~= false
 	end
