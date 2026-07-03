@@ -226,7 +226,7 @@ function RankedPage.new(context: any): CanvasGroup
 
 	local path = track(Panel.new({Name = "SevenGamePath", Position = UDim2.fromOffset(0, 98), Size = UDim2.new(1, 0, 0, 276), ClipsDescendants = false}))
 	path.Parent = scroll
-	text(path, "7-GAME PATH", UDim2.fromOffset(24, 20), UDim2.new(.5, -24, 0, 34), 26, Theme.Colors.White, Theme.Fonts.Display)
+	text(path, "DIVISION PATH", UDim2.fromOffset(24, 20), UDim2.new(.5, -24, 0, 34), 26, Theme.Colors.White, Theme.Fonts.Display)
 	text(path, tostring(games) .. " / 7 GAMES", UDim2.new(.72, 0, 0, 24), UDim2.new(.24, 0, 0, 30), 18, Theme.Colors.Electric, Theme.Fonts.Display).TextXAlignment = Enum.TextXAlignment.Right
 	text(path, tostring(wins) .. "W  /  " .. tostring(draws) .. "D  /  " .. tostring(losses) .. "L", UDim2.new(.72, 0, 0, 58), UDim2.new(.24, 0, 0, 18), 8, Theme.Colors.Muted, Theme.Fonts.Strong).TextXAlignment = Enum.TextXAlignment.Right
 

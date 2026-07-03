@@ -6,7 +6,7 @@ local ServerScriptService = game:GetService("ServerScriptService")
 local sharedFolder = ReplicatedStorage:FindFirstChild("VTR") and ReplicatedStorage.VTR:FindFirstChild("Shared") or ReplicatedStorage:FindFirstChild("Shared") or ReplicatedStorage
 local Config = require(sharedFolder:WaitForChild("SevenWinLoginRewardConfig"))
 
-local store = DataStoreService:GetDataStore(Config.ClaimKey .. "_Path_v3")
+local store = DataStoreService:GetDataStore(Config.ClaimKey .. "_Path_v4")
 local pendingByUserId = {}
 local started = false
 
@@ -335,7 +335,23 @@ confirmRemote.OnServerInvoke = function(player)
 	local pending = pendingByUserId[player.UserId]
 	local pathWins, totalWins, state = getPathWins(player)
 
-	if not pending and pathWins >= Config.MinimumWins then
+	if pathWins < Config.MinimumWins then
+		state.claimedWins = totalWins
+		state.updatedAt = os.time()
+		writeState(player, state)
+		pendingByUserId[player.UserId] = nil
+
+		player:SetAttribute("PathWins", 0)
+		player:SetAttribute("PathLosses", 0)
+		player:SetAttribute("PathGames", 0)
+		player:SetAttribute("DivisionPathWins", 0)
+		player:SetAttribute("DivisionPathLosses", 0)
+		player:SetAttribute("DivisionPathGames", 0)
+
+		return false, {}
+	end
+
+	if not pending then
 		pending = {
 			rewards = rollRewards(pathWins),
 			pathWins = pathWins,
@@ -343,7 +359,7 @@ confirmRemote.OnServerInvoke = function(player)
 		}
 	end
 
-	if not pending or typeof(pending.rewards) ~= "table" or #pending.rewards == 0 then
+	if typeof(pending.rewards) ~= "table" or #pending.rewards == 0 then
 		state.claimedWins = totalWins
 		state.updatedAt = os.time()
 		writeState(player, state)
@@ -361,6 +377,13 @@ confirmRemote.OnServerInvoke = function(player)
 	writeState(player, state)
 
 	pendingByUserId[player.UserId] = nil
+
+	player:SetAttribute("PathWins", 0)
+	player:SetAttribute("PathLosses", 0)
+	player:SetAttribute("PathGames", 0)
+	player:SetAttribute("DivisionPathWins", 0)
+	player:SetAttribute("DivisionPathLosses", 0)
+	player:SetAttribute("DivisionPathGames", 0)
 
 	return true, pending.rewards
 end
