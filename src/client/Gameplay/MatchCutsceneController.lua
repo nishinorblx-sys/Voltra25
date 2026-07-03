@@ -39,7 +39,7 @@ function Controller:StadiumIntro(payload: any?)
 				if self.HUD.Gui then
 					self.HUD.Gui.Enabled = true
 				end
-				self.HUD:SetPhase("KICKOFF SETUP")
+				self.HUD:SetPhase("")
 			end
 		end)
 	end
@@ -62,7 +62,7 @@ function Controller:SkipStadiumIntro()
 		if self.HUD.Gui then
 			self.HUD.Gui.Enabled = true
 		end
-		self.HUD:SetPhase("KICKOFF SETUP")
+		self.HUD:SetPhase("")
 	end
 end
 

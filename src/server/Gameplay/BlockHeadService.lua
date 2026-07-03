@@ -1,10 +1,12 @@
 local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Workspace = game:GetService("Workspace")
 
 local BlockHeadService = {}
 
 local fixed = {}
 local started = false
+local cachedHeadSize = nil
 
 local function lower(value)
 	return string.lower(tostring(value or ""))
@@ -12,6 +14,41 @@ end
 
 local function hasHumanoid(model)
 	return model and model:IsA("Model") and model:FindFirstChildOfClass("Humanoid") ~= nil
+end
+
+local function isPresentationContainer(inst)
+	local current = inst
+
+	while current do
+		local name = lower(current.Name)
+		if string.find(name, "presentation") or string.find(name, "prematch") or string.find(name, "lineup") or string.find(name, "broadcast") then
+			return true
+		end
+		current = current.Parent
+	end
+
+	return false
+end
+
+local function findPresentationHeadSize()
+	if cachedHeadSize then
+		return cachedHeadSize
+	end
+
+	for _, rootInst in ipairs({ ReplicatedStorage, Workspace }) do
+		for _, inst in ipairs(rootInst:GetDescendants()) do
+			if inst.Name == "Head" and inst:IsA("Part") and isPresentationContainer(inst) then
+				local s = inst.Size
+				if s.X > 0.5 and s.Y > 0.5 and s.Z > 0.5 then
+					cachedHeadSize = s
+					return cachedHeadSize
+				end
+			end
+		end
+	end
+
+	cachedHeadSize = Vector3.new(2, 1, 1)
+	return cachedHeadSize
 end
 
 local function isMatchCharacter(model)
@@ -53,7 +90,11 @@ local function applyBlockScales(humanoid)
 	for _, name in ipairs({ "HeadScale", "BodyTypeScale", "ProportionScale" }) do
 		local value = humanoid:FindFirstChild(name)
 		if value and value:IsA("NumberValue") then
-			value.Value = name == "HeadScale" and 1 or 0
+			if name == "HeadScale" then
+				value.Value = 1
+			else
+				value.Value = 0
+			end
 		end
 	end
 end
@@ -98,14 +139,14 @@ local function squarePartHead(head)
 	end
 
 	head.Shape = Enum.PartType.Block
-	head.Size = Vector3.new(math.max(head.Size.X, 1.6), math.max(head.Size.Y, 1), math.max(head.Size.Z, 1.6))
+	head.Size = findPresentationHeadSize()
 	head:SetAttribute("VTRBlockHeadFixed", true)
 end
 
 local function replaceMeshHead(model, head)
 	local newHead = Instance.new("Part")
 	newHead.Name = "Head"
-	newHead.Size = Vector3.new(math.max(head.Size.X, 1.6), math.max(head.Size.Y, 1), math.max(head.Size.Z, 1.6))
+	newHead.Size = findPresentationHeadSize()
 	newHead.CFrame = head.CFrame
 	newHead.Color = head.Color
 	newHead.Material = head.Material
@@ -178,7 +219,6 @@ function BlockHeadService.Start()
 	end
 
 	started = true
-
 	BlockHeadService.Scan()
 
 	Workspace.DescendantAdded:Connect(function(inst)
@@ -197,14 +237,6 @@ function BlockHeadService.Start()
 		end
 	end)
 
-	Players.PlayerAdded:Connect(function(player)
-		player.CharacterAdded:Connect(function(character)
-			task.wait(0.35)
-			fixed[character] = nil
-			BlockHeadService.FixCharacter(character)
-		end)
-	end)
-
 	for _, player in ipairs(Players:GetPlayers()) do
 		if player.Character then
 			task.defer(function()
@@ -218,6 +250,14 @@ function BlockHeadService.Start()
 			BlockHeadService.FixCharacter(character)
 		end)
 	end
+
+	Players.PlayerAdded:Connect(function(player)
+		player.CharacterAdded:Connect(function(character)
+			task.wait(0.35)
+			fixed[character] = nil
+			BlockHeadService.FixCharacter(character)
+		end)
+	end)
 end
 
 BlockHeadService.Start()
