@@ -10,48 +10,53 @@ local Button = require(script.Parent.Parent.Components.Button)
 local RankedQueuePresentation = require(script.Parent.Parent.Components.RankedQueuePresentation)
 local MatchSetupService = require(script.Parent.Parent.Services.MatchSetupService)
 local PageBase = require(script.Parent.PageBase)
-local function vtrIsRankedUiRoot(obj)
-	local current = obj
-
-	while current do
-		local name = string.lower(tostring(current.Name or ""))
-		if string.find(name, "ranked") or string.find(name, "division") or string.find(name, "path") then
-			return true
-		end
-		current = current.Parent
-	end
-
-	return false
+local function vtrSafeRankNumber(value)
+	local n = tonumber(value) or 0
+	return tostring(math.floor(n))
 end
 
-local function vtrFixRankedRogueText(root)
+local function vtrRankedPathData(value)
+	value = typeof(value) == "table" and value or {}
+
+	local wins = tonumber(value.PathWins or value.Wins or value.SeasonWins or value.QueueWins or value.RecordWins) or 0
+	local draws = tonumber(value.PathDraws or value.Draws or value.SeasonDraws or value.QueueDraws or value.RecordDraws) or 0
+	local losses = tonumber(value.PathLosses or value.Losses or value.SeasonLosses or value.QueueLosses or value.RecordLosses) or 0
+
+	value.PathWins = wins
+	value.PathDraws = draws
+	value.PathLosses = losses
+	value.PathRecordText = tostring(math.floor(wins)) .. "W / " .. tostring(math.floor(draws)) .. "D / " .. tostring(math.floor(losses)) .. "L"
+
+	return value
+end
+
+local function vtrFixPathStatText(root, rankedData)
 	if not root then
 		return
 	end
 
+	rankedData = vtrRankedPathData(rankedData)
+
 	for _, obj in ipairs(root:GetDescendants()) do
 		if obj:IsA("TextLabel") or obj:IsA("TextButton") then
-			local txt = tostring(obj.Text or "")
-			local clean = string.gsub(txt, "%s+", "")
+			local name = string.lower(tostring(obj.Name or ""))
+			local textValue = string.lower(tostring(obj.Text or ""))
 
-			if vtrIsRankedUiRoot(obj) and string.match(clean, "^[A-Za-z]$") then
-				obj.Visible = false
-				obj.Text = ""
-			end
-
-			if vtrIsRankedUiRoot(obj) then
-				obj.ClipsDescendants = false
-			end
-		elseif obj:IsA("ScrollingFrame") and vtrIsRankedUiRoot(obj) then
-			obj.ScrollBarThickness = 0
-			obj.ScrollingEnabled = false
-			obj.AutomaticCanvasSize = Enum.AutomaticSize.None
-			obj.CanvasPosition = Vector2.new(0, 0)
-			obj.CanvasSize = UDim2.fromScale(0, 0)
-		elseif obj:IsA("GuiObject") and vtrIsRankedUiRoot(obj) then
-			local p = obj.Position
-			if math.abs(p.X.Scale) > 2 or math.abs(p.Y.Scale) > 2 then
-				obj.Visible = false
+			if string.find(name, "pathwins") or string.find(name, "path_wins") or textValue == "path wins" then
+				local valueLabel = obj.Parent and obj.Parent:FindFirstChild("Value")
+				if valueLabel and (valueLabel:IsA("TextLabel") or valueLabel:IsA("TextButton")) then
+					valueLabel.Text = vtrSafeRankNumber(rankedData.PathWins)
+				end
+			elseif string.find(name, "pathlosses") or string.find(name, "path_losses") or textValue == "path losses" then
+				local valueLabel = obj.Parent and obj.Parent:FindFirstChild("Value")
+				if valueLabel and (valueLabel:IsA("TextLabel") or valueLabel:IsA("TextButton")) then
+					valueLabel.Text = vtrSafeRankNumber(rankedData.PathLosses)
+				end
+			elseif string.find(name, "pathrecord") or string.find(name, "path_record") or textValue == "path record" then
+				local valueLabel = obj.Parent and obj.Parent:FindFirstChild("Value")
+				if valueLabel and (valueLabel:IsA("TextLabel") or valueLabel:IsA("TextButton")) then
+					valueLabel.Text = rankedData.PathRecordText
+				end
 			end
 		end
 	end

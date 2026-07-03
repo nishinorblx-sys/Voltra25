@@ -117,15 +117,12 @@ end
 local function rollRewards(wins)
 	local packs = getAvailablePacks()
 	local rewards = {}
-	local chance = math.clamp(Config.BaseChance + wins * Config.ChancePerWin, 0, Config.MaxChance)
 
-	for _ = 1, wins do
-		if math.random() <= chance and #packs > 0 then
-			table.insert(rewards, packs[math.random(1, #packs)])
-		end
+	if #packs == 0 then
+		return rewards
 	end
 
-	if #rewards == 0 and #packs > 0 then
+	for _ = 1, math.max(1, wins) do
 		table.insert(rewards, packs[math.random(1, #packs)])
 	end
 

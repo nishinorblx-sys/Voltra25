@@ -1,9 +1,9 @@
 local SevenWinLoginRewardConfig = {}
 
 SevenWinLoginRewardConfig.MinimumWins = 7
-SevenWinLoginRewardConfig.BaseChance = 0.55
-SevenWinLoginRewardConfig.ChancePerWin = 0.035
-SevenWinLoginRewardConfig.MaxChance = 0.95
+SevenWinLoginRewardConfig.BaseChance = 1
+SevenWinLoginRewardConfig.ChancePerWin = 0
+SevenWinLoginRewardConfig.MaxChance = 1
 SevenWinLoginRewardConfig.ClaimKey = "SevenWinLoginReward_v1"
 SevenWinLoginRewardConfig.RemoteFolderName = "SevenWinLoginRewardRemotes"
 SevenWinLoginRewardConfig.PendingRemoteName = "PendingSevenWinLoginReward"
