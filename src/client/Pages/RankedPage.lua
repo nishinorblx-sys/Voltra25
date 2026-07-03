@@ -10,6 +10,43 @@ local Button = require(script.Parent.Parent.Components.Button)
 local RankedQueuePresentation = require(script.Parent.Parent.Components.RankedQueuePresentation)
 local MatchSetupService = require(script.Parent.Parent.Services.MatchSetupService)
 local PageBase = require(script.Parent.PageBase)
+local function vtrRewardClaimed(value)
+	if typeof(value) ~= "table" then
+		return {}
+	end
+
+	if typeof(vtrRewardClaimed(value)) ~= "table" then
+		value.RewardClaimed = {}
+	end
+
+	return vtrRewardClaimed(value)
+end
+
+local function vtrRankedSafe(value)
+	if typeof(value) ~= "table" then
+		value = {}
+	end
+
+	if typeof(vtrRewardClaimed(value)) ~= "table" then
+		value.RewardClaimed = {}
+	end
+
+	if typeof(value.Rewards) ~= "table" then
+		value.Rewards = {}
+	end
+
+	if typeof(value.Rank) ~= "string" then
+		value.Rank = tostring(value.Rank or "Bronze")
+	end
+
+	value.Division = tonumber(value.Division) or 1
+	value.Rating = tonumber(value.Rating) or 0
+	value.Wins = tonumber(value.Wins) or 0
+	value.Losses = tonumber(value.Losses) or 0
+
+	return value
+end
+
 
 local RankedPage = {}
 
@@ -224,7 +261,7 @@ function RankedPage.new(context: any): CanvasGroup
 	for index = 1, 7 do
 		addMarker(rail, index, results[index])
 	end
-	if games >= 7 and run.RewardClaimed ~= true then
+	if games >= 7 and vtrRewardClaimed(run) ~= true then
 		local claimOverlay = Instance.new("Frame")
 		claimOverlay.Name = "RankedPathClaimOverlay"
 		claimOverlay.BackgroundColor3 = Color3.fromHex("061205")
