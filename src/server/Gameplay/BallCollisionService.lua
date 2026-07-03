@@ -41,10 +41,20 @@ end
 function Service.ApplyScoredBall(ball: BasePart)
 	Service.Configure()
 	ball.CollisionGroup = "ScoredBall"
+	ball.CanCollide = true
+	ball.CanTouch = true
+	ball.CanQuery = true
 	local model = ball.Parent
 	if model and model:IsA("Model") then
 		for _, descendant in model:GetDescendants() do
-			if descendant:IsA("BasePart") then descendant.CollisionGroup = "ScoredBall" end
+			if descendant:IsA("BasePart") then
+				descendant.CollisionGroup = "ScoredBall"
+				if descendant == ball then
+					descendant.CanCollide = true
+					descendant.CanTouch = true
+					descendant.CanQuery = true
+				end
+			end
 		end
 	end
 end
@@ -90,7 +100,8 @@ function Service.ApplyGoalNets()
 	local found = false
 	local names = {HomeNet = true, AwayNet = true, Net = true}
 	for _, item in workspace:GetDescendants() do
-		if names[item.Name] then
+		local lowerName = string.lower(item.Name)
+		if names[item.Name] or string.find(lowerName, "net", 1, true) then
 			if item:IsA("BasePart") then
 				found = true
 				item.CollisionGroup = "GoalNet"

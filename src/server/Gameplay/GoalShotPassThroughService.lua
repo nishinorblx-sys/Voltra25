@@ -181,6 +181,44 @@ function GoalShotPassThroughService.Force(ball, duration)
 	ghostGoalkeepers(duration)
 end
 
+function GoalShotPassThroughService.Clear(ball)
+	local resolved = GoalShotPassThroughService.ResolveBall(ball)
+	if not resolved then
+		return
+	end
+
+	local function restore(inst)
+		if not inst or not inst:IsA("BasePart") then
+			return
+		end
+		local old = inst:GetAttribute("VTRGoalPassOldCanCollide")
+		if typeof(old) == "boolean" then
+			inst.CanCollide = old
+		else
+			inst.CanCollide = true
+		end
+		inst:SetAttribute("VTRGoalPassOldSet", nil)
+		inst:SetAttribute("VTRGoalPassOldCanCollide", nil)
+		inst:SetAttribute("VTRGoalPassThroughUntil", nil)
+	end
+
+	restore(resolved)
+	for _, child in ipairs(resolved:GetDescendants()) do
+		restore(child)
+	end
+
+	resolved:SetAttribute("VTRForceGoalThroughKeeper", nil)
+	resolved:SetAttribute("VTRForceGoalThroughKeeperUntil", nil)
+	local model = resolved:FindFirstAncestorOfClass("Model")
+	if model and isBallInstance(model) then
+		model:SetAttribute("VTRForceGoalThroughKeeper", nil)
+		model:SetAttribute("VTRForceGoalThroughKeeperUntil", nil)
+		for _, child in ipairs(model:GetDescendants()) do
+			restore(child)
+		end
+	end
+end
+
 function GoalShotPassThroughService.ShouldBypass(ball)
 	local resolved = GoalShotPassThroughService.ResolveBall(ball)
 	if not resolved then

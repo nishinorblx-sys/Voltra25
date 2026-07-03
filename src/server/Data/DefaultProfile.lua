@@ -6,7 +6,7 @@ return table.freeze({
 	Version=10,SchemaVersion=10,CreatedAt=0,LastLogin=0,OnboardingCompleted=false,
 	Profile={Level=1,XP=0,SelectedClub="NO CLUB",Avatar={UserId=0,HeadshotType="HeadShot",OutfitId=0}},
 	Currency={Coins=EconomyConfig.StarterCoins,Bolts=EconomyConfig.StarterBolts},Season={Name="SEASON 01",Level=1,XP=0,RequiredXP=1000},
-	Ranked={Division="DIVISION 10",DivisionNumber=10,DivisionWins=0,ProtectedWins=0,VoltraRating=0,Rank="NEW SEASON",PlacementStatus="PLACEMENT READY",Wins=0,Draws=0,Losses=0,RP=0,RequiredRP=10,WinStreak=0,History={},PlayerStats={MatchesPlayed=0,Goals=0,Assists=0,MOTM=0,AverageRating=0,HatTricks=0,PenaltiesScored=0,FreeKickGoals=0}},
+	Ranked={Division="DIVISION 10",DivisionNumber=10,DivisionWins=0,ProtectedWins=0,VoltraRating=0,Rank="NEW SEASON",PlacementStatus="PLACEMENT READY",Wins=0,Draws=0,Losses=0,RP=0,RequiredRP=10,WinStreak=0,BestWinStreak=0,FlawlessRuns=0,CleanSheets=0,BestPackRating=0,History={},PlayerStats={MatchesPlayed=0,Goals=0,Assists=0,MOTM=0,AverageRating=0,HatTricks=0,PenaltiesScored=0,FreeKickGoals=0}},
 	Objectives={
 		{objectiveId="build_first_xi",groupId="starter_journey",sortOrder=1,title="BUILD FIRST XI",description="Fill all 11 starting squad positions",progress=0,target=11,reward={Type="XP",Amount=250},status="locked",nextObjectiveId="open_first_pack",cadence="Starter"},
 		{objectiveId="open_first_pack",groupId="starter_journey",sortOrder=2,title="OPEN FIRST PACK",description="Open your first VTR player pack",progress=0,target=1,reward={Type="Coins",Amount=500},status="locked",nextObjectiveId="upgrade_squad_rating",cadence="Starter"},

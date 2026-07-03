@@ -27,6 +27,7 @@ local PlayerDatabaseService = require(script.Parent.Parent.Services.PlayerDataba
 local MatchSetupService = require(script.Parent.Parent.Services.MatchSetupService)
 local SettingsRuntimeService = require(script.Parent.Parent.Services.SettingsRuntimeService)
 local UISoundService = require(script.Parent.Parent.Services.UISoundService)
+local MenuMusicService = require(script.Parent.Parent.Services.MenuMusicService)
 local PlayerDetailsModal = require(script.Parent.Parent.Components.PlayerDetailsModal)
 local FlowController = require(script.Parent.FlowController)
 local LoadingScreen = require(script.Parent.Parent.Components.LoadingScreen)
@@ -141,6 +142,7 @@ function UIController:Start()
 	end
 	self.Data = data
 	SettingsRuntimeService.Apply(data.UIState.Settings)
+	MenuMusicService.Start()
 
 	local scale = Instance.new("UIScale")
 	scale.Parent = root

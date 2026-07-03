@@ -100,6 +100,11 @@ end
 
 function Service.Grant(progression: any, player: Player, publish: ((Player, string, any) -> ())?): any
 	local pack = Service.Roll()
+	local matchReward = progression and progression.GrantMatchRewards and progression:GrantMatchRewards(player, {
+		Title = "RANKED WIN REWARD",
+		Coins = 1500,
+		XP = 350,
+	}) or nil
 	local granted = false
 	local grantedId = pack.PackId
 	local grantedInstance = nil
@@ -144,8 +149,8 @@ function Service.Grant(progression: any, player: Player, publish: ((Player, stri
 	publishAll(progression, publish, player)
 	return {
 		Title = "RANKED WIN REWARD",
-		Coins = 0,
-		XP = 0,
+		Coins = matchReward and matchReward.Coins or 1500,
+		XP = matchReward and matchReward.XP or 350,
 		Pack = pack.Name,
 		PackName = pack.Name,
 		PackId = grantedId,

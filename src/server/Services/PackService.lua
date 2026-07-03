@@ -45,7 +45,11 @@ local function rollCardType(definition:any,index:number): string?
 end
 
 function PackService.new(profiles: any, inventory: any)
-	return setmetatable({ Profiles = profiles, Inventory = inventory, LastOpen = {} }, PackService)
+	return setmetatable({ Profiles = profiles, Inventory = inventory, LastOpen = {}, RankedProfiles = nil }, PackService)
+end
+
+function PackService:SetRankedProfiles(rankedProfiles:any)
+	self.RankedProfiles=rankedProfiles
 end
 
 function PackService:GetClientData(player: Player): any?
@@ -125,7 +129,12 @@ function PackService:Open(player: Player, packInstanceId: string): (boolean, { a
 	end
 	owned.status = "opened";owned.Status = "opened";owned.openedAt = os.time();owned.Count = 0
 	local best=reveals[1];for _,card in reveals do if (card.Rating or card.overall or 0)>(best.Rating or best.overall or 0) then best=card end end
-	owned.bestPull={cardInstanceId=best.cardInstanceId or best.Id,playerId=best.playerId or best.PlayerId,name=best.Name or best.displayName,rating=best.Rating or best.overall,position=best.Position or best.bestPosition,rarity=best.Rarity or best.rarity,cardType=best.CardType or best.cardType}
+	local packRating=math.floor(tonumber(best.Rating or best.overall)or 0)
+	owned.bestPull={cardInstanceId=best.cardInstanceId or best.Id,playerId=best.playerId or best.PlayerId,name=best.Name or best.displayName,rating=packRating,position=best.Position or best.bestPosition,rarity=best.Rarity or best.rarity,cardType=best.CardType or best.cardType}
+	owned.packRating=packRating;owned.PackRating=packRating
+	if self.RankedProfiles and self.RankedProfiles.RecordPackRating then
+		self.RankedProfiles:RecordPackRating(player,packRating)
+	end
 	return true, reveals
 end
 

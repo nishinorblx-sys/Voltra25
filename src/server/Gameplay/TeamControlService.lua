@@ -24,7 +24,7 @@ local function autoSwitchMode(value: any): string
 end
 
 local function receiverAssistMode(value: any): string
-	return value == "Off" and "Off" or value == "Assisted" and "Assisted" or "Light"
+	return "Off"
 end
 
 local function debugEnabled(): boolean

@@ -2,7 +2,8 @@
 local ReplicatedStorage=game:GetService("ReplicatedStorage")
 local NetworkConfig=require(ReplicatedStorage.VTR.Shared.NetworkConfig)
 local base=require(script.Parent.ServiceClient).create("Progression")
-local claimRemote=ReplicatedStorage.VTR:WaitForChild(NetworkConfig.FolderName):WaitForChild(NetworkConfig.ProgressionFunction)::RemoteFunction
+local RemoteResolver=require(script.Parent.RemoteResolver)
+local claimRemote=RemoteResolver.WaitForFunction(NetworkConfig.ProgressionFunction)
 local Service={}
 function Service:Get() return base:Get() end
 function Service:Observe(callback:(any)->()) return base:Observe(callback) end

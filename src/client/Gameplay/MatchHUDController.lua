@@ -240,74 +240,55 @@ function Controller.new(data: any)
 	gui.Parent = Players.LocalPlayer.PlayerGui
 	DeviceScaleService.Apply(gui)
 
-	local board = panel(gui, UserInputService.TouchEnabled and UDim2.fromOffset(16, 86) or UDim2.fromOffset(18, 58), UDim2.fromOffset(132, 56))
-	board.BackgroundTransparency = 0.02
+	local topInset = GuiService:GetGuiInset()
+	local board = panel(gui, UserInputService.TouchEnabled and UDim2.fromOffset(16, math.max(86, topInset.Y + 62)) or UDim2.fromOffset(18, math.max(74, topInset.Y + 54)), UDim2.fromOffset(306, 84))
+	board.BackgroundTransparency = 0.12
 	board.Visible = false
-	local boardCorner = board:FindFirstChildOfClass("UICorner")
-	if boardCorner then boardCorner:Destroy() end
-	local boardStroke = board:FindFirstChildOfClass("UIStroke")
-	if boardStroke then boardStroke.Transparency = 0.88 end
 	local scoreScale = Instance.new("UIScale")
-	scoreScale.Scale = UserInputService.TouchEnabled and 1.22 or 1
+	scoreScale.Scale = UserInputService.TouchEnabled and 1.08 or 1.04
 	scoreScale.Parent = board
-	local strip = Instance.new("Frame")
-	strip.Name = "BroadcastStrip"
-	strip.BackgroundColor3 = Theme.Colors.Electric
-	strip.BorderSizePixel = 0
-	strip.Position = UDim2.fromOffset(0, 0)
-	strip.Size = UDim2.fromOffset(25, 56)
-	strip.ZIndex = 11
-	strip.Parent = board
-	local stripTop = label(strip, "V", UDim2.fromOffset(0, 4), UDim2.new(1, 0, 0, 22), 15)
-	stripTop.TextXAlignment = Enum.TextXAlignment.Center;stripTop.TextColor3 = Theme.Colors.Black
-	local stripBottom = label(strip, "V", UDim2.fromOffset(0, 30), UDim2.new(1, 0, 0, 22), 15)
-	stripBottom.TextXAlignment = Enum.TextXAlignment.Center;stripBottom.TextColor3 = Theme.Colors.Black
+	local strip: Frame? = nil
+	local stripTop: TextLabel? = nil
+	local stripBottom: TextLabel? = nil
 	local main = Instance.new("Frame")
-	main.Name = "BroadcastScoreMain"
-	main.BackgroundColor3 = Theme.Colors.Black
+	main.Name = "ScoreMain"
+	main.BackgroundTransparency = 1
 	main.BorderSizePixel = 0
-	main.Position = UDim2.fromOffset(25, 0)
-	main.Size = UDim2.fromOffset(107, 38)
+	main.Position = UDim2.fromOffset(10, 8)
+	main.Size = UDim2.new(1, -20, 0, 44)
 	main.ZIndex = 11
 	main.Parent = board
-	local mainStroke = Instance.new("UIStroke")
-	mainStroke.Color = Theme.Colors.Electric
-	mainStroke.Transparency = 0.58
-	mainStroke.Thickness = 1
-	mainStroke.Parent = main
 	local clockPanel = Instance.new("Frame")
-	clockPanel.Name = "BroadcastClockPanel"
-	clockPanel.BackgroundColor3 = Theme.Colors.White
+	clockPanel.Name = "ClockPanel"
+	clockPanel.BackgroundTransparency = 1
 	clockPanel.BorderSizePixel = 0
-	clockPanel.Position = UDim2.fromOffset(25, 38)
-	clockPanel.Size = UDim2.fromOffset(107, 18)
+	clockPanel.Position = UDim2.fromOffset(10, 52)
+	clockPanel.Size = UDim2.new(1, -20, 0, 24)
 	clockPanel.ZIndex = 11
 	clockPanel.Parent = board
-	local clockAccent = Instance.new("Frame")
-	clockAccent.BackgroundColor3 = Theme.Colors.Electric
-	clockAccent.BorderSizePixel = 0
-	clockAccent.Position = UDim2.new(1, -18, 0, 0)
-	clockAccent.Size = UDim2.fromOffset(18, 18)
-	clockAccent.ZIndex = 12
-	clockAccent.Parent = clockPanel
-	local homeCode = label(main, shortCode(data.Home), UDim2.fromOffset(5, 0), UDim2.fromOffset(34, 18), 12)
+	local clockAccent: Frame? = nil
+	local homeCode = label(main, shortCode(data.Home), UDim2.fromOffset(0, 5), UDim2.fromOffset(58, 28), 20)
 	homeCode.TextColor3 = Theme.Colors.White
-	local awayCode = label(main, shortCode(data.Away), UDim2.fromOffset(5, 19), UDim2.fromOffset(34, 18), 12)
+	local awayCode = label(main, shortCode(data.Away), UDim2.new(1, -58, 0, 5), UDim2.fromOffset(58, 28), 20)
+	awayCode.TextXAlignment = Enum.TextXAlignment.Right
 	awayCode.TextColor3 = Theme.Colors.White
-	local homeBadge = label(main, string.sub(tostring(data.HomeLogo or shortCode(data.Home)), 1, 2), UDim2.fromOffset(41, 3), UDim2.fromOffset(14, 11), 6)
+	local homeBadge = label(main, string.sub(tostring(data.HomeLogo or shortCode(data.Home)), 1, 2), UDim2.fromOffset(61, 4), UDim2.fromOffset(30, 30), 12)
 	homeBadge.TextXAlignment = Enum.TextXAlignment.Center;homeBadge.BackgroundColor3=badgeColor(data.HomeColor,Theme.Colors.Electric);homeBadge.BackgroundTransparency=0;homeBadge.TextColor3=Theme.Colors.Black;renderTeamBadge(homeBadge,data,"Home",1)
-	local awayBadge = label(main, string.sub(tostring(data.AwayLogo or shortCode(data.Away)), 1, 2), UDim2.fromOffset(41, 22), UDim2.fromOffset(14, 11), 6)
+	local awayBadge = label(main, string.sub(tostring(data.AwayLogo or shortCode(data.Away)), 1, 2), UDim2.new(1, -91, 0, 4), UDim2.fromOffset(30, 30), 12)
 	awayBadge.TextXAlignment = Enum.TextXAlignment.Center;awayBadge.BackgroundColor3=badgeColor(data.AwayColor,Theme.Colors.Silver);awayBadge.BackgroundTransparency=0;awayBadge.TextColor3=Theme.Colors.Black;renderTeamBadge(awayBadge,data,"Away",1)
-	local homeScoreLabel = label(main, "0", UDim2.fromOffset(86, 0), UDim2.fromOffset(18, 18), 12)
+	local homeScoreLabel = label(main, "0", UDim2.new(.5, -44, 0, 0), UDim2.fromOffset(34, 38), 27)
 	homeScoreLabel.TextXAlignment = Enum.TextXAlignment.Center
-	local awayScoreLabel = label(main, "0", UDim2.fromOffset(86, 19), UDim2.fromOffset(18, 18), 12)
+	local separator = label(main, "-", UDim2.new(.5, -8, 0, 0), UDim2.fromOffset(16, 38), 24)
+	separator.TextXAlignment = Enum.TextXAlignment.Center
+	separator.TextColor3 = Theme.Colors.Silver
+	local awayScoreLabel = label(main, "0", UDim2.new(.5, 10, 0, 0), UDim2.fromOffset(34, 38), 27)
 	awayScoreLabel.TextXAlignment = Enum.TextXAlignment.Center
 	local score = label(main, "", UDim2.fromOffset(0, 0), UDim2.fromOffset(1, 1), 1)
 	score.Visible = false
-	local clock = label(clockPanel, "00:00", UDim2.fromOffset(5, 0), UDim2.new(1, -10, 1, 0), 10)
-	clock.TextXAlignment = Enum.TextXAlignment.Left
-	clock.TextColor3 = Theme.Colors.Black
-	local possession = label(board, "", UDim2.fromOffset(42, 54), UDim2.new(1, -48, 0, 16), 9)
+	local clock = label(clockPanel, "00:00", UDim2.fromOffset(0, 0), UDim2.new(1, 0, 1, 0), 16)
+	clock.TextXAlignment = Enum.TextXAlignment.Center
+	clock.TextColor3 = Theme.Colors.Electric
+	local possession = label(board, "", UDim2.fromOffset(84, 78), UDim2.new(1, -96, 0, 20), 12)
 	possession.TextColor3 = Theme.Colors.Silver
 	possession.Visible = false
 	local scorerPanel = Instance.new("CanvasGroup")
@@ -617,15 +598,11 @@ function Controller:PlayScoreboardIntro(force: boolean?)
 	self.ScoreboardIntroPlayed = true
 	local board = self.Board
 	if not board then return end
+	local targetPosition = board.Position
 	board.Visible = true
-	board.Position = UDim2.fromOffset(-150, 58)
+	board.Position = targetPosition - UDim2.fromOffset(190, 0)
 	board.BackgroundTransparency = 1
-	self.ScoreScale.Scale = 0.96
-
-	local strip = self.Strip
-	local main = self.ScoreMain
-	local clockPanel = self.ClockPanel
-	local clockAccent = self.ClockAccent
+	self.ScoreScale.Scale = 0.98
 	local textParts = {self.StripTop, self.StripBottom, self.HomeCodeLabel, self.AwayCodeLabel, self.HomeScoreLabel, self.AwayScoreLabel, self.Clock}
 	for _, item in textParts do
 		if item and item:IsA("TextLabel") then
@@ -638,61 +615,35 @@ function Controller:PlayScoreboardIntro(force: boolean?)
 			item.BackgroundTransparency = 1
 		end
 	end
-	if strip then strip.Size = UDim2.fromOffset(0, 56); strip.BackgroundColor3 = Theme.Colors.White end
-	if main then main.Size = UDim2.fromOffset(0, 38); main.BackgroundTransparency = 1 end
-	if clockPanel then clockPanel.Size = UDim2.fromOffset(0, 18); clockPanel.BackgroundTransparency = 1 end
-	if clockAccent then clockAccent.Size = UDim2.fromOffset(0, 18); clockAccent.BackgroundTransparency = 1 end
 
 	local assembly = Instance.new("Folder")
 	assembly.Name = "ScoreboardAssemblyFX"
 	assembly.Parent = board
-	for index = 1, 3 do
-		local rail = Instance.new("Frame")
-		rail.Name = "AssemblyRail" .. index
-		rail.BackgroundColor3 = index == 2 and Theme.Colors.White or Theme.Colors.Electric
-		rail.BackgroundTransparency = 0.15
-		rail.BorderSizePixel = 0
-		rail.Position = UDim2.fromOffset(8 + index * 22, index == 2 and -7 or 61)
-		rail.Size = UDim2.fromOffset(20, 2)
-		rail.ZIndex = 18
-		rail.Parent = assembly
-		tween(rail, 0.34 + index * 0.05, {Position = UDim2.fromOffset(12 + index * 28, index == 2 and 26 or 28), BackgroundTransparency = 1}, Enum.EasingStyle.Quad)
-	end
 	local scanner = Instance.new("Frame")
 	scanner.Name = "AssemblyScanner"
 	scanner.BackgroundColor3 = Theme.Colors.Electric
-	scanner.BackgroundTransparency = 0.05
+	scanner.BackgroundTransparency = 0.08
 	scanner.BorderSizePixel = 0
-	scanner.Position = UDim2.fromOffset(-8, 0)
-	scanner.Size = UDim2.fromOffset(4, 56)
+	scanner.Position = UDim2.fromOffset(10, 8)
+	scanner.Size = UDim2.fromOffset(4, 68)
 	scanner.ZIndex = 19
 	scanner.Parent = assembly
 
-	tween(board, 0.28, {Position = UDim2.fromOffset(18, 58), BackgroundTransparency = 0.02}, Enum.EasingStyle.Back)
-	task.delay(0.08, function()
-		if strip then tween(strip, 0.2, {Size = UDim2.fromOffset(25, 56), BackgroundColor3 = Theme.Colors.Electric}, Enum.EasingStyle.Back) end
-	end)
-	task.delay(0.18, function()
-		if main then tween(main, 0.32, {Size = UDim2.fromOffset(107, 38), BackgroundTransparency = 0}, Enum.EasingStyle.Quart) end
-		tween(scanner, 0.48, {Position = UDim2.fromOffset(136, 0), BackgroundTransparency = 0.82}, Enum.EasingStyle.Sine)
-	end)
-	task.delay(0.34, function()
-		if clockPanel then tween(clockPanel, 0.25, {Size = UDim2.fromOffset(107, 18), BackgroundTransparency = 0}, Enum.EasingStyle.Quart) end
-		if clockAccent then tween(clockAccent, 0.22, {Size = UDim2.fromOffset(18, 18), BackgroundTransparency = 0}, Enum.EasingStyle.Back) end
-	end)
-	task.delay(0.48, function()
+	tween(board, 0.28, {Position = targetPosition, BackgroundTransparency = 0.12}, Enum.EasingStyle.Back)
+	tween(scanner, 0.5, {Position = UDim2.new(1, -14, 0, 8), BackgroundTransparency = 1}, Enum.EasingStyle.Sine)
+	task.delay(0.2, function()
 		for _, item in textParts do
 			if item and item:IsA("TextLabel") then tween(item, 0.18, {TextTransparency = 0}, Enum.EasingStyle.Quad) end
 		end
 		for _, item in {self.HomeBadge, self.AwayBadge} do
 			if item and item:IsA("TextLabel") then tween(item, 0.18, {TextTransparency = 0, BackgroundTransparency = 0}, Enum.EasingStyle.Quad) end
 		end
-		tween(self.ScoreScale, 0.22, {Scale = 1.05}, Enum.EasingStyle.Back)
+		tween(self.ScoreScale, 0.22, {Scale = UserInputService.TouchEnabled and 1.1 or 1.06}, Enum.EasingStyle.Back)
 		task.delay(0.18, function()
-			if self.ScoreScale.Parent then tween(self.ScoreScale, 0.16, {Scale = 1}, Enum.EasingStyle.Quad) end
+			if self.ScoreScale.Parent then tween(self.ScoreScale, 0.16, {Scale = UserInputService.TouchEnabled and 1.08 or 1.04}, Enum.EasingStyle.Quad) end
 		end)
 	end)
-	task.delay(0.82, function()
+	task.delay(0.62, function()
 		if assembly.Parent then assembly:Destroy() end
 	end)
 end
@@ -1124,7 +1075,7 @@ function Controller:ShowHalfTime(payload: any)
 	local defensive=(tonumber(events.TackleWon)or 0)+(tonumber(events.Interception)or 0)
 	local passes=(tonumber(events.SuccessfulPass)or 0)+(tonumber(events.BadPass)or 0)
 	local passAccuracy=passes>0 and math.floor((tonumber(events.SuccessfulPass)or 0)/passes*100+.5)or 0
-	local xg=math.floor((tonumber(events.ExpectedGoals)or 0)*100+.5)/100
+	local xg=math.floor((tonumber(events.ExpectedGoals)or 0)*100)/100
 	local rows={{"MATCH RATING",string.format("%.1f",tonumber(entry.Rating)or 6)},{"GOALS",tostring(entry.Goals or 0)},{"ASSISTS",tostring(entry.Assists or 0)},{"SHOTS ON TARGET",tostring(events.ShotOnTarget or 0)},{"XG",tostring(xg)},{"DEFENSIVE CONTRIBUTIONS",tostring(defensive)},{"PASSES COMPLETED",tostring(events.SuccessfulPass or 0)},{"PASS ACCURACY",tostring(passAccuracy).."%"}}
 	local statsTitle=label(left,"STATS",UDim2.fromScale(.08,.63),UDim2.fromScale(.18,.04),13);statsTitle.TextColor3=Theme.Colors.Electric
 	for i,row in rows do
@@ -1334,7 +1285,7 @@ function Controller:SetPaused(paused: boolean, _cameraController: any, onReturn:
 		for _,entry in stats.PlayerRatings or{}do
 			local events=entry.Events or{}
 			local rowFrame=Instance.new("Frame");rowFrame.BackgroundColor3=entry.Team==controlledSide and Theme.Colors.Black or Theme.Colors.Gunmetal;rowFrame.BackgroundTransparency=entry.Team==controlledSide and .18 or .42;rowFrame.BorderSizePixel=0;rowFrame.Size=UDim2.new(1,-8,0,32);rowFrame.ZIndex=98;rowFrame.Parent=body;corner(rowFrame,5)
-			local values={entry.Position or"--",string.upper(entry.Name or"PLAYER"),string.format("%.1f",entry.Rating or 6),tostring(entry.Goals or 0),tostring(entry.Assists or 0),tostring(events.ShotOnTarget or 0),tostring(events.ExpectedGoals or 0),tostring(entry.DefensiveActions or 0)}
+			local values={entry.Position or"--",string.upper(entry.Name or"PLAYER"),string.format("%.1f",entry.Rating or 6),tostring(entry.Goals or 0),tostring(entry.Assists or 0),tostring(events.ShotOnTarget or 0),tostring(math.floor((tonumber(events.ExpectedGoals)or 0)*100)/100),tostring(entry.DefensiveActions or 0)}
 			for i,c in cols do local cell=label(rowFrame,values[i],UDim2.new(c[2],0,0,8),UDim2.new(c[3],0,0,16),8);cell.TextColor3=i==3 and Theme.Colors.Electric or Theme.Colors.White end
 		end
 		local shotCount=(stats.ShotMap and stats.ShotMap.Home and #stats.ShotMap.Home or 0)+(stats.ShotMap and stats.ShotMap.Away and #stats.ShotMap.Away or 0)
@@ -1975,24 +1926,9 @@ function Controller:ShowResult(payload: any, onReturn: () -> ())
 	local ratingButton=actionButton(tabs,"MATCH RATINGS",2,function()teamStats.Visible=false;ratings.Visible=true end);ratingButton.Size=UDim2.fromOffset(205,38);ratingButton.ZIndex=182
 	for _,tab in tabs:GetDescendants()do if tab:IsA("GuiObject")then tab.ZIndex=182 end end
 	if payload.Reward then
-		local hasPack=payload.Reward.Pack~=nil or tonumber(payload.Reward.Packs)~=nil
-		local reward=panel(overlay,hasPack and UDim2.new(.5,-190,.765,0)or UDim2.new(.5,-150,.775,0),hasPack and UDim2.fromOffset(380,74)or UDim2.fromOffset(300,44));reward.ZIndex=70
+		local reward=panel(overlay,UDim2.new(.5,-150,.775,0),UDim2.fromOffset(300,44));reward.ZIndex=70
 		local rewardScale=Instance.new("UIScale");rewardScale.Scale=.4;rewardScale.Parent=reward
 		local rewardText=label(reward,"*  "..string.upper(payload.Reward.Title).."   +"..tostring(payload.Reward.Coins or 0).." COINS   +"..tostring(payload.Reward.XP or 0).." XP",UDim2.fromOffset(8,7),UDim2.new(1,-16,0,22),9);rewardText.TextColor3=Theme.Colors.Electric;rewardText.TextXAlignment=Enum.TextXAlignment.Center
-		if hasPack then
-			local pack=Instance.new("Frame");pack.Name="PackRewardReveal";pack.AnchorPoint=Vector2.new(.5,0);pack.Position=UDim2.new(.5,0,0,33);pack.Size=UDim2.fromOffset(242,30);pack.BackgroundColor3=Theme.Colors.Gunmetal;pack.BackgroundTransparency=.08;pack.BorderSizePixel=0;pack.ZIndex=71;pack.Parent=reward;corner(pack,5);stroke(pack,Theme.Colors.Electric,.42)
-			local stripe=Instance.new("Frame");stripe.BackgroundColor3=Theme.Colors.White;stripe.BorderSizePixel=0;stripe.Position=UDim2.fromOffset(0,0);stripe.Size=UDim2.fromOffset(5,30);stripe.ZIndex=72;stripe.Parent=pack
-			local qty=math.max(1,tonumber(payload.Reward.Packs)or 1)
-			local packText=label(pack,(qty>1 and(tostring(qty).."x ")or"")..string.upper(tostring(payload.Reward.Pack or"PACK REWARD")),UDim2.fromOffset(16,6),UDim2.new(1,-26,0,18),8);packText.TextColor3=Theme.Colors.White;packText.TextXAlignment=Enum.TextXAlignment.Center
-			local packScale=Instance.new("UIScale");packScale.Scale=.72;packScale.Parent=pack
-			task.delay(.18,function()
-				if packScale.Parent then TweenService:Create(packScale,TweenInfo.new(.42,Enum.EasingStyle.Back,Enum.EasingDirection.Out),{Scale=1}):Play()end
-				if stripe.Parent then TweenService:Create(stripe,TweenInfo.new(.62,Enum.EasingStyle.Quad,Enum.EasingDirection.Out),{Size=UDim2.fromOffset(242,30),BackgroundTransparency=.82}):Play()end
-			end)
-			task.delay(.55,function()
-				if overlay.Parent then showPackRewardScreen(overlay,payload.Reward)end
-			end)
-		end
 		TweenService:Create(rewardScale,TweenInfo.new(.45,Enum.EasingStyle.Back,Enum.EasingDirection.Out),{Scale=1}):Play()
 	end
 	local returning = false

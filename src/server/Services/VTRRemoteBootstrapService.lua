@@ -8,11 +8,11 @@ local remoteList = {
 	ConfirmSevenWinLoginReward = "RemoteFunction",
 	DataUpdated = "RemoteEvent",
 	GameplayAction = "RemoteEvent",
-	InventoryAction = "RemoteEvent",
+	InventoryAction = "RemoteFunction",
 	KickoffAction = "RemoteEvent",
 	MatchAction = "RemoteEvent",
-	MatchSetupAction = "RemoteEvent",
-	PackAction = "RemoteEvent",
+	MatchSetupAction = "RemoteFunction",
+	PackAction = "RemoteFunction",
 	PendingSevenWinLoginReward = "RemoteEvent",
 	PenaltyAction = "RemoteEvent",
 	RequestData = "RemoteFunction",
@@ -44,17 +44,6 @@ local function getRoot()
 	return rootFolder
 end
 
-local function getShared()
-	local rootFolder = getRoot()
-	local shared = rootFolder:FindFirstChild("Shared") or ReplicatedStorage:FindFirstChild("Shared")
-	if not shared then
-		shared = Instance.new("Folder")
-		shared.Name = "Shared"
-		shared.Parent = rootFolder
-	end
-	return shared
-end
-
 local function getRemotes()
 	local rootFolder = getRoot()
 	local remotes = rootFolder:FindFirstChild("Remotes")
@@ -83,30 +72,11 @@ local function ensureRemote(parent, name, className)
 	return remote
 end
 
-local function defaultData(player, key)
-	local defaultsModule = getShared():FindFirstChild("VTRDataDefaults")
-	if defaultsModule then
-		local ok, defaults = pcall(require, defaultsModule)
-		if ok and defaults and typeof(defaults.ForKey) == "function" then
-			return defaults.ForKey(player, key)
-		end
-	end
-
-	return {}
-end
-
-local function attachDefaultFunction(remote)
-	if remote and remote:IsA("RemoteFunction") then
-		remote.OnServerInvoke = defaultData
-	end
-end
-
 function VTRRemoteBootstrapService.Start()
 	local remotes = getRemotes()
 
 	for name, className in pairs(remoteList) do
-		local remote = ensureRemote(remotes, name, className)
-		attachDefaultFunction(remote)
+		ensureRemote(remotes, name, className)
 	end
 
 	for folderName, children in pairs(folderGroups) do
@@ -118,8 +88,7 @@ function VTRRemoteBootstrapService.Start()
 		end
 
 		for name, className in pairs(children) do
-			local remote = ensureRemote(folder, name, className)
-			attachDefaultFunction(remote)
+			ensureRemote(folder, name, className)
 		end
 	end
 end

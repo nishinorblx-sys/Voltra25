@@ -130,6 +130,8 @@ end
 function Service:GoalkeeperClaim(keeper: Model): boolean
 	local keeperRoot = self:_root(keeper)
 	if not keeperRoot then return false end
+	keeperRoot.AssemblyLinearVelocity = Vector3.zero
+	keeperRoot.AssemblyAngularVelocity = Vector3.zero
 	self.Curve:Stop()
 	self.ShotPlan = nil
 	self.PassPlan = nil
@@ -380,6 +382,7 @@ function Service:Kick(model: Model, kind: string, direction: Vector3, charge: nu
 		end
 		goalChance = math.clamp(goalChance, 0, 1)
 		shotChance = math.clamp(shotChance, .05, .95)
+		local rollChance = shotChance
 		model:SetAttribute("VTRLastShotScoringChance",shotChance)
 		model:SetAttribute("VTRLastShotScoringPercent",math.floor(shotChance*100+.5))
 		model:SetAttribute("VTRShotDistanceStuds",shotDistance)
@@ -388,9 +391,9 @@ function Service:Kick(model: Model, kind: string, direction: Vector3, charge: nu
 		self.LastShotXG=shotChance
 		local intendedGoal=targetPoint
 		local goalRollValue = targetPoint and self.Random:NextNumber() or nil
-		local goalRoll=targetPoint and goalRollValue ~= nil and (goalRollValue<=goalChance) or false
-		self.LastGoalChance=goalChance
-		self.LastGoalChancePercent=math.floor(goalChance*100+.5)
+		local goalRoll=targetPoint and goalRollValue ~= nil and (goalRollValue<=rollChance) or false
+		self.LastGoalChance=rollChance
+		self.LastGoalChancePercent=math.floor(rollChance*100+.5)
 		self.LastGoalRoll=goalRollValue
 		self.LastGoalRollPercent=goalRollValue and math.floor(goalRollValue*10000+.5)/100 or nil
 		local shotOnTarget=targetPoint~=nil
@@ -804,6 +807,9 @@ function Service:Step(dt: number)
 				self.Stats:RecordPassFailed(self.LastPasser,nearest)
 				if AIPassingDecisionService.RecordPassOutcome then AIPassingDecisionService.RecordPassOutcome(self.LastPasser,nearest,false) end
 			end
+		end
+		if self.MotionKind=="Pass" and tostring(nearest:GetAttribute("position") or "")=="GK" then
+			self:GoalkeeperClaim(nearest)
 		end
 		self.LastPassTeam = nil
 		self.LastPasser=nil;self.LastPassOrigin=nil

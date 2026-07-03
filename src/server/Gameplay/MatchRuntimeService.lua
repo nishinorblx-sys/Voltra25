@@ -36,6 +36,7 @@ local StaminaService=require(script.Parent.StaminaService)
 local BallFactoryService=require(script.Parent.BallFactoryService)
 local BallCollisionService=require(script.Parent.BallCollisionService)
 local BallGroundingService=require(script.Parent.BallGroundingService)
+local GoalShotPassThroughService=require(script.Parent.GoalShotPassThroughService)
 local MatchAnimationService=require(script.Parent.MatchAnimationService)
 local MatchCharacterFactory=require(script.Parent.MatchCharacterFactory)
 local GoalkeeperService=require(script.Parent.GoalkeeperService)
@@ -439,6 +440,11 @@ function Service:_startPrematchPresentation(session:any)
 		self:_movePresentationStage(session,"Walkout",11.4)
 		if session.Ended or session.PrematchSkipped then return end
 		self:_teleportPresentationStage(session,"Lineup","LineupIdle")
+		task.delay(.35,function()
+			if not session.Ended and not session.PrematchSkipped and session.PresentationActive then
+				self:_teleportPresentationStage(session,"Lineup","LineupIdle")
+			end
+		end)
 		task.wait(40.0)
 		if session.Ended or session.PrematchSkipped then return end
 		self:_teleportPresentationStage(session,"Kickoff","KickoffReady")
@@ -862,6 +868,7 @@ function Service:_goal(session:any,team:string)
 	session.World.Ball:SetAttribute("VTRGoalCalledAt",os.clock())
 	session.World.Ball:SetAttribute("VTRPostGoalVelocity",goalVelocity)
 	session.World.Ball:SetAttribute("VTRPostGoalAngularVelocity",goalAngularVelocity)
+	GoalShotPassThroughService.Clear(session.World.Ball)
 	BallCollisionService.ApplyScoredBall(session.World.Ball)
 	session.World.Ball.Anchored=false
 	session.World.Ball:SetNetworkOwner(nil)
@@ -932,7 +939,7 @@ function Service:_halfTime(session:any)
 	local gameSeconds=session.Clock:Payload().GameSeconds
 	local payload=self:_pausePayload(session,true,nil)
 	payload.Type="HalfTime";payload.HalfTime=true;payload.PauseRemaining=30;payload.Home=session.World.HomeScore.Value;payload.Away=session.World.AwayScore.Value;payload.Stats=session.Stats:Serialize(session.World.HomeScore.Value,session.World.AwayScore.Value,gameSeconds)
-	session.HalfTimeBreak=true;session.HalfTimeBreakEndsAt=os.clock()+38;session.HalfTimeTimerAccumulator=0
+	session.HalfTimeBreak=true;session.HalfTimeBreakEndsAt=os.clock()+38;session.HalfTimeTimerAccumulator=0;session.HalfTimeResumeVotes={}
 	broadcast(self.State,session,payload)
 	task.delay(38,function()if not session.Ended and session.HalfTimeBreak then self:_resumeHalfTime(session)end end)
 end
@@ -941,6 +948,7 @@ function Service:_resumeHalfTime(session:any)
 	if session.Ended or not session.HalfTimeBreak then return end
 	session.HalfTimeBreak=false
 	session.HalfTimeBreakEndsAt=nil
+	session.HalfTimeResumeVotes={}
 	broadcast(self.State,session,{Type="HalfTimeResume"})
 	session.Clock:StartSecondHalf();if session.AI and session.AI.SetHalf then session.AI:SetHalf(2)end;if session.Referee and session.Referee.SetHalf then session.Referee:SetHalf(2)end;if session.Offside and session.Offside.SetHalf then session.Offside:SetHalf(2)end;if session.Goalkeepers and session.Goalkeepers.SetHalf then session.Goalkeepers:SetHalf(2)end;if session.OutOfBounds and session.OutOfBounds.SetHalf then session.OutOfBounds:SetHalf(2)end;self:_startSetPiece(session,"Kickoff","Away",session.World.PitchCFrame.Position)
 end
@@ -1280,7 +1288,16 @@ function Service:_action(player:Player,payload:any)
 		return
 	end
 	if payload.Type=="HalfTimeResume"then
-		if session.HalfTimeBreak then self:_resumeHalfTime(session)end
+		if not session.HalfTimeBreak then return end
+		session.HalfTimeResumeVotes=session.HalfTimeResumeVotes or{}
+		session.HalfTimeResumeVotes[player]=true
+		local readyCount=0
+		for _,participant in session.Players do
+			if session.HalfTimeResumeVotes[participant]then readyCount+=1 end
+		end
+		local ready=VTRSecondHalfNeedsBothReady(readyCount,#session.Players,false)
+		broadcast(self.State,session,{Type="HalfTimeResumeVote",PlayerName=player.Name,Ready=ready,ReadyCount=readyCount,PlayerCount=#session.Players})
+		if ready then self:_resumeHalfTime(session)end
 		return
 	end
 	if payload.Type=="AITacticsDebug"then

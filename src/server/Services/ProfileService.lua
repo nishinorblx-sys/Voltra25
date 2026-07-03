@@ -106,7 +106,7 @@ function ProfileService:_migrate(profile:any):any
 	while version<Config.ProfileVersion do local migration=migrations[version];assert(migration,"Missing profile migration from version "..version);version=migration(profile) end
 	profile.Version=Config.ProfileVersion;profile.SchemaVersion=Config.ProfileVersion;if type(profile.CreatedAt)~="number" or profile.CreatedAt<=0 then profile.CreatedAt=os.time() end;profile.LastLogin=os.time();profile.OnboardingCompleted=profile.Onboarding and profile.Onboarding.Complete or profile.OnboardingCompleted or false
 	if profile.Ranked.Division=="UNRANKED" and profile.Ranked.Wins+profile.Ranked.Draws+profile.Ranked.Losses==0 then profile.Ranked.Division="DIVISION 10";profile.Ranked.Rank="NEW SEASON";profile.Ranked.PlacementStatus="PLACEMENT READY" end
-	local ranked=profile.Ranked;ranked.DivisionNumber=tonumber(ranked.DivisionNumber)or tonumber(string.match(tostring(ranked.Division),"%d+"))or 10;ranked.DivisionWins=tonumber(ranked.DivisionWins)or 0;ranked.ProtectedWins=tonumber(ranked.ProtectedWins)or 0;ranked.VoltraRating=tonumber(ranked.VoltraRating)or 0;ranked.RequiredRP=ranked.DivisionNumber==0 and 0 or 10;ranked.PlayerStats=ranked.PlayerStats or {MatchesPlayed=0,Goals=0,Assists=0,MOTM=0,AverageRating=0,HatTricks=0,PenaltiesScored=0,FreeKickGoals=0}
+	local ranked=profile.Ranked;ranked.DivisionNumber=tonumber(ranked.DivisionNumber)or tonumber(string.match(tostring(ranked.Division),"%d+"))or 10;ranked.DivisionWins=tonumber(ranked.DivisionWins)or 0;ranked.ProtectedWins=tonumber(ranked.ProtectedWins)or 0;ranked.VoltraRating=tonumber(ranked.VoltraRating)or 0;ranked.WinStreak=tonumber(ranked.WinStreak)or 0;ranked.BestWinStreak=tonumber(ranked.BestWinStreak)or ranked.WinStreak;ranked.FlawlessRuns=tonumber(ranked.FlawlessRuns)or 0;ranked.CleanSheets=tonumber(ranked.CleanSheets)or 0;ranked.BestPackRating=tonumber(ranked.BestPackRating)or 0;ranked.RequiredRP=ranked.DivisionNumber==0 and 0 or 10;ranked.PlayerStats=ranked.PlayerStats or {MatchesPlayed=0,Goals=0,Assists=0,MOTM=0,AverageRating=0,HatTricks=0,PenaltiesScored=0,FreeKickGoals=0}
 	profile.RankedRun=profile.RankedRun or copy(DefaultProfile.RankedRun);local run=profile.RankedRun;run.Results=type(run.Results)=="table"and run.Results or{};run.Target=math.clamp(math.floor(tonumber(run.Target)or 7),1,20);run.Wins=0;run.Draws=0;run.Losses=0;for index=#run.Results,1,-1 do local value=tostring(run.Results[index]);if value~="Win"and value~="Draw"and value~="Loss"then table.remove(run.Results,index)end end;while#run.Results>run.Target do table.remove(run.Results,1)end;for _,value in run.Results do if value=="Win"then run.Wins+=1 elseif value=="Draw"then run.Draws+=1 elseif value=="Loss"then run.Losses+=1 end end;run.Active=#run.Results>0 and #run.Results<run.Target;run.Ended=#run.Results>=run.Target;run.RewardClaimed=run.RewardClaimed==true
 	profile.ProClubMembership=profile.ProClubMembership or copy(DefaultProfile.ProClubMembership);profile.ProClubsPlayer=profile.ProClubsPlayer or copy(DefaultProfile.ProClubsPlayer)
 	normalizeCardInstances(profile)
@@ -122,9 +122,38 @@ function ProfileService:_migrate(profile:any):any
 	return profile
 end
 function ProfileService:Start()
-	local function load(player:Player) local raw=self.Store:LoadAsync(player.UserId);local isNew=type(raw.CreatedAt)~="number" or raw.CreatedAt<=0;local profile=self:_migrate(raw);profile.Profile.Avatar.UserId=player.UserId;player:SetAttribute("VTRNewProfile",isNew) end
+	local function load(player:Player)
+		local ok,raw=pcall(function()return self.Store:LoadAsync(player.UserId)end)
+		if not ok or type(raw)~="table"then
+			warn("[VTR PROFILE] Load failed for "..player.Name..": "..tostring(raw))
+			raw=copy(DefaultProfile)
+			self.Store.Sessions[player.UserId]=raw
+		end
+		local isNew=type(raw.CreatedAt)~="number" or raw.CreatedAt<=0
+		local migrateOk,profileOrError=pcall(function()return self:_migrate(raw)end)
+		if not migrateOk or type(profileOrError)~="table"then
+			warn("[VTR PROFILE] Migration failed for "..player.Name..": "..tostring(profileOrError))
+			raw=copy(DefaultProfile)
+			self.Store.Sessions[player.UserId]=raw
+			isNew=true
+			profileOrError=self:_migrate(raw)
+		end
+		local profile=profileOrError
+		profile.Profile.Avatar.UserId=player.UserId
+		player:SetAttribute("VTRNewProfile",isNew)
+		player:SetAttribute("VTRProfileReady",true)
+	end
 	Players.PlayerAdded:Connect(load);Players.PlayerRemoving:Connect(function(player) self.Store:Release(player.UserId) end);for _,player in Players:GetPlayers() do task.spawn(load,player) end
 	game:BindToClose(function() for _,player in Players:GetPlayers() do self.Store:SaveAsync(player.UserId,true) end end)
+end
+function ProfileService:WaitForProfile(player:Player,timeout:number?):any?
+	local deadline=os.clock()+(timeout or 8)
+	local profile=self:GetProfile(player)
+	while not profile and player and player.Parent==Players and os.clock()<deadline do
+		task.wait(.1)
+		profile=self:GetProfile(player)
+	end
+	return profile
 end
 function ProfileService:GetProfile(player:Player):any?
 	if not player or player.Parent~=Players then return nil end

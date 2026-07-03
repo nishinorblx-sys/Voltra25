@@ -20,5 +20,11 @@ return Factory.new({
 			Description = "Coin-purchased packs by rarity tier plus the charged Voltra Pack.",
 			Cards = {},
 		},
+		{
+			Id = "Team",
+			Label = "TEAM",
+			Description = "Robux club-service options for changing team details.",
+			Cards = {},
+		},
 	},
 })

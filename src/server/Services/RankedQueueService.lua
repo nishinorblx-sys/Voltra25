@@ -91,12 +91,60 @@ local function compactPendingResult(payload:any,includeStats:boolean):any
 		ResultId=tostring(payload.ResultId or payload.MatchId or ""),
 		Result=tostring(payload.Result or ""),
 		Opponent=tostring(payload.Opponent or "Opponent"),
+		OpponentTag=tostring(payload.OpponentTag or ""),
+		OpponentTeamName=tostring(payload.OpponentTeamName or ""),
 		Score=tostring(payload.Score or "0-0"),
 		MatchStats=includeStats~=false and compactMatchStats(payload.MatchStats) or nil,
 		Reward=compactReward(payload.Reward),
 		PackId=payload.PackId,
 		PackInstanceId=payload.PackInstanceId,
 		AppliedInMatchServer=payload.AppliedInMatchServer==true,
+	}
+end
+
+function Service:_teamTag(player: Player): string
+	local profile=self.Profiles:GetProfile(player)
+	local club=profile and profile.ClubMembership or nil
+	local tag=club and tostring(club.Abbreviation or "") or ""
+	if #tag>=2 then return string.upper(string.sub(tag,1,4)) end
+	local name=club and tostring(club.Name or "") or player.DisplayName
+	tag=string.upper(string.sub((name:gsub("[^%a]","")),1,4))
+	return tag~="" and tag or "VTR"
+end
+
+function Service:_teamName(player: Player): string
+	local profile=self.Profiles:GetProfile(player)
+	local club=profile and profile.ClubMembership or nil
+	local name=club and tostring(club.Name or "") or ""
+	return name~="" and name or player.DisplayName
+end
+
+function Service:_summaryForRoster(roster: any): any
+	local team=roster and roster.Team or{}
+	return {
+		teamName=team.teamName or team.Name or "VOLTRA FC",
+		logo=team.logo or team.Logo,
+		country=team.country or team.Country or "VTR",
+		league=team.league or team.League or "RANKED",
+		overall=team.overall or team.Overall or 0,
+		attack=team.attack or team.Attack or 0,
+		midfield=team.midfield or team.Midfield or 0,
+		defense=team.defense or team.Defense or 0,
+		BadgeIdentity=team.BadgeIdentity or team.badgeIdentity,
+		colors=team.colors or team.Colors,
+	}
+end
+
+function Service:_matchFoundPayload(player: Player, opponent: Player, controlledSide: string, homeRoster: any, awayRoster: any, matchId: string?): any
+	return {
+		Opponent=opponent.Name,
+		ControlledSide=controlledSide,
+		Home=homeRoster and homeRoster.Team and homeRoster.Team.teamName or "HOME",
+		Away=awayRoster and awayRoster.Team and awayRoster.Team.teamName or "AWAY",
+		HomeSummary=self:_summaryForRoster(homeRoster),
+		AwaySummary=self:_summaryForRoster(awayRoster),
+		MatchId=matchId,
+		Status="Matched",
 	}
 end
 
@@ -133,6 +181,7 @@ function Service.new(profiles: any, runtime: any, rankedProfiles: any, notificat
 		GlobalQueued = {},
 		GlobalTeleporting = {},
 		PendingTeleportMatches = {},
+		LastMatchFound = {},
 		Random = Random.new(),
 		GlobalEnabled = not RunService:IsStudio() and game.PlaceId ~= 0,
 	}, Service)
@@ -288,11 +337,13 @@ function Service:_consumePendingRankedResult(player: Player)
 	if not profile then return end
 	local result = tostring(payload.Result or "")
 	local opponent = tostring(payload.Opponent or "Opponent")
+	local opponentTag = tostring(payload.OpponentTag or "")
+	local opponentTeamName = tostring(payload.OpponentTeamName or "")
 	local score = tostring(payload.Score or "0-0")
 	local resultId = tostring(payload.ResultId or payload.MatchId or "")
 	local matchStats = type(payload.MatchStats) == "table" and payload.MatchStats or {}
 	matchStats.ResultId = resultId
-	local applied = self.RankedProfiles:RecordServerResult(player, result, 0, opponent, score, matchStats)
+	local applied = self.RankedProfiles:RecordServerResult(player, result, 0, opponent, score, matchStats, opponentTag, opponentTeamName)
 	local reward = type(payload.Reward) == "table" and payload.Reward or nil
 	if reward then
 		matchStats.Reward = reward
@@ -325,6 +376,7 @@ end
 function Service:_removeGlobal(player: Player)
 	self.GlobalQueued[player] = nil
 	self.GlobalTeleporting[player] = nil
+	if self.LastMatchFound then self.LastMatchFound[player]=nil end
 	player:SetAttribute("VTRRankedQueued", nil)
 	local map = self:_queueMap()
 	if map then
@@ -341,6 +393,7 @@ function Service:_remove(player: Player)
 	self.QueueSetup[player] = nil
 	self.QueueRoster[player] = nil
 	self.QueueDevice[player] = nil
+	if self.LastMatchFound then self.LastMatchFound[player]=nil end
 	player:SetAttribute("VTRRankedQueued", nil)
 	if self.GlobalEnabled then self:_removeGlobal(player) end
 end
@@ -438,14 +491,14 @@ function Service:_attachResultHandlers(session: any, home: Player, away: Player)
 		ended.RankedResultsRecorded=true
 		local homePersonal = personal("Home")
 		local awayPersonal = personal("Away")
-		local homeApplied = self.RankedProfiles:RecordServerResult(home, homeResult, rpFor(homeResult), away.Name, score, homePersonal)
-		local awayApplied = self.RankedProfiles:RecordServerResult(away, awayResult, rpFor(awayResult), home.Name, tostring(awayScore) .. "-" .. tostring(homeScore), awayPersonal)
+		local homeApplied = self.RankedProfiles:RecordServerResult(home, homeResult, rpFor(homeResult), away.Name, score, homePersonal, self:_teamTag(away), self:_teamName(away))
+		local awayApplied = self.RankedProfiles:RecordServerResult(away, awayResult, rpFor(awayResult), home.Name, tostring(awayScore) .. "-" .. tostring(homeScore), awayPersonal, self:_teamTag(home), self:_teamName(home))
 		local homePack = nil
 		local awayPack = nil
 		if homeResult=="Win" or homeResult=="ForfeitWin" then homePack = session.RankedWinPackGrant(session,home) end
 		if awayResult=="Win" or awayResult=="ForfeitWin" then awayPack = session.RankedWinPackGrant(session,away) end
-		self:_writePendingRankedResult(home,{MatchId=session.MatchId,ResultId=homePersonal.ResultId,Result=homeResult,Opponent=away.Name,Score=score,MatchStats=homePersonal,PackId=homePack and homePack.PackId or nil,AppliedInMatchServer=homeApplied})
-		self:_writePendingRankedResult(away,{MatchId=session.MatchId,ResultId=awayPersonal.ResultId,Result=awayResult,Opponent=home.Name,Score=tostring(awayScore).."-"..tostring(homeScore),MatchStats=awayPersonal,PackId=awayPack and awayPack.PackId or nil,AppliedInMatchServer=awayApplied})
+		self:_writePendingRankedResult(home,{MatchId=session.MatchId,ResultId=homePersonal.ResultId,Result=homeResult,Opponent=away.Name,OpponentTag=self:_teamTag(away),OpponentTeamName=self:_teamName(away),Score=score,MatchStats=homePersonal,PackId=homePack and homePack.PackId or nil,AppliedInMatchServer=homeApplied})
+		self:_writePendingRankedResult(away,{MatchId=session.MatchId,ResultId=awayPersonal.ResultId,Result=awayResult,Opponent=home.Name,OpponentTag=self:_teamTag(home),OpponentTeamName=self:_teamName(home),Score=tostring(awayScore).."-"..tostring(homeScore),MatchStats=awayPersonal,PackId=awayPack and awayPack.PackId or nil,AppliedInMatchServer=awayApplied})
 		if self.Publish and self.RankedProfiles.GetClientData then
 			pcall(function()self.Publish(home,"Ranked",self.RankedProfiles:GetClientData(home))end)
 			pcall(function()self.Publish(away,"Ranked",self.RankedProfiles:GetClientData(away))end)
@@ -475,8 +528,8 @@ function Service:_attachResultHandlers(session: any, home: Player, away: Player)
 			end
 			local homePersonal=personal("Home")
 			local awayPersonal=personal("Away")
-			local homeApplied=self.RankedProfiles:RecordServerResult(home,homeResult,rpFor(homeResult),away.Name,score,homePersonal)
-			local awayApplied=self.RankedProfiles:RecordServerResult(away,awayResult,rpFor(awayResult),home.Name,tostring(awayScore).."-"..tostring(homeScore),awayPersonal)
+			local homeApplied=self.RankedProfiles:RecordServerResult(home,homeResult,rpFor(homeResult),away.Name,score,homePersonal,self:_teamTag(away),self:_teamName(away))
+			local awayApplied=self.RankedProfiles:RecordServerResult(away,awayResult,rpFor(awayResult),home.Name,tostring(awayScore).."-"..tostring(homeScore),awayPersonal,self:_teamTag(home),self:_teamName(home))
 			appliedByUser[home.UserId]=homeApplied
 			appliedByUser[away.UserId]=awayApplied
 			personalByUser[home.UserId]=homePersonal
@@ -535,6 +588,8 @@ function Service:_attachResultHandlers(session: any, home: Player, away: Player)
 				ResultId=tostring(matchStats.ResultId or resultId),
 				Result=result,
 				Opponent=participant==home and away.Name or home.Name,
+				OpponentTag=participant==home and self:_teamTag(away) or self:_teamTag(home),
+				OpponentTeamName=participant==home and self:_teamName(away) or self:_teamName(home),
 				Score=scoreByUser[participant.UserId] or (participant==home and tostring(homeScore).."-"..tostring(awayScore) or tostring(awayScore).."-"..tostring(homeScore)),
 				MatchStats=matchStats,
 				Reward=reward,
@@ -578,6 +633,13 @@ function Service:_pair()
 			self.Notifications:Send(away, "RANKED QUEUE", "Ultimate Team lineup unavailable.", "Error")
 			continue
 		end
+		local matchId=HttpService:GenerateGUID(false)
+		local homeFound=self:_matchFoundPayload(home,away,"Home",homeRoster,awayRoster,matchId)
+		local awayFound=self:_matchFoundPayload(away,home,"Away",homeRoster,awayRoster,matchId)
+		self.LastMatchFound[home]=homeFound
+		self.LastMatchFound[away]=awayFound
+		rankedFoundRemote():FireClient(home,homeFound)
+		rankedFoundRemote():FireClient(away,awayFound)
 		self.Notifications:Send(home, "OPPONENT FOUND", away.Name .. " is ready. Starting local test match.", "Info")
 		self.Notifications:Send(away, "OPPONENT FOUND", home.Name .. " is ready. Starting local test match.", "Info")
 		task.defer(function()
@@ -883,7 +945,8 @@ function Service:Join(player: Player, payload: any?): (boolean, string, any?)
 	player:SetAttribute("VTRRankedQueued", true)
 	self.Notifications:Send(player, "RANKED QUEUE", roster.Team.teamName .. " / OVR " .. roster.Team.overall .. " / Searching local fallback queue.", "Info")
 	self:_pair()
-	return true, #self.Queue == 0 and "Opponent found. Match starting." or "Searching for a ranked opponent.", { Status = #self.Queue == 0 and "Matched" or "Searching", Position = table.find(self.Queue, player) or 0, Global = false }
+	local found=self.LastMatchFound and self.LastMatchFound[player] or nil
+	return true, found and "Opponent found. Match starting." or "Searching for a ranked opponent.", found or { Status = "Searching", Position = table.find(self.Queue, player) or 0, Global = false }
 end
 
 function Service:Leave(player: Player): (boolean, string, any?)

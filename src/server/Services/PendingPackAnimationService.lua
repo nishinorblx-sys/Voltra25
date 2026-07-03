@@ -113,7 +113,7 @@ function PendingPackAnimationService.Queue(player, pack)
 	saveQueue(player, queue)
 
 	task.delay(2, function()
-		if player.Parent == Players then
+		if player.Parent == Players and player:GetAttribute("VTRInMatch") ~= true and player:GetAttribute("VTRRankedMatchEnding") ~= true then
 			fireQueue(player, { entry })
 		end
 	end)

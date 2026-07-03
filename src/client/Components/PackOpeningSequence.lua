@@ -244,6 +244,7 @@ function PackOpeningSequence.play(parent: Instance, props: any): CanvasGroup
 	local reveals = sortedReveals(props.Reveals)
 	local best = reveals[1]
 	if not best then error("PackOpeningSequence requires at least one reveal") end
+	local packRating = math.floor(tonumber(best.Rating or best.overall) or 0)
 
 	local rarity = best.Rarity or best.rarity or "Starter"
 	local cardType = best.CardType or best.cardType or "Base"
@@ -264,6 +265,9 @@ function PackOpeningSequence.play(parent: Instance, props: any): CanvasGroup
 	local burstSound = sound(overlay, "PackBurstSound")
 	local revealSound = sound(overlay, "PlayerRevealSound")
 	label(overlay, "VTR 25  /  SEALED PACK", UDim2.fromScale(0.05, 0.055), UDim2.fromScale(0.9, 0.04), 9, Theme.Colors.Muted, Theme.Fonts.Strong, 112).TextXAlignment = Enum.TextXAlignment.Center
+	local packRatingBanner = label(overlay, "PACK RATING  --", UDim2.fromScale(0.67, 0.105), UDim2.fromScale(0.26, 0.05), 18, Theme.Colors.White, Theme.Fonts.Display, 112)
+	packRatingBanner.TextXAlignment = Enum.TextXAlignment.Right
+	packRatingBanner.TextTransparency = .18
 	local status = label(overlay, "INITIALIZING VOLTRA CHAMBER", UDim2.fromScale(0.25, 0.9), UDim2.fromScale(0.5, 0.04), 9, Theme.Colors.Electric, Theme.Fonts.Strong, 112)
 	status.TextXAlignment = Enum.TextXAlignment.Center
 
@@ -338,10 +342,12 @@ function PackOpeningSequence.play(parent: Instance, props: any): CanvasGroup
 			tweenWait(overlay, TweenInfo.new(0.32, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { GroupTransparency = 0 })
 			playPlaceholder(buildSound)
 			status.Text = "NEON ENERGY BUILDING"
+			packRatingBanner.Text = "PACK RATING  " .. tostring(packRating) .. " OVR"
 			TweenService:Create(pack, TweenInfo.new(0.7, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), { GroupTransparency = 0, Rotation = 0 }):Play()
 			tweenWait(packScale, TweenInfo.new(0.8, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1 })
 			task.wait(0.35)
 			status.Text = "PACK SIGNATURE LOCKED"
+			tweenWait(packRatingBanner, TweenInfo.new(0.16, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { TextTransparency = 0 })
 			for index = 1, 7 do
 				local direction = index % 2 == 0 and 1 or -1
 				tweenWait(pack, TweenInfo.new(0.055, Enum.EasingStyle.Linear), { Rotation = direction * (1.2 + index * 0.18), Position = UDim2.new(0.5, direction * 2, 0.48, 0) })
@@ -427,6 +433,7 @@ function PackOpeningSequence.play(parent: Instance, props: any): CanvasGroup
 				task.wait(0.18)
 			end
 			status.Text = "RATING VERIFIED"
+			packRatingBanner.Text = "PACK RATING  " .. tostring(packRating) .. " OVR"
 			playPlaceholder(revealSound)
 			tweenWait(rating, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { TextTransparency = 0 })
 			task.wait(0.35)

@@ -2,6 +2,8 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local VTRReplicated = require((ReplicatedStorage:FindFirstChild("VTR") and ReplicatedStorage.VTR:FindFirstChild("Shared") or ReplicatedStorage:WaitForChild("Shared")):WaitForChild("VTRReplicated", 15))
 
 local Animation = require(script.Parent.Parent.Components.PackRewardFlyinAnimation)
+local Players = game:GetService("Players")
+local localPlayer = Players.LocalPlayer
 
 local remotes = VTRReplicated.GetRemotes():WaitForChild("PackRewardAnimationRemotes", 15)
 local showRemote = remotes:WaitForChild("ShowPackRewardAnimation", 15)
@@ -30,6 +32,9 @@ local function drain()
 	running = true
 
 	while #queue > 0 do
+		while localPlayer:GetAttribute("VTRInMatch") == true do
+			task.wait(0.5)
+		end
 		local entry = table.remove(queue, 1)
 		Animation.Play(entry.pack)
 		ackRemote:FireServer({ entry.id })

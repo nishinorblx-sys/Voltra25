@@ -9,6 +9,7 @@ local GameplayConfig = require(ReplicatedStorage.VTR.Shared.GameplayConfig)
 local Theme = require(ReplicatedStorage.VTR.Shared.Theme)
 local FocusController = require(script.Parent.Controllers.FocusController)
 local MatchGameplayController = require(script.Parent.Gameplay.GameplayController)
+local RankedQueuePresentation = require(script.Parent.Components.RankedQueuePresentation)
 
 local function forceMenuVisible()
 	local playerGui = Players.LocalPlayer:WaitForChild("PlayerGui")
@@ -84,6 +85,19 @@ MatchGameplayController.new():Start()
 
 local function showRankedMatchFoundTeleport(data:any)
 	local playerGui=Players.LocalPlayer:WaitForChild("PlayerGui")
+	local app=playerGui:FindFirstChild("VTR25")
+	local root=app and app:FindFirstChild("Root")
+	if root then
+		if type(data)=="table" then
+			data.Home=data.Home or data.HomeTeamName or data.HomeName
+			data.Away=data.Away or data.AwayTeamName or data.AwayName
+			data.ControlledSide=data.ControlledSide or data.Role or "Home"
+			data.HomeSummary=data.HomeSummary or{teamName=data.HomeTeamName or data.HomeName or data.Home,logo=data.HomeLogo,overall=data.HomeOverall,BadgeIdentity=data.HomeBadgeIdentity}
+			data.AwaySummary=data.AwaySummary or{teamName=data.AwayTeamName or data.AwayName or data.Away,logo=data.AwayLogo,overall=data.AwayOverall,BadgeIdentity=data.AwayBadgeIdentity}
+		end
+		RankedQueuePresentation.ShowMatchFound(root,data,function()end)
+		return
+	end
 	local old=playerGui:FindFirstChild("VTRRankedTeleportFound")
 	if old then old:Destroy()end
 	local gui=Instance.new("ScreenGui")

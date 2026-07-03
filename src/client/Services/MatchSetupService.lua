@@ -1,33 +1,29 @@
-local function vtrWaitForMatchSetupAction()
-	local vtr = ReplicatedStorage:WaitForChild("VTR", 10) or ReplicatedStorage:FindFirstChild("VTR")
-	local remotes = vtr and (vtr:FindFirstChild("Remotes") or vtr:WaitForChild("Remotes", 10))
-	local remote = remotes and (remotes:FindFirstChild("MatchSetupAction") or remotes:WaitForChild("MatchSetupAction", 10))
-
-	if remote then
-		return remote
-	end
-
-	local fallbackRemotes = ReplicatedStorage:FindFirstChild("Remotes")
-	remote = fallbackRemotes and fallbackRemotes:FindFirstChild("MatchSetupAction")
-
-	if remote then
-		return remote
-	end
-
-	warn("MatchSetupAction remote missing")
-	return nil
-end
 local MATCHUP_PANEL_DELAY = 0.85
 --!strict
 local ReplicatedStorage=game:GetService("ReplicatedStorage")
 local Players=game:GetService("Players")
 local UserInputService=game:GetService("UserInputService")
 local NetworkConfig=require(ReplicatedStorage.VTR.Shared.NetworkConfig)
+local RemoteResolver=require(script.Parent.RemoteResolver)
 local AIMatchModePrompt=require(script:FindFirstAncestor("VTRClient").Components.AIMatchModePrompt)
 local VoltraMatchTeleport=require(script:FindFirstAncestor("VTRClient").Components.VoltraMatchTeleport)
-local remote=ReplicatedStorage.VTR:WaitForChild(NetworkConfig.FolderName):WaitForChild(NetworkConfig.MatchFunction)::RemoteFunction
+local remote=RemoteResolver.WaitForFunction(NetworkConfig.MatchFunction)
 local Service={}
-local function request(action:string,payload:any?):any local ok,response=pcall(function()return remote:InvokeServer(action,payload or{})end);if not ok or type(response)~="table"then return{Success=false,Message="Match setup service unavailable."}end;return response end
+local function request(action:string,payload:any?):any
+	local attempts=(action=="GetConfig"or action=="GetTeams"or action=="GetRoster"or action=="GetRankedLeaderboards")and 18 or 3
+	local lastMessage="Match setup service unavailable."
+	for attempt=1,attempts do
+		local ok,response=pcall(function()return remote:InvokeServer(action,payload or{})end)
+		if ok and type(response)=="table"then
+			if response.Success or attempt==attempts then return response end
+			lastMessage=response.Message or response.Error or lastMessage
+		elseif not ok then
+			lastMessage=tostring(response)
+		end
+		task.wait(math.min(.18*attempt,1))
+	end
+	return{Success=false,Message=lastMessage}
+end
 local function responseData(response:any):any
 	if type(response)~="table"then return nil end
 	return response.Data or response.Setup and response or response
@@ -98,5 +94,7 @@ function Service:StartCampaignMatch():any
 end
 function Service:LeaveRankedQueue():any return request("LeaveRankedQueue")end
 function Service:GetRankedQueue():any return request("GetRankedQueue")end
+function Service:GetRankedLeaderboards():any return request("GetRankedLeaderboards")end
+function Service:ClaimRankedPathReward():any return request("ClaimRankedPathReward")end
 function Service:ReturnToMenu():any return request("ReturnToMenu")end
 return Service

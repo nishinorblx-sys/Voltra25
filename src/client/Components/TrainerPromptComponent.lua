@@ -54,7 +54,7 @@ function Component:SetPrompts(prompts: {{Label: string, Key: string}})
 		key.ZIndex = 16
 		key.Parent = row
 		if #prompt.Key > 4 then
-			key.Size = UDim2.fromOffset(64, 17)
+			key.Size = UDim2.fromOffset(math.clamp(31 + #prompt.Key * 7, 64, 92), 17)
 		end
 		local corner = Instance.new("UICorner"); corner.CornerRadius = UDim.new(1, 0); corner.Parent = key
 		local text = Instance.new("TextLabel")

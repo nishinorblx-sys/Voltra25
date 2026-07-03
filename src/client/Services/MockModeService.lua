@@ -80,6 +80,17 @@ function MockModeService:Hydrate(ui:any,progression:any)
 				end
 			end
 		end
+		local teamTab=tab(self.Spec,"Team")
+		if teamTab then
+			teamTab.Cards={{
+				Title="TEAM IDENTITY CHANGE",
+				Subtitle="CHANGE CLUB NAME, TAG AND BADGE DETAILS",
+				Meta="R$ 99  /  PRODUCT PLACEHOLDER",
+				Accent=true,
+				Detail="Robux service option for editing your Voltra team details after onboarding.",
+				Action={Label="CHANGE DETAILS",Operation="Purchase",Item="team_identity_change",ServerId="team_identity_change",ItemType="Cosmetic",Confirm=true},
+			}}
+		end
 	elseif self.Spec.Id=="Settings" then self.State.Values=table.clone(ui.Settings);for key,value in ui.Settings do if type(value)=="string" then self.State.Selections[key]=value end end end
 end
 

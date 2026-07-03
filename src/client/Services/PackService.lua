@@ -2,7 +2,8 @@
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local NetworkConfig = require(ReplicatedStorage.VTR.Shared.NetworkConfig)
-local remote = ReplicatedStorage.VTR:WaitForChild(NetworkConfig.FolderName):WaitForChild(NetworkConfig.PackFunction) :: RemoteFunction
+local RemoteResolver = require(script.Parent.RemoteResolver)
+local remote = RemoteResolver.WaitForFunction(NetworkConfig.PackFunction)
 
 local PackService = {}
 

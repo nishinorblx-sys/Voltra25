@@ -86,7 +86,9 @@ function ServerApp.Start()
 	local squad = SquadService.new(profiles, publish, progression)
 	local transferMarket=TransferMarketService.new(profiles,inventory,squad)
 	local store = StoreService.new(profiles, inventory)
-	local rankedProfile = RankedProfileService.new(profiles, publish)
+	local rankedProfile = RankedProfileService.new(profiles, publish, progression)
+	if packs.SetRankedProfiles then packs:SetRankedProfiles(rankedProfile) end
+	if launch.SetRankedProfiles then launch:SetRankedProfiles(rankedProfile) end
 	local rankedSquads=RankedSquadService.new(profiles)
 	local matchSetup = MatchSetupService.new(profiles,publish,progression,matchRuntime,rankedSquads)
 	local rankedQueue = RankedQueueService.new(profiles,matchRuntime,rankedProfile,notifications,rankedSquads,progression,publish)
@@ -142,7 +144,15 @@ function ServerApp.Start()
 		playerRequests[serviceName] = now
 		local service = services[serviceName]
 		local ok, result = pcall(function() return service:GetClientData(player) end)
-		if not ok or result == nil then return { Success = false, Error = "DATA_UNAVAILABLE" } end
+		if (not ok or result == nil) and profiles.WaitForProfile then
+			profiles:WaitForProfile(player, 8)
+			ok, result = pcall(function() return service:GetClientData(player) end)
+		end
+		if not ok then
+			warn("[VTR DATA] "..serviceName.." failed for "..player.Name..": "..tostring(result))
+			return { Success = false, Error = "DATA_ERROR" }
+		end
+		if result == nil then return { Success = false, Error = "DATA_UNAVAILABLE" } end
 		return { Success = true, Data = result }
 	end
 	local lastProgressionAction: { [Player]: number } = {}
@@ -213,12 +223,12 @@ function ServerApp.Start()
 	end
 	local lastMatchAction:{[Player]:number}={}
 	matchAction.OnServerInvoke=function(player:Player,action:any,payload:any)
-		if type(action)~="string"or#action>32 then return{Success=false,Message="Invalid match action."}end;payload=type(payload)=="table"and payload or{};local now=os.clock();if action~="GetConfig"and action~="GetRoster"and action~="GetTeams"and now-(lastMatchAction[player]or 0)<.2 then return{Success=false,Message="Please wait."}end;lastMatchAction[player]=now
-		local ok,success,message,data=pcall(function()if action=="GetConfig"then local result=matchSetup:GetClientData(player);return result~=nil,result and"Match setup loaded."or"Match setup unavailable.",result elseif action=="GetRoster"then local result=matchSetup:GetRoster(player,payload.TeamId);return result~=nil,result and"Roster loaded."or"Unknown team.",result elseif action=="GetTeams"then local result=matchSetup:GetTeams(player,payload.Country,payload.League);return result~=nil,result and"Teams loaded."or"Invalid country or league.",result elseif action=="SaveSetup"then return matchSetup:Save(player,payload)elseif action=="StartMatch"then return matchSetup:StartMatch(player)elseif action=="WatchMatch"then return matchSetup:WatchMatch(player)elseif action=="JoinRankedQueue"then 
+		if type(action)~="string"or#action>32 then return{Success=false,Message="Invalid match action."}end;payload=type(payload)=="table"and payload or{};local now=os.clock();if action~="GetConfig"and action~="GetRoster"and action~="GetTeams"and action~="GetRankedLeaderboards"and now-(lastMatchAction[player]or 0)<.2 then return{Success=false,Message="Please wait."}end;lastMatchAction[player]=now
+		local ok,success,message,data=pcall(function()if action=="GetConfig"then local result=matchSetup:GetClientData(player);if not result and profiles.WaitForProfile then profiles:WaitForProfile(player,8);result=matchSetup:GetClientData(player)end;return result~=nil,result and"Match setup loaded."or"Match setup unavailable.",result elseif action=="GetRoster"then local result=matchSetup:GetRoster(player,payload.TeamId);return result~=nil,result and"Roster loaded."or"Unknown team.",result elseif action=="GetTeams"then local result=matchSetup:GetTeams(player,payload.Country,payload.League);return result~=nil,result and"Teams loaded."or"Invalid country or league.",result elseif action=="SaveSetup"then return matchSetup:Save(player,payload)elseif action=="StartMatch"then return matchSetup:StartMatch(player)elseif action=="WatchMatch"then return matchSetup:WatchMatch(player)elseif action=="JoinRankedQueue"then 
 		if player:GetAttribute("VTRInMatch")==true or (tonumber(player:GetAttribute("VTRRankedQueueLockedUntil"))or 0)>os.clock() then
 			return{Success=false,Message="Finish the current ranked match first."}
 		end
-return rankedQueue:Join(player,payload)elseif action=="LeaveRankedQueue"then return rankedQueue:Leave(player)elseif action=="GetRankedQueue"then return true,"Ranked queue status loaded.",rankedQueue:GetStatus(player)elseif action=="ReturnToMenu"then local result=matchSetup:ReturnToMenu(player);return result,result and"Returned to menu."or"No active match.",nil end;return false,"Unsupported match action.",nil end)
+return rankedQueue:Join(player,payload)elseif action=="LeaveRankedQueue"then return rankedQueue:Leave(player)elseif action=="GetRankedQueue"then return true,"Ranked queue status loaded.",rankedQueue:GetStatus(player)elseif action=="GetRankedLeaderboards"then return true,"Ranked leaderboards loaded.",rankedProfile:GetLeaderboards()elseif action=="ClaimRankedPathReward"then return rankedProfile:ClaimPathReward(player)elseif action=="ReturnToMenu"then local result=matchSetup:ReturnToMenu(player);return result,result and"Returned to menu."or"No active match.",nil end;return false,"Unsupported match action.",nil end)
 		if not ok then
 			warn("[VTR MATCH ERROR] "..tostring(success))
 			return{Success=false,Message=RunService:IsStudio()and("Match failed: "..tostring(success))or"Match service failed.",Data=nil}

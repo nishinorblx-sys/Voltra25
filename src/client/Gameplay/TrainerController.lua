@@ -1,17 +1,33 @@
 --!strict
+local UserInputService = game:GetService("UserInputService")
 local TrainerPromptComponent = require(script.Parent.Parent.Components.TrainerPromptComponent)
 
 local Controller = {}
 Controller.__index = Controller
 
 local PROMPTS = {
-	Possession = {{Label = "SHOOT", Key = "LMB"}, {Label = "PASS", Key = "RMB"}, {Label = "LOBBED PASS", Key = "ALT+RMB"}, {Label = "MANUAL PASS", Key = "CTRL+RMB"}, {Label = "DRIBBLE", Key = "C"}},
-	Defending = {{Label = "SWITCH PLAYER", Key = "Q"}, {Label = "TACKLE", Key = "E"}, {Label = "SLIDE TACKLE", Key = "F"}, {Label = "BLOCK", Key = "R"}},
-	Loose = {{Label = "CHASE", Key = "WASD"}, {Label = "SWITCH", Key = "Q"}},
+	KeyboardMouse = {
+		Possession = {{Label = "SHOOT", Key = "LMB", Action = "Shoot"}, {Label = "PASS", Key = "RMB", Action = "Pass"}, {Label = "LOBBED PASS", Key = "ALT+RMB", Action = "Lob"}, {Label = "MANUAL PASS", Key = "CTRL+RMB", Action = "Manual"}, {Label = "DRIBBLE", Key = "C", Action = "Dribble"}},
+		Defending = {{Label = "SWITCH PLAYER", Key = "Q", Action = "Switch"}, {Label = "TACKLE", Key = "E", Action = "Tackle"}, {Label = "SLIDE TACKLE", Key = "F", Action = "SlideTackle"}, {Label = "BLOCK", Key = "R", Action = "Block"}},
+		Loose = {{Label = "CHASE", Key = "WASD", Action = "Move"}, {Label = "SWITCH", Key = "Q", Action = "Switch"}},
+	},
+	Gamepad = {
+		Possession = {{Label = "PASS", Key = "A", Action = "Pass"}, {Label = "SHOOT", Key = "B", Action = "Shoot"}, {Label = "LOBBED PASS", Key = "X", Action = "Lob"}, {Label = "MANUAL PASS", Key = "Y", Action = "Manual"}, {Label = "SPRINT LOCK", Key = "R2", Action = "Sprint"}},
+		Defending = {{Label = "SWITCH PLAYER", Key = "L1", Action = "Switch"}, {Label = "STAND TACKLE", Key = "A", Action = "Tackle"}, {Label = "SLIDE TACKLE", Key = "X", Action = "SlideTackle"}, {Label = "SPRINT LOCK", Key = "R2", Action = "Sprint"}},
+		Loose = {{Label = "CHASE", Key = "LS", Action = "Move"}, {Label = "SWITCH", Key = "L1", Action = "Switch"}, {Label = "SPRINT LOCK", Key = "R2", Action = "Sprint"}},
+	},
 }
 
+local function currentDevice(): string
+	local last = UserInputService:GetLastInputType()
+	if string.find(last.Name, "Gamepad") then
+		return "Gamepad"
+	end
+	return "KeyboardMouse"
+end
+
 function Controller.new(parent: Instance, ball: BasePart, mode: string?)
-	return setmetatable({Ball = ball, Mode = mode or "Basic", Prompt = TrainerPromptComponent.new(parent), LastState = "", MatchActive = false, HiddenKeys = {}, StateVisibleUntil = 0, Busy = false}, Controller)
+	return setmetatable({Ball = ball, Mode = mode or "Basic", Prompt = TrainerPromptComponent.new(parent), LastState = "", LastDevice = "", MatchActive = false, HiddenActions = {}, StateVisibleUntil = 0, Busy = false}, Controller)
 end
 
 function Controller:SetMatchActive(active: boolean)
@@ -28,6 +44,7 @@ end
 function Controller:SetMode(mode: string)
 	self.Mode = mode == "Off" and "Off" or mode == "Full" and "Full" or "Basic"
 	self.LastState = ""
+	self.LastDevice = ""
 end
 
 function Controller:SetBusy(busy: boolean)
@@ -36,16 +53,17 @@ function Controller:SetBusy(busy: boolean)
 end
 
 function Controller:NotifyAction(action: string?)
-	local key = action == "Pass" and "RMB" or action == "Shoot" and "LMB" or action == "Tackle" and "E" or action == "SlideTackle" and "F" or action == "Block" and "R" or nil
-	if key then self.HiddenKeys[key] = os.clock() + 30 end
+	if action then self.HiddenActions[action] = os.clock() + 30 end
 	self.HiddenUntil = os.clock() + 2.4
 	self.Prompt:SetVisible(false)
 end
 
 function Controller:_prompts(state: string): {{Label: string, Key: string}}
 	local prompts = {}
-	for _, prompt in PROMPTS[state] do
-		if os.clock() >= (self.HiddenKeys[prompt.Key] or 0) then
+	local device = currentDevice()
+	local promptSet = PROMPTS[device] or PROMPTS.KeyboardMouse
+	for _, prompt in promptSet[state] do
+		if os.clock() >= (self.HiddenActions[prompt.Action] or 0) then
 			table.insert(prompts, prompt)
 			if #prompts >= 5 then break end
 		end
@@ -66,8 +84,10 @@ function Controller:Update()
 	if not onScreen or screenPoint.Z <= 0 then self.Prompt:SetVisible(false) return end
 	local ownerName = self.Ball:GetAttribute("OwnerModel")
 	local state = ownerName == self.Active.Name and "Possession" or ownerName == "" and "Loose" or "Defending"
-	if state ~= self.LastState then
+	local device = currentDevice()
+	if state ~= self.LastState or device ~= self.LastDevice then
 		self.LastState = state
+		self.LastDevice = device
 		self.StateVisibleUntil = os.clock() + 5
 		self.Prompt:SetPrompts(self:_prompts(state))
 	end

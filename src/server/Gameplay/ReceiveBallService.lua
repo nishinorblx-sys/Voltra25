@@ -19,7 +19,6 @@ function Service:Expect(player: Player, receiver: Model, receivePoint: Vector3)
 	if (tonumber(receiver:GetAttribute("VTRCannotRecoverBallUntil")) or 0) > os.clock() or (tonumber(receiver:GetAttribute("VTRStunnedUntil")) or 0) > os.clock() then return end
 	local receiverRoot = root(receiver)
 	if not receiverRoot then return end
-	ReceiverMovementService.SetTarget(receiver, receivePoint)
 	self.Pending[player] = {Model = receiver, Point = receivePoint, Started = os.clock(), InitialDistance = (self.Ball.Position - receivePoint).Magnitude}
 end
 
@@ -33,16 +32,19 @@ function Service:Step()
 		end
 		local owner = self.Possession:GetOwner()
 		if owner == receiver then
-			local control = math.clamp((tonumber(receiver:GetAttribute("BallControl")) or tonumber(receiver:GetAttribute("DRI")) or 60) / 100, 0.35, 0.95)
-			self.Ball.AssemblyLinearVelocity *= 0.28 + control * 0.34
+			if tostring(receiver:GetAttribute("position") or "") == "GK" then
+				self.Ball.AssemblyLinearVelocity = Vector3.zero
+				self.Ball.AssemblyAngularVelocity = Vector3.zero
+			else
+				local control = math.clamp((tonumber(receiver:GetAttribute("BallControl")) or tonumber(receiver:GetAttribute("DRI")) or 60) / 100, 0.35, 0.95)
+				self.Ball.AssemblyLinearVelocity *= 0.28 + control * 0.34
+			end
 			clearReceiver(receiver)
 			self.Remote:FireClient(player, {Type = "ReceiveBall", Model = receiver})
 			self.Pending[player] = nil
 		elseif owner ~= nil and owner ~= receiver then
 			clearReceiver(receiver)
 			self.Pending[player] = nil
-		else
-			ReceiverMovementService.Step(receiver, entry.Point, self.Ball)
 		end
 	end
 end
