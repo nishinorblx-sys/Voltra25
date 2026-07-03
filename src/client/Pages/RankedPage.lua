@@ -222,7 +222,7 @@ function RankedPage.new(context: any): CanvasGroup
 	local goalDifferenceText = goalDifference > 0 and ("+" .. tostring(goalDifference)) or tostring(goalDifference)
 	local goalDifferenceColor = goalDifference > 0 and Theme.Colors.Electric or goalDifference < 0 and Theme.Colors.Danger or Color3.fromHex("2F6BFF")
 
-	PageBase.heading(scroll, "RANKED", "SEVEN-GAME PATH", "Queue your squad into a watch-vs-watch ranked match. Complete seven games and your final record decides the path reward.")
+	PageBase.heading(scroll, "RANKED", "DIVISION PATH", "Queue your squad into a watch-vs-watch ranked match. Complete seven games and your final record decides the path reward.")
 
 	local path = track(Panel.new({Name = "SevenGamePath", Position = UDim2.fromOffset(0, 98), Size = UDim2.new(1, 0, 0, 276), ClipsDescendants = false}))
 	path.Parent = scroll

@@ -54,12 +54,24 @@ function VTRDataDefaults.ForKey(player, key)
 	end
 
 	if key == "Ranked" then
+		local losses = stat(player, "Losses", 0)
+		local pathWins = stat(player, "PathWins", 0)
+		local pathLosses = stat(player, "PathLosses", 0)
+		local pathGames = stat(player, "PathGames", pathWins + pathLosses)
+
 		return {
 			Rank = rank,
-			Division = stat(player, "Division", 1),
+			Division = stat(player, "Division", 10),
 			Rating = stat(player, "Rating", 0),
 			Wins = wins,
-			Losses = stat(player, "Losses", 0),
+			Losses = losses,
+			PathWins = pathWins,
+			PathLosses = pathLosses,
+			PathDraws = 0,
+			PathGames = pathGames,
+			PathRecordText = tostring(pathWins) .. "W / 0D / " .. tostring(pathLosses) .. "L",
+			RequiredWins = 4,
+			MaxGames = 7,
 		}
 	end
 
