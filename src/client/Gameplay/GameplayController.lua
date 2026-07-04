@@ -1,4 +1,12 @@
 --!strict
+local function vtrLoadShotPowerModel()
+	local ReplicatedStorage = game:GetService("ReplicatedStorage")
+	local vtr = ReplicatedStorage:FindFirstChild("VTR")
+	local shared = (vtr and vtr:FindFirstChild("Shared")) or ReplicatedStorage:FindFirstChild("Shared") or ReplicatedStorage
+	return require(shared:WaitForChild("ShotPowerModel"))
+end
+
+local VTRShotPowerModel = vtrLoadShotPowerModel()
 local DeviceScaleService = require(script:FindFirstAncestor("VTRClient").Services.DeviceScaleService)
 local PackRouletteAlignmentService = require(script.Parent.Parent.Services:WaitForChild("PackRouletteAlignmentService"))
 local Players=game:GetService("Players")
@@ -230,6 +238,9 @@ function Controller:_mobileAimPayload(kind:string?,charge:number?,root:BasePart)
 	if isShotKind then distance=92+amount*90 end
 	local position=root.Position+direction*distance
 	local goalTarget=false
+	if typeof(goalTarget) == "Vector3" then
+		goalTarget = VTRShotPowerModel.ApplyToTarget(ball and ball.Position or origin or startPosition or shotOrigin or shooterPosition or Vector3.zero, goalTarget, vtrRawShotPower or rawPower or shotPower or kickPower or chargePower or inputPower or power or Power)
+	end
 	if isShotKind then
 		local pitch=self.Camera and self.Camera.PitchCFrame
 		local length=self.Camera and self.Camera.Length or 742
@@ -245,9 +256,15 @@ function Controller:_mobileAimPayload(kind:string?,charge:number?,root:BasePart)
 				position=goalPointFromStick(pitch,self.Camera.Width or 76,length,attackSign,vector,self.GamepadShotAimPoint)
 				self.GamepadShotAimPoint=position
 				goalTarget=true
+				if typeof(goalTarget) == "Vector3" then
+					goalTarget = VTRShotPowerModel.ApplyToTarget(ball and ball.Position or origin or startPosition or shotOrigin or shooterPosition or Vector3.zero, goalTarget, vtrRawShotPower or rawPower or shotPower or kickPower or chargePower or inputPower or power or Power)
+				end
 			else
 				position=root.Position+direction*(90+amount*80)
 				goalTarget=false
+				if typeof(goalTarget) == "Vector3" then
+					goalTarget = VTRShotPowerModel.ApplyToTarget(ball and ball.Position or origin or startPosition or shotOrigin or shooterPosition or Vector3.zero, goalTarget, vtrRawShotPower or rawPower or shotPower or kickPower or chargePower or inputPower or power or Power)
+				end
 			end
 		end
 	end
@@ -276,9 +293,15 @@ function Controller:_aimPayload(kind:string?,shotCharge:number?):any
 			local side=runner.Magnitude>.05 and runner.Unit:Dot(pitch.RightVector)>=0 and 1 or -1
 			local high=goalDirection.Magnitude>.05 and runner.Magnitude>.05 and runner.Unit:Dot(goalDirection.Unit)>0.55
 			local target=pitch:PointToWorldSpace(Vector3.new(side*11,high and 6.2 or 2.45,attackSign*length*.5))
+			if typeof(target) == "Vector3" then
+				target = VTRShotPowerModel.ApplyToTarget(ball and ball.Position or origin or startPosition or shotOrigin or shooterPosition or Vector3.zero, target, vtrRawShotPower or rawPower or shotPower or kickPower or chargePower or inputPower or power or Power)
+			end
 			local offset=Vector3.new(target.X-root.Position.X,0,target.Z-root.Position.Z)
 			local direction=offset.Magnitude>.01 and offset.Unit or self.Camera:Aim("Shot")
 			local goalTarget=offset.Magnitude<=200
+			if typeof(goalTarget) == "Vector3" then
+				goalTarget = VTRShotPowerModel.ApplyToTarget(ball and ball.Position or origin or startPosition or shotOrigin or shooterPosition or Vector3.zero, goalTarget, vtrRawShotPower or rawPower or shotPower or kickPower or chargePower or inputPower or power or Power)
+			end
 			if goalTarget and self.GoalTarget then self.GoalTarget:Lock(target)end
 			return{Direction=direction,Position=target,GoalTarget=goalTarget,TargetModel=nil}
 		end
@@ -286,11 +309,17 @@ function Controller:_aimPayload(kind:string?,shotCharge:number?):any
 	local position=self.MouseAim:GetAimWorldPosition();local switchTarget=kind=="Switch"and self:_reticleSwitchTarget(position)or nil
 	if not root then return{Direction=self.Camera:Aim(kind),Position=position,GoalTarget=false,TargetModel=switchTarget or(kind=="Pass"and self.LockedPassTarget or nil)}end
 	local goalTarget=kind=="Shot"and self.MouseAim:IsAimingAtGoal();position=goalTarget and self.MouseAim:GetGoalAimPoint(shotCharge or 0)or position
+	if typeof(goalTarget) == "Vector3" then
+		goalTarget = VTRShotPowerModel.ApplyToTarget(ball and ball.Position or origin or startPosition or shotOrigin or shooterPosition or Vector3.zero, goalTarget, vtrRawShotPower or rawPower or shotPower or kickPower or chargePower or inputPower or power or Power)
+	end
 	if self.PracticeMode and kind=="Shot"then local practiceTarget,practiceOnTarget=self:_practiceGoalPoint(shotCharge or 0);if practiceTarget then position=practiceTarget;goalTarget=practiceOnTarget==true end end
 	if kind=="Shot"and self.SetPieceMode=="DirectShotFreeKick"and self.SetPieceGoalSign and position and self.Camera and self.Camera.PitchCFrame then
 		local rectangle=GoalModelResolver.ResolveByAttackSign(self.SetPieceGoalSign,self.Camera.PitchCFrame,self.Camera.Width,self.Camera.Length)
 		position=GoalModelResolver.ClampPoint(rectangle,position)
 		goalTarget=true
+		if typeof(goalTarget) == "Vector3" then
+			goalTarget = VTRShotPowerModel.ApplyToTarget(ball and ball.Position or origin or startPosition or shotOrigin or shooterPosition or Vector3.zero, goalTarget, vtrRawShotPower or rawPower or shotPower or kickPower or chargePower or inputPower or power or Power)
+		end
 	end
 	local penaltySlot=nil
 	if kind=="Shot" and (self.SetPieceMode=="Penalty"or self.SetPieceMode=="PenaltyDefense") then

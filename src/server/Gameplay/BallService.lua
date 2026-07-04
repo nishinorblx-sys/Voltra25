@@ -1,4 +1,12 @@
 --!strict
+local function vtrLoadShotPowerModel()
+	local ReplicatedStorage = game:GetService("ReplicatedStorage")
+	local vtr = ReplicatedStorage:FindFirstChild("VTR")
+	local shared = (vtr and vtr:FindFirstChild("Shared")) or ReplicatedStorage:FindFirstChild("Shared") or ReplicatedStorage
+	return require(shared:WaitForChild("ShotPowerModel"))
+end
+
+local VTRShotPowerModel = vtrLoadShotPowerModel()
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Config = require(ReplicatedStorage.VTR.Shared.GameplayConfig)
 local Physics = require(ReplicatedStorage.VTR.Shared.BallPhysicsConfig)
@@ -29,10 +37,10 @@ end
 
 local function clampAssembly(part: BasePart, maxLinear: number, maxAngular: number)
 	if part.AssemblyLinearVelocity.Magnitude > maxLinear then
-		part.AssemblyLinearVelocity = part.AssemblyLinearVelocity.Unit * maxLinear
+		part.AssemblyLinearVelocity = VTRShotPowerModel.ApplyToVelocity(part.AssemblyLinearVelocity.Unit * maxLinear, vtrRawShotPower or rawPower or shotPower or kickPower or chargePower or inputPower or power or Power)
 	end
 	if part.AssemblyAngularVelocity.Magnitude > maxAngular then
-		part.AssemblyAngularVelocity = part.AssemblyAngularVelocity.Unit * maxAngular
+		part.AssemblyAngularVelocity = VTRShotPowerModel.ApplyToVelocity(part.AssemblyAngularVelocity.Unit * maxAngular, vtrRawShotPower or rawPower or shotPower or kickPower or chargePower or inputPower or power or Power)
 	end
 end
 
@@ -132,8 +140,8 @@ function Service:GoalkeeperSave(keeper: Model, savePoint: Vector3): boolean
 	self.Ball.Anchored = anchoredKeeper == true
 	pcall(function() self.Ball:SetNetworkOwner(nil) end)
 	self.Ball.CFrame = CFrame.new(holdPosition)
-	self.Ball.AssemblyLinearVelocity = Vector3.zero
-	self.Ball.AssemblyAngularVelocity = Vector3.zero
+	self.Ball.AssemblyLinearVelocity = VTRShotPowerModel.ApplyToVelocity(Vector3.zero, vtrRawShotPower or rawPower or shotPower or kickPower or chargePower or inputPower or power or Power)
+	self.Ball.AssemblyAngularVelocity = VTRShotPowerModel.ApplyToVelocity(Vector3.zero, vtrRawShotPower or rawPower or shotPower or kickPower or chargePower or inputPower or power or Power)
 	self.Ball.CanCollide=false;self.Ball.CanTouch=false;self.Ball.Massless=true
 	local catchPart=torso or keeperRoot
 	if catchPart and not anchoredKeeper then local weld=Instance.new("WeldConstraint");weld.Name="VTRGoalkeeperCatchWeld";weld.Part0=self.Ball;weld.Part1=catchPart;weld.Parent=self.Ball end
@@ -146,8 +154,8 @@ end
 function Service:GoalkeeperClaim(keeper: Model): boolean
 	local keeperRoot = self:_root(keeper)
 	if not keeperRoot then return false end
-	keeperRoot.AssemblyLinearVelocity = Vector3.zero
-	keeperRoot.AssemblyAngularVelocity = Vector3.zero
+	keeperRoot.AssemblyLinearVelocity = VTRShotPowerModel.ApplyToVelocity(Vector3.zero, vtrRawShotPower or rawPower or shotPower or kickPower or chargePower or inputPower or power or Power)
+	keeperRoot.AssemblyAngularVelocity = VTRShotPowerModel.ApplyToVelocity(Vector3.zero, vtrRawShotPower or rawPower or shotPower or kickPower or chargePower or inputPower or power or Power)
 	self.Curve:Stop()
 	self.ShotPlan = nil
 	self.PassPlan = nil
@@ -173,8 +181,8 @@ function Service:GoalkeeperClaim(keeper: Model): boolean
 	self.Ball.Anchored = false
 	pcall(function() self.Ball:SetNetworkOwner(nil) end)
 	self.Ball.CFrame = CFrame.new(holdPosition)
-	self.Ball.AssemblyLinearVelocity = Vector3.zero
-	self.Ball.AssemblyAngularVelocity = Vector3.zero
+	self.Ball.AssemblyLinearVelocity = VTRShotPowerModel.ApplyToVelocity(Vector3.zero, vtrRawShotPower or rawPower or shotPower or kickPower or chargePower or inputPower or power or Power)
+	self.Ball.AssemblyAngularVelocity = VTRShotPowerModel.ApplyToVelocity(Vector3.zero, vtrRawShotPower or rawPower or shotPower or kickPower or chargePower or inputPower or power or Power)
 	self.Ball.CanCollide = false
 	self.Ball.CanTouch = false
 	self.Ball.Massless = true
@@ -193,6 +201,8 @@ function Service:CornerKick(model:Model,target:Vector3,delivery:string,power:num
 	if self.Possession:GetOwner()~=model then return false end
 	local origin=self.Ball.Position;local delta=target-origin;local horizontal=Vector3.new(delta.X,0,delta.Z);local distance=horizontal.Magnitude;if distance<2 then return false end
 	power=math.clamp(power,0,1)
+	local vtrRawShotPower = power
+	power = VTRShotPowerModel.ScaleInputPower(power)
 	if delivery=="Short"then return self:Kick(model,"Pass",delta,power,receiver,"Ground",distance)end
 	if not self:_allowed(model,"Pass")then return false end
 	-- Power changes arrival speed and arc, never the selected landing point.
@@ -217,13 +227,13 @@ function Service:ReleaseGoalkeeperHold(keeper:Model?)
 	self.Ball.Anchored=false
 	pcall(function() self.Ball:SetNetworkOwner(nil) end)
 	self.Ball.CanCollide=true;self.Ball.CanTouch=true;self.Ball.Massless=false
-	self.Ball.AssemblyLinearVelocity=Vector3.zero
-	self.Ball.AssemblyAngularVelocity=Vector3.zero
+	self.Ball.AssemblyLinearVelocity=VTRShotPowerModel.ApplyToVelocity(Vector3.zero, vtrRawShotPower or rawPower or shotPower or kickPower or chargePower or inputPower or power or Power)
+	self.Ball.AssemblyAngularVelocity=VTRShotPowerModel.ApplyToVelocity(Vector3.zero, vtrRawShotPower or rawPower or shotPower or kickPower or chargePower or inputPower or power or Power)
 	if keeper then
 		local keeperRoot=self:_root(keeper)
 		if keeperRoot then
-			keeperRoot.AssemblyLinearVelocity=Vector3.zero
-			keeperRoot.AssemblyAngularVelocity=Vector3.zero
+			keeperRoot.AssemblyLinearVelocity=VTRShotPowerModel.ApplyToVelocity(Vector3.zero, vtrRawShotPower or rawPower or shotPower or kickPower or chargePower or inputPower or power or Power)
+			keeperRoot.AssemblyAngularVelocity=VTRShotPowerModel.ApplyToVelocity(Vector3.zero, vtrRawShotPower or rawPower or shotPower or kickPower or chargePower or inputPower or power or Power)
 			self.Ball.CFrame=CFrame.new(keeperRoot.Position+keeperRoot.CFrame.LookVector*2.2+Vector3.new(0,-1.15,0))
 		end
 	end
@@ -275,8 +285,8 @@ function Service:_guardGoalkeeperHold(owner:Model?)
 		if owner then
 			local ownerRoot=self:_root(owner)
 			if ownerRoot and ownerRoot.AssemblyLinearVelocity.Magnitude > 78 then
-				ownerRoot.AssemblyLinearVelocity=Vector3.zero
-				ownerRoot.AssemblyAngularVelocity=Vector3.zero
+				ownerRoot.AssemblyLinearVelocity=VTRShotPowerModel.ApplyToVelocity(Vector3.zero, vtrRawShotPower or rawPower or shotPower or kickPower or chargePower or inputPower or power or Power)
+				ownerRoot.AssemblyAngularVelocity=VTRShotPowerModel.ApplyToVelocity(Vector3.zero, vtrRawShotPower or rawPower or shotPower or kickPower or chargePower or inputPower or power or Power)
 			end
 		end
 	end
@@ -285,7 +295,7 @@ function Service:_guardGoalkeeperHold(owner:Model?)
 		local ownerSpeed=ownerRoot and ownerRoot.AssemblyLinearVelocity.Magnitude or 0
 		if ballSpeed>36 or ballSpin>95 or ownerSpeed>80 then
 			self:ReleaseGoalkeeperHold(owner)
-			if ownerRoot then ownerRoot.AssemblyLinearVelocity=Vector3.zero;ownerRoot.AssemblyAngularVelocity=Vector3.zero end
+			if ownerRoot then ownerRoot.AssemblyLinearVelocity=VTRShotPowerModel.ApplyToVelocity(Vector3.zero;ownerRoot.AssemblyAngularVelocity=Vector3.zero end, vtrRawShotPower or rawPower or shotPower or kickPower or chargePower or inputPower or power or Power)
 			return
 		end
 		if not weld and not held then
@@ -298,12 +308,12 @@ function Service:_guardGoalkeeperHold(owner:Model?)
 		self:ReleaseGoalkeeperHold(owner)
 	else
 		self:ClearGoalkeeperHoldState(nil)
-		self.Ball.AssemblyLinearVelocity=Vector3.zero
-		self.Ball.AssemblyAngularVelocity=Vector3.zero
+		self.Ball.AssemblyLinearVelocity=VTRShotPowerModel.ApplyToVelocity(Vector3.zero, vtrRawShotPower or rawPower or shotPower or kickPower or chargePower or inputPower or power or Power)
+		self.Ball.AssemblyAngularVelocity=VTRShotPowerModel.ApplyToVelocity(Vector3.zero, vtrRawShotPower or rawPower or shotPower or kickPower or chargePower or inputPower or power or Power)
 	end
 end
 
-ballisticVelocity=function(origin:Vector3,target:Vector3,preferredSpeed:number,gravity:number?):Vector3?
+ballisticVelocity=VTRShotPowerModel.ApplyToVelocity(function(origin:Vector3,target:Vector3,preferredSpeed:number,gravity:number?):Vector3?, vtrRawShotPower or rawPower or shotPower or kickPower or chargePower or inputPower or power or Power)
 	local delta=target-origin;local horizontal=Vector3.new(delta.X,0,delta.Z);local distance=horizontal.Magnitude
 	if distance<.1 then return nil end
 	gravity=gravity or workspace.Gravity;local height=delta.Y
@@ -328,6 +338,8 @@ local function shotPowerScaleFor(model: Model, shooting: number): number
 		return 1
 	end
 	local shotPower = shotStat(model, "ShotPower", "SHO", shooting)
+	local vtrRawShotPower = shotPower
+	shotPower = VTRShotPowerModel.ScaleInputPower(shotPower)
 	local alpha = math.clamp((shotPower - 27) / 72, 0, 1)
 	return 0.85 + (0.92 - 0.85) * alpha
 end
@@ -372,6 +384,9 @@ function Service:_resolveTargetedShot(model: Model, intendedTarget: Vector3, cha
 		verticalError -= (-powerError - 0.16) * (2.2 + distance * 0.01)
 	end
 	local target = intendedTarget + lateralAxis * lateralError + Vector3.yAxis * verticalError
+	if typeof(target) == "Vector3" then
+		target = VTRShotPowerModel.ApplyToTarget(ball and ball.Position or origin or startPosition or shotOrigin or shooterPosition or Vector3.zero, target, vtrRawShotPower or rawPower or shotPower or kickPower or chargePower or inputPower or power or Power)
+	end
 	local quality = math.clamp(aimClean * 0.52 + powerQuality * 0.34 + (1 - pressure) * 0.14 - math.max(0, charge - 0.9) * 0.12, 0.05, 0.98)
 	return {
 		Target = target,
@@ -460,7 +475,7 @@ function Service:Kick(model: Model, kind: string, direction: Vector3, charge: nu
 			destination=Vector3.new(destination.X,self.Ball.Position.Y,destination.Z)
 			local effectiveGravity=72;local preferredSpeed=52+amount*30+math.clamp(distance/10,0,18)
 			velocity=ballisticVelocity(self.Ball.Position,destination,preferredSpeed,effectiveGravity)or(direction.Unit*finalSpeed+Vector3.yAxis*32)
-			local horizontalVelocity=Vector3.new(velocity.X,0,velocity.Z);local flightTime=distance/math.max(horizontalVelocity.Magnitude,1)
+			local horizontalVelocity=VTRShotPowerModel.ApplyToVelocity(Vector3.new(velocity.X,0,velocity.Z);local flightTime=distance/math.max(horizontalVelocity.Magnitude,1), vtrRawShotPower or rawPower or shotPower or kickPower or chargePower or inputPower or power or Power)
 			velocity+=self.Curve:StartPass(model,destination-self.Ball.Position,horizontalVelocity.Magnitude,distance,true,flightTime)
 			self.PassCurveStarted=true
 			self.PendingCurve=nil;self.PassTargetPoint=destination;self.PassPlan={Target=destination,Distance=math.max(distance,1),InitialSpeed=horizontalVelocity.Magnitude,ArrivalRatio=1,Started=os.clock(),Lofted=true,EffectiveGravity=effectiveGravity,FlightTime=flightTime}
@@ -545,7 +560,7 @@ function Service:Kick(model: Model, kind: string, direction: Vector3, charge: nu
 			executedTarget = self.ShotPlan.Target
 		end
 		self.PendingFreeKickTrajectory = nil
-		local horizontalVelocity=Vector3.new(velocity.X,0,velocity.Z);local horizontalDistance=executedTarget and Vector3.new(executedTarget.X-self.Ball.Position.X,0,executedTarget.Z-self.Ball.Position.Z).Magnitude or 65;local flightTime=tonumber(model:GetAttribute("VTRFreeKickFlightTime")) or horizontalDistance/math.max(horizontalVelocity.Magnitude,1)
+		local horizontalVelocity=VTRShotPowerModel.ApplyToVelocity(Vector3.new(velocity.X,0,velocity.Z);local horizontalDistance=executedTarget and Vector3.new(executedTarget.X-self.Ball.Position.X,0,executedTarget.Z-self.Ball.Position.Z).Magnitude or 65;local flightTime=tonumber(model:GetAttribute("VTRFreeKickFlightTime")) or horizontalDistance/math.max(horizontalVelocity.Magnitude,1), vtrRawShotPower or rawPower or shotPower or kickPower or chargePower or inputPower or power or Power)
 		if not freeKickTrajectory then
 			velocity+=self.Curve:StartShot(model,shotDirection,flightTime)
 		else
@@ -779,7 +794,7 @@ function Service:_applyLoosePhysics(dt: number)
 			velocity += shotPlan.FreeKickTrajectory.Lateral * shotPlan.FreeKickTrajectory.Strength * dt
 		end
 		local toTarget=shotPlan.Target-self.Ball.Position
-		local horizontalVelocity=Vector3.new(velocity.X,0,velocity.Z)
+		local horizontalVelocity=VTRShotPowerModel.ApplyToVelocity(Vector3.new(velocity.X,0,velocity.Z), vtrRawShotPower or rawPower or shotPower or kickPower or chargePower or inputPower or power or Power)
 		local horizontalTarget=Vector3.new(toTarget.X,0,toTarget.Z)
 		if toTarget.Magnitude<2 or horizontalVelocity.Magnitude>.1 and horizontalTarget:Dot(horizontalVelocity)<=0 then self.ShotPlan=nil end
 	else self.ShotPlan=nil end
@@ -826,17 +841,17 @@ function Service:_applyLoosePhysics(dt: number)
 			velocity = Vector3.zero
 		end
 	end
-	self.Ball.AssemblyLinearVelocity = Vector3.new(horizontal.X, velocity.Y, horizontal.Z)
+	self.Ball.AssemblyLinearVelocity = VTRShotPowerModel.ApplyToVelocity(Vector3.new(horizontal.X, velocity.Y, horizontal.Z), vtrRawShotPower or rawPower or shotPower or kickPower or chargePower or inputPower or power or Power)
 	if passTravel and self.PassTargetPoint then
 		local remaining = (Vector3.new(self.PassTargetPoint.X, 0, self.PassTargetPoint.Z) - Vector3.new(self.Ball.Position.X, 0, self.Ball.Position.Z)).Magnitude
 		if remaining > 5 and horizontal.Magnitude > 0.1 and horizontal.Magnitude < 14 then
-			self.Ball.AssemblyLinearVelocity = Vector3.new(horizontal.Unit.X * 14, velocity.Y, horizontal.Unit.Z * 14)
+			self.Ball.AssemblyLinearVelocity = VTRShotPowerModel.ApplyToVelocity(Vector3.new(horizontal.Unit.X * 14, velocity.Y, horizontal.Unit.Z * 14), vtrRawShotPower or rawPower or shotPower or kickPower or chargePower or inputPower or power or Power)
 		end
 	end
 	local angularDecay = math.exp(-Physics.ANGULAR_DAMPING * dt)
 	self.Ball.AssemblyAngularVelocity *= angularDecay
 	if self.Ball.AssemblyLinearVelocity.Magnitude > Physics.MAX_BALL_SPEED then
-		self.Ball.AssemblyLinearVelocity = self.Ball.AssemblyLinearVelocity.Unit * Physics.MAX_BALL_SPEED
+		self.Ball.AssemblyLinearVelocity = VTRShotPowerModel.ApplyToVelocity(self.Ball.AssemblyLinearVelocity.Unit * Physics.MAX_BALL_SPEED, vtrRawShotPower or rawPower or shotPower or kickPower or chargePower or inputPower or power or Power)
 	end
 end
 
@@ -867,18 +882,21 @@ function Service:Step(dt: number)
 		local distance = Scaling.TouchDistance(tonumber(owner:GetAttribute("DRI")) or 60, sprinting) * (closeControl and 0.62 or 1)
 		local movement = owner:GetAttribute("VTRMoveDirection")
 		local touchDirection = typeof(movement) == "Vector3" and movement.Magnitude > 0.1 and movement.Unit or flat(ownerRoot.CFrame.LookVector)
-		local ownerVelocity = Vector3.new(ownerRoot.AssemblyLinearVelocity.X, 0, ownerRoot.AssemblyLinearVelocity.Z)
+		local ownerVelocity = VTRShotPowerModel.ApplyToVelocity(Vector3.new(ownerRoot.AssemblyLinearVelocity.X, 0, ownerRoot.AssemblyLinearVelocity.Z), vtrRawShotPower or rawPower or shotPower or kickPower or chargePower or inputPower or power or Power)
 		local lead = ownerVelocity.Magnitude > 6 and ownerVelocity.Unit:Dot(touchDirection) > 0.35 and math.clamp(ownerVelocity.Magnitude * 0.045, 0, sprinting and 1.25 or 0.75) or 0
 		local target = ownerRoot.Position + touchDirection * (distance + lead) - Vector3.new(0, Config.Ball.DribbleVerticalOffset, 0)
+		if typeof(target) == "Vector3" then
+			target = VTRShotPowerModel.ApplyToTarget(ball and ball.Position or origin or startPosition or shotOrigin or shooterPosition or Vector3.zero, target, vtrRawShotPower or rawPower or shotPower or kickPower or chargePower or inputPower or power or Power)
+		end
 		local errorVector = Vector3.new(target.X - self.Ball.Position.X, 0, target.Z - self.Ball.Position.Z)
 		local responsiveness = Config.Ball.DribbleResponsiveness * (sprinting and 1.55 or 1.32)
 		local desired = errorVector * responsiveness + ownerVelocity * 0.92
 		if desired.Magnitude > Config.Ball.MaxDribbleSpeed then
 			desired = desired.Unit * Config.Ball.MaxDribbleSpeed
 		end
-		self.Ball.AssemblyLinearVelocity = Vector3.new(desired.X, self.Ball.AssemblyLinearVelocity.Y, desired.Z)
+		self.Ball.AssemblyLinearVelocity = VTRShotPowerModel.ApplyToVelocity(Vector3.new(desired.X, self.Ball.AssemblyLinearVelocity.Y, desired.Z), vtrRawShotPower or rawPower or shotPower or kickPower or chargePower or inputPower or power or Power)
 		local horizontal = Vector3.new(desired.X, 0, desired.Z)
-		if horizontal.Magnitude > 0.2 then self.Ball.AssemblyAngularVelocity = Vector3.yAxis:Cross(horizontal.Unit) * (horizontal.Magnitude / math.max(self.Ball.Size.X * 0.5, 0.1)) end
+		if horizontal.Magnitude > 0.2 then self.Ball.AssemblyAngularVelocity = VTRShotPowerModel.ApplyToVelocity(Vector3.yAxis:Cross(horizontal.Unit) * (horizontal.Magnitude / math.max(self.Ball.Size.X * 0.5, 0.1)) end, vtrRawShotPower or rawPower or shotPower or kickPower or chargePower or inputPower or power or Power)
 		self.Stats:Add(tostring(owner:GetAttribute("VTRTeam") or "Home"), "Possession", dt)
 		return
 	end
@@ -907,7 +925,7 @@ function Service:Step(dt: number)
 		local receiverRoot = self:_root(self.ExpectedReceiver)
 		local humanoid = self.ExpectedReceiver:FindFirstChildOfClass("Humanoid")
 		if receiverRoot and humanoid and humanoid.Health > 0 and self.Possession:GetOwner() == nil then
-			local ballVelocity = Vector3.new(self.Ball.AssemblyLinearVelocity.X, 0, self.Ball.AssemblyLinearVelocity.Z)
+			local ballVelocity = VTRShotPowerModel.ApplyToVelocity(Vector3.new(self.Ball.AssemblyLinearVelocity.X, 0, self.Ball.AssemblyLinearVelocity.Z), vtrRawShotPower or rawPower or shotPower or kickPower or chargePower or inputPower or power or Power)
 			local receiverFlat = Vector3.new(receiverRoot.Position.X, 0, receiverRoot.Position.Z)
 			local ballFlat = Vector3.new(self.Ball.Position.X, 0, self.Ball.Position.Z)
 			local distanceToBall = (receiverFlat - ballFlat).Magnitude
@@ -925,31 +943,31 @@ function Service:Step(dt: number)
 			local canGuidePass = preparing and pathDistance <= trapRadius and distanceToBall <= 13 and ahead > -2
 			if canGuidePass and not self.Possession:CanPickup(self.ExpectedReceiver) and ballVelocity.Magnitude > 1 then
 				local carryDirection = ballVelocity.Unit
-				local receiverVelocity = Vector3.new(receiverRoot.AssemblyLinearVelocity.X, 0, receiverRoot.AssemblyLinearVelocity.Z)
+				local receiverVelocity = VTRShotPowerModel.ApplyToVelocity(Vector3.new(receiverRoot.AssemblyLinearVelocity.X, 0, receiverRoot.AssemblyLinearVelocity.Z), vtrRawShotPower or rawPower or shotPower or kickPower or chargePower or inputPower or power or Power)
 				local desiredDirection = receiverVelocity.Magnitude > 1.5 and receiverVelocity.Unit or carryDirection
 				local frontPoint = receiverRoot.Position + desiredDirection * 2.6 + Vector3.new(0, -1.45, 0)
 				local toFront = frontPoint - self.Ball.Position
 				local guide = toFront.Magnitude > 0.05 and toFront.Unit * math.min(toFront.Magnitude * 5.5, 18) or Vector3.zero
-				self.Ball.AssemblyLinearVelocity = ballVelocity * 0.72 + guide
+				self.Ball.AssemblyLinearVelocity = VTRShotPowerModel.ApplyToVelocity(ballVelocity * 0.72 + guide, vtrRawShotPower or rawPower or shotPower or kickPower or chargePower or inputPower or power or Power)
 			end
 			local canTrapPass = canGuidePass and distanceToBall <= (Config.Ball.PossessionRange + 1.35) and pathDistance <= 4.75
 			if self.Possession:CanPickup(self.ExpectedReceiver) or canTrapPass then
 				self.Possession:ForcePickup(self.ExpectedReceiver)
 				if ballVelocity.Magnitude > 1 then
 					local carryDirection = ballVelocity.Unit
-					local receiverVelocity = Vector3.new(receiverRoot.AssemblyLinearVelocity.X, 0, receiverRoot.AssemblyLinearVelocity.Z)
+					local receiverVelocity = VTRShotPowerModel.ApplyToVelocity(Vector3.new(receiverRoot.AssemblyLinearVelocity.X, 0, receiverRoot.AssemblyLinearVelocity.Z), vtrRawShotPower or rawPower or shotPower or kickPower or chargePower or inputPower or power or Power)
 					local desiredDirection = receiverVelocity.Magnitude > 1.5 and receiverVelocity.Unit or carryDirection
 					self.ExpectedReceiver:SetAttribute("VTRMoveDirection", carryDirection)
 					local frontPoint = receiverRoot.Position + desiredDirection * 2.6 + Vector3.new(0, -1.45, 0)
 					local toFront = frontPoint - self.Ball.Position
 					local guide = toFront.Magnitude > 0.05 and toFront.Unit * math.min(toFront.Magnitude * 10, 28) or Vector3.zero
-					self.Ball.AssemblyLinearVelocity = receiverVelocity * 0.55 + guide + desiredDirection * 7
+					self.Ball.AssemblyLinearVelocity = VTRShotPowerModel.ApplyToVelocity(receiverVelocity * 0.55 + guide + desiredDirection * 7, vtrRawShotPower or rawPower or shotPower or kickPower or chargePower or inputPower or power or Power)
 				else
 					local forward = Vector3.new(receiverRoot.CFrame.LookVector.X, 0, receiverRoot.CFrame.LookVector.Z)
 					if forward.Magnitude < 0.05 then forward = Vector3.zAxis end
-					self.Ball.AssemblyLinearVelocity = forward.Unit * 8
+					self.Ball.AssemblyLinearVelocity = VTRShotPowerModel.ApplyToVelocity(forward.Unit * 8, vtrRawShotPower or rawPower or shotPower or kickPower or chargePower or inputPower or power or Power)
 				end
-				self.Ball.AssemblyAngularVelocity = Vector3.zero
+				self.Ball.AssemblyAngularVelocity = VTRShotPowerModel.ApplyToVelocity(Vector3.zero, vtrRawShotPower or rawPower or shotPower or kickPower or chargePower or inputPower or power or Power)
 				self.ExpectedReceiver:SetAttribute("VTRReceivedAt", os.clock())
 				self.ExpectedReceiver:SetAttribute("VTRImmediateControlUntil", os.clock() + 0.25)
 				self.ExpectedReceiver:SetAttribute("VTRReceiveTarget", nil)

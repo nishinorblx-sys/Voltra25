@@ -1,4 +1,12 @@
 --!strict
+local function vtrLoadShotPowerModel()
+	local ReplicatedStorage = game:GetService("ReplicatedStorage")
+	local vtr = ReplicatedStorage:FindFirstChild("VTR")
+	local shared = (vtr and vtr:FindFirstChild("Shared")) or ReplicatedStorage:FindFirstChild("Shared") or ReplicatedStorage
+	return require(shared:WaitForChild("ShotPowerModel"))
+end
+
+local VTRShotPowerModel = vtrLoadShotPowerModel()
 local VTRGoalPassThrough = require(script.Parent:WaitForChild("GoalShotPassThroughService"))
 local function vtrXGPercent(value)
 	local n = tonumber(value) or 0
@@ -113,8 +121,8 @@ local function face(model:Model,position:Vector3,target:Vector3)
 	local modelRoot=root(model)
 	if not modelRoot then return end
 	model:PivotTo(CFrame.lookAt(Vector3.new(position.X,modelRoot.Position.Y,position.Z),Vector3.new(target.X,modelRoot.Position.Y,target.Z)))
-	modelRoot.AssemblyLinearVelocity=Vector3.zero
-	modelRoot.AssemblyAngularVelocity=Vector3.zero
+	modelRoot.AssemblyLinearVelocity=VTRShotPowerModel.ApplyToVelocity(Vector3.zero, vtrRawShotPower or rawPower or shotPower or kickPower or chargePower or inputPower or power or Power)
+	modelRoot.AssemblyAngularVelocity=VTRShotPowerModel.ApplyToVelocity(Vector3.zero, vtrRawShotPower or rawPower or shotPower or kickPower or chargePower or inputPower or power or Power)
 	local humanoid=model:FindFirstChildOfClass("Humanoid")
 	if humanoid then humanoid:Move(Vector3.zero,false)end
 end
@@ -307,6 +315,7 @@ local function cornerAerialScore(model:Model):number
 	local jumping=tonumber(model:GetAttribute("Jumping")) or tonumber(model:GetAttribute("PHY")) or overall
 	local strength=tonumber(model:GetAttribute("Strength")) or tonumber(model:GetAttribute("PHY")) or overall
 	local height=tonumber(model:GetAttribute("Height")) or 70
+	height = VTRShotPowerModel.ApplyToArcHeight(height, vtrRawShotPower or rawPower or shotPower or kickPower or chargePower or inputPower or power or Power)
 	return overall*.18+heading*.36+jumping*.18+strength*.12+math.clamp(height-66,0,16)*1.2
 end
 
@@ -333,26 +342,36 @@ local function cornerLanding(data:any,receiver:Model,role:string): (Vector3,stri
 	local z=goalSign*(length*.5-18)
 	local delivery="Cross"
 	local power=.64
+	local vtrRawShotPower = power
+	power = VTRShotPowerModel.ScaleInputPower(power)
 	if role=="NearPost" then
 		x=cornerSign*5
 		z=goalSign*(length*.5-8)
 		delivery="Driven"
 		power=.74
+		local vtrRawShotPower = power
+		power = VTRShotPowerModel.ScaleInputPower(power)
 	elseif role=="FarPost" then
 		x=-cornerSign*11
 		z=goalSign*(length*.5-11)
 		delivery="Lob"
 		power=.7
+		local vtrRawShotPower = power
+		power = VTRShotPowerModel.ScaleInputPower(power)
 	elseif role=="PenaltySpot" then
 		x=0
 		z=goalSign*(length*.5-18)
 		delivery="Cross"
 		power=.66
+		local vtrRawShotPower = power
+		power = VTRShotPowerModel.ScaleInputPower(power)
 	else
 		x=-cornerSign*4
 		z=goalSign*(length*.5-25)
 		delivery="Cross"
 		power=.62
+		local vtrRawShotPower = power
+		power = VTRShotPowerModel.ScaleInputPower(power)
 	end
 	local planned=data.PitchCFrame:PointToWorldSpace(Vector3.new(x,.15,z))
 	local receiverRoot=root(receiver)
@@ -405,6 +424,8 @@ function Service:_releaseCorner(player:Player,payload:any)
 	if payload.ServerAI~=true and active.Player~=player then return false end
 	local delivery=payload.Delivery;local allowed={Cross=true,Driven=true,Lob=true,Short=true};if not allowed[delivery]then return false end
 	local power=math.clamp(tonumber(payload.Power)or 0,0,1);local target=payload.Target
+	local vtrRawShotPower = power
+	power = VTRShotPowerModel.ScaleInputPower(power)
 	if typeof(target)~="Vector3"then return false end
 	if delivery=="Short"then local shortRoot=active.Data.ShortOption and active.Data.ShortOption:FindFirstChild("HumanoidRootPart")::BasePart?;if shortRoot then target=shortRoot.Position end end
 	local plannedReceiver:Model?=nil
@@ -414,16 +435,26 @@ function Service:_releaseCorner(player:Player,payload:any)
 		if typeof(requested)=="Instance" and requested:IsA("Model") and requested:GetAttribute("VTRTeam")==team and requested~=active.Data.Taker and not isKeeper(requested) then
 			plannedReceiver=requested
 			target=select(1,cornerLanding(active.Data,requested,tostring(requested:GetAttribute("VTRCornerRole") or "PenaltySpot")))
+			if typeof(target) == "Vector3" then
+				target = VTRShotPowerModel.ApplyToTarget(ball and ball.Position or origin or startPosition or shotOrigin or shooterPosition or Vector3.zero, target, vtrRawShotPower or rawPower or shotPower or kickPower or chargePower or inputPower or power or Power)
+			end
 			delivery="Cross"
 			power=math.clamp(power>.05 and power or .66,.45,.78)
+			local vtrRawShotPower = power
+			power = VTRShotPowerModel.ScaleInputPower(power)
 			active.Data.CornerReceiver=plannedReceiver
 			active.Data.CornerPlanRole=tostring(requested:GetAttribute("VTRCornerRole") or "PenaltySpot")
 		else
 			local plan=cornerDeliveryPlan(active.Data,self.Teams,team)
 			plannedReceiver=plan.Receiver
 			target=plan.Target
+			if typeof(target) == "Vector3" then
+				target = VTRShotPowerModel.ApplyToTarget(ball and ball.Position or origin or startPosition or shotOrigin or shooterPosition or Vector3.zero, target, vtrRawShotPower or rawPower or shotPower or kickPower or chargePower or inputPower or power or Power)
+			end
 			delivery=plan.Delivery
 			power=plan.Power
+			local vtrRawShotPower = power
+			power = VTRShotPowerModel.ScaleInputPower(power)
 			active.Data.CornerReceiver=plannedReceiver
 			active.Data.CornerPlanRole=plan.Role
 		end
@@ -448,8 +479,8 @@ function Service:Start(player: Player, kind: string, restartTeam: string, locati
 	local sequence = self.Sequence
 	self.Possession:Reset()
 	self.World.Ball.Anchored = true
-	self.World.Ball.AssemblyLinearVelocity = Vector3.zero
-	self.World.Ball.AssemblyAngularVelocity = Vector3.zero
+	self.World.Ball.AssemblyLinearVelocity = VTRShotPowerModel.ApplyToVelocity(Vector3.zero, vtrRawShotPower or rawPower or shotPower or kickPower or chargePower or inputPower or power or Power)
+	self.World.Ball.AssemblyAngularVelocity = VTRShotPowerModel.ApplyToVelocity(Vector3.zero, vtrRawShotPower or rawPower or shotPower or kickPower or chargePower or inputPower or power or Power)
 	local taker: Model
 	local kickoffPartner: Model? = nil
 	local setPieceCutscene = false
@@ -562,6 +593,9 @@ function Service:Start(player: Player, kind: string, restartTeam: string, locati
 				debugKickoff("auto pass attempt", "taker", taker.Name, "partner", kickoffPartner.Name, "distance", math.floor(offset.Magnitude*10)/10, "userControlled", userControlled==true)
 				if offset.Magnitude>1 then
 					local target=partnerRoot.Position+offset.Unit*2.4
+					if typeof(target) == "Vector3" then
+						target = VTRShotPowerModel.ApplyToTarget(ball and ball.Position or origin or startPosition or shotOrigin or shooterPosition or Vector3.zero, target, vtrRawShotPower or rawPower or shotPower or kickPower or chargePower or inputPower or power or Power)
+					end
 					if self.BallService and self.BallService.Last then self.BallService.Last[taker]={}end
 					kickoffPartner:SetAttribute("VTRForceIdle",nil)
 					kickoffPartner:SetAttribute("VTRFrozenIdle",nil)
@@ -665,8 +699,8 @@ function Service:ReleaseRestartTaker()
 			local modelRoot=root(model)
 			if modelRoot then
 				modelRoot.Anchored=false
-				modelRoot.AssemblyLinearVelocity=Vector3.zero
-				modelRoot.AssemblyAngularVelocity=Vector3.zero
+				modelRoot.AssemblyLinearVelocity=VTRShotPowerModel.ApplyToVelocity(Vector3.zero, vtrRawShotPower or rawPower or shotPower or kickPower or chargePower or inputPower or power or Power)
+				modelRoot.AssemblyAngularVelocity=VTRShotPowerModel.ApplyToVelocity(Vector3.zero, vtrRawShotPower or rawPower or shotPower or kickPower or chargePower or inputPower or power or Power)
 			end
 		end
 	end
