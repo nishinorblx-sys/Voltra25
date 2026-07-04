@@ -40,6 +40,7 @@ local OnboardingController = require(script.Parent.OnboardingController)
 local PageModules = {
 	Home = require(script.Parent.Parent.Pages.HomePage),
 	UltimateTeam = require(script.Parent.Parent.Pages.UltimateTeamPage),
+	Shooting = require(script.Parent.Parent.Pages.ShootingPage),
 	Inventory = require(script.Parent.Parent.Pages.InventoryPage),
 	Play = require(script.Parent.Parent.Pages.CampaignPage),
 	Ranked = require(script.Parent.Parent.Pages.RankedPage),
@@ -346,6 +347,7 @@ function UIController:Start()
 		Persist = function(mode: string, action: any, state: any)
 			if mode=="Ranked"and action.Operation=="RankedQueue"then return MatchSetupService:JoinRankedQueue()
 			elseif mode=="Ranked"and action.Operation=="RankedQueueCancel"then return MatchSetupService:LeaveRankedQueue()
+			elseif mode=="Shooting"and action.Operation=="StartShootingPractice"then return MatchSetupService:StartShootingPractice()
 			elseif action.ServerAction == "DeveloperGrantCoins" or action.ServerAction == "DeveloperResetProfile" then return LaunchService:Request(action.ServerAction,{})
 			elseif action.ServerAction == "BuyCoins" and action.ServerId then return LaunchService:Request("BuyCoins",{Id=action.ServerId})
 			elseif action.Operation == "Claim" and action.ServerId then return ProgressionService:Claim(action.ServerKind, action.ServerId)
@@ -474,7 +476,7 @@ function UIController:_bindDataUpdates()
 	end)
 	ProgressionService:Observe(function(value)
 		self.Data.Progression = value
-		for _, id in {"Home","UltimateTeam","Inventory","Play","Ranked"} do self:_replacePage(id) end
+		for _, id in {"Home","Inventory","Play","Ranked"} do self:_replacePage(id) end
 	end)
 end
 

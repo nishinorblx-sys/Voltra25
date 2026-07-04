@@ -27,6 +27,7 @@ local UltimateTeamPage={}
 local TABS={"Starting XI","Bench","Reserves","Club"}
 local POSITIONS={"ALL","GK","LB","CB","RB","CDM","CM","CAM","LW","ST","RW"}
 local RARITIES={"ALL","STARTER","COMMON","BRONZE","SILVER","GOLD","RARE","ELITE","LEGENDARY","ICON","MYTHIC"}
+local RARITY_RANK={COMMON=1,STARTER=2,BRONZE=3,SILVER=4,GOLD=5,RARE=6,ELITE=7,LEGENDARY=8,ICON=9,MYTHIC=10}
 local TACTIC_PRESETS={"Balanced","Possession","Counter Attack","High Press","Wing Play","Direct Long Ball","Low Block"}
 local FORMATION_DOTS={
 	["4-3-3"]={{.5,.9},{.18,.68},{.38,.7},{.62,.7},{.82,.68},{.28,.48},{.5,.52},{.72,.48},{.2,.24},{.5,.18},{.8,.24}},
@@ -41,6 +42,7 @@ local function text(parent:Instance,value:string,position:UDim2,size:UDim2,textS
 end
 local function corner(parent:Instance,radius:number) local value=Instance.new("UICorner");value.CornerRadius=UDim.new(0,radius);value.Parent=parent end
 local function rosterMeta(snapshot:any,card:any):any return snapshot.CardMeta and snapshot.CardMeta[card.Id] or card.Meta or {} end
+local function indexOrDefault(list:{string},value:any,defaultIndex:number):number local numeric=tonumber(value);if numeric and list[numeric]then return numeric end;for index,item in list do if item==value then return index end end;return defaultIndex end
 
 function UltimateTeamPage.new(context:any):CanvasGroup
 	local group,scroll=PageBase.new("UltimateTeam",930)
@@ -49,7 +51,10 @@ function UltimateTeamPage.new(context:any):CanvasGroup
 	local tactics=LiteConfig.DefaultTactics()
 	for key,value in context.Data.Progression.TeamTactics or{}do tactics[key]=value end
 	tactics.Sliders=tactics.Sliders or LiteConfig.DefaultTactics().Sliders
-	local selectedCard:any?=nil;local selectedDetails:any?=nil;local pendingCardId:string?=nil;local tapMoveEnabled=false;local activeTab="Bench";local searchText="";local positionIndex=1;local rarityIndex=1;local sortHigh=true;local compareCard:any?=nil
+	context.SquadBuilderTrayState=context.SquadBuilderTrayState or {}
+	local trayState=context.SquadBuilderTrayState
+	trayState.ScrollByTab=trayState.ScrollByTab or {}
+	local selectedCard:any?=nil;local selectedDetails:any?=nil;local pendingCardId:string?=nil;local tapMoveEnabled=false;local activeTab=table.find(TABS,trayState.ActiveTab) and trayState.ActiveTab or "Bench";local searchText=tostring(trayState.SearchText or "");local positionIndex=indexOrDefault(POSITIONS,trayState.PositionIndex or trayState.Position,1);local rarityIndex=indexOrDefault(RARITIES,trayState.RarityIndex or trayState.Rarity,1);local sortHigh=trayState.SortHigh~=false;local compareCard:any?=nil
 	local targets={}
 	local pitchNodes={}
 
@@ -74,11 +79,22 @@ function UltimateTeamPage.new(context:any):CanvasGroup
 
 	local renderAll:()->();local renderTray:()->();local renderPitch:()->();local renderSummary:()->();local renderPreview:()->();local repositionPitchOnly:()->();local selectCard:(any)->();local requestMove:(string,string,any?)->();local openCardMenu:(any)->();local destinationTap:(any?,string,any?)->()
 	local function toast(message:string,kind:string?) context.Toast({Title="SQUAD BUILDER",Message=message,Kind=kind or "Info"}) end
+	local function saveTrayState()
+		trayState.ActiveTab=activeTab
+		trayState.SearchText=searchText
+		trayState.PositionIndex=positionIndex
+		trayState.Position=POSITIONS[positionIndex]
+		trayState.RarityIndex=rarityIndex
+		trayState.Rarity=RARITIES[rarityIndex]
+		trayState.SortHigh=sortHigh
+	end
+	local function resetActiveTrayScroll() trayState.ScrollByTab[activeTab]=0;trayState.SkipNextScrollRemember=true end
 	local function apply(result:any)
 		if not result.Success then toast(result.Message or "Roster action rejected.","Error");return end
+		saveTrayState()
 		snapshot=result.Data or snapshot;toast(result.Message or "Squad saved.");if result.CompletedNow then toast("BUILD FIRST XI COMPLETE - reward ready.","Reward") end;renderAll()
 	end
-	requestMove=function(cardId:string,destinationType:string,destinationSlot:any?) apply(SquadService:MovePlayer(cardId,destinationType,destinationSlot)) end
+	requestMove=function(cardId:string,destinationType:string,destinationSlot:any?) saveTrayState();apply(SquadService:MovePlayer(cardId,destinationType,destinationSlot)) end
 	local formationSaveToken=0
 	local formationOpen=false
 	local function applyFormationLocally(name:string)
@@ -203,7 +219,6 @@ function UltimateTeamPage.new(context:any):CanvasGroup
 		item("SEND TO BENCH",function() local destination=1;for index=1,7 do if not snapshot.Bench[index] or not snapshot.Bench[index].Card then destination=index;break end end;requestMove(card.Id,"Bench",destination) end)
 		item("SEND TO RESERVES",function() requestMove(card.Id,"Reserves",nil) end)
 		item("REMOVE FROM SQUAD",function() requestMove(card.Id,"Club",nil) end)
-		item("ADD TO TRANSFER LIST",function()Modal.open(group,{Kicker="GLOBAL TRANSFER MARKET",Title="LIST "..string.upper(card.Name),Description="Choose a starter bid and duration in hours (1, 3, 6, 12 or 24). The card cannot be used while listed.",Fields={{Key="Price",Placeholder="STARTER BID",Default="1000"},{Key="Hours",Placeholder="HOURS",Default="1"}},ConfirmLabel="LIST PLAYER",OnConfirm=function(values:any)local hours=tonumber(values.Hours)or 0;local result=SquadService:CreateTransferListing(card.Id,tonumber(values.Price)or 0,hours*3600);if not result.Success then toast(result.Message or"Listing failed.","Error")else toast(result.Message or"Player listed.","Reward");local refreshed=SquadService:GetSquad();if refreshed.Success then snapshot=refreshed.Data;renderAll()end end end})end)
 		item("QUICK SELL",function()if meta.Locked then toast("Unlock this player before quick selling.","Error")else context.Flow:Confirmation("QUICK SELL "..string.upper(card.Name),"This permanently removes the card. Value scales from 1,000 to 24,000 coins by card quality.","QUICK SELL",function()apply(SquadService:QuickSellCard(card.Id))end)end end)
 		item(meta.Locked and "UNLOCK PLAYER" or "LOCK PLAYER",function() apply(SquadService:SetCardFlag(card.Id,"Locked",not meta.Locked)) end)
 		item(meta.Favorite and "REMOVE FAVORITE" or "FAVORITE PLAYER",function() apply(SquadService:SetCardFlag(card.Id,"Favorite",not meta.Favorite)) end)
@@ -261,21 +276,29 @@ function UltimateTeamPage.new(context:any):CanvasGroup
 	end
 
 	renderTray=function()
+		local scrollKey=activeTab
+		local previousList=trayContent:FindFirstChild("RosterTrayList")
+		if previousList and previousList:IsA("ScrollingFrame") and not trayState.SkipNextScrollRemember then trayState.ScrollByTab[tostring(trayState.RenderedTab or activeTab)]=previousList.CanvasPosition.X end
+		trayState.SkipNextScrollRemember=nil
+		saveTrayState()
 		for _,child in trayContent:GetChildren() do child:Destroy() end;for name,button in tabButtons do Button.setPrimary(button,name==activeTab) end
 		local controlsHeight=activeTab=="Club" and 36 or 0
 		if activeTab=="Club" then
-			local search=Instance.new("TextBox");search.BackgroundColor3=Theme.Colors.Gunmetal;search.BorderSizePixel=0;search.Position=UDim2.fromOffset(0,0);search.Size=UDim2.new(.42,-6,0,32);search.PlaceholderText="SEARCH CLUB PLAYERS";search.Text=searchText;search.TextColor3=Theme.Colors.White;search.PlaceholderColor3=Theme.Colors.Muted;search.TextSize=9;search.Font=Theme.Fonts.Strong;search.ClearTextOnFocus=false;search.Parent=trayContent;corner(search,5);search.FocusLost:Connect(function() searchText=search.Text;renderTray() end)
-			local pos=Button.new({Text="POS: "..POSITIONS[positionIndex],Variant="Secondary",Size=UDim2.new(.18,-4,0,32),OnActivated=function() positionIndex=positionIndex%#POSITIONS+1;renderTray() end});pos.Position=UDim2.new(.42,4,0,0);pos.Parent=trayContent
-			local rarity=Button.new({Text="RARITY: "..RARITIES[rarityIndex],Variant="Secondary",Size=UDim2.new(.22,-4,0,32),OnActivated=function() rarityIndex=rarityIndex%#RARITIES+1;renderTray() end});rarity.Position=UDim2.new(.60,6,0,0);rarity.Parent=trayContent
-			local sort=Button.new({Text=sortHigh and "OVR HIGH" or "OVR LOW",Variant="Secondary",Size=UDim2.new(.18,-4,0,32),OnActivated=function() sortHigh=not sortHigh;renderTray() end});sort.Position=UDim2.new(.82,8,0,0);sort.Parent=trayContent
+			local search=Instance.new("TextBox");search.BackgroundColor3=Theme.Colors.Gunmetal;search.BorderSizePixel=0;search.Position=UDim2.fromOffset(0,0);search.Size=UDim2.new(.42,-6,0,32);search.PlaceholderText="SEARCH CLUB PLAYERS";search.Text=searchText;search.TextColor3=Theme.Colors.White;search.PlaceholderColor3=Theme.Colors.Muted;search.TextSize=9;search.Font=Theme.Fonts.Strong;search.ClearTextOnFocus=false;search.Parent=trayContent;corner(search,5);search.FocusLost:Connect(function() searchText=search.Text;resetActiveTrayScroll();saveTrayState();renderTray() end)
+			local pos=Button.new({Text="POS: "..POSITIONS[positionIndex],Variant="Secondary",Size=UDim2.new(.18,-4,0,32),OnActivated=function() positionIndex=positionIndex%#POSITIONS+1;resetActiveTrayScroll();saveTrayState();renderTray() end});pos.Position=UDim2.new(.42,4,0,0);pos.Parent=trayContent
+			local rarity=Button.new({Text="RARITY: "..RARITIES[rarityIndex],Variant="Secondary",Size=UDim2.new(.22,-4,0,32),OnActivated=function() rarityIndex=rarityIndex%#RARITIES+1;resetActiveTrayScroll();saveTrayState();renderTray() end});rarity.Position=UDim2.new(.60,6,0,0);rarity.Parent=trayContent
+			local sort=Button.new({Text=sortHigh and "OVR HIGH" or "OVR LOW",Variant="Secondary",Size=UDim2.new(.18,-4,0,32),OnActivated=function() sortHigh=not sortHigh;resetActiveTrayScroll();saveTrayState();renderTray() end});sort.Position=UDim2.new(.82,8,0,0);sort.Parent=trayContent
 		end
-		local list=Instance.new("ScrollingFrame");list.BackgroundTransparency=1;list.BorderSizePixel=0;list.Position=UDim2.fromOffset(0,controlsHeight+6);list.Size=UDim2.new(1,0,1,-controlsHeight-6);list.CanvasSize=UDim2.new();list.ScrollingDirection=Enum.ScrollingDirection.X;list.ScrollingEnabled=true;list.Active=true;list.Selectable=false;list.ElasticBehavior=Enum.ElasticBehavior.WhenScrollable;list.ScrollBarThickness=5;list.ScrollBarImageColor3=Theme.Colors.Electric;list.Parent=trayContent;local layout=Instance.new("UIListLayout");layout.FillDirection=Enum.FillDirection.Horizontal;layout.Padding=UDim.new(0,8);layout.Parent=list
+		local list=Instance.new("ScrollingFrame");list.Name="RosterTrayList";list.BackgroundTransparency=1;list.BorderSizePixel=0;list.Position=UDim2.fromOffset(0,controlsHeight+6);list.Size=UDim2.new(1,0,1,-controlsHeight-6);list.CanvasSize=UDim2.new();list.ScrollingDirection=Enum.ScrollingDirection.X;list.ScrollingEnabled=true;list.Active=true;list.Selectable=false;list.ElasticBehavior=Enum.ElasticBehavior.WhenScrollable;list.ScrollBarThickness=5;list.ScrollBarImageColor3=Theme.Colors.Electric;list.Parent=trayContent;local layout=Instance.new("UIListLayout");layout.FillDirection=Enum.FillDirection.Horizontal;layout.Padding=UDim.new(0,8);layout.Parent=list
 		local function updateCanvas()if not list.Parent then return end;list.CanvasSize=UDim2.fromOffset(math.max(layout.AbsoluteContentSize.X+8,list.AbsoluteSize.X),0)end
 		layout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(updateCanvas);list:GetPropertyChangedSignal("AbsoluteSize"):Connect(updateCanvas)
+		list:GetPropertyChangedSignal("CanvasPosition"):Connect(function() if list.Parent then trayState.ScrollByTab[scrollKey]=list.CanvasPosition.X end end)
 		list.InputChanged:Connect(function(input)if input.UserInputType~=Enum.UserInputType.MouseWheel then return end;local maxX=math.max(0,list.AbsoluteCanvasSize.X-list.AbsoluteWindowSize.X);list.CanvasPosition=Vector2.new(math.clamp(list.CanvasPosition.X-input.Position.Z*72,0,maxX),0)end)
 		local entries={};if activeTab=="Bench" then for index=1,7 do table.insert(entries,{Card=snapshot.Bench[index] and snapshot.Bench[index].Card or nil,Kind="Bench",Slot=index}) end elseif activeTab=="Reserves" then for index,card in snapshot.Reserves do table.insert(entries,{Card=card,Kind="Reserves",Slot=index}) end elseif activeTab=="Starting XI" then for _,slot in snapshot.SlotOrder do table.insert(entries,{Card=snapshot.Slots[slot].Card,Kind="StartingXI",Slot=slot}) end else for _,card in snapshot.Club do local match=(POSITIONS[positionIndex]=="ALL" or card.Position==POSITIONS[positionIndex]) and (RARITIES[rarityIndex]=="ALL" or string.upper(card.Rarity)==RARITIES[rarityIndex]) and (searchText=="" or string.find(string.lower(card.Name),string.lower(searchText),1,true));if match then table.insert(entries,{Card=card,Kind="Club",Slot=nil}) end end;table.sort(entries,function(a,b)
 			local ratingA=tonumber(a.Card and a.Card.Rating)or 0;local ratingB=tonumber(b.Card and b.Card.Rating)or 0
 			if ratingA~=ratingB then if sortHigh then return ratingA>ratingB else return ratingA<ratingB end end
+			local rarityA=RARITY_RANK[string.upper(tostring(a.Card and a.Card.Rarity or ""))] or 0;local rarityB=RARITY_RANK[string.upper(tostring(b.Card and b.Card.Rarity or ""))] or 0
+			if rarityA~=rarityB then return sortHigh and rarityA>rarityB or rarityA<rarityB end
 			local nameA=string.lower(tostring(a.Card and a.Card.Name or""));local nameB=string.lower(tostring(b.Card and b.Card.Name or""))
 			if nameA~=nameB then return nameA<nameB end
 			local idA=tostring(a.Card and(a.Card.Id or a.Card.cardInstanceId)or"");local idB=tostring(b.Card and(b.Card.Id or b.Card.cardInstanceId)or"")
@@ -288,7 +311,15 @@ function UltimateTeamPage.new(context:any):CanvasGroup
 			card.LayoutOrder=order
 		end
 		if activeTab=="Reserves" then registerTarget(list,"Reserves",nil) elseif activeTab=="Club" then registerTarget(list,"Club",nil) end
-		task.defer(updateCanvas)
+		task.defer(function()
+			updateCanvas()
+			if list.Parent then
+				local maxX=math.max(0,list.AbsoluteCanvasSize.X-list.AbsoluteWindowSize.X)
+				local remembered=tonumber(trayState.ScrollByTab[scrollKey]) or 0
+				list.CanvasPosition=Vector2.new(math.clamp(remembered,0,maxX),0)
+			end
+		end)
+		trayState.RenderedTab=activeTab
 	end
 
 	renderAll=function()
@@ -451,10 +482,9 @@ function UltimateTeamPage.new(context:any):CanvasGroup
 		renderHub()
 	end
 
-	for _,name in TABS do local tab=Button.new({Text=string.upper(name),Variant=name==activeTab and "Primary" or "Secondary",Size=UDim2.fromOffset(126,32),OnActivated=function() activeTab=name;renderTray() end});tab.Parent=tabBar;tabButtons[name]=tab end
+	for _,name in TABS do local tab=Button.new({Text=string.upper(name),Variant=name==activeTab and "Primary" or "Secondary",Size=UDim2.fromOffset(126,32),OnActivated=function() activeTab=name;saveTrayState();renderTray() end});tab.Parent=tabBar;tabButtons[name]=tab end
 	local shortcuts=Instance.new("Frame");shortcuts.BackgroundTransparency=1;shortcuts.Position=UDim2.new(1,-626,0,18);shortcuts.Size=UDim2.fromOffset(626,34);shortcuts.Parent=scroll;local shortcutLayout=Instance.new("UIListLayout");shortcutLayout.FillDirection=Enum.FillDirection.Horizontal;shortcutLayout.Padding=UDim.new(0,6);shortcutLayout.Parent=shortcuts
 	local squadShortcut=Button.new({Text="SQUAD BUILDER",Variant="Primary",Size=UDim2.fromOffset(116,34),OnActivated=function()toast("Squad Builder is active.")end});squadShortcut.Parent=shortcuts
-	local tacticsButton=Button.new({Text="TACTICS",Variant="Secondary",Size=UDim2.fromOffset(116,34),OnActivated=openTacticsHub});tacticsButton.Parent=shortcuts
 	local packsButton=Button.new({Text="PACKS",Variant="Secondary",Size=UDim2.fromOffset(116,34),OnActivated=openPackHub});packsButton.Parent=shortcuts
 	local navigatingToPlayers=false
 	local playersButton=Button.new({Text="PLAYER INVENTORY",Variant="Secondary",Size=UDim2.fromOffset(132,34),OnActivated=function()

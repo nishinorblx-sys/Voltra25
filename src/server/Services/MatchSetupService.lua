@@ -33,6 +33,43 @@ function Service:_isCampaignMatch(setup:any):boolean
 	return type(setup)=="table" and type(setup.CampaignTeamId)=="string" and setup.CampaignTeamId~=""
 end
 
+local function clonePracticePlayer(player:any):any?
+	if type(player)~="table"then return nil end
+	local copy=table.clone(player)
+	if type(player.appearance)=="table"then copy.appearance=table.clone(player.appearance)end
+	if type(player.mainStats)=="table"then copy.mainStats=table.clone(player.mainStats)end
+	if type(player.detailedStats)=="table"then copy.detailedStats=table.clone(player.detailedStats)end
+	if type(player.positions)=="table"then copy.positions=table.clone(player.positions)end
+	return copy
+end
+
+local function playerHasPosition(player:any,position:string):boolean
+	if type(player)~="table"then return false end
+	if player.bestPosition==position or player.Position==position or player.PositionSlot==position or player.FormationSlot==position or player.SquadSlot==position then return true end
+	local positions=type(player.positions)=="table"and player.positions or{}
+	return table.find(positions,position)~=nil
+end
+
+local function choosePracticeStriker(roster:any):any?
+	local starting=type(roster)=="table"and type(roster.StartingXI)=="table"and roster.StartingXI or{}
+	for _,candidate in starting do if candidate and(candidate.PositionSlot=="ST"or candidate.FormationSlot=="ST"or candidate.SquadSlot=="ST")then return clonePracticePlayer(candidate)end end
+	for _,candidate in starting do if playerHasPosition(candidate,"ST")then return clonePracticePlayer(candidate)end end
+	for _,candidate in starting do if candidate and not playerHasPosition(candidate,"GK")then return clonePracticePlayer(candidate)end end
+	return nil
+end
+
+local function choosePracticeKeeper(roster:any):any?
+	local starting=type(roster)=="table"and type(roster.StartingXI)=="table"and roster.StartingXI or{}
+	local bench=type(roster)=="table"and type(roster.Bench)=="table"and roster.Bench or{}
+	for _,candidate in starting do if playerHasPosition(candidate,"GK")then return clonePracticePlayer(candidate)end end
+	for _,candidate in bench do if playerHasPosition(candidate,"GK")then return clonePracticePlayer(candidate)end end
+	return nil
+end
+
+local function practiceBest(player:any):any
+	return player and{{playerId=player.playerId,displayName=player.displayName,shortName=player.shortName,overall=player.overall,bestPosition=player.bestPosition}}or{}
+end
+
 function Service:_teleportSoloCampaign(player:Player,action:string):(boolean,string,any?)
 	if RunService:IsStudio() or game.PrivateServerId~="" or player:GetAttribute("VTRAICampaignSoloServer")==true then return false,"",nil end
 	local code=nil
@@ -96,7 +133,7 @@ end
 function Service:GetClientData(player:Player):any?local profile=self.Profiles:GetProfile(player);if not profile then return nil end;local setup=self:_ensure(profile);local home,away=TeamDatabase.Get(setup.HomeTeamId),TeamDatabase.Get(setup.AwayTeamId);return{Setup=table.clone(setup),Teams={TeamDatabase.Summary(home),TeamDatabase.Summary(away)},Countries=TeamDatabase.GetCountries(),TeamCount=TeamDatabase.Count,Stadiums=MatchConfig.Stadiums,Options={MatchLengths=MatchConfig.MatchLengths,Difficulties=MatchConfig.Difficulties,MatchTypes=MatchConfig.MatchTypes,Weather=MatchConfig.Weather,Times=MatchConfig.Times,KitTypes=MatchConfig.KitTypes}}end
 function Service:GetRoster(_player:Player,teamId:string):any?return TeamDatabase.GetRoster(teamId)end
 function Service:GetTeams(_player:Player,country:any,league:any):any?if type(country)~="string"or#country>50 or type(league)~="string"or#league>60 then return nil end;return TeamDatabase.GetSummaries(country,league)end
-function Service:Save(player:Player,payload:any):(boolean,string,any?)local profile=self.Profiles:GetProfile(player);if not profile or type(payload)~="table"then return false,"Profile unavailable.",nil end;local nextSetup=table.clone(self:_ensure(profile));for key,value in payload do if nextSetup[key]~=nil then nextSetup[key]=value end end;local valid,message=self:_validate(nextSetup);if not valid then return false,message,nil end;nextSetup.Completed=true;nextSetup.SavedAt=os.time();local home,away=TeamDatabase.Get(nextSetup.HomeTeamId),TeamDatabase.Get(nextSetup.AwayTeamId);nextSetup.KitConflict=colorDistance(home.kits[nextSetup.HomeKit].Primary,away.kits[nextSetup.AwayKit].Primary)<.35;profile.MatchSetup=nextSetup;return true,"Match settings saved.",table.clone(nextSetup)end
+function Service:Save(player:Player,payload:any):(boolean,string,any?)local profile=self.Profiles:GetProfile(player);if not profile or type(payload)~="table"then return false,"Profile unavailable.",nil end;local nextSetup=table.clone(self:_ensure(profile));for key,value in payload do if nextSetup[key]~=nil then nextSetup[key]=value end end;local valid,message=self:_validate(nextSetup);if not valid then return false,message,nil end;nextSetup.Completed=true;nextSetup.SavedAt=os.time();local home,away=TeamDatabase.Get(nextSetup.HomeTeamId),TeamDatabase.Get(nextSetup.AwayTeamId);nextSetup.KitConflict=colorDistance(home.kits[nextSetup.HomeKit].Primary,away.kits[nextSetup.AwayKit].Primary)<.35;profile.MatchSetup=nextSetup;if self.Profiles.Save then self.Profiles:Save(player)end;return true,"Match settings saved.",table.clone(nextSetup)end
 function Service:StartMatch(player:Player):(boolean,string,any?)
 	local profile=self.Profiles:GetProfile(player);if not profile then return false,"Profile unavailable.",nil end;local setup=self:_ensure(profile);local valid,message=self:_validate(setup);if not valid or not setup.Completed then return false,message,nil end
 	if self:_isCampaignMatch(setup) and player:GetAttribute("VTRAICampaignSoloServer")~=true then
@@ -105,7 +142,7 @@ function Service:StartMatch(player:Player):(boolean,string,any?)
 	end
 	local homeRoster=nil
 	local launchSetup=setup
-	if self:_isCampaignMatch(setup) and self.RankedSquads then
+	if self.RankedSquads then
 		local ready,rosterMessage,roster=self.RankedSquads:GetRoster(player)
 		if not ready then return false,rosterMessage,nil end
 		homeRoster=roster
@@ -188,11 +225,42 @@ function Service:WatchMatch(player:Player):(boolean,string,any?)
 			local progress=current.CampaignProgress or{UnlockedDifficulty=1,CompletedTeams={},RewardsClaimed={}};current.CampaignProgress=progress;progress.CompletedTeams=progress.CompletedTeams or{};progress.CompletedTeams[teamId]=true
 			local cleared=0;local tierId=tier and tier.Id or"";for completedId,done in progress.CompletedTeams do if done and string.find(tostring(completedId),tierId,1,true)then cleared+=1 end end
 			if cleared>=5 and tierIndex>=(tonumber(progress.UnlockedDifficulty)or 1)then progress.UnlockedDifficulty=math.min(#VTRLiteConfig.CampaignDifficulties,tierIndex+1)end
+			if self.Profiles.Save then self.Profiles:Save(player)end
 			self.Publish(player,"Progression",self.Progression:GetClientData(player))
 		end
 	end
 	if data then data.ObjectiveCompletedNow=false;data.WatchMode=true end
 	return true,"AI vs AI match loaded.",data
+end
+function Service:StartShootingPractice(player:Player):(boolean,string,any?)
+	local profile=self.Profiles:GetProfile(player);if not profile then return false,"Profile unavailable.",nil end
+	local setup=self:_ensure(profile)
+	local homeRoster=nil
+	if self.RankedSquads then
+		local ready,rosterMessage,roster=self.RankedSquads:GetRoster(player)
+		if not ready then return false,rosterMessage,nil end
+		homeRoster=roster
+	end
+	homeRoster=homeRoster or TeamDatabase.GetRoster(setup.HomeTeamId)
+	if not homeRoster then return false,"Your shooting practice roster could not be loaded.",nil end
+	local striker=choosePracticeStriker(homeRoster)
+	if not striker then return false,"Put a striker or outfield player in your Starting XI first.",nil end
+	striker.FormationSlot="ST";striker.PositionSlot="ST";striker.SquadSlot=striker.SquadSlot or"ST";striker.VTRPracticeShooter=true
+	local awayRoster=TeamDatabase.GetRoster(setup.AwayTeamId)
+	if not awayRoster then
+		local fallback=TeamDatabase.Teams[2]or TeamDatabase.Teams[1]
+		awayRoster=fallback and TeamDatabase.GetRoster(fallback.teamId)or nil
+	end
+	local keeper=choosePracticeKeeper(awayRoster)
+	if not keeper then return false,"A goalkeeper could not be loaded for shooting practice.",nil end
+	keeper.FormationSlot="GK";keeper.PositionSlot="GK";keeper.SquadSlot="GK";keeper.bestPosition="GK";keeper.VTRPracticeKeeper=true
+	local practiceSetup=table.clone(setup);practiceSetup.ShootingPractice=true;practiceSetup.PracticeMode="Shooting";practiceSetup.MatchType="Friendly";practiceSetup.Completed=true;practiceSetup.HomeTeamId=homeRoster.Team.teamId;practiceSetup.AwayTeamId=awayRoster.Team.teamId;practiceSetup.HomeKit="Home";practiceSetup.AwayKit="Away";practiceSetup.WatchMode=false;practiceSetup.CampaignTeamId=""
+	local practiceHome={Team=homeRoster.Team,StartingXI={[10]=striker},Bench={},Reserves={},Formation="4-3-3",BestPlayers=practiceBest(striker)}
+	local practiceAway={Team=awayRoster.Team,StartingXI={[1]=keeper},Bench={},Reserves={},Formation="4-3-3",BestPlayers=practiceBest(keeper)}
+	local success,text,data=self.Runtime:StartMatch(player,practiceSetup,nil,nil,practiceHome,practiceAway)
+	if not success then return false,text,nil end
+	if data then data.AIMatchTeleport=true;data.MatchLaunchType="ShootingPractice";data.PracticeMode="Shooting";data.ObjectiveCompletedNow=false end
+	return true,"Shooting practice loaded.",data
 end
 function Service:ReturnToMenu(player:Player):boolean return self.Runtime:ReturnToMenu(player)end
 return Service

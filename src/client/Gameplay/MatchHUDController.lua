@@ -13,6 +13,7 @@ local AvatarPortraitGenerator = require(script.Parent.Parent.Services.PlayerPort
 
 local Controller = {}
 Controller.__index = Controller
+local PAUSE_BUTTON_TEXT = "| |"
 
 local function corner(parent: Instance, radius: number)
 	local value = Instance.new("UICorner")
@@ -408,13 +409,13 @@ function Controller.new(data: any)
 	pauseButton.Name = "PauseQueueButton"
 	pauseButton.AnchorPoint = Vector2.new(1, 0)
 	pauseButton.Position = UDim2.new(1, -24, 0, 60)
-	pauseButton.Size = UDim2.fromOffset(176, 44)
+	pauseButton.Size = UDim2.fromOffset(54, 44)
 	pauseButton.BackgroundColor3 = Color3.fromHex("07110F")
 	pauseButton.BorderSizePixel = 0
 	pauseButton.AutoButtonColor = false
-	pauseButton.Text = data.Ranked and "BACK  /  QUEUE PAUSE" or "BACK  /  PAUSE"
+	pauseButton.Text = PAUSE_BUTTON_TEXT
 	pauseButton.TextColor3 = Theme.Colors.White
-	pauseButton.TextSize = 9
+	pauseButton.TextSize = 18
 	pauseButton.Font = Theme.Fonts.Display
 	pauseButton.ZIndex = 42
 	pauseButton.Selectable = true
@@ -425,9 +426,9 @@ function Controller.new(data: any)
 	pauseStroke.Thickness=2
 	local pauseAccent=Instance.new("Frame")
 	pauseAccent.Name="PauseAccent"
-	pauseAccent.AnchorPoint=Vector2.new(1,.5)
-	pauseAccent.Position=UDim2.new(1,-10,.5,0)
-	pauseAccent.Size=UDim2.fromOffset(34,6)
+	pauseAccent.AnchorPoint=Vector2.new(.5,1)
+	pauseAccent.Position=UDim2.new(.5,0,1,-7)
+	pauseAccent.Size=UDim2.new(1,-18,0,4)
 	pauseAccent.BackgroundColor3=Theme.Colors.Electric
 	pauseAccent.BorderSizePixel=0
 	pauseAccent.ZIndex=43
@@ -989,7 +990,7 @@ function Controller:ShowPauseQueue(playerName:string,queued:boolean)
 	self.PauseQueueBanner=box
 	local text=queued and(string.upper(playerName).." QUEUED A PAUSE")or(string.upper(playerName).." CANCELLED PAUSE QUEUE")
 	if self.PauseButton then
-		self.PauseButton.Text = queued and "BACK  /  CANCEL PAUSE" or "BACK  /  QUEUE PAUSE"
+		self.PauseButton.Text = PAUSE_BUTTON_TEXT
 		self.PauseButton.BackgroundColor3 = queued and Color3.fromHex("1E2228") or Color3.fromHex("07110F")
 		self.PauseButton.TextColor3 = Theme.Colors.White
 	end

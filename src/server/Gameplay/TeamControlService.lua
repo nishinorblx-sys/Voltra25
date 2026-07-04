@@ -111,6 +111,11 @@ function Service:_set(player: Player, model: Model, reason: string)
 	model:SetAttribute("VTRControlSwitchedAt",os.clock())
 	model:SetAttribute("VTRImmediateControlUntil",os.clock()+.9)
 	model:SetAttribute("VTRManualReceiveOverride", self.ManualReceiveOverride[player] == true)
+	if self.Possession:GetOwner() == model and tostring(model:GetAttribute("position") or "") == "GK" then
+		model:SetAttribute("VTRKeeperMustDistributeUntil", nil)
+		model:SetAttribute("AIAssignment", "GoalkeeperPosition")
+		model:SetAttribute("VTRNoAutoPassUntil", os.clock() + 999)
+	end
 	if self.Possession:GetOwner() == model then self.Ball:SetAttribute("OwnerUserId", player.UserId) end
 	self.Remote:FireClient(player, {Type = "ActivePlayer", Model = model, Name = model:GetAttribute("DisplayName"), Position = model:GetAttribute("position"), Reason = reason})
 end
@@ -241,6 +246,11 @@ function Service:Handle(player: Player, payload: any)
 	local active = self.Active[player]
 	if not active or type(payload) ~= "table" then return end
 	local kind = payload.Type
+	if (kind == "Pass" or kind == "Shot" or kind == "Clearance") and active:GetAttribute("VTRGoalkeeperHolding") == true then
+		if self.BallService and self.BallService.PrepareGoalkeeperBallAction then
+			self.BallService:PrepareGoalkeeperBallAction(active)
+		end
+	end
 	if kind == "Move" and validDirection(payload.Direction) then
 		local humanoid = active:FindFirstChildOfClass("Humanoid")
 		local activeRoot = root(active)
@@ -285,6 +295,10 @@ function Service:Handle(player: Player, payload: any)
 	elseif kind == "Switch" then
 		local requested=typeof(payload.TargetModel)=="Instance"and payload.TargetModel:IsA("Model")and payload.TargetModel or nil;local target:Model?=nil
 		if requested and requested~=active and requested:GetAttribute("VTRTeam")==self.PlayerSides[player]then for _,teammate in self.Teams[self.PlayerSides[player]or"Home"]or{}do if teammate==requested then target=requested;break end end end
+		if not target then
+			local aimPoint=self:_aimPoint(active,payload.AimPosition,false)
+			if aimPoint then target=self:_closestTeammateToPoint(player,active,aimPoint)end
+		end
 		target=target or self:_nearestUseful(player)
 		if target then
 			if self.Possession:GetOwner()==active and target~=active then
@@ -330,9 +344,12 @@ function Service:Handle(player: Player, payload: any)
 	elseif kind == "Shot" and validDirection(payload.Direction) then
 		active:SetAttribute("VTRFreeKickCurve", tonumber(payload.FreeKickCurve) or 0)
 		active:SetAttribute("VTRFreeKickLift", tonumber(payload.FreeKickLift) or 0)
-		local aimPoint = self:_aimPoint(active, payload.AimPosition, payload.GoalTarget == true)
+		local practiceShotTarget=payload.PracticeShotTarget==true and typeof(payload.AimPosition)=="Vector3"
+		local aimPoint = practiceShotTarget and payload.AimPosition or self:_aimPoint(active, payload.AimPosition, payload.GoalTarget == true)
 		local activeRoot = root(active)
-		if payload.GoalTarget~=true and not self:_isShotNearGoal(active, aimPoint)then
+		if practiceShotTarget and aimPoint and activeRoot then
+			self.BallService:Kick(active, "Shot", aimPoint - activeRoot.Position, payload.Charge,nil,nil,nil,aimPoint)
+		elseif payload.GoalTarget~=true and not self:_isShotNearGoal(active, aimPoint)then
 			local direction = aimPoint and activeRoot and (aimPoint - activeRoot.Position) or payload.Direction
 			self.BallService:LowClearance(active,direction,payload.Charge)
 		else
@@ -369,7 +386,7 @@ function Service:Step()
 			debugKickoff("possession changed", "owner", currentOwner.Name, "team", currentOwner:GetAttribute("VTRTeam"), "aiControlled", currentOwner:GetAttribute("aiControlled"), "controlledByUser", currentOwner:GetAttribute("controlledByUser"), "kickoffReturnUntil", currentOwner:GetAttribute("VTRKickoffReturnUntil"), "noAutoPassUntil", currentOwner:GetAttribute("VTRNoAutoPassUntil"))
 			for player,active in self.Active do
 				local manuallyAway=(self.ManualSwitchAwayUntil[player]or 0)>os.clock()
-				if self.PlayerSides[player]==currentOwner:GetAttribute("VTRTeam")and active~=currentOwner and not manuallyAway then self:_set(player,currentOwner,"PossessionWon")end
+				if self.PlayerSides[player]==currentOwner:GetAttribute("VTRTeam")and active~=currentOwner and (not manuallyAway or tostring(currentOwner:GetAttribute("position")or"")=="GK") then self:_set(player,currentOwner,tostring(currentOwner:GetAttribute("position")or"")=="GK" and "GoalkeeperClaim" or "PossessionWon")end
 			end
 		end
 	end

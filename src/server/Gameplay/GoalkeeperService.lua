@@ -337,7 +337,12 @@ local function physicalSaveDecision(service: any, keeper: Model, rectangle: any,
 	local fullPower = math.clamp((shotCharge - 0.74) / 0.26, 0, 1)
 	local powerQuality = shotPlanNumber(shotPlan, "PowerQuality", 0.72)
 	local shotQuality = shotPlanNumber(shotPlan, "Quality", 0.62)
-	local reaction = math.clamp(0.56 - reflexes * 0.00165 + math.max(0, shotSpeed - 98) * 0.0029 + math.max(0, shotSpeed - 132) * 0.0016 + fullPower * 0.06 + math.max(0, 0.62 - powerQuality) * 0.16, 0.24, 0.72)
+	local reactionQuickness = math.clamp(tonumber(keeper:GetAttribute("VTRPracticeKeeperReaction")) or 1, 0.05, 2.2)
+	local diveScale = math.clamp(tonumber(keeper:GetAttribute("VTRPracticeKeeperDiveSpeed")) or 1, 0.05, 2.2)
+	local reachScale = math.clamp(tonumber(keeper:GetAttribute("VTRPracticeKeeperReach")) or 1, 0.05, 2.2)
+	local handlingScale = math.clamp(tonumber(keeper:GetAttribute("VTRPracticeKeeperHandling")) or 1, 0.05, 2.2)
+	local saveBias = math.clamp(tonumber(keeper:GetAttribute("VTRPracticeKeeperSaveBias")) or 1, 0.05, 2.2)
+	local reaction = math.clamp((0.56 - reflexes * 0.00165 + math.max(0, shotSpeed - 98) * 0.0029 + math.max(0, shotSpeed - 132) * 0.0016 + fullPower * 0.06 + math.max(0, 0.62 - powerQuality) * 0.16) / reactionQuickness, 0.08, 2.35)
 	local lateralDelta = delta:Dot(rectangle.Right)
 	local lateralVelocity = keeperRoot.AssemblyLinearVelocity:Dot(rectangle.Right)
 	local wrongFooted = math.abs(lateralDelta) > 2.5 and lateralVelocity * lateralDelta < -4
@@ -345,9 +350,9 @@ local function physicalSaveDecision(service: any, keeper: Model, rectangle: any,
 		reaction += 0.18
 	end
 	local available = timeToGoal - reaction
-	local diveSpeed = math.clamp(24 + diving * 0.155 + rating * 0.05, 29, MAX_DIVE_SPEED)
-	local lateralRequired = math.max(0, lateral - CATCH_RADIUS * (0.58 + handling / 520)) / diveSpeed
-	local verticalRequired = rise > 0.2 and math.sqrt((2 * rise) / math.max(workspace.Gravity * (0.72 + diving / 520), 1)) or 0
+	local diveSpeed = math.clamp(24 + diving * 0.155 + rating * 0.05, 29, MAX_DIVE_SPEED) * diveScale
+	local lateralRequired = math.max(0, lateral - CATCH_RADIUS * handlingScale * (0.58 + handling / 520)) / math.max(1,diveSpeed)
+	local verticalRequired = rise > 0.2 and math.sqrt((2 * rise) / math.max(workspace.Gravity * (0.72 + diving / 520) * diveScale, 1)) or 0
 	local keeperHorizontal = (keeperRoot.Position - rectangle.PlanePoint):Dot(rectangle.Right)
 	local oppositeSide = (targetHorizontal - center) * (keeperHorizontal - center) < -1.5
 	local cleanCorner = centerNorm > 0.72 and shotQuality > 0.74 and powerQuality > 0.72
@@ -361,9 +366,9 @@ local function physicalSaveDecision(service: any, keeper: Model, rectangle: any,
 	if oppositeSide then
 		cornerDifficulty += 0.08 + centerNorm * 0.06
 	end
-	local required = math.max(lateralRequired, verticalRequired) + cornerDifficulty
+	local required = (math.max(lateralRequired, verticalRequired) / reachScale) + cornerDifficulty
 	required += fullPower * (0.035 + math.max(0, shotSpeed - 132) * 0.0009)
-	local saveMargin = available - required
+	local saveMargin = available - required + (saveBias - 1) * 0.9
 	local willSave = saveMargin >= 0
 	return {
 		WillSave = willSave,
@@ -474,6 +479,15 @@ function Service:_begin(attackingSide: string, shotId: number)
 	local shotCharge = shotPlanNumber(shotPlan, "Charge", 0.68)
 	local fullPower = math.clamp((shotCharge - 0.74) / 0.26, 0, 1)
 	local shotSpeed = shotPlanNumber(shotPlan, "Speed", self.Ball.AssemblyLinearVelocity.Magnitude)
+	local practiceDiveScale=math.clamp(tonumber(keeper:GetAttribute("VTRPracticeKeeperDiveSpeed"))or 1,.05,2.2)
+	local missSeverity=willSave and 0 or math.clamp((tonumber(evaluation.Required)or 0)-(tonumber(evaluation.Available)or 0),.08,1.8)
+	local missDelay=willSave and 0 or math.clamp(.2+missSeverity*.42,.2,.95)
+	local baseDiveLead=math.max(0.08, (DIVE_LEAD_TIME - fullPower * 0.22 - math.max(0, shotSpeed - 132) * 0.0024) * math.clamp(practiceDiveScale,.12,1.25))
+	local baseLaunchAllowance=math.max(0.008, (0.12 - fullPower * 0.07 - math.max(0, shotSpeed - 145) * 0.0008) * math.clamp(practiceDiveScale,.08,1.25))
+	if not willSave then
+		baseDiveLead=math.max(.05,baseDiveLead-missDelay*.52)
+		baseLaunchAllowance=math.max(.004,baseLaunchAllowance*.38)
+	end
 	self.ActiveSave = {
 		ShotId = shotId,
 		AttackingSide = attackingSide,
@@ -486,8 +500,14 @@ function Service:_begin(attackingSide: string, shotId: number)
 		DivePlayed = false,
 		StartY = keeperRoot and keeperRoot.Position.Y or self.PitchCFrame.Position.Y + 3,
 		Launched = false,
-		DiveLeadTime = math.max(0.36, DIVE_LEAD_TIME - fullPower * 0.22 - math.max(0, shotSpeed - 132) * 0.0024),
-		LaunchAllowance = math.max(0.035, 0.12 - fullPower * 0.07 - math.max(0, shotSpeed - 145) * 0.0008),
+		DiveLeadTime = baseDiveLead,
+		LaunchAllowance = baseLaunchAllowance,
+		ReactionDelay = math.max(0,tonumber(evaluation.Reaction)or 0),
+		ReactionReadyAt = shotId + math.max(0,tonumber(evaluation.Reaction)or 0),
+		MissSeverity = missSeverity,
+		MissDelay = missDelay,
+		MissReachRatio = willSave and 1 or math.clamp(.9-missSeverity*.34,.42,.82),
+		MissOffsetSign = self.Random:NextNumber()<.5 and-1 or 1,
 		EffectiveGravity=(self.BallService.ShotPlan and tonumber(self.BallService.ShotPlan.EffectiveGravity))or workspace.Gravity,
 		ReachEvaluation=evaluation,
 	}
@@ -617,6 +637,31 @@ local function boundedRootTarget(rectangle:any,target:Vector3,forward:Vector3):(
 	local clampedVertical=math.clamp(vertical,rectangle.Bottom+verticalPadding,rectangle.Top-verticalPadding)
 	rootTarget+=rectangle.Right*(clampedHorizontal-horizontal)+rectangle.Up*(clampedVertical-vertical)
 	return rootTarget,widthPadding,verticalPadding
+end
+
+local function missedRootTarget(save:any,keeperRoot:BasePart,rootTarget:Vector3,rectangle:any,lateralAxis:Vector3,upAxis:Vector3,forward:Vector3):Vector3
+	if save.MissRootTarget then return save.MissRootTarget end
+	local severity=math.clamp(tonumber(save.MissSeverity)or .4,.08,1.8)
+	local reach=math.clamp(tonumber(save.MissReachRatio)or .72,.35,.88)
+	local start=keeperRoot.Position
+	local miss=start:Lerp(rootTarget,reach)
+	local actualLateral=(rootTarget-start):Dot(lateralAxis)
+	local sideSign=if actualLateral>=0 then 1 else -1
+	local sideNudge=lateralAxis*(sideSign*math.clamp(math.abs(actualLateral)*.08+severity*.28,0,.9))
+	if save.CenteredDive then
+		sideNudge=Vector3.zero
+	end
+	local lowNudge=-upAxis*math.clamp(.35+severity*.55,.35,1.45)
+	miss+=sideNudge+lowNudge
+	local keeperDepth=(keeperRoot.Position-rectangle.PlanePoint):Dot(forward)
+	local missDepth=(miss-rectangle.PlanePoint):Dot(forward)
+	miss+=forward*(keeperDepth-missDepth)
+	local vertical=(miss-rectangle.PlanePoint):Dot(upAxis)
+	local minimum=rectangle.Bottom+0.65
+	if vertical<minimum then miss+=upAxis*(minimum-vertical)end
+	save.MissRootTarget=miss
+	save.MissAim=miss+upAxis*1.05
+	return miss
 end
 
 function Service:_faceBall(keeper:Model,rectangle:any)
@@ -773,6 +818,12 @@ local function diveCatchFrame(position:Vector3,lookVector:Vector3,upAxis:Vector3
 	local forward=fallbackForward.Magnitude>.05 and fallbackForward.Unit or Vector3.zAxis
 	local aim=lookVector.Magnitude>.05 and lookVector.Unit or forward
 	local lateral=aim-forward*aim:Dot(forward)-upAxis*aim:Dot(upAxis)
+	local lift=math.abs(aim:Dot(upAxis))
+	if lateral.Magnitude<.35 and lift>.55 then
+		local bodyLook=forward-upAxis*forward:Dot(upAxis)
+		bodyLook=bodyLook.Magnitude>.05 and bodyLook.Unit or forward
+		return CFrame.lookAt(position,position+bodyLook,upAxis)
+	end
 	if lateral.Magnitude<.05 then
 		lateral=upAxis:Cross(forward)
 	end
@@ -780,7 +831,6 @@ local function diveCatchFrame(position:Vector3,lookVector:Vector3,upAxis:Vector3
 		lateral=Vector3.xAxis
 	end
 	local lateralDirection=lateral.Unit
-	local lift=math.abs(aim:Dot(upAxis))
 	local bodyUp=(lateralDirection+upAxis*math.clamp(.08+lift*.18,.08,.26)).Unit
 	local bodyLook=(forward*.74+aim*.26)
 	bodyLook-=bodyUp*bodyLook:Dot(bodyUp)
@@ -821,6 +871,10 @@ function Service:Step(dt:number?)
 		return
 	end
 	if self.BallService.MotionKind ~= "Shot" or self.BallService.MotionStarted ~= save.ShotId then
+		local keepFailedVisual = save.WillSave == false and save.Rectangle ~= nil and save.Target ~= nil and (not save.Launched or os.clock() - (save.DiveStartedAt or os.clock()) < MIN_VISUAL_DIVE_TIME + 0.38)
+		if keepFailedVisual then
+			save.ShotExpired = true
+		else
 		save.Keeper:SetAttribute("VTRGoalkeeperSaving", false)
 		save.Keeper:SetAttribute("VTRSaveTarget", nil)
 		save.Keeper:SetAttribute("VTRGoalkeeperState", "Idle")
@@ -833,18 +887,25 @@ function Service:Step(dt:number?)
 		self.Ball:SetAttribute("VTRGoalkeeperTracking", nil)
 		self.ActiveSave = nil
 		return
+		end
 	end
 	local rectangle, target, time = self:_prediction(save.AttackingSide,save.EffectiveGravity)
 	if not rectangle or not target or not time then
-		if save.Launched then
+		if save.WillSave==false and not save.Launched and save.Rectangle and save.Target then
+			rectangle=save.Rectangle
+			target=save.Target
+			time=EMERGENCY_SAVE_TIME
+		elseif save.Launched then
 			if save.WillSave ~= false then
 				self:_finish(save)
 			else
 				if os.clock()-(save.DiveStartedAt or os.clock())<MIN_VISUAL_DIVE_TIME then return end
 				self:_miss(save)
 			end
+		else
+			if save.WillSave==false and os.clock()-(tonumber(save.ShotId)or os.clock())>.95 then self:_miss(save)end
 		end
-		return
+		if not rectangle or not target or not time then return end
 	end
 	save.Rectangle = rectangle
 	if save.PenaltyDiveTarget then
@@ -865,9 +926,17 @@ function Service:Step(dt:number?)
 	rootTarget+=forward*(keeperDepth-rootDepth)
 	local toEndpoint=rootTarget-keeperRoot.Position
 	local sideVector=toEndpoint-forward*toEndpoint:Dot(forward)-upAxis*toEndpoint:Dot(upAxis)
-	local fallbackAxis=self.PitchCFrame.RightVector
-	local candidateAxis=sideVector.Magnitude>.05 and sideVector.Unit or fallbackAxis
+	local fallbackAxis=rectangle.Right.Magnitude>.05 and rectangle.Right or self.PitchCFrame.RightVector
+	local verticalReach=math.max(0,toEndpoint:Dot(upAxis))
+	local centeredDive=sideVector.Magnitude<1.15 and verticalReach>.55
+	local candidateAxis=sideVector.Magnitude>.35 and sideVector.Unit or fallbackAxis
 	local lateralAxis=save.LateralAxis or candidateAxis
+	save.CenteredDive=save.CenteredDive or centeredDive
+	local diveAim=target
+	if save.WillSave==false then
+		rootTarget=missedRootTarget(save,keeperRoot,rootTarget,rectangle,lateralAxis,upAxis,forward)
+		diveAim=save.MissAim or(rootTarget+upAxis*1.05)
+	end
 	if save.Launched and save.RootTarget then
 		local correction=1-math.exp(-(time<.12 and 80 or 20)*dt)
 		save.RootTarget=save.RootTarget:Lerp(rootTarget,correction)
@@ -881,31 +950,37 @@ function Service:Step(dt:number?)
 	end
 	local travel=math.abs((rootTarget-keeperRoot.Position):Dot(lateralAxis))
 	local rise=math.max(0,(rootTarget-keeperRoot.Position):Dot(upAxis))
-	local requiredTime=math.clamp(math.max(travel/MAX_DIVE_SPEED,math.sqrt(2*rise/math.max(workspace.Gravity,1))),.22,1.05)
+	local diveScale=math.clamp(tonumber(save.Keeper:GetAttribute("VTRPracticeKeeperDiveSpeed"))or 1,.05,2.2)
+	local catchScale=math.clamp(tonumber(save.Keeper:GetAttribute("VTRPracticeKeeperHandling"))or 1,.05,2.2)
+	local requiredTime=math.clamp(math.max(travel/(MAX_DIVE_SPEED*diveScale),math.sqrt(2*rise/math.max(workspace.Gravity*diveScale,1))),.16,3.0)
+	local reactionReady=os.clock()>=(tonumber(save.ReactionReadyAt)or 0)
+	local forceLateDive=save.WillSave==false and (save.ShotExpired==true or time<=EMERGENCY_SAVE_TIME or os.clock()-(tonumber(save.ShotId)or os.clock())>math.max(.3,tonumber(save.ReactionDelay)or 0))
 	if not save.Launched then
 		local lateral=(rootTarget-keeperRoot.Position):Dot(lateralAxis)
-		if math.abs(lateral)>8 and time>requiredTime+.62 then
+		if reactionReady and math.abs(lateral)>8 and time>requiredTime+.62 then
 			humanoid.WalkSpeed=1.15
 			humanoid:MoveTo(keeperRoot.Position+lateralAxis*math.clamp(lateral,-.6,.6))
 		end
 	end
-	if not save.Launched and time<=math.min(save.DiveLeadTime or DIVE_LEAD_TIME,requiredTime+(save.LaunchAllowance or .12))then
+	if not save.Launched and (reactionReady or forceLateDive) and (forceLateDive or time<=math.min(save.DiveLeadTime or DIVE_LEAD_TIME,requiredTime+(save.LaunchAllowance or .12)))then
 		save.Launched=true
 		save.DivePlayed=true
 		save.Keeper:SetAttribute("VTRGoalkeeperState","Diving")
 		humanoid:Move(Vector3.zero,false)
 		humanoid.PlatformStand=true
 		local flightTime=math.clamp(time,.09,.92)
+		if save.WillSave==false then flightTime=math.clamp(requiredTime+(tonumber(save.MissDelay)or .35),forceLateDive and .42 or .35,1.45)end
 		save.DiveStartedAt=os.clock()
 		save.DiveDuration=flightTime
-		save.InitialInterceptTime=math.max(time,.01)
+		save.InitialInterceptTime=save.WillSave==false and math.max(forceLateDive and flightTime*.62 or time+(tonumber(save.MissDelay)or .35),.01)or math.max(time,.01)
 		save.Progress=0
 		save.StartPosition=keeperRoot.Position
 		save.RootTarget=rootTarget
 		save.DiveLook=(rootTarget-keeperRoot.Position)
-		save.DiveAim=target
+		save.DiveAim=diveAim
 		save.FixedDiveDepth=(keeperRoot.Position-rectangle.PlanePoint):Dot(forward)
 		save.LateralAxis=candidateAxis
+		save.CenteredDive=centeredDive
 		lateralAxis=candidateAxis
 		local facing=self.LineFacing[save.Keeper];if facing then facing.Align.Enabled=false end
 		local delta=rootTarget-keeperRoot.Position
@@ -925,7 +1000,7 @@ function Service:Step(dt:number?)
 		save.Keeper:SetAttribute("VTRDiveLateralDistance",lateralDistance)
 		save.Keeper:SetAttribute("VTRDiveLateralSpeed",math.abs(lateralDistance)/flightTime)
 		save.Keeper:SetAttribute("VTRDiveTarget",rootTarget)
-		save.Keeper:SetAttribute("VTRDiveAim",target)
+		save.Keeper:SetAttribute("VTRDiveAim",diveAim)
 		save.Keeper:SetAttribute("VTRDiveLaunchTime",time)
 		save.Keeper:SetAttribute("VTRDiveAxis",lateralAxis)
 		save.Keeper:SetAttribute("VTRSavePredictedHeight",(target-rectangle.PlanePoint):Dot(upAxis))
@@ -936,28 +1011,29 @@ function Service:Step(dt:number?)
 		local endPosition:Vector3=save.RootTarget
 		local arrivalProgress=math.clamp(1-time/math.max(save.InitialInterceptTime,.01),0,1)
 		local elapsedProgress=math.clamp((os.clock()-(save.DiveStartedAt or os.clock()))/math.max(save.DiveDuration or .35,.05),0,1)
-		local desiredProgress=math.max(arrivalProgress,elapsedProgress)
+		local desiredProgress=save.WillSave==false and elapsedProgress or math.max(arrivalProgress,elapsedProgress)
 		save.Progress=math.max(save.Progress or 0,desiredProgress)
 		local progress=math.clamp(save.Progress,0,1)
 		local inverse=1-progress
 		local position=startPosition*(inverse*inverse)+apexPosition*(2*inverse*progress)+endPosition*(progress*progress)
 		local tangent=(apexPosition-startPosition)*(2*inverse)+(endPosition-apexPosition)*(2*progress)
 		local diveLook=save.DiveLook or (endPosition-startPosition)
-		local liveAim=target-position
+		local liveAim=diveAim-position
 		local blend=liveAim.Magnitude>.05 and diveLook:Lerp(liveAim,.35) or diveLook
 		local desiredFrame=diveCatchFrame(position,blend,upAxis,forward)
-		save.Keeper:SetAttribute("VTRSidewaysDive",true)
+		save.Keeper:SetAttribute("VTRSidewaysDive",not save.CenteredDive)
 		save.Keeper:SetAttribute("VTRDiveBodyAngle",math.floor(math.deg(math.acos(math.clamp(desiredFrame.UpVector:Dot(upAxis),-1,1)))+.5))
 		save.Keeper:PivotTo(desiredFrame)
-		self.Animations:SyncActionToArrival(save.Keeper,"GoalkeeperDive",time)
+		local syncTime=save.WillSave==false and math.max((save.DiveDuration or .5)*(1-progress),.16)or time
+		self.Animations:SyncActionToArrival(save.Keeper,"GoalkeeperDive",syncTime)
 	end
-	if save.Launched and save.WillSave==false and ((save.Progress or 0)>=.985 or time<=EMERGENCY_SAVE_TIME) and os.clock()-(save.DiveStartedAt or os.clock())>=MIN_VISUAL_DIVE_TIME then
+	if save.Launched and save.WillSave==false and ((save.Progress or 0)>=.86 or time<=EMERGENCY_SAVE_TIME) and os.clock()-(save.DiveStartedAt or os.clock())>=math.clamp(.42+(tonumber(save.MissDelay)or .35)*.25,.42,.72) then
 		self:_miss(save)
 		return
 	end
 	local ballDistance=(self.Ball.Position-keeperRoot.Position).Magnitude
 	local endpointDistance=(keeperRoot.Position-rootTarget).Magnitude
-	if save.WillSave~=false and save.Launched and (ballDistance<=CATCH_RADIUS or endpointDistance<=3.5 or (save.Progress or 0)>=.985 or time<=EMERGENCY_SAVE_TIME) then
+	if save.WillSave~=false and save.Launched and (ballDistance<=CATCH_RADIUS*catchScale or endpointDistance<=3.5*catchScale or (save.Progress or 0)>=.985 or time<=EMERGENCY_SAVE_TIME) then
 		self:_finish(save)
 	end
 end

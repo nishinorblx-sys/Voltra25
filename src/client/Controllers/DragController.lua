@@ -12,6 +12,23 @@ end
 local function repairViewports(root:Instance)
 	for _,descendant in root:GetDescendants() do if descendant:IsA("ViewportFrame") and not descendant.CurrentCamera then local camera=descendant:FindFirstChildWhichIsA("Camera",true);if camera then descendant.CurrentCamera=camera end end end
 end
+local function absoluteScale(root: Instance): number
+	local scale = 1
+	local current: Instance? = root
+	while current do
+		for _, child in current:GetChildren() do
+			if child:IsA("UIScale") then
+				scale *= child.Scale
+			end
+		end
+		current = current.Parent
+	end
+	return math.max(scale, 0.001)
+end
+local function toRootLocal(root: GuiObject, screenPosition: Vector2): Vector2
+	local scale = absoluteScale(root)
+	return (screenPosition - root.AbsolutePosition) / scale
+end
 
 function DragController.new(root:GuiObject,options:any)
 	local self=setmetatable({Root=root,Threshold=options.Threshold or 8,AllowTouchDrag=options.AllowTouchDrag==true,HitTest=options.HitTest,OnDragStart=options.OnDragStart,OnHover=options.OnHover,OnDrop=options.OnDrop,OnCancel=options.OnCancel,OnDragEnd=options.OnDragEnd,State=nil,Connections={}},DragController)
@@ -28,15 +45,20 @@ function DragController:_setHover(state:any,destination:any?)
 end
 
 function DragController:_ensureVisual(state:any,position:Vector2)
+	local localPosition = toRootLocal(self.Root, position)
+	local dragOffset = state.DragOffset or Vector2.zero
 	if state.Preview then
-		state.Preview.Position=UDim2.fromOffset(position.X-self.Root.AbsolutePosition.X,position.Y-self.Root.AbsolutePosition.Y)
+		local nextPosition = localPosition - dragOffset
+		state.Preview.Position=UDim2.fromOffset(nextPosition.X,nextPosition.Y)
 		return
 	end
 	local preview=state.CardRoot:Clone()
 	preview.Name="FullCardDragPreview"
-	preview.AnchorPoint=Vector2.new(.5,.5)
-	preview.Position=UDim2.fromOffset(position.X-self.Root.AbsolutePosition.X,position.Y-self.Root.AbsolutePosition.Y)
-	preview.Size=UDim2.fromOffset(state.CardRoot.AbsoluteSize.X,state.CardRoot.AbsoluteSize.Y)
+	preview.AnchorPoint=Vector2.zero
+	local nextPosition = localPosition - dragOffset
+	preview.Position=UDim2.fromOffset(nextPosition.X,nextPosition.Y)
+	local scale = absoluteScale(self.Root)
+	preview.Size=UDim2.fromOffset(state.CardRoot.AbsoluteSize.X/scale,state.CardRoot.AbsoluteSize.Y/scale)
 	preview.LayoutOrder=0
 	preview.Selectable=false
 	preview.Active=false
@@ -100,7 +122,9 @@ function DragController:Attach(cardRoot:GuiButton,payload:any,onClick:(any)->())
 	cardRoot.InputBegan:Connect(function(input)
 		if input.UserInputType~=Enum.UserInputType.MouseButton1 and input.UserInputType~=Enum.UserInputType.Touch then return end
 		if self.State then self:_finishVisual(self.State) end
-		self.State={CardRoot=cardRoot,Payload=payload,OnClick=onClick,Start=pointer(input),Dragging=false}
+		local start = pointer(input)
+		local scale = absoluteScale(self.Root)
+		self.State={CardRoot=cardRoot,Payload=payload,OnClick=onClick,Start=start,Dragging=false,DragOffset=(start-cardRoot.AbsolutePosition)/scale}
 		self:_ensureVisual(self.State,self.State.Start)
 	end)
 	cardRoot.Activated:Connect(function() if not self.State and os.clock()>(self.SuppressActivatedUntil or 0) then onClick(payload) end end)

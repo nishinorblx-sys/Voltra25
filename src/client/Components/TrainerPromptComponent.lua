@@ -23,8 +23,8 @@ end
 function Component:SetAdornee(_part: BasePart?) end
 
 function Component:SetScreenPosition(screenPoint: Vector2, viewport: Vector2)
-	local desired = screenPoint + Vector2.new(82, -18)
-	desired = Vector2.new(math.clamp(desired.X, 90, viewport.X - 90), math.clamp(desired.Y, 36, viewport.Y - 36))
+	local desired = screenPoint + Vector2.new(0, -72)
+	desired = Vector2.new(math.clamp(desired.X, 98, viewport.X - 98), math.clamp(desired.Y, 54, viewport.Y - 76))
 	self.Group.Position = UDim2.fromOffset(desired.X, desired.Y)
 end
 

@@ -67,6 +67,11 @@ function Service:WatchMatch():any
 		return request("WatchMatch",{AIMatchTeleport=true,CampaignMode="Manage"})
 	end)
 end
+function Service:StartShootingPractice():any
+	return VoltraMatchTeleport.Run("Shooting Practice",function()
+		return request("StartShootingPractice",{PracticeMode="Shooting"})
+	end)
+end
 local function deviceType():string
 	if UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled then return"Touch"end
 	if UserInputService.GamepadEnabled and not UserInputService.KeyboardEnabled then return"Gamepad"end

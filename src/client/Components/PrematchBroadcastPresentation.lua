@@ -1033,6 +1033,20 @@ local function lineupData(data: any, side: string): {any}
 	return side == "Home" and (data.HomeLineup or {}) or (data.AwayLineup or {})
 end
 
+local function kitForEntry(data: any, entry: any): any?
+	local player = entry and entry.Player
+	local model = entry and entry.Model
+	if type(player) == "table" then
+		local playerKit = player.KitData or player.kitData or player.Kit or player.kit or player.TeamKit or player.teamKit
+		if type(playerKit) == "table" then return playerKit end
+	end
+	local entryKit = entry and (entry.KitData or entry.kitData or entry.Kit or entry.kit)
+	if type(entryKit) == "table" then return entryKit end
+	local modelSide = model and (model:GetAttribute("teamSide") or model:GetAttribute("VTRTeam"))
+	local side = tostring(modelSide or (entry and entry.Side) or "Home")
+	return side == "Away" and data.AwayKitData or data.HomeKitData
+end
+
 local function showPlayerGroupPreview(container: Frame, models: {Model}, players: {any}, kits: {any}, firstIndex: number, lastIndex: number)
 	local function render()
 		container:ClearAllChildren()
@@ -1125,7 +1139,7 @@ local function showEntryGroupPreview(container: Frame, data: any, entries: {any}
 	for _, entry in entries do
 		table.insert(models, entry.Model)
 		table.insert(players, entry.Player)
-		table.insert(kits, entry.Side == "Away" and data.AwayKitData or data.HomeKitData)
+		table.insert(kits, kitForEntry(data, entry))
 	end
 	showPlayerGroupPreview(container, models, players, kits, 1, math.max(1, #entries))
 end
@@ -1175,17 +1189,12 @@ function Presentation.Play(data: any, onComplete: (() -> ())?)
 		skipHint.Text = "SPACE TO SKIP"
 		skipHint.TextColor3 = Theme.Colors.White
 		skipHint.TextSize = 14
-		skipHint.Font = Theme.Fonts.Display
+		skipHint.Font = Theme.Fonts.Body
 		skipHint.ZIndex = 260
 		skipHint.Parent = root
 		local corner = Instance.new("UICorner")
 		corner.CornerRadius = UDim.new(0, 14)
 		corner.Parent = skipHint
-		local stroke = Instance.new("UIStroke")
-		stroke.Color = Theme.Colors.Electric
-		stroke.Transparency = .22
-		stroke.Thickness = 1.5
-		stroke.Parent = skipHint
 	end
 	if UserInputService.TouchEnabled then
 		local actionRemote: RemoteEvent? = nil
@@ -1206,17 +1215,12 @@ function Presentation.Play(data: any, onComplete: (() -> ())?)
 		skip.Text = "SKIP"
 		skip.TextColor3 = Theme.Colors.White
 		skip.TextSize = 14
-		skip.Font = Theme.Fonts.Display
+		skip.Font = Theme.Fonts.Body
 		skip.ZIndex = 260
 		skip.Parent = root
 		local corner = Instance.new("UICorner")
 		corner.CornerRadius = UDim.new(0, 14)
 		corner.Parent = skip
-		local stroke = Instance.new("UIStroke")
-		stroke.Color = Theme.Colors.Electric
-		stroke.Transparency = .25
-		stroke.Thickness = 1.5
-		stroke.Parent = skip
 		skip.Activated:Connect(function()
 			UISoundService.PlayTransition()
 			if actionRemote then

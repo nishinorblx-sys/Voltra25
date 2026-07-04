@@ -183,6 +183,7 @@ function Service:RecordPackRating(player:Player,rating:any):boolean
 	p.Ranked=p.Ranked or{}
 	p.Ranked.BestPackRating=math.max(tonumber(p.Ranked.BestPackRating)or 0,value)
 	self:_publishLeaderboards(player,p.Ranked)
+	if self.Profiles.Save then self.Profiles:Save(player)end
 	self.Publish(player,"Ranked",self:GetClientData(player))
 	return true
 end
@@ -198,6 +199,7 @@ function Service:ClaimPathReward(player: Player): (boolean, string, any?)
 		local rankedData=self:GetClientData(player)
 		local progressionData=self.Progression and self.Progression.GetClientData and self.Progression:GetClientData(player)or nil
 		if progressionData then self.Publish(player,"Progression",progressionData)end
+		if self.Profiles.Save then self.Profiles:Save(player)end
 		self.Publish(player,"Ranked",rankedData)
 		return true,"Path restarted.",{Restarted=true,Wins=0,Draws=0,Losses=0,Packs=0,RewardPacks={},Ranked=rankedData,Progression=progressionData,RankedRun=rankedData and rankedData.RankedRun}
 	end
@@ -246,6 +248,7 @@ function Service:ClaimPathReward(player: Player): (boolean, string, any?)
 	reward.Inventory=inventoryData
 	if progressionData then self.Publish(player,"Progression",progressionData)end
 	if inventoryData then self.Publish(player,"Inventory",inventoryData)end
+	if self.Profiles.Save then self.Profiles:Save(player)end
 	self.Publish(player,"Ranked",rankedData)
 	return true,"Path reward claimed. Packs added to inventory.",reward
 end
@@ -274,6 +277,7 @@ function Service:DebugCompleteSevenWinPath(player:Player):(boolean,string,any?)
 	self.DebugRuns[player]={Active=false,Results={"Win","Win","Win","Win","Win","Win","Win"},Wins=7,Draws=0,Losses=0,Target=7,Ended=true,RewardClaimed=false}
 	publishPathCleared(player,true,7,0,r.DivisionNumber)
 	self:_publishLeaderboards(player,r)
+	if self.Profiles.Save then self.Profiles:Save(player)end
 	self.Publish(player,"Ranked",self:GetClientData(player))
 	return true,"Studio debug: 7-win path completed.",self:GetClientData(player)
 end
@@ -349,7 +353,7 @@ function Service:RecordServerResult(player:Player,result:string,_legacyDelta:num
 	end
 	local playerStats=r.PlayerStats;playerStats.MatchesPlayed+=1
 	if matchStats and matchStats.PlayerRating then local previous=playerStats.AverageRating or 0;playerStats.AverageRating=math.floor(((previous*(playerStats.MatchesPlayed-1)+matchStats.PlayerRating)/playerStats.MatchesPlayed)*10+.5)/10;playerStats.Goals+=(matchStats.Match and matchStats.Match.Goals or 0);if matchStats.MOTM and matchStats.MOTM.Team==matchStats.Team then playerStats.MOTM+=1 end;local assists=0;for _,entry in matchStats.Full and matchStats.Full.PlayerRatings or{}do if entry.Team==matchStats.Team then assists+=entry.Assists or 0;if(entry.Goals or 0)>=3 then playerStats.HatTricks+=1 end end end;playerStats.Assists+=assists end
-	table.insert(r.History,1,{Id=resultId~=""and resultId or nil,Result=result,Opponent=string.sub(opponent,1,32),OpponentTag=opponentTag and string.sub(string.upper(opponentTag),1,8)or nil,OpponentTeamName=opponentTeamName and string.sub(opponentTeamName,1,40)or nil,Score=string.sub(score,1,12),RPDelta=delta,At=os.time(),Reward=compactReward(matchStats and matchStats.Reward),Stats=compactHistoryStats(matchStats)});while#r.History>100 do table.remove(r.History)end;self:_publishLeaderboards(player,r);self.Publish(player,"Ranked",self:GetClientData(player));return true
+	table.insert(r.History,1,{Id=resultId~=""and resultId or nil,Result=result,Opponent=string.sub(opponent,1,32),OpponentTag=opponentTag and string.sub(string.upper(opponentTag),1,8)or nil,OpponentTeamName=opponentTeamName and string.sub(opponentTeamName,1,40)or nil,Score=string.sub(score,1,12),RPDelta=delta,At=os.time(),Reward=compactReward(matchStats and matchStats.Reward),Stats=compactHistoryStats(matchStats)});while#r.History>100 do table.remove(r.History)end;self:_publishLeaderboards(player,r);if self.Profiles.Save then self.Profiles:Save(player)end;self.Publish(player,"Ranked",self:GetClientData(player));return true
 end
 function Service:AttachHistoryReward(player:Player,resultId:string,reward:any):boolean
 	local p=self.Profiles:GetProfile(player);if not p or not p.Ranked or type(p.Ranked.History)~="table"then return false end
@@ -359,6 +363,7 @@ function Service:AttachHistoryReward(player:Player,resultId:string,reward:any):b
 			entry.Reward=compact
 			entry.Stats=type(entry.Stats)=="table"and entry.Stats or{}
 			entry.Stats.Reward=compact
+			if self.Profiles.Save then self.Profiles:Save(player)end
 			self.Publish(player,"Ranked",self:GetClientData(player))
 			return true
 		end

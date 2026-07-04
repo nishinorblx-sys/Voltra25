@@ -109,10 +109,11 @@ function ProgressionService:_grantObjectiveReward(player: Player, profile: any, 
 	if reward.Type == "XP" then
 		self:_addXP(profile, reward.Amount)
 	elseif reward.Type == "Pack" then
-		return self.Inventory:AddPack(player, reward.ItemId or "voltage_standard", "OBJECTIVE REWARD PACK", "Objective", reward.Amount or 1)
-	end
+		local granted=self.Inventory:AddPack(player, reward.ItemId or "voltage_standard", "OBJECTIVE REWARD PACK", "Objective", reward.Amount or 1)
+		if not granted then return false end
 		if player and typeof(player) == "Instance" and player:IsA("Player") then
 			VTRPendingPackAnimation.Queue(player, reward.ItemId or "voltage_standard")
+		end
 	elseif reward.Type == "Coins" then
 		self:_addCoins(profile, reward.Amount)
 	elseif reward.Type == "Bolts" then
@@ -158,6 +159,7 @@ function ProgressionService:GrantMatchRewards(player: Player, payload: any): any
 end
 
 function ProgressionService:_publishAll(player: Player, profile: any)
+	if self.Profiles.Save then self.Profiles:Save(player) end
 	self.Publish(player, "Progression", self:GetClientData(player))
 	self.Publish(player, "SeasonProgress", { Name = profile.Season.Name, Level = profile.Season.Level, XP = profile.Season.XP, RequiredXP = profile.Season.RequiredXP })
 	self.Publish(player, "Currency", { Coins = profile.Currency.Coins, Bolts = profile.Currency.Bolts })

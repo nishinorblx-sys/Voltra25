@@ -149,4 +149,15 @@ function Resolver.ProjectRay(rectangle: GoalRectangle, origin: Vector3, directio
 	return true, Resolver.ClampPoint(rectangle, hit)
 end
 
+function Resolver.ProjectRayToPlane(rectangle: GoalRectangle, origin: Vector3, direction: Vector3): (Vector3?, boolean)
+	local denominator = direction:Dot(rectangle.Normal)
+	if math.abs(denominator) < 0.0001 then return nil, false end
+	local time = (rectangle.PlanePoint - origin):Dot(rectangle.Normal) / denominator
+	if time <= 0 then return nil, false end
+	local hit = origin + direction * time
+	local offset = hit - rectangle.PlanePoint
+	local x, y = offset:Dot(rectangle.Right), offset:Dot(rectangle.Up)
+	return hit, x >= rectangle.Left and x <= rectangle.RightBound and y >= rectangle.Bottom and y <= rectangle.Top
+end
+
 return Resolver

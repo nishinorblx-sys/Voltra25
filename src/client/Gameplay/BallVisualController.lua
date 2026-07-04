@@ -37,6 +37,11 @@ local function showVisual(instance: Instance)
 end
 
 function Controller.new(ball: BasePart, model: Model)
+	for _, child in workspace:GetChildren() do
+		if child.Name == "VTRPredictedBall" and child ~= ball and child ~= ball.Parent then
+			child:Destroy()
+		end
+	end
 	local self=setmetatable({
 		Ball = ball,
 		Model = model,

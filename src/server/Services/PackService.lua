@@ -55,6 +55,9 @@ end
 function PackService:GetClientData(player: Player): any?
 	local profile = self.Profiles:GetProfile(player)
 	if not profile then return nil end
+	if self.Inventory and self.Inventory.GetUnopenedPacks then
+		self.Inventory:GetUnopenedPacks(player)
+	end
 	local inventory = {}
 	local history = {}
 	for _, owned in profile.PackInventory do
@@ -140,6 +143,7 @@ function PackService:Open(player: Player, packInstanceId: string): (boolean, { a
 	if self.RankedProfiles and self.RankedProfiles.RecordPackRating then
 		self.RankedProfiles:RecordPackRating(player,packRating)
 	end
+	if self.Profiles.Save then self.Profiles:Save(player) end
 	return true, reveals
 end
 

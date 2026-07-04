@@ -26,7 +26,25 @@ function Page.new(context:any):CanvasGroup
 	local group,scroll=PageBase.new("Inventory",820);PageBase.heading(scroll,"YOUR COLLECTION","INVENTORY","Every owned pack, player and club item in one place.")
 	group:SetAttribute("VTRPageCleanup",true)
 	local cleanupEvent=Instance.new("BindableEvent");cleanupEvent.Name="Cleanup";cleanupEvent.Parent=group
-	local response=InventoryService:Get();local data=response.Success and response.Data or {Summary={},Packs={},Players={},Cosmetics={},Kits={},Stadiums={},Consumables={},History={}}
+	local function mergedInventoryData(): any
+		local response=InventoryService:Get()
+		local nextData=response.Success and response.Data or {Summary={},Packs={},Players={},Cosmetics={},Kits={},Stadiums={},Consumables={},History={}}
+		local packResponse=PackService:GetInventory()
+		local packData=packResponse.Success and packResponse.Data or nil
+		if type(packData)=="table"then
+			if type(packData.Packs)=="table"and(#(nextData.Packs or{})==0 or #packData.Packs>#(nextData.Packs or{}))then
+				nextData.Packs=packData.Packs
+			end
+			if type(packData.History)=="table"and(#(nextData.History or{})==0 or #packData.History>#(nextData.History or{}))then
+				nextData.History=packData.History
+			end
+		end
+		nextData.Summary=nextData.Summary or{}
+		nextData.Packs=nextData.Packs or{}
+		nextData.Summary.UnopenedPacks=#nextData.Packs
+		return nextData
+	end
+	local data=mergedInventoryData()
 	local activeTab=(context.Data.UIState.SelectedTabs and context.Data.UIState.SelectedTabs.Inventory) or "Packs";if not table.find(TABS,activeTab)then activeTab="Packs"end;local search="";local positionIndex=1;local rarityIndex=1;local highFirst=true
 	local tabs=Instance.new("Frame");tabs.BackgroundTransparency=1;tabs.Position=UDim2.fromOffset(0,92);tabs.Size=UDim2.new(1,0,0,38);tabs.Parent=scroll;local tabLayout=Instance.new("UIListLayout");tabLayout.FillDirection=Enum.FillDirection.Horizontal;tabLayout.Padding=UDim.new(0,6);tabLayout.Parent=tabs
 	local body=Instance.new("Frame");body.BackgroundTransparency=1;body.Position=UDim2.fromOffset(0,146);body.Size=UDim2.new(1,0,0,640);body.Parent=scroll
@@ -60,7 +78,7 @@ function Page.new(context:any):CanvasGroup
 		return not context.IsCurrentPage or context.IsCurrentPage("Inventory")
 	end
 	local function toast(message:string,kind:string?)context.Toast({Title="INVENTORY",Message=message,Kind=kind or "Info"})end
-	local function refresh()local latest=InventoryService:Get();if latest.Success then data=latest.Data else toast(latest.Message or "Inventory refresh failed.","Error")end end
+	local function refresh()data=mergedInventoryData()end
 	local function field(pack:any,lower:string,upper:string,default:any):any local value=pack and pack[lower];if value==nil and pack then value=pack[upper]end;if value==nil then return default end;return value end
 	local function packName(pack:any):string return tostring(field(pack,"name","Name","VTR PLAYER PACK"))end
 	local function packId(pack:any):string return tostring(field(pack,"packId","PackId",""))end

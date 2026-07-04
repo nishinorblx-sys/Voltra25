@@ -24,7 +24,7 @@ local function down(keys:{[Enum.KeyCode]:boolean},key:Enum.KeyCode):boolean
 end
 
 function Controller.new(remote: RemoteEvent, aim: (string?,number?) -> any)
-	return setmetatable({Remote = remote, Aim = aim, Keys = {}, Charge = nil, PendingAction = nil, Connections = {}, AutoSwitch = "Assisted", ReceiverAssist = "Light", FreeKickCurve = 0, FreeKickLift = 0, LastFreeKickAt = 0, ManualPassKey = Enum.KeyCode.LeftControl, LobbedPassKey = Enum.KeyCode.LeftAlt, ChangePlayerKey = Enum.KeyCode.Q, TackleKey = Enum.KeyCode.E, SlideTackleKey = Enum.KeyCode.F, GamepadMove = Vector2.zero, GamepadAim = Vector2.zero, Defending = false, HasBall = false, ReceivingPass = false, SprintToggle = false, ActionLockedUntil = 0, IgnoredActionKeys = {}}, Controller)
+	return setmetatable({Remote = remote, Aim = aim, Keys = {}, Charge = nil, PendingAction = nil, Connections = {}, AutoSwitch = "Assisted", ReceiverAssist = "Light", FreeKickCurve = 0, FreeKickLift = 0, LastFreeKickAt = 0, ManualPassKey = Enum.KeyCode.LeftControl, LobbedPassKey = Enum.KeyCode.LeftAlt, ChangePlayerKey = Enum.KeyCode.Q, TackleKey = Enum.KeyCode.E, SlideTackleKey = Enum.KeyCode.F, GamepadMove = Vector2.zero, GamepadAim = Vector2.zero, Defending = false, HasBall = false, ReceivingPass = false, SprintToggle = false, ShootingOnly = false, ActionLockedUntil = 0, IgnoredActionKeys = {}}, Controller)
 end
 
 function Controller:SetAutoSwitch(mode: string?)
@@ -74,6 +74,21 @@ function Controller:LockActions(duration: number?)
 	end
 end
 
+function Controller:SetShootingOnly(active:boolean)
+	self.ShootingOnly = active == true
+	if self.ShootingOnly then
+		if self.Charge and self.Charge.Kind ~= "Shot" then self.Charge = nil end
+		self.PendingAction = nil
+		self.SprintToggle = false
+		table.clear(self.Keys)
+		if self.MobileControls and self.MobileControls.SetShootingOnly then
+			self.MobileControls:SetShootingOnly(true)
+		end
+	elseif self.MobileControls and self.MobileControls.SetShootingOnly then
+		self.MobileControls:SetShootingOnly(false)
+	end
+end
+
 function Controller:ActionsLocked(): boolean
 	return os.clock() < (self.ActionLockedUntil or 0)
 end
@@ -88,6 +103,7 @@ end
 
 function Controller:_chargeStart(kind: string, options: any?)
 	if self:ActionsLocked() then return end
+	if self.ShootingOnly and kind ~= "Shot" then return end
 	if not self.Charge then
 		self.Charge = {Kind = kind, Started = os.clock(), Options = options or {}}
 	end
@@ -149,6 +165,7 @@ end
 
 function Controller:_commitAction(payload: any)
 	if self:ActionsLocked() then return end
+	if self.ShootingOnly and payload.Type ~= "Shot" and payload.Type ~= "PenaltyGuess" then return end
 	if self.HasBall then
 		self.Remote:FireServer(payload)
 	elseif self.ReceivingPass then
@@ -200,6 +217,18 @@ function Controller:Start()
 		end
 		local key = input.KeyCode
 		if self.IgnoredActionKeys[key] then
+			return
+		end
+		if self.ShootingOnly then
+			if key == Enum.KeyCode.W or key == Enum.KeyCode.A or key == Enum.KeyCode.S or key == Enum.KeyCode.D then
+				self.Keys[key] = true
+			elseif key == Enum.KeyCode.ButtonB then
+				self:_chargeStart("Shot", {AimKind = "GamepadShot"})
+			elseif key == Enum.KeyCode.ButtonR2 then
+				self:ToggleSprint()
+			elseif input.UserInputType == Enum.UserInputType.MouseButton1 then
+				self:_chargeStart("Shot")
+			end
 			return
 		end
 		if key == Enum.KeyCode.W or key == Enum.KeyCode.A or key == Enum.KeyCode.S or key == Enum.KeyCode.D
@@ -266,6 +295,16 @@ function Controller:Start()
 		local key = input.KeyCode
 		if self.IgnoredActionKeys[key] then
 			self.IgnoredActionKeys[key] = nil
+			return
+		end
+		if self.ShootingOnly then
+			if key == Enum.KeyCode.W or key == Enum.KeyCode.A or key == Enum.KeyCode.S or key == Enum.KeyCode.D then
+				self.Keys[key] = nil
+			elseif key == Enum.KeyCode.ButtonB then
+				self:_chargeEnd("Shot")
+			elseif input.UserInputType == Enum.UserInputType.MouseButton1 then
+				self:_chargeEnd("Shot")
+			end
 			return
 		end
 		if key == Enum.KeyCode.W or key == Enum.KeyCode.A or key == Enum.KeyCode.S or key == Enum.KeyCode.D

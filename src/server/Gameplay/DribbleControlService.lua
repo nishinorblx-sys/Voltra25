@@ -19,7 +19,9 @@ function Service.Rotate(model: Model, direction: Vector3, hasBall: boolean, spri
 	maxRate *= 0.72 + agility * 0.42
 	local step = math.clamp(signedAngle, -maxRate * dt, maxRate * dt)
 	local rotated = CFrame.fromAxisAngle(Vector3.yAxis, step):VectorToWorldSpace(current)
-	root.CFrame = CFrame.lookAt(root.Position, root.Position + rotated)
+	local desired = CFrame.lookAt(root.Position, root.Position + rotated)
+	local smoothing = hasBall and (sprinting and 0.075 or 0.052) or 0.04
+	root.CFrame = root.CFrame:Lerp(desired, 1 - math.exp(-dt / smoothing))
 end
 
 return Service

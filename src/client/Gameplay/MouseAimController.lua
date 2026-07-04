@@ -96,4 +96,14 @@ function Controller:GetGoalAimPoint(charge:number?): Vector3?
 	return self.GoalAimPoint
 end
 
+function Controller:GetGoalPlaneAimPoint(charge:number?): (Vector3?, boolean)
+	local ray = self.Mouse.UnitRay
+	local point, onTarget = self.GoalPlane:ProjectRayToPlane(self.Active, ray.Origin, ray.Direction, self.ForcedGoalSign)
+	if not point then return nil, false end
+	if onTarget and charge and charge > 0 then
+		point = self.GoalPlane:ApplyShotPower(self.Active, point, charge, self.ForcedGoalSign)
+	end
+	return point, onTarget
+end
+
 return Controller

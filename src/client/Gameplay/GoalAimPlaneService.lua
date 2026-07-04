@@ -49,6 +49,10 @@ function Service:ProjectRay(active: Model?, rayOrigin: Vector3, rayDirection: Ve
 	return GoalModelResolver.ProjectRay(self:GetGoalRectangle(active, forcedGoalSign), rayOrigin, rayDirection)
 end
 
+function Service:ProjectRayToPlane(active: Model?, rayOrigin: Vector3, rayDirection: Vector3, forcedGoalSign: number?): (Vector3?, boolean)
+	return GoalModelResolver.ProjectRayToPlane(self:GetGoalRectangle(active, forcedGoalSign), rayOrigin, rayDirection)
+end
+
 function Service:ClampPoint(active: Model?, point: Vector3, forcedGoalSign: number?): Vector3
 	return GoalModelResolver.ClampPoint(self:GetGoalRectangle(active, forcedGoalSign), point)
 end

@@ -166,6 +166,10 @@ end
 function ProfileService:ResetProfile(player:Player):any?
 	if not player or player.Parent~=Players then return nil end;local profile=copy(self.Store.Template);self.Store.Sessions[player.UserId]=profile;profile=self:_migrate(profile);profile.Profile.Avatar.UserId=player.UserId;player:SetAttribute("VTRNewProfile",true);self.Store:SaveAsync(player.UserId,true);return profile
 end
+function ProfileService:Save(player:Player,force:boolean?):boolean
+	if not player or player.Parent~=Players then return false end
+	return self.Store:SaveAsync(player.UserId,force==true)
+end
 function ProfileService:GetClientData(player:Player):any? local p=self:GetProfile(player);if not p then return nil end;return {Username=player.Name,DisplayName=player.DisplayName,Level=p.Profile.Level,XP=p.Profile.XP,SelectedClub=p.Profile.SelectedClub,ClubIdentity=table.clone(p.ClubMembership),Avatar={UserId=player.UserId,HeadshotType=p.Profile.Avatar.HeadshotType,OutfitId=p.Profile.Avatar.OutfitId}} end
 function ProfileService:GetVersion():number return Config.ProfileVersion end
 return ProfileService

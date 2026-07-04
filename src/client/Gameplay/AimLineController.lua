@@ -131,7 +131,7 @@ function Controller:IsTargetFallback(): boolean
 	return self.LastTargetBlocked == true
 end
 
-function Controller:Update(dt: number, aimPosition: Vector3, hasBall: boolean, chargeKind: string, charge: number, aimingAtGoal: boolean, freeKickCurve: number?, freeKickLift: number?, setPieceMode: string?): Model?
+function Controller:Update(dt: number, aimPosition: Vector3, hasBall: boolean, chargeKind: string, charge: number, aimingAtGoal: boolean, freeKickCurve: number?, freeKickLift: number?, setPieceMode: string?, shotOnTarget:boolean?): Model?
 	if not self.MatchActive or not self.Active or not hasBall then
 		self.Beam.Enabled = false
 		self.Marker.Transparency = 1
@@ -145,16 +145,29 @@ function Controller:Update(dt: number, aimPosition: Vector3, hasBall: boolean, c
 	-- communicates the teammate that RMB will actually target.
 	local teammate = self:_nearestTeammate(aimPosition, charge)
 	local target = aimPosition
+	local lineStart = activeRoot.Position
 	self.SmoothEnd = target
-	self.StartPart.Position = self.Ball.Position
+	self.StartPart.Position = lineStart
 	self.EndPart.Position = target
 	local distance = (self.EndPart.Position - self.StartPart.Position).Magnitude
 	local idleTransparency = chargeKind == "" and 0.62 or 0.2
+	local isShotLine = chargeKind == "Shot" or setPieceMode == "Penalty" or setPieceMode == "PenaltyDefense" or setPieceMode == "DirectShotFreeKick" or shotOnTarget ~= nil
+	if isShotLine then
+		local color = shotOnTarget == false and Color3.fromHex("FF384F") or Color3.fromHex("32FF6A")
+		self.Beam.Color = ColorSequence.new(color)
+		self.Marker.Color = color
+		self.Beam.Width0 = shotOnTarget == false and 0.3 or 0.34
+		self.Beam.Width1 = shotOnTarget == false and 0.22 or 0.25
+	else
+		self.Beam.Color = ColorSequence.new(Color3.fromHex("B7FF1A"))
+		self.Marker.Color = Color3.fromHex("B7FF1A")
+		self.Beam.Width0 = chargeKind == "" and 0.12 or 0.18
+		self.Beam.Width1 = chargeKind == "" and 0.085 or 0.13
+	end
 	self.Beam.Transparency = NumberSequence.new(math.clamp(idleTransparency + distance / 450, 0.18, 0.76))
-	self.Beam.Width0 = chargeKind == "" and 0.055 or 0.09
 	self.Beam.Enabled = true
-	self.Marker.Transparency = aimingAtGoal and 1 or 0.3
-	self.Marker.CFrame = CFrame.new(target + Vector3.new(0,0.07,0)) * CFrame.Angles(0, 0, math.pi / 2)
+	self.Marker.Transparency = (aimingAtGoal or isShotLine) and 1 or 0.3
+	self.Marker.CFrame = CFrame.new(target) * CFrame.Angles(0, 0, math.pi / 2)
 	local setPieceReady = tostring(self.Ball:GetAttribute("VTRSetPieceReady") or "")
 	local isDirectShotPreview = setPieceMode == "DirectShotFreeKick" or (setPieceReady == "FreeKick" and chargeKind == "Shot")
 	self:_updateFreeKickTrajectory(self.Ball.Position, target, charge, isDirectShotPreview, freeKickCurve, freeKickLift)

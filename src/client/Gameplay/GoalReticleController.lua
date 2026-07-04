@@ -97,8 +97,8 @@ end
 
 function Controller:Update(hasBall: boolean, shootingContext: boolean, aimingAtGoal: boolean, goalPoint: Vector3?)
 	if self.LockedPoint and self.Ball and self.Ball:GetAttribute("VTRMotionKind")=="Shot"and self.Ball.AssemblyLinearVelocity.Magnitude<3 then self:Unlock()end
-	local displayPoint=self.LockedPoint or goalPoint
-	local visible=self.MatchActive and(self.LockedPoint~=nil or hasBall and aimingAtGoal and goalPoint~=nil)
+	local displayPoint=self.LockedPoint or (hasBall and aimingAtGoal and goalPoint or nil)
+	local visible=self.MatchActive and displayPoint~=nil and(self.LockedPoint~=nil or hasBall and aimingAtGoal and goalPoint~=nil)
 	self.Gui.Enabled = visible
 	if self.Beam then self.Beam.Enabled = visible and self.Mode == "PenaltyDefense" and self.SourceAttachment ~= nil end
 	if visible then

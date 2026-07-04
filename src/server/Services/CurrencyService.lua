@@ -19,6 +19,7 @@ function CurrencyService:Add(player: Player, currency: string, amount: number): 
 	local profile = self.Profiles:GetProfile(player)
 	if not profile then return false end
 	profile.Currency[currency] = math.clamp(profile.Currency[currency] + amount, 0, 999999999)
+	if self.Profiles.Save then self.Profiles:Save(player) end
 	self.Publish(player, "Currency", self:GetClientData(player))
 	return true
 end

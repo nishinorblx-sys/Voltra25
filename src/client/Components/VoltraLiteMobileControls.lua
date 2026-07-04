@@ -214,6 +214,7 @@ function Controls:_bindChargeButton(button: TextButton, kind: string, passMode: 
 	local touch: InputObject? = nil
 	button.InputBegan:Connect(function(input)
 		if input.UserInputType ~= Enum.UserInputType.Touch then return end
+		if self.ShootingOnly and kind ~= "Shot" then return end
 		touch = input
 		self.PassMode = passMode
 		pressed(button, true)
@@ -236,6 +237,19 @@ end
 
 function Controls:SetDefending(defending: boolean)
 	self.Defending = defending == true
+	if self.ShootingOnly then
+		local scale = self.ControlScale or 1
+		local function px(value:number):number return math.floor(value*scale+.5)end
+		self.PassButton.Visible = false
+		self.ShootButton.Visible = true
+		self.LobButton.Visible = false
+		self.TackleButton.Visible = false
+		self.SlideButton.Visible = false
+		self.SwitchButton.Visible = false
+		self.SprintButton.Visible = true
+		self.SprintButton.Position = UDim2.new(1, -px(212), 1, -px(378))
+		return
+	end
 	local scale = self.ControlScale or 1
 	local function px(value:number):number return math.floor(value*scale+.5)end
 	self.PassButton.Visible = not self.Defending
@@ -247,6 +261,18 @@ function Controls:SetDefending(defending: boolean)
 	self.SwitchButton.Position = self.Defending and UDim2.new(1, -px(420), 1, -px(72)) or UDim2.new(1, -px(86), 1, -px(370))
 	self.SprintButton.Visible = true
 	self.SprintButton.Position = self.Defending and UDim2.new(1, -px(250), 1, -px(74)) or UDim2.new(1, -px(212), 1, -px(378))
+end
+
+function Controls:SetShootingOnly(active:boolean)
+	self.ShootingOnly = active == true
+	self.PassMode = nil
+	pressed(self.PassButton,false)
+	pressed(self.LobButton,false)
+	pressed(self.TackleButton,false)
+	pressed(self.SlideButton,false)
+	pressed(self.SwitchButton,false)
+	pressed(self.SprintButton,false)
+	self:SetDefending(self.Defending)
 end
 
 function Controls:MoveVector(): Vector2

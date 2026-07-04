@@ -82,7 +82,7 @@ function Component.new(parent: Instance, mode: string?)
 		areaStroke.Parent = area
 		table.insert(areas, area)
 	end
-	local self = setmetatable({Root = root, Scale = scale, Pitch = pitch, MidfieldLine = midfieldLine, Circle = circle, Areas = areas, Dots = {}, Positions = {}, IntroPlayed = false}, Component)
+	local self = setmetatable({Root = root, Scale = scale, Pitch = pitch, MidfieldLine = midfieldLine, Circle = circle, Areas = areas, Dots = {}, Positions = {}, LastSeen = {}, IntroPlayed = false}, Component)
 	self:SetMode(mode or "Medium")
 	self.Root.Visible = false
 	return self
@@ -159,9 +159,22 @@ function Component:UpdateDot(key: any, normalized: Vector2, color: Color3, size:
 	local alpha = 1 - math.exp(-dt / 0.065)
 	local smooth = previous:Lerp(normalized, alpha)
 	self.Positions[key] = smooth
+	self.LastSeen[key] = os.clock()
 	dot.Position = UDim2.fromScale(smooth.X, smooth.Y)
 	dot.Size = UDim2.fromOffset(size, size)
 	dot.BackgroundColor3 = color
+end
+
+function Component:HideExcept(seen: {[any]: boolean})
+	local now = os.clock()
+	for key, dot in self.Dots do
+		if not seen[key] and now - (self.LastSeen[key] or 0) > 0.75 then
+			dot:Destroy()
+			self.Dots[key] = nil
+			self.Positions[key] = nil
+			self.LastSeen[key] = nil
+		end
+	end
 end
 
 function Component:Destroy()

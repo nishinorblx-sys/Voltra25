@@ -42,6 +42,7 @@ function Controller.new(parent: Instance, pitchCFrame: CFrame, width: number, le
 		ControlledSide = controlledSide or "Home",
 		HomeGoalSign = homeGoalSign,
 		MatchActive = false,
+		World = ball and ball.Parent or nil,
 		View = view,
 	}, Controller)
 end
@@ -71,37 +72,81 @@ end
 
 function Controller:_map(position: Vector3): Vector2
 	local localPosition = self.PitchCFrame:PointToObjectSpace(position)
-	-- Fixed TV-map orientation: Home goal is always left, Away goal is always
-	-- right. Read the actual HomeGoal/AwayGoal side so authored stadiums with
-	-- inverted local Z still display correctly.
 	local homeGoalSign = self.HomeGoalSign or 1
+	local x = math.clamp(0.5 - (localPosition.Z * homeGoalSign) / self.Length, 0.025, 0.975)
+	local y = math.clamp(0.5 + localPosition.X / self.Width, 0.025, 0.975)
+	if self.Orientation == "Attacking Direction" and self.ControlledSide == "Away" then
+		x = 1 - x
+	elseif self.Orientation == "Broadcast" and self.CameraSide == "Far" then
+		y = 1 - y
+	end
 	return Vector2.new(
-		math.clamp(0.5 - (localPosition.Z * homeGoalSign) / self.Length, 0.025, 0.975),
-		math.clamp(0.5 + localPosition.X / self.Width, 0.025, 0.975)
+		math.clamp(x, 0.025, 0.975),
+		math.clamp(y, 0.025, 0.975)
 	)
+end
+
+local function addModel(result: {Model}, seen: {[Instance]: boolean}, model: any, side: string)
+	if typeof(model) ~= "Instance" or not model:IsA("Model") or seen[model] then
+		return
+	end
+	local team = tostring(model:GetAttribute("VTRTeam") or model:GetAttribute("teamSide") or "")
+	if team ~= side then
+		return
+	end
+	local root = model:FindFirstChild("HumanoidRootPart")
+	if not root or not root:IsA("BasePart") then
+		return
+	end
+	seen[model] = true
+	table.insert(result, model)
+end
+
+function Controller:_modelsForSide(side: string): {Model}
+	local result = {}
+	local seen: {[Instance]: boolean} = {}
+	for _, model in self.Teams[side] or {} do
+		addModel(result, seen, model, side)
+	end
+	local world = self.World
+	if (not world or not world.Parent) and self.Ball then
+		world = self.Ball.Parent
+		self.World = world
+	end
+	if world then
+		for _, descendant in world:GetDescendants() do
+			addModel(result, seen, descendant, side)
+		end
+	end
+	return result
 end
 
 function Controller:Update(dt: number)
 	if not self.MatchActive or self.Mode == "Off" then
 		return
 	end
-	for _, model in self.Teams.Home or {} do
+	local seen: {[any]: boolean} = {}
+	for _, model in self:_modelsForSide("Home") do
 		local root = model:FindFirstChild("HumanoidRootPart") :: BasePart?
 		if root then
 			local carrier = model == self.BallCarrier
 			self.View:UpdateDot(model, self:_map(root.Position), carrier and Color3.fromHex("FFE45C") or Color3.fromHex("2D9CFF"), carrier and 9 or 6, dt)
+			seen[model] = true
 		end
 	end
-	for _, model in self.Teams.Away or {} do
+	for _, model in self:_modelsForSide("Away") do
 		local root = model:FindFirstChild("HumanoidRootPart") :: BasePart?
 		if root then
 			local carrier = model == self.BallCarrier
 			self.View:UpdateDot(model, self:_map(root.Position), carrier and Color3.fromHex("FFE45C") or Color3.fromHex("FF594D"), carrier and 9 or 6, dt)
+			seen[model] = true
 		end
 	end
 	if self.Ball.Parent then
 		self.View:UpdateDot("Ball", self:_map(self.Ball.Position), Color3.fromHex("FFE45C"), 5, dt)
+		seen.Ball = true
 	end
+	self.View:HideExcept(seen)
 end
 
 function Controller:Destroy()
