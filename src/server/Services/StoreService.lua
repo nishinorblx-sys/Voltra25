@@ -75,6 +75,7 @@ function StoreService:Purchase(player: Player, kind: string, id: string, quantit
 	if (not infiniteCoins and p.Currency.Coins < coins) or p.Currency.Bolts < bolts then
 		return false, "Insufficient currency."
 	end
+	
 
 	if infiniteCoins then
 		p.Currency.Coins = EconomyConfig.MaximumCoins
