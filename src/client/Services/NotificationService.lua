@@ -1,6 +1,24 @@
 --!strict
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local function vtrGetNotificationRemote()
+	local vtr = ReplicatedStorage:FindFirstChild("VTR") or ReplicatedStorage:WaitForChild("VTR", 10)
+	local remotes = vtr and (vtr:FindFirstChild("Remotes") or vtr:WaitForChild("Remotes", 10))
+	local remote = vtrGetNotificationRemote()
+
+	if remote and remote:IsA("RemoteEvent") then
+		return remote
+	end
+
+	local dummy = script:FindFirstChild("VTRLocalNotification")
+	if not dummy then
+		dummy = Instance.new("RemoteEvent")
+		dummy.Name = "VTRLocalNotification"
+		dummy.Parent = script
+	end
+
+	return dummy
+end
 local NetworkConfig = require(ReplicatedStorage.VTR.Shared.NetworkConfig)
 
 local NotificationService = {}

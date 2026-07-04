@@ -3,6 +3,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local VTRRemoteBootstrapService = {}
 
 local remoteList = {
+	Notification = "RemoteEvent",
 	AckPackRewardAnimation = "RemoteEvent",
 	CameraAction = "RemoteEvent",
 	ConfirmSevenWinLoginReward = "RemoteFunction",
