@@ -80,6 +80,10 @@ local function statGroup(parent: Instance, title: string, keys: { string }, stat
 end
 
 function PlayerDetailsModal.open(root: Frame, data: any)
+	local existing = root:FindFirstChild("PlayerDetailsModal")
+	if existing then
+		existing:Destroy()
+	end
 	local overlay = Instance.new("CanvasGroup")
 	overlay.Name = "PlayerDetailsModal"
 	overlay.BackgroundColor3 = Theme.Colors.Black

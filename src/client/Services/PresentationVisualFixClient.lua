@@ -38,6 +38,9 @@ local function isNumberLabel(obj)
 	if not (obj:IsA("TextLabel") or obj:IsA("TextButton")) then
 		return false
 	end
+	if obj:GetAttribute("VTRKeepLineupNumberStack") == true then
+		return false
+	end
 
 	local text = tostring(obj.Text or "")
 	if not string.match(text, "^%s*#?%d%d?%s*$") then
@@ -47,7 +50,10 @@ local function isNumberLabel(obj)
 	local current = obj
 	while current do
 		local name = lower(current.Name)
-		if string.find(name, "lineup") or string.find(name, "presentation") or string.find(name, "prematch") or string.find(name, "broadcast") or string.find(name, "player") then
+		if string.find(name, "ranked") or name == "vtr25" then
+			return false
+		end
+		if string.find(name, "lineup") or string.find(name, "presentation") or string.find(name, "prematch") or string.find(name, "broadcast") then
 			return true
 		end
 		current = current.Parent

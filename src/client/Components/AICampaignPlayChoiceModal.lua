@@ -48,7 +48,7 @@ local function text(parent: Instance, value: string, position: UDim2, size: UDim
 	return item
 end
 
-local function makeButton(parent: Instance, title: string, subtitle: string, selected: boolean, accentColor: Color3): TextButton
+local function makeButton(parent: Instance, title: string, subtitle: string, selected: boolean, accentColor: Color3, iconAsset: string): TextButton
 	local button = Instance.new("TextButton")
 	button.AutoButtonColor = false
 	button.Text = ""
@@ -85,28 +85,36 @@ local function makeButton(parent: Instance, title: string, subtitle: string, sel
 	stripe.Parent = button
 	corner(stripe, 7)
 
-	local badge = Instance.new("TextLabel")
+	local badge = Instance.new("Frame")
 	badge.Name = "ChoiceBadge"
 	badge.AnchorPoint = Vector2.new(.5, 0)
 	badge.Position = UDim2.new(.5, 0, 0, 44)
-	badge.Size = UDim2.fromOffset(64, 64)
+	badge.Size = UDim2.fromOffset(76, 76)
 	badge.BackgroundColor3 = Color3.fromRGB(4, 8, 8)
 	badge.BackgroundTransparency = .04
 	badge.BorderSizePixel = 0
-	badge.Text = string.sub(title, 1, 1)
-	badge.TextColor3 = accentColor
-	badge.TextSize = 28
-	badge.Font = Theme.Fonts.Display
 	badge.ZIndex = 103
 	badge.Parent = button
-	corner(badge, 32)
+	corner(badge, 38)
 	stroke(badge, accentColor, .18, 2)
+	local icon = Instance.new("ImageLabel")
+	icon.Name = "IconImage"
+	icon.AnchorPoint = Vector2.new(.5, .5)
+	icon.BackgroundTransparency = 1
+	icon.Image = iconAsset
+	icon.Position = UDim2.fromScale(.5, .5)
+	icon.ScaleType = Enum.ScaleType.Fit
+	icon.Size = UDim2.fromScale(.72, .72)
+	icon.ZIndex = 104
+	icon.Parent = badge
 
-	local titleLabel = text(button, title, UDim2.fromScale(.08, .50), UDim2.fromScale(.84, .16), 25, selected and accentColor or Theme.Colors.White, Theme.Fonts.Display)
+	local titleLabel = text(button, title, UDim2.fromScale(.08, .47), UDim2.fromScale(.84, .15), 28, Theme.Colors.White, Theme.Fonts.Display)
 	titleLabel.TextXAlignment = Enum.TextXAlignment.Center
+	titleLabel.ZIndex = 105
 
-	local subtitleLabel = text(button, subtitle, UDim2.fromScale(.11, .68), UDim2.fromScale(.78, .16), 13, Theme.Colors.White, Theme.Fonts.Body)
+	local subtitleLabel = text(button, subtitle, UDim2.fromScale(.11, .66), UDim2.fromScale(.78, .16), 11, selected and accentColor or Theme.Colors.Silver, Theme.Fonts.Strong)
 	subtitleLabel.TextTransparency = .12
+	subtitleLabel.ZIndex = 105
 
 	local selectedPip = Instance.new("TextLabel")
 	selectedPip.Name = "SelectedPip"
@@ -129,9 +137,9 @@ local function makeButton(parent: Instance, title: string, subtitle: string, sel
 		tween(button, {BackgroundTransparency = focused and .01 or (selected and .02 or .1), BackgroundColor3 = focused and Color3.fromRGB(13, 25, 20) or (selected and Color3.fromRGB(14, 24, 18) or Color3.fromRGB(8, 13, 15))}, .1)
 		tween(glow, {BackgroundTransparency = focused and .62 or (selected and .76 or 1)}, .1)
 		tween(line, {Color = accentColor, Transparency = focused and 0 or (selected and .02 or .48), Thickness = focused and 4 or (selected and 3 or 1.3)}, .1)
-		tween(titleLabel, {TextColor3 = focused and accentColor or (selected and accentColor or Theme.Colors.White)}, .1)
+		tween(titleLabel, {TextColor3 = Theme.Colors.White}, .1)
 		tween(stripe, {BackgroundTransparency = focused and 0 or (selected and 0 or .28)}, .1)
-		tween(badge, {TextColor3 = accentColor, BackgroundTransparency = focused and 0 or .04}, .1)
+		tween(badge, {BackgroundTransparency = focused and 0 or .04}, .1)
 		tween(selectedPip, {BackgroundTransparency = focused and .02 or (selected and .06 or 1)}, .1)
 	end
 
@@ -189,7 +197,7 @@ function Modal.Show(parent: Instance, callbacks: any)
 	top.Parent = panel
 
 	text(panel, "AI CAMPAIGN MATCH", UDim2.fromOffset(0, 52), UDim2.new(1, 0, 0, 22), 13, Theme.Colors.Electric, Theme.Fonts.Strong)
-	text(panel, "CHOOSE HOW TO PLAY", UDim2.fromOffset(0, 82), UDim2.new(1, 0, 0, 58), 39, Theme.Colors.White, Theme.Fonts.Display)
+	text(panel, "PLAY OR MANAGE", UDim2.fromOffset(0, 82), UDim2.new(1, 0, 0, 58), 39, Theme.Colors.White, Theme.Fonts.Display)
 	local hint = text(panel, "A / X SELECT     B / CIRCLE BACK", UDim2.fromOffset(0, 136), UDim2.new(1, 0, 0, 20), 10, Theme.Colors.Silver, Theme.Fonts.Strong)
 	hint.TextTransparency = .08
 
@@ -212,11 +220,11 @@ function Modal.Show(parent: Instance, callbacks: any)
 	notch.ZIndex = 102
 	notch.Parent = divider
 
-	local manual = makeButton(panel, "MANUALLY PLAY", "Control your squad on the pitch", true, Theme.Colors.Electric)
+	local manual = makeButton(panel, "PLAY", "Control your squad on the pitch", true, Theme.Colors.Electric, "rbxassetid://136932491275794")
 	manual.Position = UDim2.fromOffset(76, 220)
 	manual.Size = UDim2.fromOffset(360, 212)
 
-	local manage = makeButton(panel, "MANAGE MATCH", "AI plays while you manage tactics", false, Color3.fromHex("24C6B8"))
+	local manage = makeButton(panel, "MANAGE", "AI plays while you manage tactics", false, Color3.fromHex("24C6B8"), "rbxassetid://94181255091137")
 	manage.Position = UDim2.fromOffset(474, 220)
 	manage.Size = UDim2.fromOffset(360, 212)
 

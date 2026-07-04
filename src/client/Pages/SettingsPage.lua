@@ -13,8 +13,7 @@ local PageBase = require(script.Parent.PageBase)
 
 local SettingsPage = {}
 local TABS = {"Controls", "Audio", "Camera", "Accessibility", "Account"}
-local CAMERA_PRESETS = {"Broadcast", "End to End", "Pro"}
-local LANGUAGES = {"English", "Spanish", "French", "Portuguese"}
+local CAMERA_PRESETS = {"WideBroadcast", "CloseBroadcast", "End to End", "Pro"}
 local NUMBER_NAMES = {Zero = "0", One = "1", Two = "2", Three = "3", Four = "4", Five = "5", Six = "6", Seven = "7", Eight = "8", Nine = "9"}
 local KEY_DEFAULTS = {
 	PauseKey = "M",
@@ -28,8 +27,8 @@ local KEY_DEFAULTS = {
 
 local CONTROL_ROWS = {
 	{Key = "PauseKey", Title = "PAUSE", Subtitle = "Open or close the pause menu.", Editable = true},
-	{Key = "ManualPassKey", Title = "MANUAL PASS MODIFIER", Subtitle = "Hold this with right click / pass to aim a manual pass.", Editable = true},
-	{Key = "LobbedPassKey", Title = "LOBBED PASS MODIFIER", Subtitle = "Hold this with pass for lobbed pass. Combine with manual modifier for manual lobbed pass.", Editable = true},
+	{Key = "ManualPassKey", Title = "MANUAL PASS HOLD", Subtitle = "Hold this key to charge and release a manual pass.", Editable = true},
+	{Key = "LobbedPassKey", Title = "MANUAL LOB HOLD", Subtitle = "Hold this key to charge and release an unassisted manual lobbed pass.", Editable = true},
 	{Key = "ChangePlayerKey", Title = "CHANGE PLAYER", Subtitle = "Switch to the best nearby teammate or defender.", Editable = true},
 	{Key = "TackleKey", Title = "TACKLE", Subtitle = "Standing tackle / defensive challenge.", Editable = true},
 	{Key = "SlideTackleKey", Title = "SLIDE TACKLE", Subtitle = "Slide tackle input.", Editable = true},
@@ -57,11 +56,23 @@ local function settings(context: any): any
 	return context.Data.UIState.Settings
 end
 
-local function commit(context: any, key: string, value: any)
+local function commit(context: any, key: string, value: any, saveState: boolean?)
 	local current = settings(context)
 	current[key] = value
 	SettingsRuntimeService.Apply(current)
-	context.StateService:SetSetting(key, value)
+	if saveState ~= false then
+		context.StateService:SetSetting(key, value)
+	end
+end
+
+local function normalizeOptionValue(key: string, value: any): string
+	local text = tostring(value)
+	if key == "CameraPreset" then
+		if text == "Broadcast" then return "WideBroadcast" end
+		if text == "Close Broadcast" then return "CloseBroadcast" end
+		if text == "Wide Broadcast" then return "WideBroadcast" end
+	end
+	return text
 end
 
 local function row(parent: Instance, title: string, subtitle: string, y: number): Frame
@@ -94,18 +105,19 @@ end
 
 local function option(parent: Instance, context: any, key: string, title: string, subtitle: string, y: number, values: {string})
 	local holder = row(parent, title, subtitle, y)
-	local current = tostring(settings(context)[key] or values[1])
+	local current = normalizeOptionValue(key, settings(context)[key] or values[1])
 	local x = 0
 	for index, value in ipairs(values) do
 		local active = value == current
-		local button = Button.new({Text = value, Variant = active and "Primary" or "Secondary", Size = UDim2.fromOffset(index == 2 and 112 or 96, 32), OnActivated = function()
+		local width = math.clamp(72 + #value * 5, 96, 154)
+		local button = Button.new({Text = value, Variant = active and "Primary" or "Secondary", Size = UDim2.fromOffset(width, 32), OnActivated = function()
 			commit(context, key, value)
 			if context.RefreshSettings then context.RefreshSettings(key) end
 		end})
 		button.AnchorPoint = Vector2.new(1, .5)
 		button.Position = UDim2.new(1, -14 - x, .5, 0)
 		button.Parent = holder
-		x += (index == 2 and 120 or 104)
+		x += width + 8
 	end
 end
 
@@ -132,16 +144,48 @@ local function slider(parent: Instance, context: any, key: string, title: string
 	fill.Parent = track
 	local fillCorner = corner:Clone()
 	fillCorner.Parent = fill
-	local function setFromX(x: number)
+	local thumb = Instance.new("TextButton")
+	thumb.AnchorPoint = Vector2.new(.5, .5)
+	thumb.AutoButtonColor = false
+	thumb.BackgroundColor3 = Theme.Colors.White
+	thumb.BorderSizePixel = 0
+	thumb.Position = UDim2.fromScale(current, .5)
+	thumb.Size = UDim2.fromOffset(16, 16)
+	thumb.Text = ""
+	thumb.Parent = track
+	local thumbCorner = Instance.new("UICorner")
+	thumbCorner.CornerRadius = UDim.new(1, 0)
+	thumbCorner.Parent = thumb
+	local dragging = false
+	local pendingValue = current
+	local function setFromX(x: number, saveState: boolean?)
 		local alpha = math.clamp((x - track.AbsolutePosition.X) / math.max(1, track.AbsoluteSize.X), 0, 1)
 		alpha = math.floor(alpha * 100 + .5) / 100
+		pendingValue = alpha
 		fill.Size = UDim2.fromScale(alpha, 1)
+		thumb.Position = UDim2.fromScale(alpha, .5)
 		readout.Text = tostring(math.floor(alpha * 100 + .5)) .. "%"
-		commit(context, key, alpha)
+		commit(context, key, alpha, saveState)
 	end
-	track.InputBegan:Connect(function(input)
+	local function beginDrag(input: InputObject)
 		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-			setFromX(input.Position.X)
+			dragging = true
+			setFromX(input.Position.X, false)
+		end
+	end
+	track.InputBegan:Connect(beginDrag)
+	thumb.InputBegan:Connect(beginDrag)
+	UserInputService.InputChanged:Connect(function(input)
+		if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+			setFromX(input.Position.X, false)
+		end
+	end)
+	UserInputService.InputEnded:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+			if dragging then
+				commit(context, key, pendingValue, true)
+			end
+			dragging = false
 		end
 	end)
 end
@@ -212,15 +256,12 @@ local function renderTab(context: any, scroll: ScrollingFrame, active: string)
 			keybind(box, context, item.Key, item.Title, item.Subtitle, 52 + (index - 1) * 74, item.Editable ~= false)
 		end
 	elseif active == "Audio" then
-		local mix = panel(scroll, "Audio Mix", UDim2.fromOffset(0, 154), UDim2.new(.5, -10, 0, 242))
+		local mix = panel(scroll, "Audio Mix", UDim2.fromOffset(0, 154), UDim2.new(1, 0, 0, 242))
 		slider(mix, context, "MasterVolume", "MASTER VOLUME", "Controls global game audio.", 52, .8)
 		toggle(mix, context, "MenuMusic", "MENU MUSIC", "Turns menu soundtrack audio on or off.", 126)
-		local comm = panel(scroll, "Commentary", UDim2.new(.5, 10, 0, 154), UDim2.new(.5, -10, 0, 242))
-		option(comm, context, "CommentaryLanguage", "COMMENTARY LANGUAGE", "Choose match commentary language.", 52, LANGUAGES)
-		slider(comm, context, "CommentaryVolume", "COMMENTARY VOLUME", "Separate commentary mix level.", 126, .7)
 	elseif active == "Camera" then
 		local cam = panel(scroll, "Camera Options", UDim2.fromOffset(0, 154), UDim2.new(1, 0, 0, 190))
-		option(cam, context, "CameraPreset", "CAMERA PRESET", "Broadcast, End to End, or Pro player-follow camera.", 52, CAMERA_PRESETS)
+		option(cam, context, "CameraPreset", "CAMERA PRESET", "WideBroadcast, CloseBroadcast, End to End, or Pro.", 52, CAMERA_PRESETS)
 	elseif active == "Accessibility" then
 		local access = panel(scroll, "Accessibility", UDim2.fromOffset(0, 154), UDim2.new(1, 0, 0, 220))
 		toggle(access, context, "HighContrast", "HIGH CONTRAST", "Increases scene contrast and UI readability.", 52)
@@ -260,6 +301,7 @@ function SettingsPage.new(context: any): CanvasGroup
 	end
 	for index, tab in ipairs(TABS) do
 		local button = Button.new({Text = tab, Variant = tab == active and "Primary" or "Secondary", Size = UDim2.new(1 / #TABS, -8, 0, 36), OnActivated = function()
+			if tab == active then return end
 			active = tab
 			context.Data.UIState.SelectedTabs.Settings = tab
 			context.StateService:SetTab("Settings", tab)

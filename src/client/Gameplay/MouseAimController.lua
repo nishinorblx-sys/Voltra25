@@ -26,6 +26,10 @@ function Controller:SetActive(model: Model?)
 	self.Active = model
 end
 
+function Controller:SetForcedGoalSign(goalSign: number?)
+	self.ForcedGoalSign = goalSign
+end
+
 function Controller:_opponentGoalZ(): number
 	local side = self.Active and tostring(self.Active:GetAttribute("VTRTeam") or "Home") or "Home"
 	return side == "Home" and -self.Length / 2 or self.Length / 2
@@ -39,7 +43,7 @@ function Controller:Update()
 	local direction = self.PitchCFrame:VectorToObjectSpace(ray.Direction)
 	self.GoalAiming = false
 	self.GoalAimPoint = nil
-	local goalAiming, goalPoint = self.GoalPlane:ProjectRay(self.Active, ray.Origin, ray.Direction)
+	local goalAiming, goalPoint = self.GoalPlane:ProjectRay(self.Active, ray.Origin, ray.Direction, self.ForcedGoalSign)
 	-- A keeper stands in front of the goal plane and is a natural mouse target.
 	-- Treat hitting the opposing GK as goal aim, then place the reticle on the
 	-- corresponding point of the net behind them.
@@ -53,7 +57,7 @@ function Controller:Update()
 	if hitPlayer and hitPlayer:GetAttribute("position") == "GK" and hitPlayer:GetAttribute("VTRTeam") ~= activeTeam then
 		if not goalPoint then
 			local keeperRoot = hitPlayer:FindFirstChild("HumanoidRootPart") :: BasePart?
-			goalPoint = self.GoalPlane:ClampPoint(self.Active, keeperRoot and keeperRoot.Position or result.Position)
+			goalPoint = self.GoalPlane:ClampPoint(self.Active, keeperRoot and keeperRoot.Position or result.Position, self.ForcedGoalSign)
 		end
 		goalAiming = true
 	end
@@ -88,7 +92,7 @@ function Controller:IsAimingAtGoal(): boolean
 end
 
 function Controller:GetGoalAimPoint(charge:number?): Vector3?
-	if self.GoalAimPoint and charge and charge>0 then return self.GoalPlane:ApplyShotPower(self.Active,self.GoalAimPoint,charge)end
+	if self.GoalAimPoint and charge and charge>0 then return self.GoalPlane:ApplyShotPower(self.Active,self.GoalAimPoint,charge,self.ForcedGoalSign)end
 	return self.GoalAimPoint
 end
 

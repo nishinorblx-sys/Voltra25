@@ -19,12 +19,11 @@ return Factory.new({
 			{Title = "RECEIVER ASSIST", Subtitle = "LIGHT", Meta = "Briefly guides the receiver until WASD input", Accent = true, Action = {Label = "SELECT LIGHT", Operation = "Select", Key = "ReceiverAssist", Item = "Light"}},
 			{Title = "RECEIVER ASSIST FULL", Subtitle = "ASSISTED", Meta = "Longer automatic intercept guidance", Action = {Label = "SELECT ASSISTED", Operation = "Select", Key = "ReceiverAssist", Item = "Assisted"}},
 			{Title = "RECEIVER ASSIST OFF", Subtitle = "OFF", Meta = "Manual receiver movement immediately", Action = {Label = "SELECT OFF", Operation = "Select", Key = "ReceiverAssist", Item = "Off"}},
-			{Title = "KEYBINDS", Subtitle = "WASD MOVE / SHIFT SPRINT", Meta = "LMB shoot / RMB pass / E tackle / F slide / R block", Action = {Label = "VIEW ALL KEYBINDS", Operation = "Toast", Message = "WASD Move / Shift Sprint / Q Switch / LMB Shoot / RMB Pass / Alt+RMB Lob / Ctrl+RMB Manual / Alt+Ctrl+RMB Manual Lob / E Tackle / F Slide / R Block / C Dribble"}},
+			{Title = "KEYBINDS", Subtitle = "WASD MOVE / SHIFT SPRINT", Meta = "LMB shoot / RMB pass / E tackle / F slide / R block", Action = {Label = "VIEW ALL KEYBINDS", Operation = "Toast", Message = "WASD Move / Shift Sprint / Q Switch / LMB Shoot / RMB Pass / Alt Manual Lob / Ctrl Manual Pass / E Tackle / F Slide / R Block / C Dribble"}},
 		}},
-		{Id = "Audio", Label = "AUDIO", Description = "Mix and commentary", Cards = {
+		{Id = "Audio", Label = "AUDIO", Description = "Game and music mix", Cards = {
 			{Title = "MASTER VOLUME", Subtitle = "80%", Meta = "ALL CHANNELS", Action = {Label = "ADJUST", Operation = "Select", Key = "MasterVolume", Item = "80%"}},
 			{Title = "MENU MUSIC", Subtitle = "ON", Meta = "VOLTRA soundtrack", Action = {Label = "TOGGLE", Operation = "Toggle", Key = "MenuMusic"}},
-			{Title = "COMMENTARY", Subtitle = "ENGLISH", Meta = "VOLUME 70%", Action = {Label = "AUDIO OPTIONS", Operation = "Select", Key = "Commentary", Item = "English"}},
 		}},
 		{Id = "Graphics", Label = "GRAPHICS", Description = "Display quality", Cards = {
 			{Title = "QUALITY PRESET", Subtitle = "HIGH", Meta = "Automatic performance scaling", Accent = true, Action = {Label = "CHANGE QUALITY", Operation = "Select", Key = "Graphics", Item = "High"}},
@@ -32,7 +31,10 @@ return Factory.new({
 			{Title = "PERFORMANCE MODE", Subtitle = "OFF", Meta = "Reduces decorative effects", Action = {Label = "TOGGLE", Operation = "Toggle", Key = "PerformanceMode"}},
 		}},
 		{Id = "Camera", Label = "CAMERA", Description = "View and response", Cards = {
-			{Title = "CAMERA PRESET", Subtitle = "WIDE BROADCAST", Meta = "Balanced high sideline match view", Accent = true, Action = {Label = "SELECT WIDE", Operation = "Select", Key = "CameraPreset", Item = "Wide Broadcast"}},
+			{Title = "CAMERA PRESET", Subtitle = "WIDE BROADCAST", Meta = "Default 1.5x original broadcast distance", Accent = true, Action = {Label = "SELECT WIDE", Operation = "Select", Key = "CameraPreset", Item = "WideBroadcast"}},
+			{Title = "CAMERA PRESET CLOSE", Subtitle = "CLOSE BROADCAST", Meta = "2.5x closer sideline match view", Action = {Label = "SELECT CLOSE", Operation = "Select", Key = "CameraPreset", Item = "CloseBroadcast"}},
+			{Title = "CAMERA PRESET END", Subtitle = "END TO END", Meta = "Goal-to-goal tactical direction", Action = {Label = "SELECT END", Operation = "Select", Key = "CameraPreset", Item = "End to End"}},
+			{Title = "CAMERA PRESET PRO", Subtitle = "PRO", Meta = "Player-follow camera", Action = {Label = "SELECT PRO", Operation = "Select", Key = "CameraPreset", Item = "Pro"}},
 			{Title = "CAMERA ZOOM", Subtitle = "WIDE", Meta = "Default expanded pitch view", Accent = true, Action = {Label = "SELECT WIDE", Operation = "Select", Key = "CameraZoomMode", Item = "Wide"}},
 			{Title = "CAMERA ZOOM CLOSE", Subtitle = "CLOSE", Meta = "More player detail", Action = {Label = "SELECT CLOSE", Operation = "Select", Key = "CameraZoomMode", Item = "Close"}},
 			{Title = "CAMERA ZOOM DEFAULT", Subtitle = "DEFAULT", Meta = "Balanced broadcast view", Action = {Label = "SELECT DEFAULT", Operation = "Select", Key = "CameraZoomMode", Item = "Default"}},
@@ -72,6 +74,6 @@ return Factory.new({
 	Owned = {},
 	Equipped = {},
 	Claimed = {},
-	Selections = {CameraPreset = "Wide Broadcast", CameraZoomMode = "Wide", PlayerNames = "Active Only", Trainer = "Basic", PassReceiverAutoSwitch = "Assisted", ReceiverAssist = "Light", Minimap = "Medium", MinimapOrientation = "Broadcast", BroadcastHeight = "178", BroadcastZoom = "50", CameraSpeed = "1", CameraSide = "Near"},
-	Values = {TimedFinishing = true, MenuMusic = true, MotionEffects = true, PerformanceMode = false, InvertY = false, HighContrast = false, ReducedMotion = false, Crossplay = true, PlayerNames = "Active Only", Trainer = "Basic", PassReceiverAutoSwitch = "Assisted", ReceiverAssist = "Light", Minimap = "Medium", MinimapOrientation = "Broadcast", BroadcastHeight = "178", BroadcastZoom = "50", CameraSpeed = "1", CameraSide = "Near"},
+	Selections = {CameraPreset = "WideBroadcast", CameraZoomMode = "Wide", PlayerNames = "Active Only", Trainer = "Basic", PassReceiverAutoSwitch = "Assisted", ReceiverAssist = "Light", Minimap = "Medium", MinimapOrientation = "Broadcast", BroadcastHeight = "178", BroadcastZoom = "50", CameraSpeed = "1", CameraSide = "Near"},
+	Values = {TimedFinishing = true, MenuMusic = true, MotionEffects = true, PerformanceMode = false, InvertY = false, HighContrast = false, ReducedMotion = false, Crossplay = true, CameraPreset = "WideBroadcast", PlayerNames = "Active Only", Trainer = "Basic", PassReceiverAutoSwitch = "Assisted", ReceiverAssist = "Light", Minimap = "Medium", MinimapOrientation = "Broadcast", BroadcastHeight = "178", BroadcastZoom = "50", CameraSpeed = "1", CameraSide = "Near"},
 })

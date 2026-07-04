@@ -127,9 +127,22 @@ function UltimateTeamPage.new(context:any):CanvasGroup
 
 	local function registerTarget(instance:GuiObject,kind:string,slot:any?) table.insert(targets,{Instance=instance,Kind=kind,Slot=slot}) end
 	local function targetAt(screenPosition:Vector2):any?
-		for _,target in targets do local instance=target.Instance;if instance.Parent then local p,s=instance.AbsolutePosition,instance.AbsoluteSize;if screenPosition.X>=p.X and screenPosition.X<=p.X+s.X and screenPosition.Y>=p.Y and screenPosition.Y<=p.Y+s.Y then return target end end end;return nil
+		local best=nil;local bestArea=math.huge
+		for _,target in targets do local instance=target.Instance;if instance.Parent and instance.Visible then local p,s=instance.AbsolutePosition,instance.AbsoluteSize;if screenPosition.X>=p.X and screenPosition.X<=p.X+s.X and screenPosition.Y>=p.Y and screenPosition.Y<=p.Y+s.Y then local area=s.X*s.Y;if area<bestArea then best=target;bestArea=area end end end end
+		return best
 	end
-	local dragController=DragController.new(group,{Threshold=8,HitTest=targetAt,OnDrop=function(card:any,destination:any) pendingCardId=nil;tapMoveEnabled=false;requestMove(card.Id,destination.Kind,destination.Slot) end,OnCancel=function() toast("Move cancelled - the complete card returned to its original location.") end})
+	local activeDropGlow:UIStroke?=nil
+	local function setDropGlow(destination:any?)
+		if activeDropGlow then activeDropGlow:Destroy();activeDropGlow=nil end
+		if not destination or not destination.Instance or not destination.Instance.Parent then return end
+		activeDropGlow=Instance.new("UIStroke")
+		activeDropGlow.Name="ActiveDropGlow"
+		activeDropGlow.Color=Theme.Colors.White
+		activeDropGlow.Thickness=2
+		activeDropGlow.Transparency=.05
+		activeDropGlow.Parent=destination.Instance
+	end
+	local dragController=DragController.new(group,{Threshold=3,AllowTouchDrag=true,HitTest=targetAt,OnDragStart=function(card:any) pendingCardId=card.Id;tapMoveEnabled=false end,OnHover=function(destination:any?) setDropGlow(destination) end,OnDrop=function(card:any,destination:any) setDropGlow(nil);pendingCardId=nil;tapMoveEnabled=false;requestMove(card.Id,destination.Kind,destination.Slot) end,OnCancel=function() setDropGlow(nil);pendingCardId=nil;tapMoveEnabled=false;toast("Move cancelled - the complete card returned to its original location.") end,OnDragEnd=function() setDropGlow(nil) end})
 	group.Destroying:Connect(function() dragController:Destroy() end)
 	local function addDrag(button:GuiButton,card:any,kind:string,slot:any?) dragController:Attach(button,card,function() destinationTap(card,kind,slot) end) end
 	destinationTap=function(card:any?,kind:string,slot:any?)
@@ -177,6 +190,8 @@ function UltimateTeamPage.new(context:any):CanvasGroup
 	local function closeMenu(menu:Instance) menu:Destroy() end
 	local function actionMenu()
 		if not selectedCard then return end;local card=selectedCard;local meta=rosterMeta(snapshot,card)
+		local existing=group:FindFirstChild("PlayerActionOverlay")
+		if existing then existing:Destroy() end
 		local overlay=Instance.new("TextButton");overlay.Name="PlayerActionOverlay";overlay.AutoButtonColor=false;overlay.BackgroundColor3=Theme.Colors.Black;overlay.BackgroundTransparency=.3;overlay.BorderSizePixel=0;overlay.Size=UDim2.fromScale(1,1);overlay.Text="";overlay.ZIndex=60;overlay.Parent=group
 		local menu=Panel.new({Name="PlayerActions",Size=UDim2.fromOffset(310,540),ClipsDescendants=false});menu.AnchorPoint=Vector2.new(.5,.5);menu.Position=UDim2.fromScale(.5,.5);menu.ZIndex=61;menu.Parent=overlay
 		text(menu,"PLAYER ACTIONS",UDim2.fromOffset(20,16),UDim2.new(1,-40,0,24),9,Theme.Colors.Electric,Theme.Fonts.Strong);text(menu,card.Rating.."  "..card.Name.."  /  "..card.Position,UDim2.fromOffset(20,41),UDim2.new(1,-40,0,30),15,Theme.Colors.White,Theme.Fonts.Display)
@@ -203,14 +218,28 @@ function UltimateTeamPage.new(context:any):CanvasGroup
 
 	renderSummary=function()
 		for _,child in teamContent:GetChildren() do child:Destroy() end
-		text(teamContent,string.upper(snapshot.TeamName or "YOUR CLUB"),UDim2.fromOffset(0,0),UDim2.new(1,0,0,30),14,Theme.Colors.White,Theme.Fonts.Display)
-		if snapshot.ClubIdentity then local badge=BadgePreview.new(teamContent,snapshot.ClubIdentity,UDim2.fromOffset(48,48));badge.AnchorPoint=Vector2.new(1,0);badge.Position=UDim2.new(1,0,0,0)end
-		text(teamContent,"TEAM OVERALL",UDim2.fromOffset(0,44),UDim2.new(1,0,0,18),8,Theme.Colors.Muted,Theme.Fonts.Strong);text(teamContent,tostring(snapshot.Rating),UDim2.fromOffset(0,62),UDim2.new(1,0,0,36),25,Theme.Colors.Electric,Theme.Fonts.Display)
-		text(teamContent,"CHEMISTRY",UDim2.fromOffset(0,108),UDim2.new(1,0,0,18),8,Theme.Colors.Muted,Theme.Fonts.Strong);text(teamContent,snapshot.Chemistry.." / 33",UDim2.fromOffset(0,126),UDim2.new(1,0,0,28),17,Theme.Colors.White,Theme.Fonts.Display)
-		text(teamContent,"FORMATION",UDim2.fromOffset(0,168),UDim2.new(1,0,0,18),8,Theme.Colors.Muted,Theme.Fonts.Strong)
-		local formation=Button.new({Text=snapshot.Formation.."  V",Variant="Secondary",Size=UDim2.new(1,0,0,34),OnActivated=function() formationOpen=not formationOpen;renderSummary() end});formation.Position=UDim2.fromOffset(0,190);formation.Parent=teamContent
-		local nextY=232;if formationOpen then for _,name in snapshot.FormationOptions do local option=Button.new({Text=name,Variant=name==snapshot.Formation and "Primary" or "Secondary",Size=UDim2.new(1,0,0,28),OnActivated=function() setFormationInstant(name) end});option.Position=UDim2.fromOffset(0,nextY);option.Parent=teamContent;nextY+=31 end end
-		local objective=snapshot.Objective;if not formationOpen then local objectiveY=246;text(teamContent,"STARTER OBJECTIVE",UDim2.fromOffset(0,objectiveY),UDim2.new(1,0,0,18),8,Theme.Colors.Electric,Theme.Fonts.Strong);text(teamContent,objective and (objective.title.."\n"..objective.progress.." / "..objective.target) or "JOURNEY COMPLETE",UDim2.fromOffset(0,objectiveY+20),UDim2.new(1,0,0,43),8,Theme.Colors.Silver,Theme.Fonts.Strong);if objective and (objective.status=="claimable" or objective.status=="completed") then local claim=Button.new({Text="CLAIM REWARD",Variant="Primary",Size=UDim2.new(1,0,0,32),OnActivated=function() local result=ProgressionService:Claim("Objective",objective.objectiveId);if result.Success then toast(result.Message or "Reward claimed.","Reward");local refresh=SquadService:GetSquad();if refresh.Success then snapshot=refresh.Data;renderAll() end else toast(result.Message or "Claim failed.","Error") end end});claim.Position=UDim2.fromOffset(0,316);claim.Parent=teamContent end end
+		local command=Instance.new("Frame");command.BackgroundColor3=Theme.Colors.Gunmetal;command.BackgroundTransparency=.18;command.BorderSizePixel=0;command.Position=UDim2.fromOffset(0,0);command.Size=UDim2.new(1,0,0,136);command.Parent=teamContent;corner(command,8);local commandStroke=Instance.new("UIStroke");commandStroke.Color=Theme.Colors.Electric;commandStroke.Thickness=1;commandStroke.Transparency=.58;commandStroke.Parent=command
+		text(command,"CLUB COMMAND",UDim2.fromOffset(12,8),UDim2.new(1,-24,0,16),7,Theme.Colors.Electric,Theme.Fonts.Strong)
+		text(command,string.upper(snapshot.TeamName or "YOUR CLUB"),UDim2.fromOffset(12,25),UDim2.new(1,-70,0,28),13,Theme.Colors.White,Theme.Fonts.Display).TextTruncate=Enum.TextTruncate.AtEnd
+		if snapshot.ClubIdentity then local badge=BadgePreview.new(command,snapshot.ClubIdentity,UDim2.fromOffset(44,44));badge.AnchorPoint=Vector2.new(1,0);badge.Position=UDim2.new(1,-10,0,12);badge.ZIndex=4 end
+		local filled=tonumber(snapshot.Filled)or 0
+		if filled<=0 then for _,slot in snapshot.SlotOrder or{}do if snapshot.Slots[slot] and snapshot.Slots[slot].Card then filled+=1 end end end
+		local rating=tonumber(snapshot.Rating)or 0
+		local chemistry=tonumber(snapshot.Chemistry)or 0
+		text(command,tostring(rating),UDim2.fromOffset(12,60),UDim2.fromOffset(58,36),28,Theme.Colors.Electric,Theme.Fonts.Display)
+		text(command,"OVR",UDim2.fromOffset(66,70),UDim2.fromOffset(36,16),8,Theme.Colors.Muted,Theme.Fonts.Strong)
+		text(command,tostring(chemistry).."/33",UDim2.fromOffset(104,66),UDim2.new(1,-116,0,24),17,Theme.Colors.White,Theme.Fonts.Display)
+		text(command,"CHEMISTRY",UDim2.fromOffset(106,92),UDim2.new(1,-118,0,14),7,Theme.Colors.Muted,Theme.Fonts.Strong)
+		local function meter(labelValue:string,ratio:number,y:number,color:Color3)
+			text(command,labelValue,UDim2.fromOffset(12,y),UDim2.new(1,-24,0,13),7,Theme.Colors.Silver,Theme.Fonts.Strong)
+			local bar=Instance.new("Frame");bar.BackgroundColor3=Theme.Colors.Black;bar.BackgroundTransparency=.18;bar.BorderSizePixel=0;bar.Position=UDim2.fromOffset(12,y+16);bar.Size=UDim2.new(1,-24,0,5);bar.Parent=command;corner(bar,3)
+			local fill=Instance.new("Frame");fill.BackgroundColor3=color;fill.BorderSizePixel=0;fill.Size=UDim2.fromScale(math.clamp(ratio,0,1),1);fill.Parent=bar;corner(fill,3)
+		end
+		meter("MATCHDAY XI  "..tostring(math.min(filled,11)).." / 11",math.min(filled,11)/11,108,filled>=11 and Theme.Colors.Electric or Theme.Colors.Warning)
+		text(teamContent,"FORMATION",UDim2.fromOffset(0,154),UDim2.new(1,0,0,18),8,Theme.Colors.Muted,Theme.Fonts.Strong)
+		local formation=Button.new({Text=snapshot.Formation.."  V",Variant="Secondary",Size=UDim2.new(1,0,0,34),OnActivated=function() formationOpen=not formationOpen;renderSummary() end});formation.Position=UDim2.fromOffset(0,176);formation.Parent=teamContent
+		local nextY=218;if formationOpen then for _,name in snapshot.FormationOptions do local option=Button.new({Text=name,Variant=name==snapshot.Formation and "Primary" or "Secondary",Size=UDim2.new(1,0,0,28),OnActivated=function() setFormationInstant(name) end});option.Position=UDim2.fromOffset(0,nextY);option.Parent=teamContent;nextY+=31 end end
+		local objective=snapshot.Objective;if not formationOpen then local objectiveY=232;text(teamContent,"STARTER OBJECTIVE",UDim2.fromOffset(0,objectiveY),UDim2.new(1,0,0,18),8,Theme.Colors.Electric,Theme.Fonts.Strong);text(teamContent,objective and (objective.title.."\n"..objective.progress.." / "..objective.target) or "JOURNEY COMPLETE",UDim2.fromOffset(0,objectiveY+20),UDim2.new(1,0,0,43),8,Theme.Colors.Silver,Theme.Fonts.Strong);if objective and (objective.status=="claimable" or objective.status=="completed") then local claim=Button.new({Text="CLAIM REWARD",Variant="Primary",Size=UDim2.new(1,0,0,32),OnActivated=function() local result=ProgressionService:Claim("Objective",objective.objectiveId);if result.Success then toast(result.Message or "Reward claimed.","Reward");local refresh=SquadService:GetSquad();if refresh.Success then snapshot=refresh.Data;renderAll() end else toast(result.Message or "Claim failed.","Error") end end});claim.Position=UDim2.fromOffset(0,302);claim.Parent=teamContent end end
 		local auto=Button.new({Text="AUTO BUILD",Variant="Primary",Size=UDim2.new(1,0,0,36),OnActivated=function() apply(SquadService:AutoBuildSquad()) end});auto.Position=UDim2.new(0,0,1,-120);auto.Parent=teamContent
 		local clear=Button.new({Text="CLEAR XI",Variant="Secondary",Size=UDim2.new(1,0,0,36),OnActivated=function() context.Flow:Confirmation("CLEAR STARTING XI","Move all starters to reserves?","CLEAR XI",function() apply(SquadService:ClearSquad()) end) end});clear.Position=UDim2.new(0,0,1,-78);clear.Parent=teamContent
 		text(teamContent,"SAVED  "..os.date("!%H:%M:%S",snapshot.SavedAt or os.time()),UDim2.new(0,0,1,-28),UDim2.new(1,0,0,20),7,Theme.Colors.Electric,Theme.Fonts.Strong)
@@ -267,8 +296,21 @@ function UltimateTeamPage.new(context:any):CanvasGroup
 		renderSummary();renderPitch();renderPreview();renderTray()
 	end
 
+	local shortcutOverlayNames={"PackHubOverlay","ObjectivesHubOverlay","TacticsHubOverlay","PlayerActionOverlay","ModalOverlay"}
+	local function clearShortcutOverlays(exceptName:string?)
+		for _,name in shortcutOverlayNames do
+			if name~=exceptName then
+				local existing=group:FindFirstChild(name)
+				if existing then existing:Destroy() end
+			end
+		end
+	end
+
 	local openPackHub:(()->())
 	openPackHub=function()
+		clearShortcutOverlays("PackHubOverlay")
+		local existing=group:FindFirstChild("PackHubOverlay")
+		if existing then existing:Destroy() end
 		local response=PackService:GetInventory();if not response.Success then toast(response.Message or "Pack inventory unavailable.","Error");return end
 		local packData=response.Data or {Packs={},History={}};local selectedTab="My Packs";local packTabs={"My Packs","Store Packs","Pack Odds","History"};local storeOrder={"starter_pack","bronze_pack","silver_pack","gold_pack","elite_pack","voltra_pack"}
 		local overlay=Instance.new("TextButton");overlay.Name="PackHubOverlay";overlay.AutoButtonColor=false;overlay.BackgroundColor3=Theme.Colors.Black;overlay.BackgroundTransparency=.12;overlay.BorderSizePixel=0;overlay.Size=UDim2.fromScale(1,1);overlay.Text="";overlay.ZIndex=70;overlay.Parent=group
@@ -303,6 +345,9 @@ function UltimateTeamPage.new(context:any):CanvasGroup
 	end
 
 	local function openObjectivesHub()
+		clearShortcutOverlays("ObjectivesHubOverlay")
+		local existing=group:FindFirstChild("ObjectivesHubOverlay")
+		if existing then existing:Destroy() end
 		local progression=ProgressionService:Get()or context.Data.Progression;local selectedGroup="starter_journey";local groups={{"starter_journey","STARTER"},{"daily","DAILY"},{"weekly","WEEKLY"},{"milestone","MILESTONES"},{"loan_trials","LOAN PLAYERS"}}
 		local overlay=Instance.new("TextButton");overlay.Name="ObjectivesHubOverlay";overlay.AutoButtonColor=false;overlay.BackgroundColor3=Theme.Colors.Black;overlay.BackgroundTransparency=.12;overlay.BorderSizePixel=0;overlay.Size=UDim2.fromScale(1,1);overlay.Text="";overlay.ZIndex=70;overlay.Parent=group
 		local hub=Panel.new({Name="ObjectivesHub",Size=UDim2.fromOffset(900,580),ClipsDescendants=true});hub.AnchorPoint=Vector2.new(.5,.5);hub.Position=UDim2.fromScale(.5,.5);hub.ZIndex=71;hub.Parent=overlay
@@ -322,6 +367,9 @@ function UltimateTeamPage.new(context:any):CanvasGroup
 	end
 
 	local function openTacticsHub()
+		clearShortcutOverlays("TacticsHubOverlay")
+		local existing=group:FindFirstChild("TacticsHubOverlay")
+		if existing then existing:Destroy() end
 		local overlay=Instance.new("TextButton");overlay.Name="TacticsHubOverlay";overlay.AutoButtonColor=false;overlay.BackgroundColor3=Theme.Colors.Black;overlay.BackgroundTransparency=.1;overlay.BorderSizePixel=0;overlay.Size=UDim2.fromScale(1,1);overlay.Text="";overlay.ZIndex=70;overlay.Parent=group
 		local hub=Panel.new({Name="TacticsHub",Size=UDim2.fromOffset(1120,650),ClipsDescendants=true});hub.AnchorPoint=Vector2.new(.5,.5);hub.Position=UDim2.fromScale(.5,.5);hub.ZIndex=71;hub.Parent=overlay
 		text(hub,"TACTICS",UDim2.fromOffset(24,16),UDim2.new(1,-150,0,34),22,Theme.Colors.White,Theme.Fonts.Display).ZIndex=73
@@ -408,7 +456,14 @@ function UltimateTeamPage.new(context:any):CanvasGroup
 	local squadShortcut=Button.new({Text="SQUAD BUILDER",Variant="Primary",Size=UDim2.fromOffset(116,34),OnActivated=function()toast("Squad Builder is active.")end});squadShortcut.Parent=shortcuts
 	local tacticsButton=Button.new({Text="TACTICS",Variant="Secondary",Size=UDim2.fromOffset(116,34),OnActivated=openTacticsHub});tacticsButton.Parent=shortcuts
 	local packsButton=Button.new({Text="PACKS",Variant="Secondary",Size=UDim2.fromOffset(116,34),OnActivated=openPackHub});packsButton.Parent=shortcuts
-	local playersButton=Button.new({Text="PLAYER INVENTORY",Variant="Secondary",Size=UDim2.fromOffset(132,34),OnActivated=function()context.Data.UIState.SelectedTabs.Inventory="Players";context.StateService:SetTab("Inventory","Players");context.Navigate("Inventory")end});playersButton.Parent=shortcuts
+	local navigatingToPlayers=false
+	local playersButton=Button.new({Text="PLAYER INVENTORY",Variant="Secondary",Size=UDim2.fromOffset(132,34),OnActivated=function()
+		if navigatingToPlayers or(context.Flow and context.Flow.Busy)then return end
+		navigatingToPlayers=true;clearShortcutOverlays()
+		context.Data.UIState.SelectedTabs.Inventory="Players";context.StateService:SetTab("Inventory","Players")
+		if context.IsCurrentPage and context.IsCurrentPage("Inventory")then navigatingToPlayers=false;return end
+		context.Navigate("Inventory");task.delay(.65,function()navigatingToPlayers=false end)
+	end});playersButton.Parent=shortcuts
 	local objectivesButton=Button.new({Text="OBJECTIVES",Variant="Secondary",Size=UDim2.fromOffset(116,34),OnActivated=openObjectivesHub});objectivesButton.Parent=shortcuts
 	renderAll()
 	return group

@@ -394,9 +394,9 @@ function PackOpeningSequence.play(parent: Instance, props: any): CanvasGroup
 			factLayout.Parent = facts
 			local factData = {
 				{ "RARITY", string.upper(rarity), visual.trimColor },
-				{ "POSITION", best.Position or best.bestPosition, Theme.Colors.White },
-				{ "NATIONALITY", best.Nation or best.nationality or "VTR REGION", Theme.Colors.Silver },
-				{ "CLUB", best.Club or best.fictionalClub or "VTR FREE AGENT", Theme.Colors.Silver },
+				{ "POSITION", tostring(best.Position or best.bestPosition or "--"), Theme.Colors.White },
+				{ "NATIONALITY", tostring(best.Nation or best.nationality or "VTR REGION"), Theme.Colors.Silver },
+				{ "CLUB", tostring(best.Club or best.fictionalClub or "VTR FREE AGENT"), Theme.Colors.Silver },
 			}
 			local factRows = {}
 			for _, fact in factData do
@@ -405,7 +405,7 @@ function PackOpeningSequence.play(parent: Instance, props: any): CanvasGroup
 				row.BackgroundTransparency = 0.62
 				row.BorderSizePixel = 0
 				row.Size = UDim2.new(1, 0, 0, 45)
-				row.Text = fact[1] .. "   /   " .. fact[2]
+				row.Text = fact[1] .. "   /   " .. tostring(fact[2] or "--")
 				row.TextColor3 = fact[3]
 				row.TextSize = 10
 				row.Font = Theme.Fonts.Strong
@@ -415,14 +415,14 @@ function PackOpeningSequence.play(parent: Instance, props: any): CanvasGroup
 				corner(row, 5)
 				table.insert(factRows, row)
 			end
-			local rating = label(hero, tostring(best.Rating or best.overall), UDim2.fromOffset(316, 32), UDim2.fromOffset(230, 100), 74, Theme.Colors.White, Theme.Fonts.Display, 114)
+			local rating = label(hero, tostring(best.Rating or best.overall or "--"), UDim2.fromOffset(316, 32), UDim2.fromOffset(230, 100), 74, Theme.Colors.White, Theme.Fonts.Display, 114)
 			rating.TextXAlignment = Enum.TextXAlignment.Center
 			rating.TextTransparency = 1
 			local portrait = AvatarPortraitGenerator.new(hero, best, UDim2.fromOffset(230, 175), false)
 			portrait.Position = UDim2.fromOffset(316, 115)
 			portrait.ZIndex = 113
 			portrait.Visible = false
-			local playerName = label(hero, best.Name or best.displayName, UDim2.fromOffset(300, 297), UDim2.fromOffset(262, 40), 18, Theme.Colors.White, Theme.Fonts.Display, 114)
+			local playerName = label(hero, tostring(best.Name or best.displayName or "VTR PLAYER"), UDim2.fromOffset(300, 297), UDim2.fromOffset(262, 40), 18, Theme.Colors.White, Theme.Fonts.Display, 114)
 			playerName.TextXAlignment = Enum.TextXAlignment.Center
 			playerName.TextTransparency = 1
 			tweenWait(hero, TweenInfo.new(0.36, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { GroupTransparency = 0 })
@@ -450,8 +450,14 @@ function PackOpeningSequence.play(parent: Instance, props: any): CanvasGroup
 		end)
 		if not ok then
 			warn("[VTR PACK OPENING] " .. tostring(problem))
-			if overlay.Parent then overlay:Destroy() end
-			if props.OnComplete then props.OnComplete() end
+			local fallbackOk, fallbackProblem = pcall(function()
+				if overlay.Parent then showResults(overlay, props.Title or "VTR PACK", reveals, props) end
+			end)
+			if not fallbackOk then
+				warn("[VTR PACK OPENING FALLBACK] " .. tostring(fallbackProblem))
+				if overlay.Parent then overlay:Destroy() end
+				if props.OnComplete then props.OnComplete() end
+			end
 		end
 	end)
 	return overlay

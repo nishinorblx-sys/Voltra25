@@ -3,32 +3,28 @@ local MATCHUP_PANEL_DELAY = 0.85
 --!strict
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
 
 local Theme = require(ReplicatedStorage.VTR.Shared.Theme)
 local Panel = require(script.Parent.Parent.Components.Panel)
 local Button = require(script.Parent.Parent.Components.Button)
+local SevenWinLoginRewardPanel = require(script.Parent.Parent.Components.SevenWinLoginRewardPanel)
 local RankedQueuePresentation = require(script.Parent.Parent.Components.RankedQueuePresentation)
 local MatchSetupService = require(script.Parent.Parent.Services.MatchSetupService)
 local PageBase = require(script.Parent.PageBase)
+
 local function vtrRewardClaimed(value)
 	if typeof(value) ~= "table" then
-		return {}
+		return false
 	end
 
-	if typeof(vtrRewardClaimed(value)) ~= "table" then
-		value.RewardClaimed = {}
-	end
-
-	return vtrRewardClaimed(value)
+	return value.RewardClaimed == true
 end
 
 local function vtrRankedSafe(value)
 	if typeof(value) ~= "table" then
 		value = {}
-	end
-
-	if typeof(vtrRewardClaimed(value)) ~= "table" then
-		value.RewardClaimed = {}
 	end
 
 	if typeof(value.Rewards) ~= "table" then
@@ -45,6 +41,21 @@ local function vtrRankedSafe(value)
 	value.Losses = tonumber(value.Losses) or 0
 
 	return value
+end
+
+local function selectRankedRun(progression: any, ranked: any): any
+	local rankedRun = ranked.RankedRun or ranked.Run
+	local progressionRun = progression.RankedRun
+
+	if type(rankedRun) == "table" and (rankedRun.Ended == true or (type(rankedRun.Results) == "table" and #rankedRun.Results > 0)) then
+		return rankedRun
+	end
+
+	if type(progressionRun) == "table" then
+		return progressionRun
+	end
+
+	return type(rankedRun) == "table" and rankedRun or {}
 end
 
 
@@ -68,12 +79,23 @@ end
 
 local function stat(parent: Instance, title: string, value: string, xScale: number, valueColor: Color3?)
 	local holder = Instance.new("Frame")
+	holder.Name = title:gsub("%W", "") .. "Stat"
 	holder.BackgroundTransparency = 1
 	holder.Position = UDim2.new(xScale, 18, 0, 96)
 	holder.Size = UDim2.new(.19, -18, 0, 58)
 	holder.Parent = parent
-	text(holder, title, UDim2.fromOffset(0, 0), UDim2.new(1, 0, 0, 18), 8, Theme.Colors.Muted, Theme.Fonts.Strong)
-	text(holder, value, UDim2.fromOffset(0, 22), UDim2.new(1, 0, 0, 34), 20, valueColor or Theme.Colors.White, Theme.Fonts.Display)
+	local titleLabel = text(holder, title, UDim2.fromOffset(0, 0), UDim2.new(1, 0, 0, 18), 8, Theme.Colors.Muted, Theme.Fonts.Strong)
+	titleLabel.Name = "Title"
+	titleLabel.TextWrapped = false
+	titleLabel.TextYAlignment = Enum.TextYAlignment.Center
+	local valueLabel = text(holder, value, UDim2.fromOffset(0, 22), UDim2.new(1, 0, 0, 34), 20, valueColor or Theme.Colors.White, Theme.Fonts.Display)
+	valueLabel.Name = "Value"
+	valueLabel.AnchorPoint = Vector2.new(0, 0)
+	valueLabel.AutomaticSize = Enum.AutomaticSize.None
+	valueLabel.TextScaled = false
+	valueLabel.TextWrapped = false
+	valueLabel.TextTruncate = Enum.TextTruncate.AtEnd
+	valueLabel.TextYAlignment = Enum.TextYAlignment.Top
 	return holder
 end
 
@@ -112,6 +134,9 @@ local function addMarker(parent: Instance, index: number, result: string?)
 	if played then
 		number.Text = result == "Win" and "✓" or result == "Loss" and "X" or "-"
 	end
+	if not played then
+		number.Text = ""
+	end
 	number.TextSize = index == 7 and 16 or 12
 	number.Font = Theme.Fonts.Display
 	number.TextXAlignment = Enum.TextXAlignment.Center
@@ -136,9 +161,11 @@ end
 local function rankedPath(context: any): ({string}, number, number, number, number)
 	local progression = context.Data.Progression or {}
 	local ranked = context.Data.Ranked or progression.Ranked or {}
-	local run = progression.RankedRun or ranked.RankedRun or ranked.Run or {}
-	local run = progression.RankedRun or ranked.RankedRun or ranked.Run or {}
+	local run = selectRankedRun(progression, ranked)
 	local results = {}
+	if vtrRewardClaimed(run) then
+		return results, 0, 0, 0, 0
+	end
 	if type(run.Results) == "table" then
 		for _, value in run.Results do
 			local result = tostring(value)
@@ -216,6 +243,7 @@ function RankedPage.new(context: any): CanvasGroup
 	local results, wins, draws, losses, games = rankedPath(context)
 	local progression = context.Data.Progression or {}
 	local ranked = context.Data.Ranked or progression.Ranked or {}
+	local run = selectRankedRun(progression, ranked)
 	local division = string.upper(tostring(ranked.Division or ranked.DivisionName or "RANKED RUN"))
 	local record = tostring(ranked.Wins or 0) .. "W  /  " .. tostring(ranked.Draws or 0) .. "D  /  " .. tostring(ranked.Losses or 0) .. "L"
 	local goalDifference = rankedGoalDifference(ranked)
@@ -261,7 +289,7 @@ function RankedPage.new(context: any): CanvasGroup
 	for index = 1, 7 do
 		addMarker(rail, index, results[index])
 	end
-	if games >= 7 and vtrRewardClaimed(run) ~= true then
+	if games >= 7 and not vtrRewardClaimed(run) then
 		local claimOverlay = Instance.new("Frame")
 		claimOverlay.Name = "RankedPathClaimOverlay"
 		claimOverlay.BackgroundColor3 = Color3.fromHex("061205")
@@ -279,6 +307,19 @@ function RankedPage.new(context: any): CanvasGroup
 			local response = MatchSetupService:ClaimRankedPathReward()
 			if type(response) == "table" and response.Success then
 				claimOverlay.Visible = false
+				local data = type(response.Data) == "table" and response.Data or {}
+				if type(data.Ranked) == "table" then
+					context.Data.Ranked = data.Ranked
+				end
+				if type(data.Progression) == "table" then
+					context.Data.Progression = data.Progression
+				end
+				local rewards = data.RewardPacks or data.PackIds or data.PacksGranted or {}
+				if type(rewards) == "table" and #rewards > 0 then
+					SevenWinLoginRewardPanel.Show(rewards, tonumber(data.Wins) or wins, function()
+						return data.InventoryStored ~= false
+					end)
+				end
 				if context.Toast then context.Toast({Title = "RANKED PATH", Message = response.Message or "Path reward claimed.", Kind = "Reward"}) end
 			elseif context.Toast then
 				context.Toast({Title = "RANKED PATH", Message = type(response) == "table" and response.Message or "Claim failed.", Kind = "Error"})
@@ -518,6 +559,25 @@ function RankedPage.new(context: any): CanvasGroup
 		renderBoard(activeSection)
 	end
 
+	local debugBusy = false
+	local function completeDebugPath()
+		if debugBusy or not RunService:IsStudio() then
+			return
+		end
+		debugBusy = true
+		inputShield(group, 210)
+		local response = MatchSetupService:DebugCompleteRankedPath()
+		debugBusy = false
+		if type(response) == "table" and response.Success then
+			if context.Toast then
+				local message = response.Message or "7-win path completed."
+				context.Toast({Title = "STUDIO DEBUG", Message = message .. " Click CLAIM to test rewards.", Kind = "Reward"})
+			end
+		elseif context.Toast then
+			context.Toast({Title = "STUDIO DEBUG", Message = type(response) == "table" and response.Message or "Debug action failed.", Kind = "Error"})
+		end
+	end
+
 	local play = Button.new({Text = "PLAY RANKED", Variant = "Primary", Size = UDim2.fromOffset(218, 54), OnActivated = function()
 		inputShield(group, 210)
 		local result = MatchSetupService:JoinRankedQueue()
@@ -561,6 +621,31 @@ function RankedPage.new(context: any): CanvasGroup
 	leaderboardsButton.ZIndex = 24
 	leaderboardsButton.Selectable = true
 	leaderboardsButton.Parent = group
+
+	if RunService:IsStudio() then
+		local debugButton = Button.new({Text = "TEST 7W CLAIM  [U]", Variant = "Secondary", Size = UDim2.fromOffset(212, 42), OnActivated = completeDebugPath})
+		debugButton.Name = "StudioDebugSevenWinsButton"
+		debugButton.AnchorPoint = Vector2.new(.5, 1)
+		debugButton.Position = UDim2.new(.5, 0, 1, -24)
+		debugButton.ZIndex = 24
+		debugButton.Selectable = true
+		debugButton.Parent = group
+
+		local debugInputConnection: RBXScriptConnection?
+		debugInputConnection = UserInputService.InputBegan:Connect(function(input: InputObject, gameProcessed: boolean)
+			if not group.Parent then
+				if debugInputConnection then debugInputConnection:Disconnect() end
+				return
+			end
+			if gameProcessed or input.KeyCode ~= Enum.KeyCode.U then
+				return
+			end
+			if context.IsCurrentPage and not context.IsCurrentPage("Ranked") then
+				return
+			end
+			completeDebugPath()
+		end)
+	end
 
 	return group
 end

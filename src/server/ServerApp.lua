@@ -72,9 +72,9 @@ function ServerApp.Start()
 	end
 
 	local notifications = NotificationService.new(notificationRemote)
-	-- v4 intentionally starts every account from a fresh launch profile.
-	-- v5 is an intentional launch-simulation wipe. Do not bump this again unless another full reset is desired.
-	local profiles = ProfileService.new(MockProfileStore.new(DefaultProfile, "VTR25_LaunchProfiles_v5"))
+	-- v6 intentionally starts every account from a fresh launch profile.
+	-- Bump this only when another full live data reset is desired.
+	local profiles = ProfileService.new(MockProfileStore.new(DefaultProfile, "VTR25_LaunchProfiles_v6"))
 	local uiState = UIStateService.new(profiles, uiStateRemote, publish)
 	local inventory = InventoryService.new(profiles)
 	local progression = ProgressionService.new(profiles, publish, inventory)
@@ -228,14 +228,14 @@ function ServerApp.Start()
 		if player:GetAttribute("VTRInMatch")==true or (tonumber(player:GetAttribute("VTRRankedQueueLockedUntil"))or 0)>os.clock() then
 			return{Success=false,Message="Finish the current ranked match first."}
 		end
-return rankedQueue:Join(player,payload)elseif action=="LeaveRankedQueue"then return rankedQueue:Leave(player)elseif action=="GetRankedQueue"then return true,"Ranked queue status loaded.",rankedQueue:GetStatus(player)elseif action=="GetRankedLeaderboards"then return true,"Ranked leaderboards loaded.",rankedProfile:GetLeaderboards()elseif action=="ClaimRankedPathReward"then return rankedProfile:ClaimPathReward(player)elseif action=="ReturnToMenu"then local result=matchSetup:ReturnToMenu(player);return result,result and"Returned to menu."or"No active match.",nil end;return false,"Unsupported match action.",nil end)
+return rankedQueue:Join(player,payload)elseif action=="LeaveRankedQueue"then return rankedQueue:Leave(player)elseif action=="GetRankedQueue"then return true,"Ranked queue status loaded.",rankedQueue:GetStatus(player)elseif action=="GetRankedLeaderboards"then return true,"Ranked leaderboards loaded.",rankedProfile:GetLeaderboards()elseif action=="ClaimRankedPathReward"then return rankedProfile:ClaimPathReward(player)elseif action=="DebugCompleteRankedPath"then return rankedProfile:DebugCompleteSevenWinPath(player)elseif action=="ReturnToMenu"then local result=matchSetup:ReturnToMenu(player);return result,result and"Returned to menu."or"No active match.",nil end;return false,"Unsupported match action.",nil end)
 		if not ok then
 			warn("[VTR MATCH ERROR] "..tostring(success))
 			return{Success=false,Message=RunService:IsStudio()and("Match failed: "..tostring(success))or"Match service failed.",Data=nil}
 		end
 		return{Success=success,Message=message,Data=data}
 	end
-	Players.PlayerRemoving:Connect(function(player)rankedQueue:PlayerRemoving(player);if matchRuntime.PlayerRemoving then matchRuntime:PlayerRemoving(player)else matchSetup:ReturnToMenu(player)end;lastRequest[player] = nil;lastProgressionAction[player]=nil;lastLaunchAction[player]=nil;lastSquadAction[player]=nil;lastPlayerData[player]=nil;lastPackAction[player]=nil;lastInventoryAction[player]=nil;lastMatchAction[player]=nil end)
+	Players.PlayerRemoving:Connect(function(player)rankedQueue:PlayerRemoving(player);if rankedProfile.PlayerRemoving then rankedProfile:PlayerRemoving(player)end;if matchRuntime.PlayerRemoving then matchRuntime:PlayerRemoving(player)else matchSetup:ReturnToMenu(player)end;lastRequest[player] = nil;lastProgressionAction[player]=nil;lastLaunchAction[player]=nil;lastSquadAction[player]=nil;lastPlayerData[player]=nil;lastPackAction[player]=nil;lastInventoryAction[player]=nil;lastMatchAction[player]=nil end)
 
 	-- Public server API for future gameplay systems. Nothing here is exposed as
 	-- a client-controlled mutation remote.

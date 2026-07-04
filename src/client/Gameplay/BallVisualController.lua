@@ -23,6 +23,19 @@ local function hideOriginal(ball: BasePart, hidden: boolean)
 	end
 end
 
+local function showVisual(instance: Instance)
+	for _, descendant in instance:GetDescendants() do
+		if descendant:IsA("BasePart") then
+			descendant.LocalTransparencyModifier = 0
+		elseif (descendant:IsA("Decal") or descendant:IsA("Texture")) and descendant.Transparency >= 0.99 then
+			descendant.Transparency = 0
+		end
+	end
+	if instance:IsA("BasePart") then
+		instance.LocalTransparencyModifier = 0
+	end
+end
+
 function Controller.new(ball: BasePart, model: Model)
 	local self=setmetatable({
 		Ball = ball,
@@ -40,17 +53,26 @@ function Controller.new(ball: BasePart, model: Model)
 end
 
 function Controller:_createVisual()
+	if self.VisualModel then
+		self.VisualModel:Destroy()
+		self.VisualModel = nil
+	elseif self.Visual then
+		self.Visual:Destroy()
+		self.Visual = nil
+	end
 	local sourceModel = ballModel(self.Ball)
 	if sourceModel then
 		local clone = sourceModel:Clone()
 		clone.Name = "VTRPredictedBall"
 		for _, descendant in clone:GetDescendants() do if descendant:IsA("BasePart") then descendant.Anchored = true;descendant.CanCollide = false;descendant.CanQuery = false;descendant.CanTouch = false end end
+		showVisual(clone)
 		clone.Parent = workspace
 		self.VisualModel = clone
 		self.Visual = clone:FindFirstChild(self.Ball.Name, true) :: BasePart?
 	else
 		local visual = self.Ball:Clone()
 		visual.Name = "VTRPredictedBall";visual.Anchored = true;visual.CanCollide = false;visual.CanQuery = false;visual.CanTouch = false;visual.Parent = workspace
+		showVisual(visual)
 		self.Visual = visual
 	end
 	hideOriginal(self.Ball, true)
@@ -85,6 +107,7 @@ end
 function Controller:SnapTo(position: Vector3?, velocity: Vector3?, lockDuration: number?)
 	local target = position or self.Ball.Position
 	local currentVelocity = velocity or self.Ball.AssemblyLinearVelocity
+	hideOriginal(self.Ball, true)
 	self.PredictedPosition = target
 	self.PredictedVelocity = currentVelocity
 	self.LastVisualPosition = target
@@ -108,6 +131,7 @@ function Controller:Update(dt: number, move: Vector3, sprinting: boolean)
 	local owns = self.Ball:GetAttribute("OwnerUserId") == Players.LocalPlayer.UserId
 	if not self.Visual then self:_createVisual()end
 	if not self.Visual then return end
+	hideOriginal(self.Ball, true)
 	if self.LockedUntil and os.clock() < self.LockedUntil and typeof(self.LockedPosition) == "Vector3" then
 		self:SnapTo(self.LockedPosition, typeof(self.LockedVelocity) == "Vector3" and self.LockedVelocity or Vector3.zero)
 		return

@@ -7,7 +7,7 @@ Controller.__index = Controller
 
 local PROMPTS = {
 	KeyboardMouse = {
-		Possession = {{Label = "SHOOT", Key = "LMB", Action = "Shoot"}, {Label = "PASS", Key = "RMB", Action = "Pass"}, {Label = "LOBBED PASS", Key = "ALT+RMB", Action = "Lob"}, {Label = "MANUAL PASS", Key = "CTRL+RMB", Action = "Manual"}, {Label = "DRIBBLE", Key = "C", Action = "Dribble"}},
+		Possession = {{Label = "SHOOT", Key = "LMB", Action = "Shoot"}, {Label = "PASS", Key = "RMB", Action = "Pass"}, {Label = "MANUAL LOB", Key = "ALT", Action = "Lob"}, {Label = "MANUAL PASS", Key = "CTRL", Action = "Manual"}, {Label = "DRIBBLE", Key = "C", Action = "Dribble"}},
 		Defending = {{Label = "SWITCH PLAYER", Key = "Q", Action = "Switch"}, {Label = "TACKLE", Key = "E", Action = "Tackle"}, {Label = "SLIDE TACKLE", Key = "F", Action = "SlideTackle"}, {Label = "BLOCK", Key = "R", Action = "Block"}},
 		Loose = {{Label = "CHASE", Key = "WASD", Action = "Move"}, {Label = "SWITCH", Key = "Q", Action = "Switch"}},
 	},

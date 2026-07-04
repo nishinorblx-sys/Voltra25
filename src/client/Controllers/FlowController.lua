@@ -38,6 +38,13 @@ function FlowController.new(root:Frame,toast:(any)->()) return setmetatable({Roo
 function FlowController:SetPlayerDetailsHandler(handler:(string)->()) self.PlayerDetailsHandler=handler end
 function FlowController:SetNavigator(handler:(string)->()) self.Navigator=handler end
 function FlowController:SetInventoryNavigator(handler:()->()) self.InventoryNavigator=handler end
+local packOverlayNames={PackResults=true,PremiumPackOpening=true}
+local function clearPackOverlays(root:Instance)
+	for name in packOverlayNames do
+		local existing=root:FindFirstChild(name)
+		if existing then existing:Destroy()end
+	end
+end
 
 function FlowController:ModeTransition(title:string,callback:()->(),compact:boolean?)
 	if self.Busy then return end;self.Busy=true;UISoundService.PlayTransition();UISoundService.PlayTransition()
@@ -57,15 +64,24 @@ function FlowController:_safe(action:any,perform:()->any,refresh:()->()):any
 	self.Toast({Title=action.Item or "VTR 25",Message=message,Kind=(action.Operation=="Purchase" or action.Operation=="Claim") and "Reward" or "Info"});refresh();return result
 end
 
-function FlowController:Confirmation(title:string,description:string,label:string,callback:()->()) Modal.open(self.Root,{Kicker="CONFIRMATION",Title=title,Description=description,ConfirmLabel=label,OnConfirm=callback}) end
+function FlowController:Confirmation(title:string,description:string,label:string,callback:()->(),onCancel:(()->())?) Modal.open(self.Root,{Kicker="CONFIRMATION",Title=title,Description=description,ConfirmLabel=label,OnConfirm=callback,OnCancel=onCancel}) end
 function FlowController:ItemDetail(card:any,action:any,callback:(()->())?) Modal.open(self.Root,{Kicker="ITEM DETAIL",Title=card.Title,Meta=card.Subtitle.."  •  "..card.Meta,Description=card.Detail or action.Message or "Premium VTR 25 item. Live item data connects here later.",ConfirmLabel=callback and action.Label or "CLOSE",OnConfirm=callback}) end
 function FlowController:PlayerCardDetail(card:any,action:any,callback:()->()) if self.PlayerDetailsHandler and (card.cardInstanceId or card.Id) then self.PlayerDetailsHandler(card.cardInstanceId or card.Id);return end;Modal.open(self.Root,{Kicker="PLAYER CARD DETAIL",Title=card.Title,Meta=card.Subtitle.."  •  "..card.Meta,Description=card.Detail or "Player attributes, chemistry links and club status.",ConfirmLabel=action.Label,OnConfirm=callback}) end
-function FlowController:PackPreview(card:any,action:any,callback:()->()) Modal.open(self.Root,{Kicker="PACK PREVIEW",Title=card.Title,Meta=card.Subtitle,Description=card.Detail or "Cards are generated from the 5,000-player VTR database using this pack tier's server-owned rarity weights.",ConfirmLabel=action.Label=="OPEN PACK" and "OPEN PACK" or "VIEW CONTENTS",OnConfirm=callback}) end
+function FlowController:PackPreview(card:any,action:any,callback:()->())
+	if self.PackOpeningActive==true or self.Root:FindFirstChild("PremiumPackOpening")then
+		self.Toast({Title="PACK CONTENTS",Message="Finish the current pack opening first.",Kind="Info"})
+		return
+	end
+	clearPackOverlays(self.Root)
+	Modal.open(self.Root,{Kicker="PACK PREVIEW",Title=card.Title,Meta=card.Subtitle,Description=card.Detail or "Cards are generated from the 5,000-player VTR database using this pack tier's server-owned rarity weights.",ConfirmLabel=action.Label=="OPEN PACK" and "OPEN PACK" or "VIEW CONTENTS",OnConfirm=callback,OnCancel=action.OnCancel})
+end
 
 function FlowController:_packResults(title:string,reveals:any,complete:()->())
-	local overlay=Instance.new("CanvasGroup");overlay.BackgroundColor3=Theme.Colors.Black;overlay.BackgroundTransparency=.08;overlay.BorderSizePixel=0;overlay.Size=UDim2.fromScale(1,1);overlay.ZIndex=105;overlay.Active=true;overlay.Selectable=false;overlay.Parent=self.Root
+	local existing=self.Root:FindFirstChild("PackResults")
+	if existing then existing:Destroy() end
+	local overlay=Instance.new("CanvasGroup");overlay.Name="PackResults";overlay.BackgroundColor3=Theme.Colors.Black;overlay.BackgroundTransparency=.08;overlay.BorderSizePixel=0;overlay.Size=UDim2.fromScale(1,1);overlay.ZIndex=105;overlay.Active=true;overlay.Selectable=false;overlay.Parent=self.Root
 	local shield=Instance.new("TextButton");shield.Name="PackResultsShield";shield.BackgroundTransparency=1;shield.BorderSizePixel=0;shield.Size=UDim2.fromScale(1,1);shield.Text="";shield.AutoButtonColor=false;shield.Selectable=false;shield.Modal=true;shield.Active=true;shield.ZIndex=105;shield.Parent=overlay
-	local panel=Panel.new({Name="PackResults",Size=UDim2.fromOffset(880,500)});panel.AnchorPoint=Vector2.new(.5,.5);panel.Position=UDim2.fromScale(.5,.5);panel.ZIndex=106;panel.Parent=overlay
+	local panel=Panel.new({Name="PackResultsPanel",Size=UDim2.fromOffset(880,500)});panel.AnchorPoint=Vector2.new(.5,.5);panel.Position=UDim2.fromScale(.5,.5);panel.ZIndex=106;panel.Parent=overlay
 	local titleLabel=Instance.new("TextLabel");titleLabel.BackgroundTransparency=1;titleLabel.Position=UDim2.fromOffset(24,18);titleLabel.Size=UDim2.new(1,-48,0,42);titleLabel.Text=string.upper(title).."  /  PLAYER REVEAL";titleLabel.TextColor3=Theme.Colors.White;titleLabel.TextSize=22;titleLabel.Font=Theme.Fonts.Display;titleLabel.TextXAlignment=Enum.TextXAlignment.Left;titleLabel.ZIndex=107;titleLabel.Parent=panel
 	local hint=titleLabel:Clone();hint.Position=UDim2.fromOffset(24,58);hint.Size=UDim2.new(1,-48,0,22);hint.Text="SELECT ANY CARD TO OPEN THE FULL PLAYER DATABASE PROFILE";hint.TextColor3=Theme.Colors.Electric;hint.TextSize=8;hint.Font=Theme.Fonts.Strong;hint.Parent=panel
 	local grid=Instance.new("ScrollingFrame");grid.BackgroundTransparency=1;grid.BorderSizePixel=0;grid.Position=UDim2.fromOffset(24,92);grid.Size=UDim2.new(1,-48,1,-162);grid.AutomaticCanvasSize=Enum.AutomaticSize.Y;grid.CanvasSize=UDim2.new();grid.ScrollBarThickness=3;grid.ScrollBarImageColor3=Theme.Colors.White;grid.ZIndex=107;grid.Parent=panel
@@ -76,7 +92,22 @@ end
 
 function FlowController:PackOpening(title:string,complete:()->(),reveals:any?)
 	if not reveals or #reveals==0 then self:Error("PACK OPENING FAILED","The server returned no player cards.");return end
-	PackOpeningSequence.play(self.Root,{Title=title,Reveals=reveals,OnComplete=complete,OnViewPlayer=function(cardInstanceId:string) if self.PlayerDetailsHandler then self.PlayerDetailsHandler(cardInstanceId) end end,Toast=function(message:string,kind:string) self.Toast({Title="PACK CONTENTS",Message=message,Kind=kind}) end})
+	if self.PackOpeningActive==true then return end
+	self.PackOpeningActive=true
+	clearPackOverlays(self.Root)
+	local released=false
+	local function release()
+		if released then return end
+		released=true
+		self.PackOpeningActive=false
+	end
+	local ok,overlay=pcall(function()return PackOpeningSequence.play(self.Root,{Title=title,Reveals=reveals,OnComplete=function()release();complete()end,OnViewPlayer=function(cardInstanceId:string) if self.PlayerDetailsHandler then self.PlayerDetailsHandler(cardInstanceId) end end,Toast=function(message:string,kind:string) self.Toast({Title="PACK CONTENTS",Message=message,Kind=kind}) end})end)
+	if not ok or not overlay then
+		release()
+		self:Error("PACK OPENING FAILED","The pack was opened, but the reveal screen could not start. Re-open Inventory to see the new players.")
+		return
+	end
+	overlay.Destroying:Once(release)
 end
 function FlowController:OfferPackDelivery(delivered:any,onComplete:(()->())?,beforeOpen:(()->())?)
 	local quantity=tonumber(delivered.quantity)or 1

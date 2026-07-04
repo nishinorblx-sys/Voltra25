@@ -5,6 +5,7 @@ local Theme = require(ReplicatedStorage.VTR.Shared.Theme)
 local MatchSetupService = require(script.Parent.Parent.Services.MatchSetupService)
 local Button = require(script.Parent.Button)
 local Panel = require(script.Parent.Panel)
+local BadgePreview = require(script.Parent.BadgePreview)
 local TeamRosterModal = require(script.Parent.TeamRosterModal)
 
 local TeamSelection = {}
@@ -16,6 +17,20 @@ end
 
 local function findTeam(teams: { any }, id: string): any?
 	for _, team in teams do if team.teamId == id then return team end end; return nil
+end
+
+local function badgeIdentity(team: any): any
+	local colors = team.colors or {}
+	local identity = team.BadgeIdentity or team.badgeIdentity or {}
+	return {
+		PrimaryColor = identity.PrimaryColor or colors.Primary or "B7FF1A",
+		SecondaryColor = identity.SecondaryColor or colors.Secondary or "050505",
+		AccentColor = identity.AccentColor or colors.Accent or colors.Secondary or "D9D9D9",
+		BadgePreset = identity.BadgePreset or team.badgePreset or "Modern",
+		BadgeShape = identity.BadgeShape or (team.badgePreset == "GeneratedHex" and "Hex" or "Shield"),
+		BadgeSymbol = identity.BadgeSymbol or "Volt V",
+		BadgeColorBehavior = identity.BadgeColorBehavior or "Tri Color",
+	}
 end
 
 function TeamSelection.new(parent: Instance, props: any): Frame
@@ -102,9 +117,14 @@ function TeamSelection.new(parent: Instance, props: any): Frame
 
 		local details = Panel.new({ Name = "TeamDetails", Position = UDim2.new(.54, 8, 0, 50), Size = UDim2.new(.46, -8, 1, -50) }); details.Parent = content
 		if not preview then label(details, "SELECT A TEAM", UDim2.fromScale(0, .35), UDim2.fromScale(1, .2), 16, Theme.Colors.Muted, Theme.Fonts.Display).TextXAlignment = Enum.TextXAlignment.Center; return end
-		label(details, preview.logo, UDim2.fromOffset(18, 18), UDim2.fromOffset(76, 76), 34, Color3.fromHex(preview.colors.Primary), Theme.Fonts.Display).TextXAlignment = Enum.TextXAlignment.Center
-		label(details, preview.teamName, UDim2.fromOffset(108, 18), UDim2.new(1, -126, 0, 42), 18, Theme.Colors.White, Theme.Fonts.Display)
-		label(details, preview.country .. "  /  " .. preview.league, UDim2.fromOffset(108, 62), UDim2.new(1, -126, 0, 20), 8, Theme.Colors.Muted, Theme.Fonts.Strong)
+		local badge = BadgePreview.new(details, badgeIdentity(preview), UDim2.fromOffset(86, 86))
+		badge.Position = UDim2.fromOffset(18, 16)
+		badge.ZIndex = 6
+		local logo = label(badge, preview.logo or "", UDim2.fromScale(.18, .37), UDim2.fromScale(.64, .22), 10, Theme.Colors.White, Theme.Fonts.Display)
+		logo.TextXAlignment = Enum.TextXAlignment.Center
+		logo.ZIndex = 8
+		label(details, preview.teamName, UDim2.fromOffset(124, 18), UDim2.new(1, -142, 0, 42), 18, Theme.Colors.White, Theme.Fonts.Display)
+		label(details, preview.country .. "  /  " .. preview.league, UDim2.fromOffset(124, 62), UDim2.new(1, -142, 0, 20), 8, Theme.Colors.Muted, Theme.Fonts.Strong)
 		label(details, string.format("OVR  %d     ATT  %d     MID  %d     DEF  %d", preview.overall, preview.attack, preview.midfield, preview.defense), UDim2.fromOffset(18, 112), UDim2.new(1, -36, 0, 30), 12, Theme.Colors.White, Theme.Fonts.Display)
 		label(details, "FORMATION  /  " .. preview.formation, UDim2.fromOffset(18, 150), UDim2.new(1, -36, 0, 20), 8, Theme.Colors.Electric, Theme.Fonts.Strong)
 		local stars = {}; for _, player in preview.starPlayers do table.insert(stars, string.format("%d  %s  /  %s", player.overall, player.displayName, player.bestPosition)) end

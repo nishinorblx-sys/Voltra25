@@ -103,7 +103,17 @@ function Service:StartMatch(player:Player):(boolean,string,any?)
 		local teleporting,teleportMessage,teleportData=self:_teleportSoloCampaign(player,"Manual")
 		if teleporting then return true,teleportMessage,teleportData end
 	end
-	local success,text,data=self.Runtime:StartMatch(player,setup);if not success then return false,text,nil end;if data then data.AIMatchTeleport=true;data.MatchLaunchType="Manual"end
+	local homeRoster=nil
+	local launchSetup=setup
+	if self:_isCampaignMatch(setup) and self.RankedSquads then
+		local ready,rosterMessage,roster=self.RankedSquads:GetRoster(player)
+		if not ready then return false,rosterMessage,nil end
+		homeRoster=roster
+		launchSetup=table.clone(setup)
+		launchSetup.HomeTeamId=roster.Team.teamId
+		launchSetup.HomeKit="Home"
+	end
+	local success,text,data=self.Runtime:StartMatch(player,launchSetup,nil,nil,homeRoster,nil);if not success then return false,text,nil end;if data then data.AIMatchTeleport=true;data.MatchLaunchType="Manual"end
 	local session=self.Runtime:GetSession(player);if session then
 		self:_tagSoloCampaignSession(player,session)
 		session.OnBeforeResult=function(ended:any)

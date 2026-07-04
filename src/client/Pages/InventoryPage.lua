@@ -30,15 +30,30 @@ function Page.new(context:any):CanvasGroup
 	local activeTab=(context.Data.UIState.SelectedTabs and context.Data.UIState.SelectedTabs.Inventory) or "Packs";if not table.find(TABS,activeTab)then activeTab="Packs"end;local search="";local positionIndex=1;local rarityIndex=1;local highFirst=true
 	local tabs=Instance.new("Frame");tabs.BackgroundTransparency=1;tabs.Position=UDim2.fromOffset(0,92);tabs.Size=UDim2.new(1,0,0,38);tabs.Parent=scroll;local tabLayout=Instance.new("UIListLayout");tabLayout.FillDirection=Enum.FillDirection.Horizontal;tabLayout.Padding=UDim.new(0,6);tabLayout.Parent=tabs
 	local body=Instance.new("Frame");body.BackgroundTransparency=1;body.Position=UDim2.fromOffset(0,146);body.Size=UDim2.new(1,0,0,640);body.Parent=scroll
-	local tabButtons={};local render:()->();local leavingLockedUntil=0
+	local tabButtons={};local render:()->();local leavingLockedUntil=0;local tabSwitchLocked=false;local packActionDebounce=false
+	local pageTransientOverlayNames={ModalOverlay=true,InventoryItemPreview=true,PackResults=true}
+	local rootTransientOverlayNames={ModalOverlay=true,InventoryItemPreview=true,PackResults=true}
+	local function clearTransientOverlays(includeRoot:boolean?)
+		for name in pageTransientOverlayNames do
+			local existing=group:FindFirstChild(name)
+			if existing then existing:Destroy()end
+		end
+		for _,descendant in group:GetDescendants()do
+			if pageTransientOverlayNames[descendant.Name]then descendant:Destroy()end
+		end
+		if includeRoot and typeof(context.Root)=="Instance"then
+			for name in rootTransientOverlayNames do
+				local existing=context.Root:FindFirstChild(name)
+				if existing then existing:Destroy()end
+			end
+		end
+	end
 	local function cleanup()
 		leavingLockedUntil=os.clock()+1.25
 		scroll.Visible=false
 		scroll.Active=false
 		for _,child in body:GetChildren()do child:Destroy()end
-		for _,descendant in group:GetDescendants()do
-			if descendant.Name=="ModalOverlay"or descendant.Name=="InventoryItemPreview"or descendant.Name=="PackResults"or descendant.Name=="PremiumPackOpening"then descendant:Destroy()end
-		end
+		clearTransientOverlays(false)
 	end
 	cleanupEvent.Event:Connect(cleanup)
 	local function isCurrent():boolean
@@ -46,18 +61,41 @@ function Page.new(context:any):CanvasGroup
 	end
 	local function toast(message:string,kind:string?)context.Toast({Title="INVENTORY",Message=message,Kind=kind or "Info"})end
 	local function refresh()local latest=InventoryService:Get();if latest.Success then data=latest.Data else toast(latest.Message or "Inventory refresh failed.","Error")end end
-	local function oddsText(pack:any):string local parts={};for _,rarity in RARITIES do if rarity~="ALL" then local value=pack.odds and pack.odds[string.sub(rarity,1,1)..string.lower(string.sub(rarity,2))];if value and value>0 then table.insert(parts,rarity.." "..string.format("%.2g",value).."%")end end end;return table.concat(parts,"   ")..(pack.guaranteedMinRarity and ("   /   GUARANTEED "..string.upper(pack.guaranteedMinRarity).."+") or "")end
-	local function finishOpen(title:string,reveals:any)context.Flow:PackOpening(title,function()refresh();render();toast("Pack contents added to Players.","Reward")end,reveals)end
-	local function openOne(pack:any)context.Flow:PackPreview({Title=pack.name,Subtitle=pack.cardCount.." PLAYER CARDS",Detail=pack.description.."\n\n"..oddsText(pack)},{Label="OPEN PACK"},function()local opened=PackService:Open(pack.packInstanceId);if not opened.Success then toast(opened.Message or "Pack opening failed.","Error");return end;finishOpen(pack.name,opened.Data)end)end
-	local function openAll(groupData:any)context.Flow:Confirmation("OPEN ALL "..string.upper(groupData.name),"Open all "..groupData.quantity.." sealed packs of this type? Rewards remain server controlled.","OPEN ALL",function()local opened=PackService:OpenAll(groupData.packId);if not opened.Success then toast(opened.Message or "Open All failed.","Error");return end;finishOpen(groupData.name.."  x"..opened.OpenedCount,opened.Data)end)end
+	local function field(pack:any,lower:string,upper:string,default:any):any local value=pack and pack[lower];if value==nil and pack then value=pack[upper]end;if value==nil then return default end;return value end
+	local function packName(pack:any):string return tostring(field(pack,"name","Name","VTR PLAYER PACK"))end
+	local function packId(pack:any):string return tostring(field(pack,"packId","PackId",""))end
+	local function packInstanceId(pack:any):string return tostring(field(pack,"packInstanceId","PackInstanceId",""))end
+	local function packDescription(pack:any):string return tostring(field(pack,"description","Description","VTR player pack"))end
+	local function packCardCount(pack:any):number return math.max(1,math.floor(tonumber(field(pack,"cardCount","CardCount",1))or 1))end
+	local function packBestRarity(pack:any):string return tostring(field(pack,"bestPossibleRarity","BestPossibleRarity","Rare"))end
+	local function packOdds(pack:any):any return (pack and (pack.odds or pack.Odds)) or{}end
+	local function packGuaranteed(pack:any):any return pack and (pack.guaranteedMinRarity or pack.GuaranteedMinRarity) or nil end
+	local function oddsText(pack:any):string local parts={};local odds=packOdds(pack);for _,rarity in RARITIES do if rarity~="ALL" then local key=string.sub(rarity,1,1)..string.lower(string.sub(rarity,2));local value=odds[key]or odds[rarity];if value and value>0 then table.insert(parts,rarity.." "..string.format("%.2g",value).."%")end end end;local guaranteed=packGuaranteed(pack);return table.concat(parts,"   ")..(guaranteed and ("   /   GUARANTEED "..string.upper(tostring(guaranteed)).."+") or "")end
+	local function finishOpen(title:string,reveals:any)packActionDebounce=false;context.Flow:PackOpening(title,function()if group.Parent and isCurrent()then refresh();render()end;toast("Pack contents added to Players.","Reward")end,reveals)end
+	local function openOne(pack:any)
+		if packActionDebounce then return end
+		packActionDebounce=true
+		if context.Root and context.Root:FindFirstChild("PremiumPackOpening")then packActionDebounce=false;toast("Finish the current pack opening first.");return end
+		clearTransientOverlays(true)
+		context.Flow:PackPreview({Title=packName(pack),Subtitle=packCardCount(pack).." PLAYER CARDS",Detail=packDescription(pack).."\n\n"..oddsText(pack)},{Label="OPEN PACK",OnCancel=function()packActionDebounce=false end},function()local opened=PackService:Open(packInstanceId(pack));if not opened.Success then packActionDebounce=false;toast(opened.Message or "Pack opening failed.","Error");return end;finishOpen(packName(pack),opened.Data)end)
+		task.defer(function()if packActionDebounce and context.Root and not context.Root:FindFirstChild("ModalOverlay")and not context.Root:FindFirstChild("PremiumPackOpening")then packActionDebounce=false end end)
+	end
+	local function openAll(groupData:any)
+		if packActionDebounce then return end
+		packActionDebounce=true
+		if context.Root and context.Root:FindFirstChild("PremiumPackOpening")then packActionDebounce=false;toast("Finish the current pack opening first.");return end
+		clearTransientOverlays(true)
+		context.Flow:Confirmation("OPEN ALL "..string.upper(packName(groupData)),"Open all "..groupData.quantity.." sealed packs of this type? Rewards remain server controlled.","OPEN ALL",function()local opened=PackService:OpenAll(packId(groupData));if not opened.Success then packActionDebounce=false;toast(opened.Message or "Open All failed.","Error");return end;finishOpen(packName(groupData).."  x"..opened.OpenedCount,opened.Data)end,function()packActionDebounce=false end)
+		task.defer(function()if packActionDebounce and context.Root and not context.Root:FindFirstChild("ModalOverlay")and not context.Root:FindFirstChild("PremiumPackOpening")then packActionDebounce=false end end)
+	end
 	local function scrolling(parent:Instance,top:number?):ScrollingFrame local list=Instance.new("ScrollingFrame");list.BackgroundTransparency=1;list.BorderSizePixel=0;list.Position=UDim2.fromOffset(0,top or 0);list.Size=UDim2.new(1,0,1,-(top or 0));list.AutomaticCanvasSize=Enum.AutomaticSize.Y;list.CanvasSize=UDim2.new();list.ScrollBarThickness=3;list.ScrollBarImageColor3=Theme.Colors.Electric;list.Parent=parent;return list end
 	local function empty(parent:Instance,title:string,description:string)local state=EmptyState.new(title,description,"◇");state.Position=UDim2.fromOffset(0,120);state.Size=UDim2.new(1,0,0,150);state.Parent=parent end
 	local function renderPacks()
 		local header=Panel.new({Name="PackSummary",Position=UDim2.fromOffset(0,0),Size=UDim2.new(1,0,0,66)});header.Parent=body;label(header,(data.Summary.UnopenedPacks or 0).." UNOPENED PACKS",UDim2.fromOffset(18,10),UDim2.new(.6,0,0,24),15,Theme.Colors.White,Theme.Fonts.Display);label(header,"WIN CAMPAIGN AND RANKED MATCHES TO EARN PACKS",UDim2.fromOffset(18,36),UDim2.new(.6,0,0,16),8,Theme.Colors.Electric,Theme.Fonts.Strong)
 		local list=scrolling(body,78);local grid=Instance.new("UIGridLayout");grid.CellSize=UDim2.new(.5,-7,0,218);grid.CellPadding=UDim2.fromOffset(12,12);grid.Parent=list
-		local groups={};local order={};for _,pack in data.Packs do local current=groups[pack.packId];if not current then current=table.clone(pack);current.quantity=0;current.instances={};groups[pack.packId]=current;table.insert(order,current)end;current.quantity+=1;table.insert(current.instances,pack)end
+		local groups={};local order={};for _,pack in data.Packs do local id=packId(pack);local current=groups[id];if not current then current=table.clone(pack);current.packId=id;current.quantity=0;current.instances={};groups[id]=current;table.insert(order,current)end;current.quantity+=1;table.insert(current.instances,pack)end
 		if #order==0 then empty(list,"NO UNOPENED PACKS","Visit the Store or complete objectives to earn packs.");return end
-		for _,pack in order do local card=Panel.new({Name=pack.packId});card.Parent=list;local stripe=Instance.new("Frame");stripe.BackgroundColor3=Theme.Colors.Electric;stripe.BorderSizePixel=0;stripe.Size=UDim2.fromOffset(5,218);stripe.Parent=card;label(card,pack.name,UDim2.fromOffset(20,14),UDim2.new(1,-40,0,28),17,Theme.Colors.White,Theme.Fonts.Display);label(card,"SEALED PLAYER PACK  /  QTY "..pack.quantity,UDim2.fromOffset(20,46),UDim2.new(1,-40,0,18),8,Theme.Colors.Electric,Theme.Fonts.Strong);label(card,"BEST POSSIBLE  "..string.upper(pack.bestPossibleRarity),UDim2.fromOffset(20,70),UDim2.new(1,-40,0,18),9,Theme.Colors.Silver,Theme.Fonts.Strong);label(card,pack.description,UDim2.fromOffset(20,95),UDim2.new(1,-40,0,35),8,Theme.Colors.Muted,Theme.Fonts.Body).TextWrapped=true;local open=Button.new({Text="OPEN",Variant="Primary",Size=UDim2.fromOffset(105,36),OnActivated=function()openOne(pack.instances[1])end});open.Position=UDim2.fromOffset(20,158);open.Parent=card;local odds=Button.new({Text="VIEW ODDS",Variant="Secondary",Size=UDim2.fromOffset(112,36),OnActivated=function()context.Flow:PackPreview({Title=pack.name,Subtitle=pack.cardCount.." PLAYER CARDS",Detail=oddsText(pack)},{Label="VIEW CONTENTS"},function()end)end});odds.Position=UDim2.fromOffset(132,158);odds.Parent=card;if pack.quantity>1 then local all=Button.new({Text="OPEN ALL",Variant="Secondary",Size=UDim2.fromOffset(112,36),OnActivated=function()openAll(pack)end});all.Position=UDim2.new(1,-132,0,158);all.Parent=card end end
+		for _,pack in order do local card=Panel.new({Name=packId(pack)});card.Parent=list;local stripe=Instance.new("Frame");stripe.BackgroundColor3=Theme.Colors.Electric;stripe.BorderSizePixel=0;stripe.Size=UDim2.fromOffset(5,218);stripe.Parent=card;label(card,packName(pack),UDim2.fromOffset(20,14),UDim2.new(1,-40,0,28),17,Theme.Colors.White,Theme.Fonts.Display);label(card,"SEALED PLAYER PACK  /  QTY "..pack.quantity,UDim2.fromOffset(20,46),UDim2.new(1,-40,0,18),8,Theme.Colors.Electric,Theme.Fonts.Strong);label(card,"BEST POSSIBLE  "..string.upper(packBestRarity(pack)),UDim2.fromOffset(20,70),UDim2.new(1,-40,0,18),9,Theme.Colors.Silver,Theme.Fonts.Strong);label(card,packDescription(pack),UDim2.fromOffset(20,95),UDim2.new(1,-40,0,35),8,Theme.Colors.Muted,Theme.Fonts.Body).TextWrapped=true;local open=Button.new({Text="OPEN",Variant="Primary",Size=UDim2.fromOffset(105,36),OnActivated=function()openOne(pack.instances[1])end});open.Position=UDim2.fromOffset(20,158);open.Parent=card;local odds=Button.new({Text="VIEW ODDS",Variant="Secondary",Size=UDim2.fromOffset(112,36),OnActivated=function()context.Flow:PackPreview({Title=packName(pack),Subtitle=packCardCount(pack).." PLAYER CARDS",Detail=oddsText(pack)},{Label="VIEW CONTENTS"},function()end)end});odds.Position=UDim2.fromOffset(132,158);odds.Parent=card;if pack.quantity>1 then local all=Button.new({Text="OPEN ALL",Variant="Secondary",Size=UDim2.fromOffset(112,36),OnActivated=function()openAll(pack)end});all.Position=UDim2.new(1,-132,0,158);all.Parent=card end end
 	end
 	local function renderPlayers()
 		local controls=Instance.new("Frame");controls.BackgroundTransparency=1;controls.Size=UDim2.new(1,0,0,40);controls.Parent=body
@@ -76,7 +114,7 @@ function Page.new(context:any):CanvasGroup
 	end
 	local function renderHistory()local list=scrolling(body,0);local layout=Instance.new("UIListLayout");layout.Padding=UDim.new(0,9);layout.Parent=list;if #data.History==0 then empty(list,"NO INVENTORY HISTORY","Opened packs and best pulls will appear here.");return end;for _,entry in data.History do local best=entry.bestPull;local row=Panel.new({Name=entry.packInstanceId,Size=UDim2.new(1,-6,0,86)});row.Parent=list;label(row,entry.name,UDim2.fromOffset(18,10),UDim2.new(1,-220,0,24),14,Theme.Colors.White,Theme.Fonts.Display);label(row,"OPENED  "..os.date("!%Y-%m-%d  %H:%M",entry.openedAt or 0),UDim2.fromOffset(18,38),UDim2.new(1,-220,0,18),8,Theme.Colors.Muted,Theme.Fonts.Strong);label(row,best and (best.rating.." "..best.position.."  "..best.name.."  /  "..string.upper(best.rarity)) or "BEST PULL UNAVAILABLE",UDim2.fromOffset(330,20),UDim2.new(1,-540,0,34),10,Theme.Colors.Electric,Theme.Fonts.Strong);if best then local view=Button.new({Text="VIEW PLAYER",Variant="Secondary",Size=UDim2.fromOffset(150,38),OnActivated=function()context.OpenPlayerDetails(best.cardInstanceId)end});view.Position=UDim2.new(1,-170,.5,-19);view.Parent=row end end end
 	render=function()if os.clock()<leavingLockedUntil or not isCurrent() then scroll.Visible=false;scroll.Active=false;for _,child in body:GetChildren()do child:Destroy()end;return end;scroll.Visible=true;scroll.Active=true;for _,child in body:GetChildren()do child:Destroy()end;for name,button in tabButtons do Button.setPrimary(button,name==activeTab)end;if activeTab=="Packs"then renderPacks()elseif activeTab=="Players"then renderPlayers()else local items={};for _,list in {data.Cosmetics or{},data.Kits or{},data.Stadiums or{}}do for _,item in list do table.insert(items,item)end end;renderItems(items,"Club Items","Kits, badges and stadium cosmetics appear here.")end end
-	for _,name in TABS do local tab=Button.new({Text=string.upper(name),Variant=name==activeTab and "Primary"or"Secondary",Size=UDim2.fromOffset(name=="Transfer Market"and 145 or 105,36),OnActivated=function()activeTab=name;context.StateService:SetTab("Inventory",name);render()end});tab.Parent=tabs;tabButtons[name]=tab end;render();group:GetPropertyChangedSignal("Visible"):Connect(function()if group.Visible and isCurrent() then leavingLockedUntil=0;refresh();render()else cleanup()end end);return group
+	for _,name in TABS do local tab=Button.new({Text=string.upper(name),Variant=name==activeTab and "Primary"or"Secondary",Size=UDim2.fromOffset(name=="Transfer Market"and 145 or 105,36),OnActivated=function()if activeTab==name or tabSwitchLocked then return end;tabSwitchLocked=true;clearTransientOverlays(true);activeTab=name;context.Data.UIState.SelectedTabs=context.Data.UIState.SelectedTabs or{};context.Data.UIState.SelectedTabs.Inventory=name;context.StateService:SetTab("Inventory",name);render();task.delay(.18,function()tabSwitchLocked=false end)end});tab.Parent=tabs;tabButtons[name]=tab end;render();group:GetPropertyChangedSignal("Visible"):Connect(function()if group.Visible and isCurrent() then leavingLockedUntil=0;refresh();render()else cleanup()end end);return group
 end
 local function vtrFindRouletteGuiObjects(root)
 	local scroller

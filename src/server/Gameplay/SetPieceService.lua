@@ -482,7 +482,11 @@ function Service:Start(player: Player, kind: string, restartTeam: string, locati
 		restartTeam = restartTeam or "Home"
 	end
 	local takerRoot = taker:FindFirstChild("HumanoidRootPart") :: BasePart?
-	local ballPosition = kind == "Corner"and self.ActiveCorner.Data.BallPosition or kind == "Kickoff" and self.World.PitchCFrame:PointToWorldSpace(Vector3.new(0, 1.3, 0))or (kind=="FreeKick"or kind=="Penalty")and(location+self.World.PitchCFrame.UpVector*1.15)or takerRoot and (takerRoot.Position + takerRoot.CFrame.LookVector * 2.4 + Vector3.new(0, -1.6, 0)) or location
+	local ballRadius=math.max(.35,self.World.Ball.Size.Y*.5)
+	local restartLocal=self.World.PitchCFrame:PointToObjectSpace(location)
+	local freeKickBallPosition=self.World.PitchCFrame:PointToWorldSpace(Vector3.new(restartLocal.X,ballRadius,restartLocal.Z))
+	local penaltyBallPosition=location+self.World.PitchCFrame.UpVector*1.15
+	local ballPosition = kind == "Corner"and self.ActiveCorner.Data.BallPosition or kind == "Kickoff" and self.World.PitchCFrame:PointToWorldSpace(Vector3.new(0, 1.3, 0))or kind=="FreeKick"and freeKickBallPosition or kind=="Penalty"and penaltyBallPosition or takerRoot and (takerRoot.Position + takerRoot.CFrame.LookVector * 2.4 + Vector3.new(0, -1.6, 0)) or location
 	self.World.Ball.CFrame = CFrame.new(ballPosition)
 	if userControlled==true and player and player.Parent then self.TeamControl:SetActive(player, taker, kind)end
 	if kind=="FreeKick"or kind=="Penalty"or kind=="GoalKick"or kind=="ThrowIn"then

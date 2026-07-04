@@ -300,7 +300,14 @@ function Service:Handle(player: Player, payload: any)
 			local offset=activeRoot and aimPoint and(aimPoint-activeRoot.Position)or nil
 			if activeRoot and aimPoint and offset and offset.Magnitude>1 then
 				local kicked = self.BallService:Kick(active,"Pass",offset,tonumber(payload.Charge)or 0,nil,payload.PassType=="ManualLobbed"and"Lofted"or"Manual",offset.Magnitude,aimPoint)
-				if kicked then self:_switchDefenseToPassTarget(tostring(active:GetAttribute("VTRTeam") or self.PlayerSides[player] or "Home"), aimPoint) end
+				if kicked then
+					local receiver = self:_closestTeammateToPoint(player, active, aimPoint)
+					self:_switchDefenseToPassTarget(tostring(active:GetAttribute("VTRTeam") or self.PlayerSides[player] or "Home"), aimPoint)
+					if receiver then
+						self.Remote:FireClient(player, {Type = "SwitchTarget", Model = receiver, ReceivePoint = aimPoint})
+						self:_set(player, receiver, "ManualPassTarget")
+					end
+				end
 			end
 			return
 		end

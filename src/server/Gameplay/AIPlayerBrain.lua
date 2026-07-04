@@ -568,8 +568,10 @@ function Service:_defensiveActions(context: any, assignmentsBySide: any, onlySid
 					continue
 				end
 				local primary = assignment.PrimaryAssignment
+				local distanceToCarrier = PitchConfig.GetDistanceStuds(defender.World, carrier.World)
+				local closeAutoTackle = distanceToCarrier <= 8.75
 				local strikerEmergencyTackle = carrier.Role == "ST" and PitchConfig.GetDistanceStuds(defender.World, carrier.World) <= 18
-				if strikerEmergencyTackle or primary == "PressBallCarrier" or primary == "ContainBallCarrier" or primary == "CoverPresser" or primary == "CloseLongCarryGap" or primary == "EarlyCBPressPassTarget" or primary == "EarlyClosePassTargetPressure" or primary == "CenterBackPressureStriker" or primary == "AggressiveCBPressStriker" or primary == "AggressiveCBStepOut" then
+				if closeAutoTackle or strikerEmergencyTackle or primary == "PressBallCarrier" or primary == "ContainBallCarrier" or primary == "CoverPresser" or primary == "CloseLongCarryGap" or primary == "EarlyCBPressPassTarget" or primary == "EarlyClosePassTargetPressure" or primary == "CenterBackPressureStriker" or primary == "AggressiveCBPressStriker" or primary == "AggressiveCBStepOut" then
 					local canTackle, slide = AITacklingDecisionService.CanTackle(context, defender, carrier, self.Style)
 					if canTackle then
 						if self.BallService:Tackle(model, slide) then

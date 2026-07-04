@@ -58,7 +58,7 @@ function ModeHub.new(context: any, service: any): CanvasGroup
 		body.Position = UDim2.fromOffset(0, 160)
 		body.Size = UDim2.new(1, 0, 0, 500)
 		body.Parent = scroll
-		breadcrumb.Text = "VTR 25  /  " .. string.upper(spec.Title) .. "  /  " .. activeTab.Label
+		breadcrumb.Text = "VTR X  /  " .. string.upper(spec.Title) .. "  /  " .. activeTab.Label
 		for id, button in tabButtons do
 			Button.setPrimary(button, id == activeTab.Id)
 		end
@@ -148,7 +148,8 @@ function ModeHub.new(context: any, service: any): CanvasGroup
 
 	for index, tab in navigationTabs do
 		local button = Button.new({ Text = tab.Label, Variant = index == 1 and "Primary" or "Secondary", Size = UDim2.fromOffset(128, 40), OnActivated = function()
-			if activeTab.Id == tab.Id then context.Toast({Title=spec.Title,Message="Already viewing "..tab.Label..".",Kind="Info"}) else context.Flow:ModeTransition(tab.Label,function() setTab(tab.Id) end,true) end
+			if activeTab.Id == tab.Id then return end
+			context.Flow:ModeTransition(tab.Label,function() setTab(tab.Id) end,true)
 		end })
 		button.LayoutOrder = index
 		button.Parent = tabs

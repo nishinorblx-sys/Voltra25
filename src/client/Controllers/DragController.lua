@@ -14,14 +14,24 @@ local function repairViewports(root:Instance)
 end
 
 function DragController.new(root:GuiObject,options:any)
-	local self=setmetatable({Root=root,Threshold=options.Threshold or 8,HitTest=options.HitTest,OnDrop=options.OnDrop,OnCancel=options.OnCancel,State=nil,Connections={}},DragController)
+	local self=setmetatable({Root=root,Threshold=options.Threshold or 8,AllowTouchDrag=options.AllowTouchDrag==true,HitTest=options.HitTest,OnDragStart=options.OnDragStart,OnHover=options.OnHover,OnDrop=options.OnDrop,OnCancel=options.OnCancel,OnDragEnd=options.OnDragEnd,State=nil,Connections={}},DragController)
 	table.insert(self.Connections,UserInputService.InputChanged:Connect(function(input) self:_changed(input) end))
 	table.insert(self.Connections,UserInputService.InputEnded:Connect(function(input) self:_ended(input) end))
 	return self
 end
 
-function DragController:_startVisual(state:any,position:Vector2)
-	state.Dragging=true
+function DragController:_setHover(state:any,destination:any?)
+	if state.HoverDestination==destination then return end
+	local previous=state.HoverDestination
+	state.HoverDestination=destination
+	if self.OnHover then self.OnHover(destination,previous,state.Payload) end
+end
+
+function DragController:_ensureVisual(state:any,position:Vector2)
+	if state.Preview then
+		state.Preview.Position=UDim2.fromOffset(position.X-self.Root.AbsolutePosition.X,position.Y-self.Root.AbsolutePosition.Y)
+		return
+	end
 	local preview=state.CardRoot:Clone()
 	preview.Name="FullCardDragPreview"
 	preview.AnchorPoint=Vector2.new(.5,.5)
@@ -31,24 +41,44 @@ function DragController:_startVisual(state:any,position:Vector2)
 	preview.Selectable=false
 	preview.Active=false
 	raiseZIndex(preview,100)
+	local liftScale=Instance.new("UIScale")
+	liftScale.Name="DragLiftScale"
+	liftScale.Scale=.97
+	liftScale.Parent=preview
 	preview.Parent=self.Root
 	repairViewports(preview)
 	state.Preview=preview
+end
+
+function DragController:_startDrag(state:any,position:Vector2)
+	if state.Dragging then return end
+	state.Dragging=true
+	self:_ensureVisual(state,position)
 	state.CardRoot.Visible=false
+	if self.OnDragStart then self.OnDragStart(state.Payload) end
+	local scale=state.Preview and state.Preview:FindFirstChild("DragLiftScale")
+	if scale and scale:IsA("UIScale") then scale.Scale=1.03 end
+end
+
+function DragController:_finishVisual(state:any)
+	self:_setHover(state,nil)
+	if state.CardRoot then state.CardRoot.Visible=true end
+	if state.Preview then state.Preview:Destroy();state.Preview=nil end
 end
 
 function DragController:_changed(input:InputObject)
 	local state=self.State;if not state then return end
 	if input.UserInputType~=Enum.UserInputType.MouseMovement and input.UserInputType~=Enum.UserInputType.Touch then return end
 	local position=pointer(input)
-	-- Touch cards use tap actions; swipes belong to their scrolling tray.
-	-- Mobile player moves are intentionally initiated from the action menu.
-	if input.UserInputType==Enum.UserInputType.Touch and not state.Dragging and (position-state.Start).Magnitude>=self.Threshold then
+	-- Some screens keep touch swipes for scrolling; squad management opts into direct touch drag.
+	if input.UserInputType==Enum.UserInputType.Touch and not self.AllowTouchDrag and not state.Dragging and (position-state.Start).Magnitude>=self.Threshold then
+		self:_finishVisual(state)
 		self.State=nil
 		return
 	end
-	if not state.Dragging and (position-state.Start).Magnitude>=self.Threshold then self:_startVisual(state,position) end
-	if state.Preview then state.Preview.Position=UDim2.fromOffset(position.X-self.Root.AbsolutePosition.X,position.Y-self.Root.AbsolutePosition.Y) end
+	self:_ensureVisual(state,position)
+	if not state.Dragging and (position-state.Start).Magnitude>=self.Threshold then self:_startDrag(state,position) end
+	if state.Dragging then self:_setHover(state,self.HitTest and self.HitTest(position) or nil) end
 end
 
 function DragController:_ended(input:InputObject)
@@ -56,23 +86,28 @@ function DragController:_ended(input:InputObject)
 	if input.UserInputType~=Enum.UserInputType.MouseButton1 and input.UserInputType~=Enum.UserInputType.Touch then return end
 	self.State=nil
 	if state.Dragging then
-		state.CardRoot.Visible=true
-		if state.Preview then state.Preview:Destroy() end
 		local destination=self.HitTest and self.HitTest(pointer(input)) or nil
+		self:_finishVisual(state)
 		if destination then self.OnDrop(state.Payload,destination) elseif self.OnCancel then self.OnCancel(state.Payload) end
-	elseif state.OnClick then self.SuppressActivatedUntil=os.clock()+.12;state.OnClick(state.Payload) end
+		if self.OnDragEnd then self.OnDragEnd(state.Payload) end
+	else
+		self:_finishVisual(state)
+		if state.OnClick then self.SuppressActivatedUntil=os.clock()+.12;state.OnClick(state.Payload) end
+	end
 end
 
 function DragController:Attach(cardRoot:GuiButton,payload:any,onClick:(any)->())
 	cardRoot.InputBegan:Connect(function(input)
 		if input.UserInputType~=Enum.UserInputType.MouseButton1 and input.UserInputType~=Enum.UserInputType.Touch then return end
+		if self.State then self:_finishVisual(self.State) end
 		self.State={CardRoot=cardRoot,Payload=payload,OnClick=onClick,Start=pointer(input),Dragging=false}
+		self:_ensureVisual(self.State,self.State.Start)
 	end)
 	cardRoot.Activated:Connect(function() if not self.State and os.clock()>(self.SuppressActivatedUntil or 0) then onClick(payload) end end)
 end
 
 function DragController:Destroy()
-	if self.State then if self.State.CardRoot then self.State.CardRoot.Visible=true end;if self.State.Preview then self.State.Preview:Destroy() end end
+	if self.State then self:_finishVisual(self.State) end
 	for _,connection in self.Connections do connection:Disconnect() end;table.clear(self.Connections);self.State=nil
 end
 

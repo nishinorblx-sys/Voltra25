@@ -60,6 +60,7 @@ function PackService:GetClientData(player: Player): any?
 	for _, owned in profile.PackInventory do
 		local definition = PackData[owned.packId or owned.Id]
 		if definition and (owned.status or owned.Status) == "unopened" then
+			local odds = definition.Odds or {}
 			table.insert(inventory, {
 				packInstanceId = owned.packInstanceId or owned.PackInstanceId,
 				packId = definition.Id,
@@ -70,8 +71,12 @@ function PackService:GetClientData(player: Player): any?
 				purchasedAt = owned.purchasedAt,
 				openedAt = 0,
 				CardCount = definition.CardCount,
-				Odds = table.clone(definition.Odds or {}),
+				Odds = table.clone(odds),
 				GuaranteedMinRarity = definition.GuaranteedMinRarity,
+				cardCount = definition.CardCount,
+				odds = table.clone(odds),
+				guaranteedMinRarity = definition.GuaranteedMinRarity,
+				bestPossibleRarity = (odds.Mythic and "Mythic") or (odds.Icon and "Icon") or (odds.Legendary and "Legendary") or (odds.Elite and "Elite") or (odds.Rare and "Rare") or (odds.Gold and "Gold") or "Silver",
 			})
 		elseif definition and (owned.status or owned.Status) == "opened" then
 			table.insert(history,{packInstanceId=owned.packInstanceId or owned.PackInstanceId,packId=definition.Id,name=definition.Name,description=definition.Description,status="opened",purchasedAt=owned.purchasedAt,openedAt=owned.openedAt,bestPull=owned.bestPull})

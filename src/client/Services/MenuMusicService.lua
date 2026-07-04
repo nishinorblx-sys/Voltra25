@@ -8,6 +8,11 @@ local TweenService = game:GetService("TweenService")
 local Service = {}
 
 local TRACKS = {
+	{ Id = "rbxassetid://130734114848359", Name = "Electrified" },
+	{ Id = "rbxassetid://83343489049313", Name = "One Chance" },
+	{ Id = "rbxassetid://117896162172082", Name = "Next Match" },
+	{ Id = "rbxassetid://82533770530548", Name = "Dos Amigos" },
+	{ Id = "rbxassetid://118152953450595", Name = "Conquista El Mundo" },
 	{ Id = "rbxassetid://83633898068243", Name = "Voltra Nights" },
 	{ Id = "rbxassetid://114891248304666", Name = "One More Match" },
 	{ Id = "rbxassetid://115828647468752", Name = "Under The Lights" },
@@ -22,6 +27,7 @@ local TRACKS = {
 }
 
 local FADE_TIME = 2.25
+local SKIP_FADE_TIME = 0.28
 local BASE_VOLUME = 0.38
 local LOGO_IMAGE = "rbxassetid://102592555926321"
 
@@ -30,12 +36,20 @@ local generation = 0
 local deck: {{Id: string, Name: string}} = {}
 local activeSound: Sound? = nil
 local lastTrack: {Id: string, Name: string}? = nil
+local trackHistory: {{Id: string, Name: string}} = {}
+local paused = false
 local logoGeneration = 0
 local widgetMinimized = false
 local widgetButton: ImageButton? = nil
 local widgetLogo: ImageLabel? = nil
 local widgetTrackLabel: TextLabel? = nil
 local widgetStatusLabel: TextLabel? = nil
+local widgetBackButton: TextButton? = nil
+local widgetPauseButton: TextButton? = nil
+local widgetNextButton: TextButton? = nil
+local visibilityBound = false
+local destroyAfterFade: ((Sound, number?) -> ())? = nil
+local playNext: ((number, {Id: string, Name: string}?, boolean?) -> ())? = nil
 
 local function menuEnabled(): boolean
 	return workspace:GetAttribute("VTRMenuMusic") ~= false
@@ -43,6 +57,23 @@ end
 
 local function masterVolume(): number
 	return math.clamp(tonumber(SoundService:GetAttribute("VTRMasterVolume")) or 0.8, 0, 1)
+end
+
+local function shouldShowWidget(): boolean
+	local player = Players.LocalPlayer
+	if not player or player:GetAttribute("VTRInMatch") == true then
+		return false
+	end
+	local playerGui = player:FindFirstChildOfClass("PlayerGui")
+	if not playerGui then
+		return false
+	end
+	if playerGui:FindFirstChild("VTRMatchHUD") or playerGui:FindFirstChild("VTRMatchBootCover") or playerGui:FindFirstChild("VTRPrematchBroadcast") then
+		return false
+	end
+	local app = playerGui:FindFirstChild("VTR25")
+	local root = app and app:FindFirstChild("Root")
+	return not root or not root:IsA("GuiObject") or root.Visible ~= false
 end
 
 local function shuffleTracks()
@@ -98,11 +129,24 @@ local function tweenVolume(sound: Sound, volume: number, duration: number)
 	TweenService:Create(sound, TweenInfo.new(duration, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Volume = volume }):Play()
 end
 
-local function getLogoGui(): ScreenGui?
+local function getLogoGui(): Instance?
 	local playerGui = Players.LocalPlayer and Players.LocalPlayer:FindFirstChildOfClass("PlayerGui")
 	if not playerGui then return nil end
+	if not shouldShowWidget() then
+		local existing = playerGui:FindFirstChild("VTRMenuMusicNowPlaying")
+		if existing and existing:IsA("ScreenGui") then
+			existing.Enabled = false
+		end
+		return nil
+	end
+	local app = playerGui:FindFirstChild("VTR25")
+	local root = app and app:FindFirstChild("Root")
+	if root and root:IsA("GuiObject") then return root end
 	local existing = playerGui:FindFirstChild("VTRMenuMusicNowPlaying")
-	if existing and existing:IsA("ScreenGui") then return existing end
+	if existing and existing:IsA("ScreenGui") then
+		existing.Enabled = true
+		return existing
+	end
 	local gui = Instance.new("ScreenGui")
 	gui.Name = "VTRMenuMusicNowPlaying"
 	gui.IgnoreGuiInset = true
@@ -116,15 +160,21 @@ end
 local function renderWidget(track: any?)
 	local button = widgetButton
 	if not button then return end
+	local visible = shouldShowWidget()
+	if button.Parent and button.Parent:IsA("ScreenGui") then
+		button.Parent.Enabled = visible
+	end
+	button.Visible = visible
+	if not visible then return end
 	local minimized = widgetMinimized
-	local size = minimized and UDim2.fromOffset(58, 58) or UDim2.fromOffset(224, 66)
+	local size = minimized and UDim2.fromOffset(58, 58) or UDim2.fromOffset(192, 78)
 	local transparency = minimized and 0.16 or 0.08
 	TweenService:Create(button, TweenInfo.new(0.22, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
 		Size = size,
 		BackgroundTransparency = transparency,
 	}):Play()
 	for _, child in button:GetChildren() do
-		if child:IsA("TextLabel") then
+		if child:IsA("TextLabel") or child:IsA("TextButton") then
 			child.Visible = not minimized
 		end
 	end
@@ -132,7 +182,10 @@ local function renderWidget(track: any?)
 		widgetTrackLabel.Text = trackName(track)
 	end
 	if widgetStatusLabel then
-		widgetStatusLabel.Text = minimized and "" or "NOW PLAYING"
+		widgetStatusLabel.Text = minimized and "" or (paused and "PAUSED" or "NOW PLAYING")
+	end
+	if widgetPauseButton then
+		widgetPauseButton.Text = paused and ">" or "II"
 	end
 	if widgetLogo then
 		widgetLogo.Position = minimized and UDim2.fromOffset(7, 7) or UDim2.fromOffset(10, 9)
@@ -140,7 +193,65 @@ local function renderWidget(track: any?)
 	end
 end
 
+local function skipToTrack(track: {Id: string, Name: string}?, rememberCurrent: boolean?)
+	if not started then return end
+	if rememberCurrent and lastTrack then
+		table.insert(trackHistory, lastTrack)
+		while #trackHistory > 20 do
+			table.remove(trackHistory, 1)
+		end
+	end
+	if activeSound and activeSound.Parent then
+		destroyAfterFade(activeSound, SKIP_FADE_TIME)
+	end
+	activeSound = nil
+	task.defer(function()
+		playNext(generation, track, true)
+	end)
+end
+
+local function setPaused(value: boolean)
+	paused = value
+	local sound = activeSound
+	if sound and sound.Parent then
+		if paused then
+			sound:Pause()
+		else
+			sound:Resume()
+			tweenVolume(sound, BASE_VOLUME * masterVolume(), 0.18)
+		end
+	end
+	renderWidget(lastTrack)
+end
+
+local function controlButton(parent: Instance, name: string, text: string, position: UDim2, onActivated: () -> ()): TextButton
+	local item = Instance.new("TextButton")
+	item.Name = name
+	item.AutoButtonColor = true
+	item.BackgroundColor3 = Color3.fromHex("151815")
+	item.BorderSizePixel = 0
+	item.Font = Enum.Font.GothamBlack
+	item.Position = position
+	item.Size = UDim2.fromOffset(58, 22)
+	item.Text = text
+	item.TextColor3 = Color3.fromHex("F5F7F2")
+	item.TextSize = 16
+	item.ZIndex = 98
+	item.Parent = parent
+	local corner = Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(0, 6)
+	corner.Parent = item
+	item.Activated:Connect(onActivated)
+	return item
+end
+
 local function ensureWidget(track: any?): ImageButton?
+	if not shouldShowWidget() then
+		if widgetButton and widgetButton.Parent then
+			widgetButton.Visible = false
+		end
+		return nil
+	end
 	local gui = getLogoGui()
 	if not gui then return nil end
 	if widgetButton and widgetButton.Parent then
@@ -149,15 +260,15 @@ local function ensureWidget(track: any?): ImageButton?
 	end
 	local button = Instance.new("ImageButton")
 	button.Name = "MusicWidget"
-	button.AnchorPoint = Vector2.new(1, 1)
+	button.AnchorPoint = Vector2.new(0, 1)
 	button.AutoButtonColor = false
 	button.BackgroundColor3 = Color3.fromHex("070807")
 	button.BackgroundTransparency = 0.08
 	button.BorderSizePixel = 0
 	button.Image = ""
 	button.ImageTransparency = 1
-	button.Position = UDim2.new(1, -24, 1, -24)
-	button.Size = UDim2.fromOffset(224, 66)
+	button.Position = UDim2.new(0, 14, 1, -24)
+	button.Size = UDim2.fromOffset(192, 78)
 	button.ZIndex = 96
 	button.Parent = gui
 	local corner = Instance.new("UICorner")
@@ -215,6 +326,21 @@ local function ensureWidget(track: any?): ImageButton?
 	trackLabel.TextXAlignment = Enum.TextXAlignment.Left
 	trackLabel.ZIndex = 97
 	trackLabel.Parent = button
+	local back = controlButton(button, "Back", "|<", UDim2.fromOffset(64, 50), function()
+		local previous = table.remove(trackHistory)
+		if previous then
+			skipToTrack(previous, false)
+		end
+	end)
+	back.Size = UDim2.fromOffset(36, 22)
+	local pauseButton = controlButton(button, "Pause", "II", UDim2.fromOffset(105, 50), function()
+		setPaused(not paused)
+	end)
+	pauseButton.Size = UDim2.fromOffset(36, 22)
+	local nextButton = controlButton(button, "Next", ">|", UDim2.fromOffset(146, 50), function()
+		skipToTrack(nil, true)
+	end)
+	nextButton.Size = UDim2.fromOffset(36, 22)
 	button.Activated:Connect(function()
 		widgetMinimized = not widgetMinimized
 		renderWidget(lastTrack)
@@ -223,8 +349,30 @@ local function ensureWidget(track: any?): ImageButton?
 	widgetLogo = logo
 	widgetTrackLabel = trackLabel
 	widgetStatusLabel = status
+	widgetBackButton = back
+	widgetPauseButton = pauseButton
+	widgetNextButton = nextButton
 	renderWidget(track)
 	return button
+end
+
+local function bindWidgetVisibility()
+	if visibilityBound then return end
+	visibilityBound = true
+	local player = Players.LocalPlayer
+	local function refresh()
+		if widgetButton and widgetButton.Parent then
+			renderWidget(lastTrack)
+		elseif shouldShowWidget() and lastTrack then
+			ensureWidget(lastTrack)
+		end
+	end
+	player:GetAttributeChangedSignal("VTRInMatch"):Connect(refresh)
+	local playerGui = player:FindFirstChildOfClass("PlayerGui")
+	if playerGui then
+		playerGui.ChildAdded:Connect(refresh)
+		playerGui.ChildRemoved:Connect(refresh)
+	end
 end
 
 local function playWidgetAnimation(track: {Id: string, Name: string})
@@ -244,9 +392,10 @@ local function playWidgetAnimation(track: {Id: string, Name: string})
 	end)
 end
 
-local function destroyAfterFade(sound: Sound)
-	tweenVolume(sound, 0, FADE_TIME)
-	task.delay(FADE_TIME + 0.1, function()
+destroyAfterFade = function(sound: Sound, duration: number?)
+	local fadeTime = duration or FADE_TIME
+	tweenVolume(sound, 0, fadeTime)
+	task.delay(fadeTime + 0.1, function()
 		if sound.Parent then
 			sound:Stop()
 			sound:Destroy()
@@ -254,7 +403,7 @@ local function destroyAfterFade(sound: Sound)
 	end)
 end
 
-local function playNext(myGeneration: number)
+playNext = function(myGeneration: number, forcedTrack: {Id: string, Name: string}?, preserveHistory: boolean?)
 	if myGeneration ~= generation then return end
 	if not menuEnabled() then
 		task.delay(0.5, function()
@@ -264,7 +413,17 @@ local function playNext(myGeneration: number)
 	end
 
 	local previous = activeSound
-	local track = nextTrack()
+	local previousTrack = lastTrack
+	local track = forcedTrack or nextTrack()
+	if forcedTrack then
+		lastTrack = forcedTrack
+	elseif previousTrack and not preserveHistory then
+		table.insert(trackHistory, previousTrack)
+		while #trackHistory > 20 do
+			table.remove(trackHistory, 1)
+		end
+	end
+	paused = false
 	local sound = makeSound(track)
 	activeSound = sound
 	sound:Play()
@@ -278,6 +437,7 @@ local function playNext(myGeneration: number)
 	local function advance()
 		if advanced then return end
 		advanced = true
+		if activeSound ~= sound then return end
 		if sound.Parent then
 			destroyAfterFade(sound)
 		end
@@ -306,7 +466,10 @@ function Service.Start()
 	if started then return end
 	started = true
 	generation += 1
+	paused = false
+	trackHistory = {}
 	shuffleTracks()
+	bindWidgetVisibility()
 	task.spawn(function()
 		local preload = {}
 		for _, track in TRACKS do
@@ -328,6 +491,8 @@ function Service.Stop()
 	if not started then return end
 	started = false
 	generation += 1
+	paused = false
+	trackHistory = {}
 	if activeSound and activeSound.Parent then
 		destroyAfterFade(activeSound)
 	end

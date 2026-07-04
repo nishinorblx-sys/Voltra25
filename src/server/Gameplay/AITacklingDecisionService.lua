@@ -12,14 +12,16 @@ function Service.CanTackle(context: any, defender: any, carrier: any, style: any
 		return false, false
 	end
 	local distance = PitchConfig.GetDistanceStuds(defender.World, carrier.World)
-	if distance > 10 then
+	if distance > 11.25 then
 		return false, false
 	end
 	local toCarrier = flat(carrier.World - defender.World)
 	local facing = flat(defender.Root.CFrame.LookVector)
-	local facingCarrier = facing.Magnitude > 0.01 and toCarrier.Magnitude > 0.01 and facing.Unit:Dot(toCarrier.Unit) > 0.05
+	local closingVelocity = flat(defender.Root.AssemblyLinearVelocity)
+	local movingIntoCarrier = closingVelocity.Magnitude > 2 and toCarrier.Magnitude > 0.01 and closingVelocity.Unit:Dot(toCarrier.Unit) > 0.18
+	local facingCarrier = facing.Magnitude > 0.01 and toCarrier.Magnitude > 0.01 and facing.Unit:Dot(toCarrier.Unit) > -0.12
 	if not facingCarrier then
-		return false, false
+		return movingIntoCarrier and distance <= 7.8, false
 	end
 	local ballPast = flat(context.BallWorld - defender.World).Magnitude > flat(carrier.World - defender.World).Magnitude + 4
 	if ballPast then

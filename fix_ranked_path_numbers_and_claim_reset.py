@@ -1,3 +1,40 @@
+from pathlib import Path
+import re
+
+root = Path.cwd()
+
+old_files = [
+	root / "src/client/Services/RankedStatsPanelFixClient.lua",
+	root / "src/client/RankedStatsPanelFix.client.lua",
+]
+
+for path in old_files:
+	if path.exists():
+		path.unlink()
+		print("removed", path.relative_to(root).as_posix())
+
+ranked_page = root / "src/client/Pages/RankedPage.lua"
+if ranked_page.exists():
+	text = ranked_page.read_text(encoding="utf-8", errors="ignore")
+
+	text = re.sub(r"\nlocal function vtrSafeRankNumber\(value\).*?\nend\s*\n\s*local function vtrRankedPathData\(value\).*?\nend\s*\n\s*local function vtrFixPathStatText\(root, rankedData\).*?\nend\s*", "\n", text, flags=re.S)
+	text = re.sub(r"\n\s*vtrFixPathStatText\([^\n]*\)\s*", "\n", text)
+	text = text.replace("Seven-Game Path", "Division Path")
+	text = text.replace("7-Game Path", "Division Path")
+	text = text.replace("Seven Game Path", "Division Path")
+	text = text.replace("7 Game Path", "Division Path")
+	text = text.replace("SEVEN-GAME PATH", "DIVISION PATH")
+	text = text.replace("7-GAME PATH", "DIVISION PATH")
+	text = text.replace("SEVEN GAME PATH", "DIVISION PATH")
+	text = text.replace("7 GAME PATH", "DIVISION PATH")
+
+	ranked_page.write_text(text.strip() + "\n", encoding="utf-8")
+	print("cleaned src/client/Pages/RankedPage.lua")
+
+fix_client = root / "src/client/Services/RankedPathUiFixClient.lua"
+fix_client.parent.mkdir(parents=True, exist_ok=True)
+
+fix_client.write_text(r'''
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 
@@ -249,3 +286,87 @@ end
 RankedPathUiFixClient.Start()
 
 return RankedPathUiFixClient
+'''.strip() + "\n", encoding="utf-8")
+
+runner = root / "src/client/RankedPathUiFix.client.lua"
+runner.write_text('require(script.Parent.Services.RankedPathUiFixClient)\n', encoding="utf-8")
+
+service = root / "src/server/Services/SevenWinLoginRewardService.lua"
+if service.exists():
+	text = service.read_text(encoding="utf-8", errors="ignore")
+
+	text = re.sub(
+		r'local store = DataStoreService:GetDataStore\([^\n]+\)',
+		'local store = DataStoreService:GetDataStore(Config.ClaimKey .. "_Path_v4")',
+		text
+	)
+
+	text = re.sub(
+		r'confirmRemote\.OnServerInvoke = function\(player\).*?\nend\s*\n\s*local SevenWinLoginRewardService',
+		r'''confirmRemote.OnServerInvoke = function(player)
+	local pending = pendingByUserId[player.UserId]
+	local pathWins, totalWins, state = getPathWins(player)
+
+	if pathWins < Config.MinimumWins then
+		state.claimedWins = totalWins
+		state.updatedAt = os.time()
+		writeState(player, state)
+		pendingByUserId[player.UserId] = nil
+
+		player:SetAttribute("PathWins", 0)
+		player:SetAttribute("PathLosses", 0)
+		player:SetAttribute("PathGames", 0)
+		player:SetAttribute("DivisionPathWins", 0)
+		player:SetAttribute("DivisionPathLosses", 0)
+		player:SetAttribute("DivisionPathGames", 0)
+
+		return false, {}
+	end
+
+	if not pending then
+		pending = {
+			rewards = rollRewards(pathWins),
+			pathWins = pathWins,
+			totalWins = totalWins,
+		}
+	end
+
+	if typeof(pending.rewards) ~= "table" or #pending.rewards == 0 then
+		state.claimedWins = totalWins
+		state.updatedAt = os.time()
+		writeState(player, state)
+		pendingByUserId[player.UserId] = nil
+		return false, {}
+	end
+
+	for _, packName in ipairs(pending.rewards) do
+		grantPack(player, packName)
+	end
+
+	state.claimedWins = totalWins
+	state.lastClaimedPathWins = pending.pathWins
+	state.updatedAt = os.time()
+	writeState(player, state)
+
+	pendingByUserId[player.UserId] = nil
+
+	player:SetAttribute("PathWins", 0)
+	player:SetAttribute("PathLosses", 0)
+	player:SetAttribute("PathGames", 0)
+	player:SetAttribute("DivisionPathWins", 0)
+	player:SetAttribute("DivisionPathLosses", 0)
+	player:SetAttribute("DivisionPathGames", 0)
+
+	return true, pending.rewards
+end
+
+local SevenWinLoginRewardService''',
+		text,
+		flags=re.S
+	)
+
+	service.write_text(text.strip() + "\n", encoding="utf-8")
+	print("patched src/server/Services/SevenWinLoginRewardService.lua")
+
+print("patched src/client/Services/RankedPathUiFixClient.lua")
+print("patched src/client/RankedPathUiFix.client.lua")

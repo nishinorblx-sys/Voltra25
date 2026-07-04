@@ -11,6 +11,8 @@ local function text(parent:Instance,value:string,position:UDim2,size:UDim2,textS
 end
 
 function Modal.open(parent:Instance,props:any)
+	local existing=parent:FindFirstChild("ModalOverlay")
+	if existing then existing:Destroy() end
 	local overlay=Instance.new("Frame");overlay.Name="ModalOverlay";overlay.BackgroundColor3=Theme.Colors.Black;overlay.BackgroundTransparency=.18;overlay.BorderSizePixel=0;overlay.Size=UDim2.fromScale(1,1);overlay.ZIndex=120;overlay.Active=true;overlay.Selectable=false;overlay.Parent=parent
 	local shield=Instance.new("TextButton");shield.Name="ModalInputShield";shield.BackgroundTransparency=1;shield.BorderSizePixel=0;shield.Size=UDim2.fromScale(1,1);shield.Text="";shield.AutoButtonColor=false;shield.Selectable=false;shield.Modal=true;shield.Active=true;shield.ZIndex=120;shield.Parent=overlay
 	local hasFields=props.Fields and #props.Fields>0

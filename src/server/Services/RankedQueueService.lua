@@ -11,11 +11,12 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Service = {}
 Service.__index = Service
 
-local QUEUE_MAP = "VTR25_GlobalRankedQueue_v1"
-local MATCH_MAP = "VTR25_GlobalRankedMatches_v1"
-local RESULT_MAP = "VTR25_GlobalRankedResults_v1"
+local QUEUE_MAP = "VTR25_GlobalRankedQueue_v2"
+local MATCH_MAP = "VTR25_GlobalRankedMatches_v2"
+local RESULT_MAP = "VTR25_GlobalRankedResults_v2"
 local QUEUE_TTL = 150
 local MATCH_TTL = 180
+local MATCH_ASSIGNMENT_ACCEPT_SECONDS = 75
 local POLL_SECONDS = 1.75
 
 local WEATHER = { "Clear", "Cloudy", "Rain" }
@@ -234,6 +235,35 @@ function Service:_matchMap(): any?
 		return MemoryStoreService:GetSortedMap(MATCH_MAP)
 	end)
 	return ok and map or nil
+end
+
+function Service:_clearMatchAssignmentForUserId(userId: any)
+	local id = tonumber(userId)
+	if not id then return end
+	local map = self:_matchMap()
+	if not map then return end
+	pcall(function()
+		map:RemoveAsync(self:_matchKey(id))
+	end)
+end
+
+function Service:_clearMatchAssignment(assignment: any?)
+	if type(assignment) ~= "table" then return end
+	self:_clearMatchAssignmentForUserId(assignment.HomeUserId)
+	self:_clearMatchAssignmentForUserId(assignment.AwayUserId)
+end
+
+function Service:_clearMatchAssignmentsFor(matchId: any, home: Player?, away: Player?)
+	if home then self:_clearMatchAssignmentForUserId(home.UserId) end
+	if away then self:_clearMatchAssignmentForUserId(away.UserId) end
+	if tostring(matchId or "") ~= "" then
+		self.PendingTeleportMatches[tostring(matchId)] = nil
+	end
+end
+
+function Service:_assignmentExpired(assignment: any): boolean
+	local created = tonumber(assignment and assignment.CreatedAt) or 0
+	return created > 0 and os.time() - created > MATCH_ASSIGNMENT_ACCEPT_SECONDS
 end
 
 function Service:_resultMap(): any?
@@ -473,6 +503,7 @@ function Service:_attachResultHandlers(session: any, home: Player, away: Player)
 		updateObjectives(home, "Home")
 		updateObjectives(away, "Away")
 		session.MatchId = tostring(session.MatchId or HttpService:GenerateGUID(false))
+		self:_clearMatchAssignmentsFor(session.MatchId, home, away)
 	local function personal(side: string): any
 			local best = nil
 			for _, entry in serialized.PlayerRatings or {} do
@@ -518,6 +549,7 @@ function Service:_attachResultHandlers(session: any, home: Player, away: Player)
 			local score=tostring(homeScore).."-"..tostring(awayScore)
 			ended.MatchId = tostring(ended.MatchId or session.MatchId or HttpService:GenerateGUID(false))
 			session.MatchId = ended.MatchId
+			self:_clearMatchAssignmentsFor(session.MatchId, home, away)
 			local serialized=ended.Stats:Serialize(homeScore,awayScore,ended.Clock:Payload().GameSeconds)
 			local function personal(side:string):any
 				local best=nil
@@ -649,6 +681,7 @@ function Service:_pair()
 				self.Notifications:Send(away, "MATCH FAILED", message, "Error")
 				return
 			end
+			if self.LastMatchFound then self.LastMatchFound[home]=nil;self.LastMatchFound[away]=nil end
 			self.RankedSquads:ConsumeLoans(home)
 			self.RankedSquads:ConsumeLoans(away)
 			local session = self.Runtime:GetSession(home)
@@ -764,6 +797,8 @@ function Service:_teleportToAssignment(player: Player, assignment: any)
 	if not ok then
 		self.GlobalTeleporting[player] = nil
 		self.Notifications:Send(player, "MATCH TELEPORT FAILED", tostring(err), "Error")
+	else
+		self:_clearMatchAssignmentForUserId(player.UserId)
 	end
 end
 
@@ -774,6 +809,10 @@ function Service:_checkAssignment(player: Player): boolean
 		return matchMap:GetAsync(self:_matchKey(player.UserId))
 	end)
 	if ok and type(assignment) == "table" and assignment.MatchMode == "Ranked1v1" and type(assignment.AccessCode) == "string" then
+		if self:_assignmentExpired(assignment) then
+			self:_clearMatchAssignment(assignment)
+			return false
+		end
 		self:_teleportToAssignment(player, assignment)
 		return true
 	end
@@ -926,6 +965,7 @@ end
 function Service:Join(player: Player, payload: any?): (boolean, string, any?)
 	if player:GetAttribute("VTRInMatch") == true then return false, "You are already in a match.", nil end
 	if self.QueuedAt[player] then return true, "Already searching for an opponent.", { Status = "Searching", Position = table.find(self.Queue, player) or 1, Global = self.GlobalQueued[player] ~= nil } end
+	if self.LastMatchFound then self.LastMatchFound[player]=nil end
 	local profile = self.Profiles:GetProfile(player)
 	if not profile then return false, "Profile unavailable.", nil end
 	local squadReady, squadMessage, roster = self.RankedSquads:GetRoster(player)
@@ -974,6 +1014,7 @@ function Service:HandleTeleportedPlayer(player: Player): boolean
 	if type(teleportData) ~= "table" or teleportData.MatchMode ~= "Ranked1v1" then return false end
 	player:SetAttribute("VTRReservedRankedBoot", true)
 	player:SetAttribute("VTRRankedMatchId", tostring(teleportData.MatchId or ""))
+	self:_clearMatchAssignmentForUserId(player.UserId)
 	local matchId = tostring(teleportData.MatchId or "")
 	local bucket = self.PendingTeleportMatches[matchId]
 	if not bucket then

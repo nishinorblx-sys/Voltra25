@@ -35,7 +35,7 @@ local function highContrastEffect(): ColorCorrectionEffect
 	return effect
 end
 
-local function applySound(sound: Sound, master: number, commentary: number, menuEnabled: boolean)
+local function applySound(sound: Sound, master: number, menuEnabled: boolean)
 	local base = sound:GetAttribute("VTRBaseVolume")
 	if type(base) ~= "number" then
 		base = sound.Volume
@@ -43,17 +43,15 @@ local function applySound(sound: Sound, master: number, commentary: number, menu
 	end
 	if menuSound(sound) then
 		sound.Volume = menuEnabled and base * master or 0
-	elseif sound:GetAttribute("VTRCommentary") == true then
-		sound.Volume = base * master * commentary
 	else
 		sound.Volume = base * master
 	end
 end
 
-local function applySounds(root: Instance, master: number, commentary: number, menuEnabled: boolean)
+local function applySounds(root: Instance, master: number, menuEnabled: boolean)
 	for _, descendant in root:GetDescendants() do
 		if descendant:IsA("Sound") then
-			applySound(descendant, master, commentary, menuEnabled)
+			applySound(descendant, master, menuEnabled)
 		end
 	end
 end
@@ -61,8 +59,6 @@ end
 function Service.Apply(settings: any)
 	settings = type(settings) == "table" and settings or {}
 	local master = volume(settings.MasterVolume, 0.8)
-	local commentary = volume(settings.CommentaryVolume, 0.7)
-	SoundService:SetAttribute("VTRCommentaryVolume", commentary)
 	SoundService:SetAttribute("VTRMasterVolume", master)
 	workspace:SetAttribute("VTRReducedMotion", settings.ReducedMotion == true)
 	workspace:SetAttribute("VTRHighContrast", settings.HighContrast == true)
@@ -79,11 +75,11 @@ function Service.Apply(settings: any)
 		contrast.Enabled = false
 	end
 	local menuEnabled = settings.MenuMusic ~= false
-	applySounds(SoundService, master, commentary, menuEnabled)
-	applySounds(workspace, master, commentary, menuEnabled)
+	applySounds(SoundService, master, menuEnabled)
+	applySounds(workspace, master, menuEnabled)
 	local playerGui = Players.LocalPlayer and Players.LocalPlayer:FindFirstChildOfClass("PlayerGui")
 	if playerGui then
-		applySounds(playerGui, master, commentary, menuEnabled)
+		applySounds(playerGui, master, menuEnabled)
 	end
 end
 

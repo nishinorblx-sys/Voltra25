@@ -10,6 +10,7 @@ local Theme = require(ReplicatedStorage.VTR.Shared.Theme)
 local FocusController = require(script.Parent.Controllers.FocusController)
 local MatchGameplayController = require(script.Parent.Gameplay.GameplayController)
 local RankedQueuePresentation = require(script.Parent.Components.RankedQueuePresentation)
+local NotificationService = require(script.Parent.Services.NotificationService)
 
 local function forceMenuVisible()
 	local playerGui = Players.LocalPlayer:WaitForChild("PlayerGui")
@@ -81,6 +82,7 @@ end
 
 showMatchLoadSyncCover()
 FocusController.new():Start(Players.LocalPlayer:WaitForChild("PlayerGui"))
+NotificationService.Start()
 MatchGameplayController.new():Start()
 
 local function showRankedMatchFoundTeleport(data:any)
@@ -237,13 +239,29 @@ local function showReservedRankedBoot()
 	sub.TextColor3 = Theme.Colors.Silver
 	sub.TextSize = 10
 	sub.Parent = bg
-	Players.LocalPlayer:GetAttributeChangedSignal("VTRInMatch"):Connect(function()
-		if Players.LocalPlayer:GetAttribute("VTRInMatch") == true then
-			task.delay(1.2, function()
-				if gui.Parent then gui:Destroy() end
-			end)
-		end
-	end)
+	local function dismiss(delayTime:number?)
+		task.delay(delayTime or 0,function()
+			if gui.Parent then gui:Destroy() end
+		end)
+	end
+	local function matchIsVisible():boolean
+		return Players.LocalPlayer:GetAttribute("VTRInMatch")==true or playerGui:FindFirstChild("VTRPrematchBroadcast")~=nil or playerGui:FindFirstChild("VTRMatchHUD")~=nil
+	end
+	if matchIsVisible()then
+		dismiss(1.2)
+	else
+		Players.LocalPlayer:GetAttributeChangedSignal("VTRInMatch"):Connect(function()
+			if matchIsVisible()then dismiss(1.2)end
+		end)
+		task.spawn(function()
+			local started=os.clock()
+			while gui.Parent and os.clock()-started<18 do
+				if matchIsVisible()then dismiss(.8);return end
+				task.wait(.2)
+			end
+			dismiss(0)
+		end)
+	end
 	return gui
 end
 

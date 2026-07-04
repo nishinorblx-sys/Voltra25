@@ -8,11 +8,21 @@ local Config = {}
 Config.Slots = table.freeze({
 	"LEFT_DOWN",
 	"LEFT_UP",
-	"MIDDLE_DOWN",
-	"MIDDLE_UP",
+	"MIDDLE",
 	"RIGHT_DOWN",
 	"RIGHT_UP",
 })
+
+function Config.NormalizeSlot(slot: any): string?
+	if type(slot) ~= "string" then return nil end
+	local value = string.upper(slot)
+	value = string.gsub(value, "CENTER", "MIDDLE")
+	value = string.gsub(value, "%s+", "_")
+	if value == "MIDDLE_DOWN" or value == "MIDDLE_UP" then
+		value = "MIDDLE"
+	end
+	return table.find(Config.Slots, value) and value or nil
+end
 
 local function goalAxes(pitchCFrame: CFrame, length: number, goalSign: number)
 	local planePoint = pitchCFrame:PointToWorldSpace(Vector3.new(0, 0, goalSign * length * 0.5))
@@ -42,6 +52,9 @@ function Config.SlotFromGoalPoint(pitchCFrame: CFrame, length: number, goalSign:
 		elseif horizontal > center + goalWidth * 0.18 then
 			side = "RIGHT"
 		end
+		if side == "MIDDLE" then
+			return "MIDDLE"
+		end
 		local height = vertical >= rectangle.Bottom + goalHeight * 0.5 and "UP" or "DOWN"
 		return side .. "_" .. height
 	end
@@ -55,11 +68,15 @@ function Config.SlotFromGoalPoint(pitchCFrame: CFrame, length: number, goalSign:
 	elseif horizontal > 3.8 then
 		side = "RIGHT"
 	end
+	if side == "MIDDLE" then
+		return "MIDDLE"
+	end
 	local height = vertical >= 4.8 and "UP" or "DOWN"
 	return side .. "_" .. height
 end
 
 function Config.PointForSlot(pitchCFrame: CFrame, length: number, goalSign: number, slot: string, width: number?): Vector3
+	slot = Config.NormalizeSlot(slot) or "MIDDLE"
 	local rectangle = rectangleForGoal(pitchCFrame, width, length, goalSign)
 	if rectangle then
 		local goalWidth = math.max(1, rectangle.RightBound - rectangle.Left)
@@ -71,7 +88,10 @@ function Config.PointForSlot(pitchCFrame: CFrame, length: number, goalSign: numb
 		elseif string.find(slot, "RIGHT", 1, true) then
 			x = rectangle.RightBound - ballPadding
 		end
-		local y = string.find(slot, "UP", 1, true) and (rectangle.Top - math.clamp(goalHeight * 0.06, 0.35, 0.75)) or (rectangle.Bottom + math.clamp(goalHeight * 0.14, 0.75, 1.35))
+		local y = rectangle.Bottom + goalHeight * 0.46
+		if slot ~= "MIDDLE" then
+			y = string.find(slot, "UP", 1, true) and (rectangle.Top - math.clamp(goalHeight * 0.06, 0.35, 0.75)) or (rectangle.Bottom + math.clamp(goalHeight * 0.14, 0.75, 1.35))
+		end
 		return GoalModelResolver.Point(rectangle, x, y)
 	end
 	local planePoint, right, up = goalAxes(pitchCFrame, length, goalSign)
@@ -81,12 +101,12 @@ function Config.PointForSlot(pitchCFrame: CFrame, length: number, goalSign: numb
 	elseif string.find(slot, "RIGHT", 1, true) then
 		x = 10.65
 	end
-	local y = string.find(slot, "UP", 1, true) and 8.6 or 1.25
+	local y = slot == "MIDDLE" and 4.6 or string.find(slot, "UP", 1, true) and 8.6 or 1.25
 	return planePoint + right * x + up * y
 end
 
 function Config.IsValidSlot(slot: any): boolean
-	return type(slot) == "string" and table.find(Config.Slots, slot) ~= nil
+	return Config.NormalizeSlot(slot) ~= nil
 end
 
 function Config.RandomSlot(random: Random?): string

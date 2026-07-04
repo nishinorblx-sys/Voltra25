@@ -4,6 +4,7 @@ local AITeamController = require(script.Parent.AITeamController)
 
 local Service = {}
 Service.__index = Service
+local GOALKEEPER_DISTRIBUTION_DELAY = 0.65
 
 function Service.new(teams: any, formation: any, pitchCFrame: CFrame, width: number, length: number, difficulty: string, ball: BasePart, possession: any, ballService: any, tactics: any?)
 	local formations = formation and formation.Names or {Home = "4-3-3", Away = "4-3-3"}
@@ -25,13 +26,25 @@ function Service.new(teams: any, formation: any, pitchCFrame: CFrame, width: num
 end
 
 function Service:BeginGoalkeeperDistribution(keeper: Model, side: string, duration: number?)
-	self.Distribution = {Keeper = keeper, Side = side, Until = os.clock() + (duration or 3.5)}
-	keeper:SetAttribute("VTRNoAutoPassUntil", os.clock() + 0.65)
+	local now = os.clock()
+	local window = duration or 3.5
+	self.Distribution = {Keeper = keeper, Side = side, Until = now + window}
+	keeper:SetAttribute("VTRNoAutoPassUntil", now + GOALKEEPER_DISTRIBUTION_DELAY)
+	keeper:SetAttribute("VTRKeeperMustDistributeUntil", now + window)
 	keeper:SetAttribute("AIAssignment", "GoalkeeperDistribution")
 end
 
 function Service:SetExternalPhase(phase: string?)
 	self.Controller:SetExternalPhase(phase)
+end
+
+function Service:SetDisabled(disabled: boolean)
+	self.Disabled = disabled == true
+	if self.Disabled then
+		self.Distribution = nil
+		self.Controller:SetExternalPhase("FULL TIME")
+		self.Controller:Step(0)
+	end
 end
 
 function Service:SetHalf(half: number?)
@@ -43,6 +56,7 @@ function Service:UpdateTactics(side: string, tactics: any)
 end
 
 function Service:Step(dt: number)
+	if self.Disabled then return end
 	if self.Distribution and os.clock() >= self.Distribution.Until then
 		self.Distribution = nil
 	end

@@ -18,6 +18,13 @@ local function destroyExisting(root:Instance)
 	local old=root:FindFirstChild(OVERLAY_NAME);if old then old:Destroy()end
 end
 
+local function matchFoundKey(data:any):string
+	if type(data)~="table"then return "" end
+	local id=data.MatchSessionId or data.MatchId or data.WorldName or data.Opponent or ""
+	local side=data.ControlledSide or ""
+	return tostring(id).."|"..tostring(side)
+end
+
 local function renderBadge(container:GuiObject,summary:any,strokeLimit:number?)
 	if container:IsA("TextLabel")or container:IsA("TextButton")then container.Text=""end
 	container.BackgroundTransparency=1
@@ -84,7 +91,16 @@ local function teamPanel(overlay:CanvasGroup,summary:any,side:string,controlledS
 end
 
 function Presentation.ShowMatchFound(root:Instance,data:any,onComplete:()->())
-	local existing=root:FindFirstChild(OVERLAY_NAME);local overlay=existing and existing:IsA("CanvasGroup")and existing or base(root)
+	local key=matchFoundKey(data)
+	local existing=root:FindFirstChild(OVERLAY_NAME)
+	if existing and existing:IsA("CanvasGroup")and existing:GetAttribute("VTRMatchFoundKey")==key then
+		local completeAt=tonumber(existing:GetAttribute("VTRMatchFoundCompleteAt"))or(os.clock()+.2)
+		task.delay(math.max(.05,completeAt-os.clock()),function()if onComplete then onComplete()end end)
+		return
+	end
+	local overlay=existing and existing:IsA("CanvasGroup")and existing or base(root)
+	overlay:SetAttribute("VTRMatchFoundKey",key)
+	overlay:SetAttribute("VTRMatchFoundCompleteAt",os.clock()+3.95)
 	for _,child in overlay:GetChildren()do if child:IsA("GuiObject")then child:Destroy()end end
 	overlay.GroupTransparency=0;overlay.BackgroundColor3=Theme.Colors.Black
 	text(overlay,"OPPONENT FOUND",UDim2.fromScale(.15,.08),UDim2.fromScale(.7,.07),Theme.Fonts.Display,29,Theme.Colors.Electric,246)

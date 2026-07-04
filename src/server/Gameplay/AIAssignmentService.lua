@@ -121,6 +121,28 @@ local function runBehindTarget(context: any, info: any): Vector3
 	return Vector3.new(PitchConfig.GetLaneCenter(info.Lane), 3, math.clamp(desiredZ, 0, 704))
 end
 
+local function strikerRunBehindTarget(context: any, info: any): (string, Vector3)
+	local now = context.Now or os.clock()
+	local defensiveLine = AIContextBuilder.DefensiveLineZ(context, info.Side)
+	local currentZ = math.clamp(info.Pitch.Z, 0, PitchConfig.PITCH_LENGTH)
+	local runUntil = tonumber(info.Model:GetAttribute("AIStrikerOffsideRunUntil")) or 0
+	local recoverUntil = tonumber(info.Model:GetAttribute("AIStrikerOffsideRecoverUntil")) or 0
+	if now <= runUntil then
+		local desiredZ = math.max(currentZ + 28, defensiveLine + 20)
+		return "RiskOffsideRun", Vector3.new(PitchConfig.GetLaneCenter(info.Lane), 3, math.clamp(desiredZ, 0, PitchConfig.PITCH_LENGTH - 18))
+	end
+	if now <= recoverUntil then
+		return "RecoverOnsideAfterRun", runBehindTarget(context, info)
+	end
+	if defensiveLine >= 330 and currentZ >= defensiveLine - 82 then
+		info.Model:SetAttribute("AIStrikerOffsideRunUntil", now + 3.5)
+		info.Model:SetAttribute("AIStrikerOffsideRecoverUntil", now + 5.9)
+		local desiredZ = math.max(currentZ + 28, defensiveLine + 20)
+		return "RiskOffsideRun", Vector3.new(PitchConfig.GetLaneCenter(info.Lane), 3, math.clamp(desiredZ, 0, PitchConfig.PITCH_LENGTH - 18))
+	end
+	return "RunBehind", runBehindTarget(context, info)
+end
+
 local function sideOf(infoOrPitch: any): string
 	local x = if typeof(infoOrPitch) == "Vector3"
 		then infoOrPitch.X
@@ -543,7 +565,8 @@ local function attackingRoleTarget(context: any, info: any, ballPitch: Vector3, 
 		local _, nearest = AIContextBuilder.NearestOpponent(context, info)
 		local tightlyMarked = nearest <= 15
 		if safe and facingForward then
-			return "RunBehind", runBehindTarget(context, info), 1, true
+			local runName, target = strikerRunBehindTarget(context, info)
+			return runName, target, 1, true
 		elseif tightlyMarked or not facingForward then
 			return "ComeShortToEscapePressure", Vector3.new(PitchConfig.HALF_WIDTH + (info.Pitch.X < PitchConfig.HALF_WIDTH and 28 or -28), 3, math.max(340, ballPitch.Z - 38)), 0.92, true
 		end

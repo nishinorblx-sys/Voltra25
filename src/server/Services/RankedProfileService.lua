@@ -1,11 +1,14 @@
 --!strict
-local VTRPendingPackAnimation = require(script.Parent:WaitForChild("PendingPackAnimationService"))
 local DataStoreService=game:GetService("DataStoreService")
 local ReplicatedStorage=game:GetService("ReplicatedStorage")
+local RunService=game:GetService("RunService")
 local Catalog=require(ReplicatedStorage.VTR.Shared.Catalog)
 local Service={};Service.__index=Service
-local LEADERBOARD_VERSION="VTR25_RankedLeaderboards_v1"
+local LEADERBOARD_VERSION="VTR25_RankedLeaderboards_v2"
 local LEADERBOARD_ORDER={"Wins","Losses","Goals","WinRatio","Flawless","CleanSheets","BestStreak","PackRating"}
+local MIN_DIVISION=1
+local MAX_DIVISION=10
+local ELITE_DIVISION=0
 local LEADERBOARD_INFO={
 	Wins={Title="MOST WINS",ValueLabel="WINS"},
 	Losses={Title="MOST LOSSES",ValueLabel="LOSSES"},
@@ -20,6 +23,42 @@ local LeaderboardStores={}
 local LeaderboardNameCache:{[string]:{Name:string,Username:string}}={}
 for _,key in LEADERBOARD_ORDER do
 	LeaderboardStores[key]=DataStoreService:GetOrderedDataStore(LEADERBOARD_VERSION.."_"..key)
+end
+local function normalizeDivisionNumber(value:any):number
+	local number=math.floor(tonumber(value)or MAX_DIVISION)
+	if number<=ELITE_DIVISION then return ELITE_DIVISION end
+	return math.clamp(number,MIN_DIVISION,MAX_DIVISION)
+end
+local function divisionName(number:number):string
+	return number<=ELITE_DIVISION and"ELITE DIVISION"or("DIVISION "..tostring(math.clamp(number,MIN_DIVISION,MAX_DIVISION)))
+end
+local function setElite(r:any)
+	r.DivisionNumber=ELITE_DIVISION
+	r.VoltraRating=math.max(1000,tonumber(r.VoltraRating)or 1000)
+	r.RP=r.VoltraRating
+	r.Division=divisionName(ELITE_DIVISION)
+	r.Rank=tostring(r.VoltraRating).." RATING"
+end
+local function setNumberedDivision(r:any,number:number,rank:string?)
+	r.DivisionNumber=normalizeDivisionNumber(number)
+	if r.DivisionNumber<=ELITE_DIVISION then
+		setElite(r)
+		return
+	end
+	r.RP=tonumber(r.DivisionWins)or 0
+	r.Division=divisionName(r.DivisionNumber)
+	r.Rank=rank or("STEP "..tostring(r.RP).." / 10")
+end
+local function promoteDivision(r:any)
+	r.DivisionNumber=normalizeDivisionNumber(r.DivisionNumber)
+	r.DivisionWins=0
+	r.ProtectedWins=0
+	if r.DivisionNumber<=MIN_DIVISION then
+		setElite(r)
+	else
+		setNumberedDivision(r,r.DivisionNumber-1,"PROMOTED")
+		r.RP=0
+	end
 end
 local function checkpointCount(division:number):number return math.clamp(division+1,2,10)end
 local function protectedThreshold(progress:number,division:number):number
@@ -100,11 +139,41 @@ local function leaderboardValues(ranked:any):{[string]:number}
 		PackRating=math.max(0,math.floor(tonumber(ranked.BestPackRating)or 0)),
 	}
 end
-local PATH_PACKS={[0]=nil,[1]="bronze_pack",[2]="silver_pack",[3]="gold_pack",[4]="rare_pack",[5]="elite_pack",[6]="legendary_pack",[7]="mythic_pack"}
-function Service.new(profiles:any,publish:(Player,string,any)->(),progression:any?)return setmetatable({Profiles=profiles,Publish=publish,Progression=progression,LeaderboardCache=nil,LeaderboardCacheAt=0},Service)end
+local PATH_PACKS={[1]="bronze_pack",[2]="silver_pack",[3]="gold_pack",[4]="rare_pack",[5]="elite_pack",[6]="legendary_pack",[7]="mythic_pack"}
+local function pathRewardPacks(wins:number):{string}
+	local packs={}
+	for index=1,math.clamp(math.floor(tonumber(wins)or 0),0,7)do
+		table.insert(packs,PATH_PACKS[index]or"bronze_pack")
+	end
+	return packs
+end
+
+local function emptyRun(target:number?):any
+	return{Active=false,Results={},Wins=0,Draws=0,Losses=0,Target=math.clamp(math.floor(tonumber(target)or 7),1,20),Ended=false,RewardClaimed=false}
+end
+
+local function publishPathCleared(player:Player,promoted:boolean,wins:number,losses:number,divisionNumber:number?)
+	local division=normalizeDivisionNumber(divisionNumber)
+	player:SetAttribute("Division",division)
+	player:SetAttribute("DivisionName",divisionName(division))
+	player:SetAttribute("VTRDivisionPathCleared",true)
+	player:SetAttribute("VTRDivisionPathPromoted",promoted)
+	player:SetAttribute("VTRDivisionPathClearedWins",wins)
+	player:SetAttribute("VTRDivisionPathClearedLosses",losses)
+	player:SetAttribute("VTRDivisionPathClearSeq",(tonumber(player:GetAttribute("VTRDivisionPathClearSeq"))or 0)+1)
+end
+function Service.new(profiles:any,publish:(Player,string,any)->(),progression:any?)return setmetatable({Profiles=profiles,Publish=publish,Progression=progression,LeaderboardCache=nil,LeaderboardCacheAt=0,DebugRuns={}},Service)end
 function Service:GetClientData(player:Player):any?
 	local p=self.Profiles:GetProfile(player);if not p then return nil end;local r=p.Ranked
-	local run=normalizeRun(p.RankedRun);p.RankedRun=run
+	r.DivisionNumber=normalizeDivisionNumber(r.DivisionNumber)
+	r.Division=divisionName(r.DivisionNumber)
+	local storedRun=normalizeRun(p.RankedRun)
+	if RunService:IsStudio() and not self.DebugRuns[player] and storedRun.Ended and storedRun.Wins==7 and storedRun.Draws==0 and storedRun.Losses==0 and storedRun.RewardClaimed~=true then
+		p.RankedRun=emptyRun(storedRun.Target)
+		storedRun=p.RankedRun
+	end
+	local run=normalizeRun(self.DebugRuns[player] or storedRun)
+	if not self.DebugRuns[player] then p.RankedRun=run end
 	return{Division=r.Division,DivisionNumber=r.DivisionNumber,DivisionWins=r.DivisionWins,ProtectedWins=r.ProtectedWins,CheckpointCount=r.DivisionNumber==0 and 0 or checkpointCount(r.DivisionNumber),VoltraRating=r.VoltraRating,Rank=r.Rank,PlacementStatus=r.PlacementStatus,Wins=r.Wins,Draws=r.Draws,Losses=r.Losses,RP=r.DivisionNumber==0 and r.VoltraRating or r.DivisionWins,RequiredRP=r.DivisionNumber==0 and 0 or 10,WinStreak=r.WinStreak,BestWinStreak=r.BestWinStreak,FlawlessRuns=r.FlawlessRuns,CleanSheets=r.CleanSheets,BestPackRating=r.BestPackRating,History=r.History,PlayerStats=r.PlayerStats,RankedRun=run,Run=run}
 end
 function Service:RecordPackRating(player:Player,rating:any):boolean
@@ -120,32 +189,93 @@ end
 
 function Service:ClaimPathReward(player: Player): (boolean, string, any?)
 	local p=self.Profiles:GetProfile(player);if not p then return false,"Profile unavailable.",nil end
-	local run=normalizeRun(p.RankedRun);p.RankedRun=run
+	local usingDebugRun=RunService:IsStudio() and self.DebugRuns[player]~=nil
+	local run=normalizeRun(usingDebugRun and self.DebugRuns[player] or p.RankedRun)
+	if not usingDebugRun then p.RankedRun=run end
 	if not run.Ended then return false,"Complete the seven-game path first.",nil end
-	if run.RewardClaimed==true then return false,"Path reward already claimed.",nil end
+	if run.RewardClaimed==true then
+		if usingDebugRun then self.DebugRuns[player]=nil else p.RankedRun=emptyRun(run.Target) end
+		local rankedData=self:GetClientData(player)
+		local progressionData=self.Progression and self.Progression.GetClientData and self.Progression:GetClientData(player)or nil
+		if progressionData then self.Publish(player,"Progression",progressionData)end
+		self.Publish(player,"Ranked",rankedData)
+		return true,"Path restarted.",{Restarted=true,Wins=0,Draws=0,Losses=0,Packs=0,RewardPacks={},Ranked=rankedData,Progression=progressionData,RankedRun=rankedData and rankedData.RankedRun}
+	end
 	local wins=math.clamp(math.floor(tonumber(run.Wins)or 0),0,7)
 	local draws=math.clamp(math.floor(tonumber(run.Draws)or 0),0,7)
-	local packId=PATH_PACKS[wins]
+	local packIds=pathRewardPacks(wins)
 	local coins=math.floor(650+wins*850+draws*225)
 	local xp=math.floor(180+wins*120+draws*40)
-	local reward={Title="7-GAME PATH REWARD",Coins=coins,XP=xp,PackId=packId,Pack=packId and(Catalog.Packs[packId]and Catalog.Packs[packId].Name or packId)or nil,Packs=packId and 1 or 0,Wins=wins,Draws=draws,Losses=run.Losses}
+	local rewardPacks={}
+	local reward={Title="7-GAME PATH REWARD",Coins=coins,XP=xp,PackIds=packIds,RewardPacks=rewardPacks,Packs=#packIds,Wins=wins,Draws=draws,Losses=run.Losses,InventoryStored=false}
 	if self.Progression and self.Progression.GrantMatchRewards then
 		local granted=self.Progression:GrantMatchRewards(player,{Title=reward.Title,Coins=coins,XP=xp})
 		if granted then reward.Coins=granted.Coins or reward.Coins;reward.XP=granted.XP or reward.XP end
 	elseif p.Currency then
 		p.Currency.Coins=(tonumber(p.Currency.Coins)or 0)+coins
 	end
-	if packId and self.Progression and self.Progression.Inventory and self.Progression.Inventory.AddPack then
-		local definition=Catalog.Packs[packId]
-		local delivered=self.Progression.Inventory:AddPack(player,packId,definition and definition.Name or packId,"RankedPath",1)
-		reward.PackGranted=delivered==true
-		if delivered then VTRPendingPackAnimation.Queue(player,packId)end
+	if self.Progression and self.Progression.Inventory and self.Progression.Inventory.AddPack then
+		local grantedCount=0
+		for _,packId in packIds do
+			local definition=Catalog.Packs[packId]
+			local delivered,instances=self.Progression.Inventory:AddPack(player,packId,definition and definition.Name or packId,"RankedPath",1)
+			if delivered then
+				grantedCount+=1
+				table.insert(rewardPacks,{PackId=packId,Name=definition and definition.Name or packId,PackInstanceId=type(instances)=="table"and instances[1]and(instances[1].packInstanceId or instances[1].PackInstanceId)or nil})
+			end
+		end
+		reward.PackGranted=grantedCount>0
+		reward.PacksGranted=grantedCount
+		reward.InventoryStored=grantedCount==#packIds
 	end
-	run.RewardClaimed=true
-	run.Active=false
-	p.RankedRun=run
+	if usingDebugRun then
+		self.DebugRuns[player]=nil
+		p.RankedRun=emptyRun(run.Target)
+	else
+		p.RankedRun=emptyRun(run.Target)
+	end
+	local rankedData=self:GetClientData(player)
+	local progressionData=self.Progression and self.Progression.GetClientData and self.Progression:GetClientData(player)or nil
+	local inventoryData=nil
+	if self.Progression and self.Progression.Inventory and self.Progression.Inventory.GetClientData then
+		inventoryData=self.Progression.Inventory:GetClientData(player)
+	end
+	reward.Ranked=rankedData
+	reward.RankedRun=rankedData and rankedData.RankedRun
+	reward.Progression=progressionData
+	reward.Inventory=inventoryData
+	if progressionData then self.Publish(player,"Progression",progressionData)end
+	if inventoryData then self.Publish(player,"Inventory",inventoryData)end
+	self.Publish(player,"Ranked",rankedData)
+	return true,"Path reward claimed. Packs added to inventory.",reward
+end
+
+function Service:DebugCompleteSevenWinPath(player:Player):(boolean,string,any?)
+	if not RunService:IsStudio()then return false,"Studio-only debug action.",nil end
+	local p=self.Profiles:GetProfile(player);if not p then return false,"Profile unavailable.",nil end
+	p.Ranked=p.Ranked or{}
+	local r=p.Ranked
+	r.Wins=tonumber(r.Wins)or 0
+	r.Draws=tonumber(r.Draws)or 0
+	r.Losses=tonumber(r.Losses)or 0
+	r.DivisionNumber=normalizeDivisionNumber(r.DivisionNumber)
+	r.DivisionWins=0
+	r.ProtectedWins=0
+	r.WinStreak=(tonumber(r.WinStreak)or 0)+7
+	r.BestWinStreak=math.max(tonumber(r.BestWinStreak)or 0,r.WinStreak)
+	r.Wins+=7
+	if r.DivisionNumber>ELITE_DIVISION then
+		promoteDivision(r)
+	else
+		setElite(r)
+	end
+	player:SetAttribute("VTRDivisionPathClearSeq",tonumber(player:GetAttribute("VTRDivisionPathClearSeq"))or 0)
+	p.RankedRun=emptyRun(7)
+	self.DebugRuns[player]={Active=false,Results={"Win","Win","Win","Win","Win","Win","Win"},Wins=7,Draws=0,Losses=0,Target=7,Ended=true,RewardClaimed=false}
+	publishPathCleared(player,true,7,0,r.DivisionNumber)
+	self:_publishLeaderboards(player,r)
 	self.Publish(player,"Ranked",self:GetClientData(player))
-	return true,"Path reward claimed.",reward
+	return true,"Studio debug: 7-win path completed.",self:GetClientData(player)
 end
 function Service:_publishLeaderboards(player:Player,ranked:any)
 	local values=leaderboardValues(ranked)
@@ -197,17 +327,25 @@ function Service:GetLeaderboards():any
 	return payload
 end
 function Service:RecordServerResult(player:Player,result:string,_legacyDelta:number,opponent:string,score:string,matchStats:any?,opponentTag:string?,opponentTeamName:string?):boolean
-	if result=="ForfeitWin"then result="Win"elseif result=="ForfeitLoss"then result="Loss"end;if result~="Win"and result~="Draw"and result~="Loss"then return false end;local p=self.Profiles:GetProfile(player);if not p then return false end;p.Ranked=p.Ranked or{};local r=p.Ranked;r.Wins=tonumber(r.Wins)or 0;r.Draws=tonumber(r.Draws)or 0;r.Losses=tonumber(r.Losses)or 0;r.DivisionWins=tonumber(r.DivisionWins)or 0;r.ProtectedWins=tonumber(r.ProtectedWins)or 0;r.DivisionNumber=tonumber(r.DivisionNumber)or 7;r.VoltraRating=tonumber(r.VoltraRating)or 1000;r.WinStreak=tonumber(r.WinStreak)or 0;r.BestWinStreak=tonumber(r.BestWinStreak)or r.WinStreak;r.FlawlessRuns=tonumber(r.FlawlessRuns)or 0;r.CleanSheets=tonumber(r.CleanSheets)or 0;r.BestPackRating=tonumber(r.BestPackRating)or 0;r.History=r.History or{};r.PlayerStats=r.PlayerStats or{MatchesPlayed=0,AverageRating=0,Goals=0,Assists=0,MOTM=0,HatTricks=0};local resultId=type(matchStats)=="table"and tostring(matchStats.ResultId or "")or"";if resultId~=""then for _,entry in r.History do if tostring(entry.Id or "")==resultId then self.Publish(player,"Ranked",self:GetClientData(player));return false end end end;local delta=0
+	if result=="ForfeitWin"then result="Win"elseif result=="ForfeitLoss"then result="Loss"end;if result~="Win"and result~="Draw"and result~="Loss"then return false end;local p=self.Profiles:GetProfile(player);if not p then return false end;p.Ranked=p.Ranked or{};local r=p.Ranked;r.Wins=tonumber(r.Wins)or 0;r.Draws=tonumber(r.Draws)or 0;r.Losses=tonumber(r.Losses)or 0;r.DivisionWins=tonumber(r.DivisionWins)or 0;r.ProtectedWins=tonumber(r.ProtectedWins)or 0;r.DivisionNumber=normalizeDivisionNumber(r.DivisionNumber);r.Division=divisionName(r.DivisionNumber);r.VoltraRating=tonumber(r.VoltraRating)or 1000;r.WinStreak=tonumber(r.WinStreak)or 0;r.BestWinStreak=tonumber(r.BestWinStreak)or r.WinStreak;r.FlawlessRuns=tonumber(r.FlawlessRuns)or 0;r.CleanSheets=tonumber(r.CleanSheets)or 0;r.BestPackRating=tonumber(r.BestPackRating)or 0;r.History=r.History or{};r.PlayerStats=r.PlayerStats or{MatchesPlayed=0,AverageRating=0,Goals=0,Assists=0,MOTM=0,HatTricks=0};local resultId=type(matchStats)=="table"and tostring(matchStats.ResultId or "")or"";if resultId~=""then for _,entry in r.History do if tostring(entry.Id or "")==resultId then self.Publish(player,"Ranked",self:GetClientData(player));return false end end end;local delta=0
 	local run=appendRunResult(p,result)
+	local promotedByStep=false
 	if result=="Win"then r.Wins+=1;r.WinStreak+=1;r.BestWinStreak=math.max(r.BestWinStreak,r.WinStreak) elseif result=="Draw"then r.Draws+=1;r.WinStreak=0 else r.Losses+=1;r.WinStreak=0 end
 	if run.Target==7 and #run.Results>=7 and run.Wins==7 then r.FlawlessRuns+=1 end
 	local conceded=concededInMatch(score,matchStats)
 	if conceded==0 then r.CleanSheets+=1 end
-	if r.DivisionNumber==0 then
-		local tier=math.max(0,math.floor((r.VoltraRating-1000)/100));delta=(result=="Win" or result=="ForfeitWin")and math.max(8,30-tier*2)or (result=="Loss" or result=="ForfeitLoss")and-math.min(45,10+tier*2)or 0;r.VoltraRating=math.max(0,r.VoltraRating+delta);r.RP=r.VoltraRating;r.Division="VOLTRA DIVISION";r.Rank=tostring(r.VoltraRating).." RATING"
+	if r.DivisionNumber==ELITE_DIVISION then
+		local tier=math.max(0,math.floor((r.VoltraRating-1000)/100));delta=(result=="Win" or result=="ForfeitWin")and math.max(8,30-tier*2)or (result=="Loss" or result=="ForfeitLoss")and-math.min(45,10+tier*2)or 0;r.VoltraRating=math.max(0,r.VoltraRating+delta);setElite(r)
 	else
 		if (result=="Win" or result=="ForfeitWin")then r.DivisionWins=math.min(10,r.DivisionWins+1);delta=1;r.ProtectedWins=math.max(r.ProtectedWins,protectedThreshold(r.DivisionWins,r.DivisionNumber))elseif (result=="Loss" or result=="ForfeitLoss")then local old=r.DivisionWins;r.DivisionWins=math.max(r.ProtectedWins,r.DivisionWins-1);delta=r.DivisionWins-old end
-		if r.DivisionWins>=10 then r.DivisionNumber-=1;r.DivisionWins=0;r.ProtectedWins=0;if r.DivisionNumber<=0 then r.DivisionNumber=0;r.VoltraRating=1000;r.RP=1000;r.Division="VOLTRA DIVISION";r.Rank="1000 RATING"else r.Division="DIVISION "..r.DivisionNumber;r.Rank="PROMOTED";r.RP=0 end else r.RP=r.DivisionWins;r.Division="DIVISION "..r.DivisionNumber;r.Rank="STEP "..r.DivisionWins.." / 10"end
+		if r.DivisionWins>=10 then promotedByStep=true;promoteDivision(r)else setNumberedDivision(r,r.DivisionNumber,"STEP "..r.DivisionWins.." / 10")end
+	end
+	if run.Target==7 and #run.Results>=7 then
+		local promoted=run.Wins>=4
+		if promoted and not promotedByStep and r.DivisionNumber>ELITE_DIVISION then
+			promoteDivision(r)
+		end
+		publishPathCleared(player,promoted,run.Wins,run.Losses,r.DivisionNumber)
 	end
 	local playerStats=r.PlayerStats;playerStats.MatchesPlayed+=1
 	if matchStats and matchStats.PlayerRating then local previous=playerStats.AverageRating or 0;playerStats.AverageRating=math.floor(((previous*(playerStats.MatchesPlayed-1)+matchStats.PlayerRating)/playerStats.MatchesPlayed)*10+.5)/10;playerStats.Goals+=(matchStats.Match and matchStats.Match.Goals or 0);if matchStats.MOTM and matchStats.MOTM.Team==matchStats.Team then playerStats.MOTM+=1 end;local assists=0;for _,entry in matchStats.Full and matchStats.Full.PlayerRatings or{}do if entry.Team==matchStats.Team then assists+=entry.Assists or 0;if(entry.Goals or 0)>=3 then playerStats.HatTricks+=1 end end end;playerStats.Assists+=assists end
@@ -226,5 +364,8 @@ function Service:AttachHistoryReward(player:Player,resultId:string,reward:any):b
 		end
 	end
 	return false
+end
+function Service:PlayerRemoving(player:Player)
+	self.DebugRuns[player]=nil
 end
 return Service

@@ -93,6 +93,18 @@ function Controller:_chargeStart(kind: string, options: any?)
 	end
 end
 
+function Controller:_passKeyMode(key: Enum.KeyCode): string?
+	if key == self.ManualPassKey or key == Enum.KeyCode.LeftControl or key == Enum.KeyCode.RightControl then
+		return "Manual"
+	end
+
+	if key == self.LobbedPassKey or key == Enum.KeyCode.LeftAlt or key == Enum.KeyCode.RightAlt then
+		return "ManualLobbed"
+	end
+
+	return nil
+end
+
 function Controller:_chargeEnd(kind: string)
 	if self:ActionsLocked() then self.Charge = nil;return end
 	local current = self.Charge
@@ -117,9 +129,9 @@ function Controller:_chargeEnd(kind: string)
 	else
 		local altDown = down(self.Keys,self.LobbedPassKey) or self.Keys[Enum.KeyCode.RightAlt] == true
 		local ctrlDown = down(self.Keys,self.ManualPassKey) or self.Keys[Enum.KeyCode.RightControl] == true
-		local manualLobbed = altDown and ctrlDown
+		local manualLobbed = altDown
 		local manual = ctrlDown and not manualLobbed
-		local lofted = altDown and not ctrlDown
+		local lofted = false
 		local through=not manualLobbed and not manual and not lofted and self.Keys[Enum.KeyCode.W] == true and charge >= 0.18
 		local mobileMode = self:MobilePassMode()
 		local forcedMode = options.PassMode
@@ -196,6 +208,10 @@ function Controller:Start()
 			or key == Enum.KeyCode.LeftControl or key == Enum.KeyCode.RightControl
 			or key == self.ManualPassKey or key == self.LobbedPassKey then
 			self.Keys[key] = true
+			local passMode = self:_passKeyMode(key)
+			if passMode and not self.Defending then
+				self:_chargeStart("Pass", {PassMode = passMode, StartedByKey = key})
+			end
 		elseif key == self.TackleKey then
 			self.Remote:FireServer({Type = "Tackle"})
 		elseif key==self.SlideTackleKey then
@@ -257,6 +273,11 @@ function Controller:Start()
 			or key == Enum.KeyCode.LeftAlt or key == Enum.KeyCode.RightAlt
 			or key == Enum.KeyCode.LeftControl or key == Enum.KeyCode.RightControl
 			or key == self.ManualPassKey or key == self.LobbedPassKey then
+			local current = self.Charge
+			local startedByKey = current and current.Kind == "Pass" and current.Options and current.Options.StartedByKey == key
+			if startedByKey then
+				self:_chargeEnd("Pass")
+			end
 			self.Keys[key] = nil
 		elseif key == Enum.KeyCode.ButtonA then
 			if not self.Defending then self:_chargeEnd("Pass") end
@@ -311,7 +332,7 @@ function Controller:MobileAimVector(kind: string?): Vector2?
 		return mobile
 	end
 	if self.GamepadMove.Magnitude > 0.08 then
-		return self.GamepadMove.Unit
+		return self.GamepadMove
 	end
 	return nil
 end

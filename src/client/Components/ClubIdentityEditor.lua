@@ -29,7 +29,20 @@ function Editor.open(parent:Instance,identity:any,options:any)
 	local activeChannel="PrimaryColor";local paletteHolder=Instance.new("Frame");paletteHolder.BackgroundTransparency=1;paletteHolder.Position=UDim2.fromOffset(0,104);paletteHolder.Size=UDim2.new(1,0,0,145);paletteHolder.Parent=controls
 	local optionHolder=Instance.new("Frame");optionHolder.BackgroundTransparency=1;optionHolder.Position=UDim2.fromOffset(0,275);optionHolder.Size=UDim2.new(1,0,0,650);optionHolder.Parent=controls
 	local renderPreview:()->();local renderPalette:()->();local renderOptions:()->()
-	renderPreview=function()for _,child in previewHolder:GetChildren()do child:Destroy()end;state.Name=nameBox.Text;state.Abbreviation=string.upper(tagBox.Text);text(previewHolder,state.Name.."  ["..state.Abbreviation.."]",UDim2.fromOffset(0,0),UDim2.new(1,0,0,28),15,Theme.Colors.White,Theme.Fonts.Display).TextXAlignment=Enum.TextXAlignment.Center;local kit=KitPreview.new(previewHolder,state,UDim2.new(1,-24,0,330));kit.Position=UDim2.fromOffset(12,35);local badge=BadgePreview.new(previewHolder,state,UDim2.fromOffset(92,92));badge.AnchorPoint=Vector2.new(.5,0);badge.Position=UDim2.new(.5,0,1,-100);text(previewHolder,string.upper(state.KitStyle),UDim2.new(0,0,1,-24),UDim2.new(1,0,0,20),8,Theme.Colors.Electric,Theme.Fonts.Strong).TextXAlignment=Enum.TextXAlignment.Center end
+	renderPreview=function()
+		for _,child in previewHolder:GetChildren()do child:Destroy()end
+		state.Name=nameBox.Text
+		state.Abbreviation=string.upper(tagBox.Text)
+		text(previewHolder,state.Name.."  ["..state.Abbreviation.."]",UDim2.fromOffset(0,0),UDim2.new(1,0,0,28),15,Theme.Colors.White,Theme.Fonts.Display).TextXAlignment=Enum.TextXAlignment.Center
+		local kit=KitPreview.new(previewHolder,state,UDim2.new(1,-24,0,302))
+		kit.Position=UDim2.fromOffset(12,38)
+		local badge=BadgePreview.new(previewHolder,state,UDim2.fromOffset(62,62))
+		badge.AnchorPoint=Vector2.new(1,1)
+		badge.Position=UDim2.new(1,-16,1,-36)
+		local badgeLabel=text(previewHolder,"TEAM BADGE",UDim2.new(1,-116,1,-30),UDim2.fromOffset(100,14),7,Theme.Colors.Silver,Theme.Fonts.Strong)
+		badgeLabel.TextXAlignment=Enum.TextXAlignment.Right
+		text(previewHolder,string.upper(state.KitStyle),UDim2.new(0,0,1,-26),UDim2.new(1,-130,0,20),8,Theme.Colors.Electric,Theme.Fonts.Strong).TextXAlignment=Enum.TextXAlignment.Center
+	end
 	local channels={{"PRIMARY","PrimaryColor"},{"SECONDARY","SecondaryColor"},{"ACCENT","AccentColor"}}
 	for index,item in channels do local button=Button.new({Text=item[1],Variant=index==1 and"Primary"or"Secondary",Size=UDim2.new(.333,-5,0,36),OnActivated=function()activeChannel=item[2];renderPalette()end});button.Position=UDim2.new((index-1)/3,(index-1)*3,0,54);button.Parent=controls end
 	renderPalette=function()for _,child in paletteHolder:GetChildren()do child:Destroy()end;text(paletteHolder,"COLOR PALETTE  /  "..string.upper(activeChannel:gsub("Color","")),UDim2.fromOffset(0,0),UDim2.new(1,0,0,18),8,Theme.Colors.Electric,Theme.Fonts.Strong);local swatches=Instance.new("Frame");swatches.BackgroundTransparency=1;swatches.Position=UDim2.fromOffset(0,24);swatches.Size=UDim2.new(1,0,1,-24);swatches.Parent=paletteHolder;local grid=Instance.new("UIGridLayout");grid.CellSize=UDim2.new(.125,-5,0,34);grid.CellPadding=UDim2.fromOffset(5,5);grid.SortOrder=Enum.SortOrder.LayoutOrder;grid.Parent=swatches;for index,color in Config.Colors do local swatch=Instance.new("TextButton");swatch.Name=color.Id;swatch.AutoButtonColor=false;swatch.Text=state[activeChannel]==color.Id and"✓"or"";swatch.TextColor3=Color3.new();swatch.TextSize=14;swatch.Font=Theme.Fonts.Display;swatch.BackgroundColor3=Color3.fromHex(color.Hex);swatch.BorderSizePixel=0;swatch.LayoutOrder=index;swatch.Selectable=false;swatch.Parent=swatches;local c=Instance.new("UICorner");c.CornerRadius=UDim.new(0,5);c.Parent=swatch;swatch.Activated:Connect(function()local duplicate=false;for _,channel in{"PrimaryColor","SecondaryColor","AccentColor"}do if channel~=activeChannel and state[channel]==color.Id then duplicate=true end end;if not duplicate then state[activeChannel]=color.Id;renderPalette();renderPreview()end end)end end

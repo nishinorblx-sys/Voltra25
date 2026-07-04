@@ -16,7 +16,7 @@ Config.Colors = {
 	{ Id="white", Name="VOLTRA WHITE", Hex="F5F7F2" }, { Id="cream", Name="CREAM", Hex="F1E3C2" },
 	{ Id="bronze", Name="BRONZE", Hex="B66A3C" }, { Id="gold", Name="CHAMPION GOLD", Hex="E8B84A" },
 }
-Config.KitStyles = { "Solid", "Vertical Stripes", "Horizontal Stripes", "Diagonal Sash", "Split", "Gradient", "Hoops", "Lightning Trim", "Volt Pattern", "Checker Accent" }
+Config.KitStyles = { "Solid", "Vertical Stripes", "Horizontal Stripes", "Diagonal Sash", "Split", "Hoops", "Lightning Trim", "Volt Pattern", "Checker Accent", "Chevron", "Racing Stripe", "Volt Halves" }
 Config.BadgePresets = { "Classic", "Modern", "Electric", "Heritage", "Elite", "Minimal" }
 Config.BadgeShapes = { "Shield", "Circle", "Hex", "Diamond", "Crest", "V Badge" }
 Config.BadgeSymbols = {
@@ -26,7 +26,7 @@ Config.BadgeSymbols = {
 }
 Config.BadgeColorBehaviors = { "Tri Color", "Primary Focus", "Secondary Focus", "Accent Focus", "High Contrast" }
 
-local legacyStyle = { strike="Diagonal Sash", pulse="Lightning Trim", grid="Checker Accent" }
+local legacyStyle = { strike="Diagonal Sash", pulse="Lightning Trim", grid="Checker Accent", Gradient="Volt Pattern" }
 function Config.ResolveStyle(value: any): string return legacyStyle[value] or (table.find(Config.KitStyles, value) and value) or "Solid" end
 function Config.ResolveColor(value: any): string
 	if type(value) == "string" then

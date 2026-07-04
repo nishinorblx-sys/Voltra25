@@ -3,9 +3,21 @@ local DataStoreService = game:GetService("DataStoreService")
 
 local RankedDivisionPathService = {}
 
-local store = DataStoreService:GetDataStore("RankedDivisionPath_v1")
+local store = DataStoreService:GetDataStore("RankedDivisionPath_v2")
 local stateByUserId = {}
 local started = false
+local MIN_DIVISION = 1
+local MAX_DIVISION = 10
+local ELITE_DIVISION = 0
+
+local function normalizeDivision(value)
+	local division = math.floor(tonumber(value) or MAX_DIVISION)
+	if division <= ELITE_DIVISION then
+		return ELITE_DIVISION
+	end
+
+	return math.clamp(division, MIN_DIVISION, MAX_DIVISION)
+end
 
 local function valueFromLeaderstats(player, name)
 	local leaderstats = player:FindFirstChild("leaderstats")
@@ -53,7 +65,7 @@ local function loadState(player)
 		return {
 			baseWins = tonumber(data.baseWins) or 0,
 			baseLosses = tonumber(data.baseLosses) or 0,
-			division = tonumber(data.division) or tonumber(player:GetAttribute("Division")) or 10,
+			division = normalizeDivision(data.division or player:GetAttribute("Division")),
 			clearSeq = tonumber(data.clearSeq) or 0,
 		}
 	end
@@ -61,7 +73,7 @@ local function loadState(player)
 	return {
 		baseWins = totalWins(player),
 		baseLosses = totalLosses(player),
-		division = tonumber(player:GetAttribute("Division")) or 10,
+		division = normalizeDivision(player:GetAttribute("Division")),
 		clearSeq = 0,
 	}
 end
@@ -75,7 +87,9 @@ end
 local function publish(player, state, pathWins, pathLosses)
 	local pathGames = math.clamp(pathWins + pathLosses, 0, 7)
 
+	state.division = normalizeDivision(state.division)
 	player:SetAttribute("Division", state.division)
+	player:SetAttribute("DivisionName", state.division == ELITE_DIVISION and "ELITE DIVISION" or ("DIVISION " .. tostring(state.division)))
 	player:SetAttribute("PathWins", pathWins)
 	player:SetAttribute("PathLosses", pathLosses)
 	player:SetAttribute("PathGames", pathGames)
@@ -113,7 +127,7 @@ function RankedDivisionPathService.Recalculate(player)
 		local promoted = pathWins >= 4
 
 		if promoted then
-			state.division = math.max(1, state.division - 1)
+			state.division = state.division <= MIN_DIVISION and ELITE_DIVISION or math.max(MIN_DIVISION, state.division - 1)
 			state.clearSeq += 1
 			player:SetAttribute("VTRDivisionPathCleared", true)
 			player:SetAttribute("VTRDivisionPathPromoted", true)

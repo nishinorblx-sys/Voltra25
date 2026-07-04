@@ -15,6 +15,7 @@ local remoteList = {
 	PackAction = "RemoteFunction",
 	PendingSevenWinLoginReward = "RemoteEvent",
 	PenaltyAction = "RemoteEvent",
+	RankedMatchFound = "RemoteEvent",
 	RequestData = "RemoteFunction",
 	SetPieceAction = "RemoteEvent",
 	ShowPackRewardAnimation = "RemoteEvent",
@@ -55,6 +56,16 @@ local function getRemotes()
 	return remotes
 end
 
+local function getLegacyRemotes()
+	local remotes = ReplicatedStorage:FindFirstChild("Remotes")
+	if not remotes then
+		remotes = Instance.new("Folder")
+		remotes.Name = "Remotes"
+		remotes.Parent = ReplicatedStorage
+	end
+	return remotes
+end
+
 local function ensureRemote(parent, name, className)
 	local existing = parent:FindFirstChild(name)
 
@@ -74,9 +85,13 @@ end
 
 function VTRRemoteBootstrapService.Start()
 	local remotes = getRemotes()
+	local legacyRemotes = getLegacyRemotes()
 
 	for name, className in pairs(remoteList) do
 		ensureRemote(remotes, name, className)
+		if className == "RemoteEvent" then
+			ensureRemote(legacyRemotes, name, className)
+		end
 	end
 
 	for folderName, children in pairs(folderGroups) do

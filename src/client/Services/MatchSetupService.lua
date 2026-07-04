@@ -96,5 +96,6 @@ function Service:LeaveRankedQueue():any return request("LeaveRankedQueue")end
 function Service:GetRankedQueue():any return request("GetRankedQueue")end
 function Service:GetRankedLeaderboards():any return request("GetRankedLeaderboards")end
 function Service:ClaimRankedPathReward():any return request("ClaimRankedPathReward")end
+function Service:DebugCompleteRankedPath():any return request("DebugCompleteRankedPath")end
 function Service:ReturnToMenu():any return request("ReturnToMenu")end
 return Service

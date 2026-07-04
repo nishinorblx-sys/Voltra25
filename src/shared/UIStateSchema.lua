@@ -12,7 +12,7 @@ return table.freeze({
 		Store={Coins=true,Packs=true},
 		Settings={Controls=true,Audio=true,Camera=true,Accessibility=true,Account=true},
 	}),
-	Settings = table.freeze({ TimedFinishing="boolean",MenuMusic="boolean",MotionEffects="boolean",PerformanceMode="boolean",InvertY="boolean",HighContrast="boolean",ReducedMotion="boolean",Crossplay="boolean",ControlPreset="string",MasterVolume="number",Commentary="string",CommentaryLanguage="string",CommentaryVolume="number",Graphics="string",CameraPreset="string",CameraShake="string",CameraZoomMode="string",BroadcastHeight="string",BroadcastZoom="string",CameraSpeed="string",CameraSide="string",PlayerNames="string",Trainer="string",PassReceiverAutoSwitch="string",ReceiverAssist="string",Minimap="string",MinimapOrientation="string",TextScale="string",PauseKey="string",SkipKey="string" }),
+	Settings = table.freeze({ TimedFinishing="boolean",MenuMusic="boolean",MotionEffects="boolean",PerformanceMode="boolean",InvertY="boolean",HighContrast="boolean",ReducedMotion="boolean",Crossplay="boolean",ControlPreset="string",MasterVolume="number",Graphics="string",CameraPreset="string",CameraShake="string",CameraZoomMode="string",BroadcastHeight="string",BroadcastZoom="string",CameraSpeed="string",CameraSide="string",PlayerNames="string",Trainer="string",PassReceiverAutoSwitch="string",ReceiverAssist="string",Minimap="string",MinimapOrientation="string",TextScale="string",PauseKey="string",SkipKey="string" }),
 	SquadSlots = table.freeze({ GK=true,LB=true,CB1=true,CB2=true,RB=true,CDM=true,CM1=true,CM2=true,LW=true,ST=true,RW=true }),
 	CosmeticSlots = table.freeze({ ActiveKit=true,Walkout=true,ClubKit=true,StadiumTheme=true,ProfileFrame=true,Crest=true }),
 })

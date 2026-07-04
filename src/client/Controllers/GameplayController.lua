@@ -17,7 +17,7 @@ local GameplayController = {}
 GameplayController.__index = GameplayController
 
 function GameplayController.new()
-	return setmetatable({ Move = Vector3.zero, Stamina = Config.Stamina.Maximum, ServerSprinting = false, Prediction = nil, PredictionSpin = 0, SuspendPredictionUntil = 0, TacticalMode = false, TacticalPanelOpen = true, TacticalSide = "Home", RuntimeTactics = {Home = LiteConfig.DefaultTactics(), Away = LiteConfig.DefaultTactics()} }, GameplayController)
+	return setmetatable({ Move = Vector3.zero, Stamina = Config.Stamina.Maximum, ServerSprinting = false, Prediction = nil, PredictionSpin = 0, SuspendPredictionUntil = 0, TacticalMode = false, TacticalPanelOpen = false, TacticalSide = "Home", RuntimeTactics = {Home = LiteConfig.DefaultTactics(), Away = LiteConfig.DefaultTactics()} }, GameplayController)
 end
 
 function GameplayController:Start()
@@ -42,12 +42,7 @@ function GameplayController:Start()
 		end
 	end
 	self.InputController:Start()
-	self.TacticalInput = UserInputService.InputBegan:Connect(function(input, processed)
-		if processed then return end
-		if input.KeyCode == Enum.KeyCode.Six then
-			self:_toggleTacticalMode()
-		end
-	end)
+	self.TacticalInput = UserInputService.InputBegan:Connect(function() end)
 	self:_createHUD()
 	local homeScore = self.ScoreFolder:WaitForChild("Home", 15) :: IntValue
 	local awayScore = self.ScoreFolder:WaitForChild("Away", 15) :: IntValue
@@ -238,7 +233,7 @@ function GameplayController:_createHUD()
 	help.BackgroundTransparency = 1
 	help.Position = UDim2.fromScale(0.98, 0.97)
 	help.Size = UDim2.fromOffset(430, 26)
-	help.Text = "WASD MOVE  •  SHIFT SPRINT  •  LMB SHOOT  •  RMB PASS  •  ALT+RMB LOB  •  CTRL+RMB MANUAL  •  ALT+CTRL+RMB MANUAL LOB  •  Q SWITCH  •  E TACKLE  •  F SLIDE  •  R BLOCK  •  C DRIBBLE"
+	help.Text = "WASD MOVE  •  SHIFT SPRINT  •  LMB SHOOT  •  RMB PASS  •  ALT MANUAL LOB  •  CTRL MANUAL PASS  •  Q SWITCH  •  E TACKLE  •  F SLIDE  •  R BLOCK  •  C DRIBBLE"
 	help.TextColor3 = Color3.fromHex("D9D9D9")
 	help.TextTransparency = 0.2
 	help.TextSize = 9
@@ -246,7 +241,6 @@ function GameplayController:_createHUD()
 	help.TextXAlignment = Enum.TextXAlignment.Right
 	help.Parent = gui
 	self.Gui = gui
-	self:_createTacticalPanel(gui)
 end
 
 function GameplayController:_createTacticalPanel(gui: ScreenGui)

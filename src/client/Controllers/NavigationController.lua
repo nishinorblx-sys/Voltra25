@@ -9,6 +9,12 @@ local Theme = require(ReplicatedStorage.VTR.Shared.Theme)
 local NavigationController = {}
 NavigationController.__index = NavigationController
 
+local function cleanupPage(page: Instance?)
+	if not page then return end
+	local bindable = page:FindFirstChild("Cleanup")
+	if bindable and bindable:IsA("BindableEvent") then bindable:Fire() end
+end
+
 function NavigationController.new(breadcrumb: TextLabel)
 	local self = setmetatable({}, NavigationController)
 	self.Breadcrumb = breadcrumb
@@ -20,6 +26,11 @@ function NavigationController.new(breadcrumb: TextLabel)
 end
 
 function NavigationController:RegisterPage(id: string, page: CanvasGroup)
+	local old = self.Pages[id]
+	if old and old ~= page then
+		cleanupPage(old)
+		old:Destroy()
+	end
 	page.Visible = false
 	page.Active = false
 	self.Pages[id] = page
@@ -32,8 +43,7 @@ end
 function NavigationController:HidePage(id: string)
 	local page = self.Pages[id]
 	if not page then return end
-	local bindable = page:FindFirstChild("Cleanup")
-	if bindable and bindable:IsA("BindableEvent") then bindable:Fire() end
+	cleanupPage(page)
 	TweenService:Create(page,TweenInfo.new(0),{GroupTransparency=1}):Play()
 	page.Visible=false
 	page.Active=false
@@ -52,8 +62,13 @@ function NavigationController:EnforceCurrent()
 	local currentPage = self.Current and self.Pages[self.Current] or nil
 	local parent = currentPage and currentPage.Parent or nil
 	if parent then
+		local registeredNames:any={}
+		for pageId in self.Pages do registeredNames[pageId]=true end
 		for _, child in parent:GetChildren() do
-			if child:IsA("GuiObject") and child ~= currentPage and child.Name ~= "BackgroundEnergy" then
+			if child:IsA("CanvasGroup") and registeredNames[child.Name] and child ~= self.Pages[child.Name] then
+				cleanupPage(child)
+				child:Destroy()
+			elseif child:IsA("GuiObject") and child ~= currentPage and child.Name ~= "BackgroundEnergy" then
 				child.Visible = false
 				child.Active = false
 			end
@@ -89,7 +104,7 @@ function NavigationController:Navigate(id: string)
 		end
 	end
 	self.Current = id
-	self.Breadcrumb.Text = "VTR 25  /  " .. string.upper(id:gsub("(%l)(%u)", "%1 %2"))
+	self.Breadcrumb.Text = "VTR X  /  " .. string.upper(id:gsub("(%l)(%u)", "%1 %2"))
 
 	for itemId, item in self.Items do item:SetActive(itemId == id) end
 	-- A page is never allowed to survive beneath the destination. Outgoing-page

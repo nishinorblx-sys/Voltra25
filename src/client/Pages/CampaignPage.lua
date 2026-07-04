@@ -22,7 +22,7 @@ end
 
 function Page.new(context:any):CanvasGroup
 	local group,scroll=PageBase.new("Campaign",900)
-	PageBase.heading(scroll,"OFFLINE CAMPAIGN","CAMPAIGN","Pick an AI opponent and watch your saved Squad Builder tactics run the match broadcast.")
+	PageBase.heading(scroll,"OFFLINE CAMPAIGN","CAMPAIGN","Pick an AI opponent. Your saved Ultimate Team plays as the home side with your club badge, kit and tactics.")
 	local progress=context.Data.Progression.CampaignProgress or {UnlockedDifficulty=1,CompletedTeams={}}
 	local configResponse=MatchSetupService:GetConfig()
 	local matchConfig=configResponse.Success and configResponse.Data or nil
@@ -64,12 +64,18 @@ function Page.new(context:any):CanvasGroup
 	local function render()
 		for _,child in ladder:GetChildren()do if child:IsA("GuiObject")and child.Name=="TierButton"then child:Destroy()end end
 		for _,child in body:GetChildren()do child:Destroy()end
+		local tierStartY=58
+		local tierRowHeight=76
+		local tierButtonHeight=52
 		for index,tier in LiteConfig.CampaignDifficulties do
 			local locked=index>unlocked
-			local button=Button.new({Text=string.upper(tier.Name),Variant=index==selectedIndex and"Primary"or"Secondary",Size=UDim2.new(1,-36,0,44),OnActivated=function()if not locked then selectedIndex=index;render()end end})
-			button.Name="TierButton";button.Position=UDim2.fromOffset(18,48+(index-1)*52);button.Parent=ladder
+			local tierY=tierStartY+(index-1)*tierRowHeight
+			local button=Button.new({Text=string.upper(tier.Name),Variant=index==selectedIndex and"Primary"or"Secondary",Size=UDim2.new(1,-36,0,tierButtonHeight),OnActivated=function()if not locked then selectedIndex=index;render()end end})
+			button.Name="TierButton";button.Position=UDim2.fromOffset(18,tierY);button.Parent=ladder
 			if locked then button.Text=string.upper(tier.Name).."  LOCKED"end
-			label(ladder,tier.Range[1].."-"..tier.Range[2].." OVR  /  "..tier.Reward,UDim2.fromOffset(24,86+(index-1)*52),UDim2.new(1,-48,0,13),7,locked and Theme.Colors.Muted or Theme.Colors.Silver,Theme.Fonts.Strong).Name="TierButton"
+			local rewardMeta=label(ladder,tier.Range[1].."-"..tier.Range[2].." OVR  /  "..tier.Reward,UDim2.fromOffset(24,tierY+tierButtonHeight+6),UDim2.new(1,-48,0,14),8,locked and Theme.Colors.Muted or Theme.Colors.Silver,Theme.Fonts.Strong)
+			rewardMeta.Name="TierButton"
+			rewardMeta.TextYAlignment=Enum.TextYAlignment.Center
 		end
 		local tier=LiteConfig.CampaignDifficulties[selectedIndex]
 		local header=Panel.new({Name="CampaignTier",Position=UDim2.fromOffset(0,0),Size=UDim2.new(1,0,0,118)});header.Parent=body
@@ -96,8 +102,8 @@ function Page.new(context:any):CanvasGroup
 			end
 			label(card,(beaten and"CLEARED  "or"")..(opponent and string.upper(opponent.teamName) or("AI SQUAD "..squad)),UDim2.fromOffset(16,14),UDim2.new(1,-32,0,26),17,Theme.Colors.White,Theme.Fonts.Display)
 			label(card,"OVR "..(opponent and opponent.overall or overall).."  /  "..formation.."  /  "..string.upper(tactic),UDim2.fromOffset(16,44),UDim2.new(1,-32,0,18),8,Theme.Colors.Electric,Theme.Fonts.Strong)
-			label(card,(beaten and"REPLAY RUN  NO REWARDS\n"or"WATCH MODE  AI VS AI\n").."SAVED PLAN  "..string.upper(tostring(savedTactics.Identity or"Balanced")).."\nOPPONENT  "..(opponent and string.upper(opponent.country or"ENGLAND")or"ENGLAND"),UDim2.fromOffset(16,70),UDim2.new(1,-32,0,42),8,Theme.Colors.Silver,Theme.Fonts.Body).TextWrapped=true
-			local play=Button.new({Text=beaten and"REPLAY"or"PLAY",Variant="Primary",Size=UDim2.fromOffset(118,34),OnActivated=function()
+			label(card,(beaten and"REPLAY RUN  NO REWARDS\n"or"YOUR TEAM VS AI\n").."SAVED PLAN  "..string.upper(tostring(savedTactics.Identity or"Balanced")).."\nOPPONENT  "..(opponent and string.upper(opponent.country or"ENGLAND")or"ENGLAND"),UDim2.fromOffset(16,70),UDim2.new(1,-32,0,42),8,Theme.Colors.Silver,Theme.Fonts.Body).TextWrapped=true
+			local play=Button.new({Text=beaten and"REPLAY"or"WATCH",Variant="Primary",Size=UDim2.fromOffset(118,34),OnActivated=function()
 				if not opponent or not homeTeam then context.Toast({Title="CAMPAIGN",Message="Campaign teams unavailable.",Kind="Error"});return end
 				local setup=table.clone(matchConfig.Setup)
 				setup.HomeTeamId=homeTeam.teamId;setup.AwayTeamId=opponent.teamId;setup.HomeKit="Home";setup.AwayKit=setup.HomeTeamId==setup.AwayTeamId and"Away"or"Away";setup.MatchType=setup.HomeTeamId==setup.AwayTeamId and"Friendly"or"Objective Match";setup.Difficulty=tier.Name=="Street Level"and"Amateur"or tier.Name=="Local League"and"Semi Pro"or tier.Name=="Regional Pro"and"Professional"or tier.Name=="National Class"and"World Class"or"Legendary"

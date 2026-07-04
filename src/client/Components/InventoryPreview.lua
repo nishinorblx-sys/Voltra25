@@ -8,6 +8,8 @@ local KitPreview=require(script.Parent.KitPreview)
 local Preview={}
 local function text(parent:Instance,value:string,position:UDim2,size:UDim2,textSize:number):TextLabel local label=Instance.new("TextLabel");label.BackgroundTransparency=1;label.Position=position;label.Size=size;label.Text=value;label.TextColor3=Theme.Colors.White;label.TextSize=textSize;label.Font=Theme.Fonts.Display;label.TextXAlignment=Enum.TextXAlignment.Left;label.ZIndex=83;label.Parent=parent;return label end
 function Preview.open(parent:Instance,item:any,kind:string)
+	local existing=parent:FindFirstChild("InventoryItemPreview")
+	if existing then existing:Destroy() end
 	local overlay=Instance.new("Frame");overlay.Name="InventoryItemPreview";overlay.BackgroundColor3=Theme.Colors.Black;overlay.BackgroundTransparency=.15;overlay.BorderSizePixel=0;overlay.Size=UDim2.fromScale(1,1);overlay.ZIndex=80;overlay.Parent=parent
 	local panel=Panel.new({Name="Preview",Size=UDim2.fromOffset(650,520),ClipsDescendants=true});panel.AnchorPoint=Vector2.new(.5,.5);panel.Position=UDim2.fromScale(.5,.5);panel.ZIndex=81;panel.Parent=overlay;text(panel,string.upper(item.Name or item.Id),UDim2.fromOffset(24,18),UDim2.new(1,-150,0,34),22)
 	local close=Button.new({Text="CLOSE",Variant="Secondary",Size=UDim2.fromOffset(100,36),OnActivated=function()overlay:Destroy()end});close.Position=UDim2.new(1,-124,0,18);close.ZIndex=84;close.Parent=panel

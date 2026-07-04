@@ -42,6 +42,6 @@ function Service.Spawn(folder:Folder,pitchCFrame:CFrame,width:number,length:numb
 	end
 	local accountCharacter=player.Character;local accountRoot=accountCharacter and accountCharacter:FindFirstChild("HumanoidRootPart")::BasePart?
 	if accountCharacter and accountRoot then accountCharacter:PivotTo(pitchCFrame*CFrame.new(0,-30,0));accountRoot.Anchored=true;accountCharacter:SetAttribute("VTRParked",true)end
-	return teams,activeFormation
+	return teams,activeFormation,kits
 end
 return Service

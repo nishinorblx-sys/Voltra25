@@ -483,7 +483,7 @@ local function formationEntries(data: any, side: string): {any}
 			local fallback = {"GK", "LB", "CB", "CB", "RB", "CDM", "CM", "CAM", "LM", "RM", "ST"}
 			position = fallback[index] or "CM"
 		end
-		table.insert(result, {Model = matched, Player = player, Position = position, OriginalIndex = index})
+		table.insert(result, {Model = matched, Player = player, Position = position, OriginalIndex = index, Side = side})
 	end
 	table.sort(result, function(a, b)
 		local groupA = formationGroupOrder(a.Position)
@@ -922,12 +922,9 @@ local function brightenCloneForPreview(clone: Model)
 	end
 end
 
-local function addPreviewKitGeometry(clone: Model)
+local function addPreviewKitGeometry(clone: Model, kit: any?)
 	local torso = clone:FindFirstChild("Torso")
 	if not torso or not torso:IsA("BasePart") then return end
-	local pattern = torso:FindFirstChild("VTRKitPattern")
-	local root = pattern and pattern:FindFirstChildWhichIsA("Frame")
-	if not root then return end
 	local function frontPatch(name: string, pos: UDim2, size: UDim2, colorValue: Color3, rotation: number?)
 		local patch = Instance.new("Part")
 		patch.Name = "PreviewKit_" .. name
@@ -944,6 +941,51 @@ local function addPreviewKitGeometry(clone: Model)
 		patch.CFrame = torso.CFrame * CFrame.new(x, y, -torso.Size.Z * 0.5 - 0.018) * CFrame.Angles(0, 0, math.rad(rotation or 0))
 		patch.Parent = clone
 	end
+	for _, child in clone:GetChildren() do
+		if child:IsA("BasePart") and string.sub(child.Name, 1, 11) == "PreviewKit_" then child:Destroy() end
+	end
+	if type(kit) == "table" then
+		local primary = color(kit.Primary or kit.primaryColor or kit.PrimaryColor, Color3.fromHex("B7FF1A"))
+		local secondary = color(kit.Secondary or kit.secondaryColor or kit.SecondaryColor, Color3.fromHex("111111"))
+		local accent = color(kit.Accent or kit.accentColor or kit.AccentColor, Color3.fromHex("D9D9D9"))
+		local style = tostring(kit.Style or kit.KitStyle or kit.kitStyle or "Solid")
+		torso.Color = primary
+		for _, name in {"Left Arm", "Right Arm"} do local part = clone:FindFirstChild(name); if part and part:IsA("BasePart") then part.Color = primary end end
+		for _, name in {"Left Leg", "Right Leg"} do local part = clone:FindFirstChild(name); if part and part:IsA("BasePart") then part.Color = secondary end end
+		if style == "Vertical Stripes" then
+			for index = 1, 5 do if index % 2 == 0 then frontPatch("Stripe", UDim2.fromScale((index - .5) / 5, .5), UDim2.fromScale(.2, 1.1), secondary, 0) end end
+		elseif style == "Horizontal Stripes" or style == "Hoops" then
+			for index = 1, 5 do frontPatch("Hoop", UDim2.fromScale(.5, index / 6), UDim2.fromScale(1.1, .09), secondary, 0) end
+		elseif style == "Diagonal Sash" then
+			frontPatch("Sash", UDim2.fromScale(.5, .5), UDim2.fromScale(.18, 1.55), secondary, -34)
+			frontPatch("SashAccent", UDim2.fromScale(.54, .5), UDim2.fromScale(.035, 1.45), accent, -34)
+		elseif style == "Split" then
+			frontPatch("Split", UDim2.fromScale(.75, .5), UDim2.fromScale(.5, 1), secondary, 0)
+		elseif style == "Lightning Trim" then
+			frontPatch("Bolt1", UDim2.fromScale(.4, .3), UDim2.fromScale(.08, .55), accent, 25)
+			frontPatch("Bolt2", UDim2.fromScale(.52, .62), UDim2.fromScale(.08, .55), accent, -28)
+		elseif style == "Volt Pattern" then
+			for index = 1, 3 do frontPatch("Volt", UDim2.fromScale(.25 * index, .5), UDim2.fromScale(.05, 1.4), index == 2 and accent or secondary, index % 2 == 0 and -22 or 22) end
+		elseif style == "Checker Accent" then
+			for y = 1, 5 do for x = 1, 4 do if (x + y) % 2 == 0 then frontPatch("Check", UDim2.fromScale((x - .5) / 4, (y - .5) / 5), UDim2.fromScale(.25, .2), secondary, 0) end end end
+		elseif style == "Chevron" then
+			frontPatch("ChevronLeft", UDim2.fromScale(.39, .5), UDim2.fromScale(.075, 1), secondary, -43)
+			frontPatch("ChevronRight", UDim2.fromScale(.61, .5), UDim2.fromScale(.075, 1), secondary, 43)
+			frontPatch("ChevronAccentLeft", UDim2.fromScale(.39, .55), UDim2.fromScale(.024, .86), accent, -43)
+			frontPatch("ChevronAccentRight", UDim2.fromScale(.61, .55), UDim2.fromScale(.024, .86), accent, 43)
+		elseif style == "Racing Stripe" then
+			frontPatch("CenterStripe", UDim2.fromScale(.5, .5), UDim2.fromScale(.16, 1.08), secondary, 0)
+			frontPatch("LeftPin", UDim2.fromScale(.39, .5), UDim2.fromScale(.025, 1.08), accent, 0)
+			frontPatch("RightPin", UDim2.fromScale(.61, .5), UDim2.fromScale(.025, 1.08), accent, 0)
+		elseif style == "Volt Halves" then
+			frontPatch("HalfPanel", UDim2.fromScale(.25, .5), UDim2.fromScale(.5, 1.08), secondary, 0)
+			frontPatch("HalfSlash", UDim2.fromScale(.5, .5), UDim2.fromScale(.032, .96), accent, -18)
+		end
+		return
+	end
+	local pattern = torso:FindFirstChild("VTRKitPattern")
+	local root = pattern and pattern:FindFirstChildWhichIsA("Frame")
+	if not root then return end
 	for _, child in root:GetChildren() do
 		if child:IsA("Frame") then
 			frontPatch(child.Name, child.Position, child.Size, child.BackgroundColor3, child.Rotation)
@@ -951,7 +993,7 @@ local function addPreviewKitGeometry(clone: Model)
 	end
 end
 
-local function showPlayerPreview(viewport: ViewportFrame, model: Model?)
+local function showPlayerPreview(viewport: ViewportFrame, model: Model?, kit: any?)
 	viewport:ClearAllChildren()
 	local world = Instance.new("WorldModel")
 	world.Parent = viewport
@@ -979,7 +1021,7 @@ local function showPlayerPreview(viewport: ViewportFrame, model: Model?)
 		setPreviewPartPhysics(desc)
 	end
 	brightenCloneForPreview(clone)
-	addPreviewKitGeometry(clone)
+	addPreviewKitGeometry(clone, kit)
 	clone.Parent = world
 	clone:PivotTo(CFrame.new(0, 0, 0))
 	local center, size = clone:GetBoundingBox()
@@ -991,7 +1033,7 @@ local function lineupData(data: any, side: string): {any}
 	return side == "Home" and (data.HomeLineup or {}) or (data.AwayLineup or {})
 end
 
-local function showPlayerGroupPreview(container: Frame, models: {Model}, players: {any}, firstIndex: number, lastIndex: number)
+local function showPlayerGroupPreview(container: Frame, models: {Model}, players: {any}, kits: {any}, firstIndex: number, lastIndex: number)
 	local function render()
 		container:ClearAllChildren()
 		local count = math.max(lastIndex - firstIndex + 1, 1)
@@ -1002,6 +1044,7 @@ local function showPlayerGroupPreview(container: Frame, models: {Model}, players
 			local playerIndex = firstIndex + order - 1
 			local model = models[playerIndex]
 			local playerData = players[playerIndex]
+			local kit = kits[playerIndex]
 			local slot = Instance.new("CanvasGroup")
 			slot.BackgroundTransparency = 1
 			local targetPosition = UDim2.fromScale(startX + (slotWidth + gap) * (order - 1), 0)
@@ -1013,32 +1056,37 @@ local function showPlayerGroupPreview(container: Frame, models: {Model}, players
 
 			local shirtNumber = model and tostring(model:GetAttribute("ShirtNumber") or playerIndex) or tostring(playerIndex)
 			local watermark = label(slot, shirtNumber, UDim2.fromScale(0, -0.04), UDim2.fromScale(1, 0.55), count == 1 and 150 or 112, Theme.Colors.White, Theme.Fonts.Display)
+			watermark.Name = "LineupKitWatermark"
+			watermark:SetAttribute("VTRKeepLineupNumberStack", true)
 			watermark.TextTransparency = 0.72
 			watermark.TextXAlignment = Enum.TextXAlignment.Center
 			watermark.ZIndex = 207
 
-			if playerData and playerData.appearance then
-				local portrait = PlayerPortraitService.new(slot, playerData, UDim2.fromScale(1, 0.70), false)
-				portrait.Position = UDim2.fromScale(0, 0.07)
-				portrait.BackgroundTransparency = 1
-				portrait.ZIndex = 209
-			else
+			if model then
 				local viewport = Instance.new("ViewportFrame")
 				viewport.BackgroundTransparency = 1
-				viewport.Position = UDim2.fromScale(0, 0.08)
-				viewport.Size = UDim2.fromScale(1, 0.66)
+				viewport.Position = UDim2.fromScale(0, 0.04)
+				viewport.Size = UDim2.fromScale(1, 0.72)
 				viewport.Ambient = Color3.fromHex("D4E4BE")
 				viewport.LightColor = Color3.fromHex("F3F7EE")
 				viewport.LightDirection = Vector3.new(-0.7, -1, -0.8)
 				viewport.ZIndex = 209
 				viewport.Parent = slot
-				showPlayerPreview(viewport, model)
+				showPlayerPreview(viewport, model, kit)
+			elseif playerData and playerData.appearance then
+				local portrait = PlayerPortraitService.new(slot, playerData, UDim2.fromScale(1, 0.70), false)
+				portrait.Position = UDim2.fromScale(0, 0.07)
+				portrait.BackgroundTransparency = 1
+				portrait.ZIndex = 209
 			end
 
-			local numberLabel = label(slot, shirtNumber, UDim2.fromScale(0, 0.73), UDim2.fromScale(1, 0.08), count == 1 and 30 or 23, Theme.Colors.Electric, Theme.Fonts.Display)
-			numberLabel.TextXAlignment = Enum.TextXAlignment.Center
-			local nameLabel = label(slot, string.upper(playerName(model)), UDim2.fromScale(0.02, 0.82), UDim2.fromScale(0.96, 0.12), count == 1 and 22 or 15, Theme.Colors.White, Theme.Fonts.Strong)
+			local displayName = model and playerName(model) or (playerData and tostring(playerData.displayName or playerData.shortName or playerData.name or playerData.Name or "PLAYER")) or "PLAYER"
+			local nameLabel = label(slot, string.upper(displayName), UDim2.fromScale(0.02, 0.78), UDim2.fromScale(0.96, 0.10), count == 1 and 22 or 15, Theme.Colors.White, Theme.Fonts.Strong)
 			nameLabel.TextXAlignment = Enum.TextXAlignment.Center
+			local numberLabel = label(slot, shirtNumber, UDim2.fromScale(0, 0.885), UDim2.fromScale(1, 0.065), count == 1 and 24 or 17, Theme.Colors.Electric, Theme.Fonts.Display)
+			numberLabel.Name = "LineupKitNumber"
+			numberLabel:SetAttribute("VTRKeepLineupNumberStack", true)
+			numberLabel.TextXAlignment = Enum.TextXAlignment.Center
 			task.delay((order - 1) * 0.08, function()
 				if not slot.Parent then return end
 				if order == 1 then
@@ -1070,14 +1118,16 @@ local function showPlayerGroupPreview(container: Frame, models: {Model}, players
 	end)
 end
 
-local function showEntryGroupPreview(container: Frame, entries: {any})
+local function showEntryGroupPreview(container: Frame, data: any, entries: {any})
 	local models = {}
 	local players = {}
+	local kits = {}
 	for _, entry in entries do
 		table.insert(models, entry.Model)
 		table.insert(players, entry.Player)
+		table.insert(kits, entry.Side == "Away" and data.AwayKitData or data.HomeKitData)
 	end
-	showPlayerGroupPreview(container, models, players, 1, math.max(1, #entries))
+	showPlayerGroupPreview(container, models, players, kits, 1, math.max(1, #entries))
 end
 
 function Presentation.Duration(): number
@@ -1086,7 +1136,9 @@ end
 
 function Presentation.Play(data: any, onComplete: (() -> ())?)
 	local playerGui = Players.LocalPlayer:WaitForChild("PlayerGui")
+	local presentationKey = tostring((data and (data.MatchSessionId or data.WorldName)) or "")
 	local old = playerGui:FindFirstChild("VTRPrematchBroadcast")
+	if old and old:GetAttribute("VTRMatchSessionId") == presentationKey then return end
 	if old then old:Destroy() end
 	for _, overlayName in ipairs({"VTRMatchTeleport","VTRMatchLoadSyncCover","VTRRankedTeleportFound","VTRRankedTeleportMatchFound","VTRMatchupConfirmed","VTRMatchupConfirm","VTRRankedReservedBoot"}) do
 		local overlay = playerGui:FindFirstChild(overlayName)
@@ -1099,6 +1151,7 @@ function Presentation.Play(data: any, onComplete: (() -> ())?)
 
 	local gui = Instance.new("ScreenGui")
 	gui.Name = "VTRPrematchBroadcast"
+	gui:SetAttribute("VTRMatchSessionId", presentationKey)
 	gui.IgnoreGuiInset = true
 	gui.ResetOnSpawn = false
 	gui.DisplayOrder = 92
@@ -1110,6 +1163,30 @@ function Presentation.Play(data: any, onComplete: (() -> ())?)
 	root.Size = UDim2.fromScale(1, 1)
 	root.ZIndex = 200
 	root.Parent = gui
+	if not UserInputService.TouchEnabled then
+		local skipHint = Instance.new("TextLabel")
+		skipHint.Name = "KeyboardSkipIntroHint"
+		skipHint.AnchorPoint = Vector2.new(1, 0)
+		skipHint.Position = UDim2.new(1, -18, 0, 18)
+		skipHint.Size = UDim2.fromOffset(190, 42)
+		skipHint.BackgroundColor3 = Theme.Colors.Black
+		skipHint.BackgroundTransparency = .12
+		skipHint.BorderSizePixel = 0
+		skipHint.Text = "SPACE TO SKIP"
+		skipHint.TextColor3 = Theme.Colors.White
+		skipHint.TextSize = 14
+		skipHint.Font = Theme.Fonts.Display
+		skipHint.ZIndex = 260
+		skipHint.Parent = root
+		local corner = Instance.new("UICorner")
+		corner.CornerRadius = UDim.new(0, 14)
+		corner.Parent = skipHint
+		local stroke = Instance.new("UIStroke")
+		stroke.Color = Theme.Colors.Electric
+		stroke.Transparency = .22
+		stroke.Thickness = 1.5
+		stroke.Parent = skipHint
+	end
 	if UserInputService.TouchEnabled then
 		local actionRemote: RemoteEvent? = nil
 		task.spawn(function()
@@ -1270,7 +1347,7 @@ function Presentation.Play(data: any, onComplete: (() -> ())?)
 	groupPreview.Size = UDim2.fromScale(0.88, 0.82)
 	groupPreview.ZIndex = 207
 	groupPreview.Parent = playerCard
-	showEntryGroupPreview(groupPreview, entriesForGroup(data, "Home", "GK"))
+	showEntryGroupPreview(groupPreview, data, entriesForGroup(data, "Home", "GK"))
 
 	local sheet = panel(root, "TeamSheet", UDim2.fromScale(0.09, 0.14), UDim2.fromScale(0.82, 0.68))
 	sheet.BackgroundColor3 = Color3.fromHex("090B07")
@@ -1346,7 +1423,7 @@ function Presentation.Play(data: any, onComplete: (() -> ())?)
 			end
 			setLineHighlight(dots, group[6], group[4], group[5])
 			introTitle.Text = group[2]
-			showEntryGroupPreview(groupPreview, entriesForGroup(data, side, group[6]))
+			showEntryGroupPreview(groupPreview, data, entriesForGroup(data, side, group[6]))
 		end)
 	end
 	task.delay(31.0, function()

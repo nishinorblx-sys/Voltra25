@@ -87,25 +87,21 @@ local function addTorsoPattern(torso, style, primary, secondary, accent)
 			frame(torso, "Hoop", UDim2.fromScale(0.5, index / 6), UDim2.fromScale(1.1, 0.1), secondary, 3)
 		end
 	elseif style == "Diagonal Sash" then
-		addRotatedBand(torso, secondary, UDim2.fromScale(0.5, 0.5), UDim2.fromScale(0.18, 1.55), -35, 3)
-		addRotatedBand(torso, accent, UDim2.fromScale(0.5, 0.5), UDim2.fromScale(0.035, 1.55), -35, 4)
+		addRotatedBand(torso, secondary, UDim2.fromScale(0.43, 0.53), UDim2.fromScale(0.13, 0.98), -32, 3)
+		addRotatedBand(torso, accent, UDim2.fromScale(0.46, 0.53), UDim2.fromScale(0.025, 0.98), -32, 4)
+		addRotatedBand(torso, secondary, UDim2.fromScale(0.60, 0.55), UDim2.fromScale(0.022, 0.9), -32, 4)
 	elseif style == "Split" then
 		frame(torso, "SplitHalf", UDim2.fromScale(0.75, 0.5), UDim2.fromScale(0.5, 1.05), secondary, 3)
-	elseif style == "Gradient" then
-		local overlay = frame(torso, "Gradient", UDim2.fromScale(0.5, 0.5), UDim2.fromScale(1.05, 1.05), Color3.new(1, 1, 1), 3)
-		local gradient = Instance.new("UIGradient")
-		gradient.Rotation = 90
-		gradient.Color = ColorSequence.new(primary, secondary)
-		gradient.Parent = overlay
 	elseif style == "Lightning Trim" then
 		-- A connected bolt silhouette, kept narrow and controlled inside the chest.
 		addRotatedBand(torso, accent, UDim2.fromScale(0.34, 0.24), UDim2.fromScale(0.055, 0.5), 28, 4)
 		addRotatedBand(torso, accent, UDim2.fromScale(0.48, 0.48), UDim2.fromScale(0.055, 0.42), -38, 4)
 		addRotatedBand(torso, accent, UDim2.fromScale(0.39, 0.72), UDim2.fromScale(0.055, 0.44), 30, 4)
 	elseif style == "Volt Pattern" then
-		for index = 0, 2 do
-			addRotatedBand(torso, index == 1 and accent or secondary, UDim2.fromScale(0.28 + index * 0.22, 0.5), UDim2.fromScale(0.055, 1.35), index % 2 == 0 and 24 or -24, 3)
+		for index = 0, 3 do
+			addRotatedBand(torso, index % 2 == 0 and secondary or accent, UDim2.fromScale(0.2 + index * 0.2, 0.5), UDim2.fromScale(0.032, 0.95), index % 2 == 0 and 21 or -21, 3)
 		end
+		frame(torso, "VoltCore", UDim2.fromScale(0.5, 0.54), UDim2.fromScale(0.74, 0.055), accent, 4)
 	elseif style == "Checker Accent" then
 		local rows, columns = 6, 5
 		for row = 1, rows do
@@ -115,6 +111,19 @@ local function addTorsoPattern(torso, style, primary, secondary, accent)
 				end
 			end
 		end
+	elseif style == "Chevron" then
+		addRotatedBand(torso, secondary, UDim2.fromScale(0.39, 0.5), UDim2.fromScale(0.075, 1.0), -43, 3)
+		addRotatedBand(torso, secondary, UDim2.fromScale(0.61, 0.5), UDim2.fromScale(0.075, 1.0), 43, 3)
+		addRotatedBand(torso, accent, UDim2.fromScale(0.39, 0.55), UDim2.fromScale(0.024, 0.86), -43, 4)
+		addRotatedBand(torso, accent, UDim2.fromScale(0.61, 0.55), UDim2.fromScale(0.024, 0.86), 43, 4)
+	elseif style == "Racing Stripe" then
+		frame(torso, "CenterStripe", UDim2.fromScale(0.5, 0.5), UDim2.fromScale(0.16, 1.08), secondary, 3)
+		frame(torso, "LeftPin", UDim2.fromScale(0.39, 0.5), UDim2.fromScale(0.025, 1.08), accent, 4)
+		frame(torso, "RightPin", UDim2.fromScale(0.61, 0.5), UDim2.fromScale(0.025, 1.08), accent, 4)
+	elseif style == "Volt Halves" then
+		frame(torso, "HalfPanel", UDim2.fromScale(0.25, 0.5), UDim2.fromScale(0.5, 1.08), secondary, 3)
+		addRotatedBand(torso, accent, UDim2.fromScale(0.5, 0.5), UDim2.fromScale(0.032, 0.96), -18, 4)
+		addRotatedBand(torso, accent, UDim2.fromScale(0.58, 0.45), UDim2.fromScale(0.035, 0.52), 35, 4)
 	end
 end
 
@@ -125,9 +134,9 @@ local function addSleeve(parent, name, position, rotation, primary, secondary, a
 	rounded(sleeve, 5)
 
 	-- Sleeve trim is separate from chest artwork and follows the sleeve container.
-	if style == "Lightning Trim" or style == "Volt Pattern" then
+	if style == "Lightning Trim" or style == "Volt Pattern" or style == "Volt Halves" then
 		frame(sleeve, "SleeveTrim", UDim2.fromScale(0.5, 0.82), UDim2.fromScale(1.1, 0.16), accent, 3)
-	elseif style == "Vertical Stripes" or style == "Hoops" or style == "Horizontal Stripes" then
+	elseif style == "Vertical Stripes" or style == "Hoops" or style == "Horizontal Stripes" or style == "Racing Stripe" or style == "Chevron" then
 		frame(sleeve, "SleeveTrim", UDim2.fromScale(0.5, 0.82), UDim2.fromScale(1.1, 0.13), secondary, 3)
 	end
 	return sleeve

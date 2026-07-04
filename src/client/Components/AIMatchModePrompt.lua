@@ -39,7 +39,7 @@ local function label(parent: Instance, text: string, position: UDim2, size: UDim
 	return item
 end
 
-local function button(parent: Instance, name: string, title: string, subtitle: string, position: UDim2, color: Color3, icon: string): TextButton
+local function button(parent: Instance, name: string, title: string, subtitle: string, position: UDim2, color: Color3, iconAsset: string): TextButton
 	local item = Instance.new("TextButton")
 	item.Name = name
 	item.Position = position
@@ -72,25 +72,33 @@ local function button(parent: Instance, name: string, title: string, subtitle: s
 	stripe.ZIndex = 305
 	stripe.Parent = item
 	corner(stripe, 10)
-	local badge = Instance.new("TextLabel")
+	local badge = Instance.new("Frame")
 	badge.Name = "ModeIcon"
 	badge.AnchorPoint = Vector2.new(.5, .5)
-	badge.Position = UDim2.fromScale(.5, .29)
-	badge.Size = UDim2.fromOffset(62, 62)
+	badge.Position = UDim2.fromScale(.5, .31)
+	badge.Size = UDim2.fromOffset(74, 74)
 	badge.BackgroundColor3 = color
 	badge.BackgroundTransparency = .1
 	badge.BorderSizePixel = 0
-	badge.Text = icon
-	badge.TextColor3 = Color3.fromHex("061006")
-	badge.TextSize = 24
-	badge.Font = Theme.Fonts.Display
 	badge.ZIndex = 306
 	badge.Parent = item
-	corner(badge, 31)
+	corner(badge, 37)
 	stroke(badge, Color3.fromHex("FFFFFF"), .6, 1)
-	label(item, title, UDim2.fromScale(.06, .51), UDim2.fromScale(.88, .2), 22, Theme.Colors.White)
-	local sub = label(item, subtitle, UDim2.fromScale(.08, .71), UDim2.fromScale(.84, .18), 10, Color3.fromHex("C9D0C3"))
+	local icon = Instance.new("ImageLabel")
+	icon.Name = "IconImage"
+	icon.AnchorPoint = Vector2.new(.5, .5)
+	icon.BackgroundTransparency = 1
+	icon.Image = iconAsset
+	icon.Position = UDim2.fromScale(.5, .5)
+	icon.ScaleType = Enum.ScaleType.Fit
+	icon.Size = UDim2.fromScale(.72, .72)
+	icon.ZIndex = 307
+	icon.Parent = badge
+	local titleLabel = label(item, title, UDim2.fromScale(.06, .50), UDim2.fromScale(.88, .18), 24, Theme.Colors.White)
+	titleLabel.ZIndex = 308
+	local sub = label(item, subtitle, UDim2.fromScale(.08, .70), UDim2.fromScale(.84, .16), 10, Color3.fromHex("C9D0C3"))
 	sub.Font = Theme.Fonts.Strong
+	sub.ZIndex = 308
 	local selected = Instance.new("TextLabel")
 	selected.Name = "SelectedPip"
 	selected.AnchorPoint = Vector2.new(.5, 1)
@@ -182,11 +190,11 @@ function Prompt.Choose(): string?
 	topBar.Parent = panel
 	corner(topBar, 4)
 	label(panel, "VOLTRA MATCHDAY", UDim2.fromScale(.12, .1), UDim2.fromScale(.76, .07), 12, Theme.Colors.Electric)
-	label(panel, "CHOOSE YOUR ROLE", UDim2.fromScale(.08, .17), UDim2.fromScale(.84, .14), 34, Theme.Colors.White)
+	label(panel, "PLAY OR MANAGE", UDim2.fromScale(.08, .17), UDim2.fromScale(.84, .14), 34, Theme.Colors.White)
 	local hint = label(panel, "A / X SELECT     B / CIRCLE BACK", UDim2.fromScale(.08, .31), UDim2.fromScale(.84, .06), 11, Color3.fromHex("A9FF0A"))
 	hint.Font = Theme.Fonts.Strong
-	local manual = button(panel, "ManualPlay", "PLAY ON PITCH", "Control the squad yourself", UDim2.fromScale(.06, .43), Theme.Colors.Electric, "XI")
-	local manage = button(panel, "ManageMatch", "MANAGE MATCH", "Coach tactics while AI plays", UDim2.fromScale(.52, .43), Color3.fromHex("DDE6D8"), "AI")
+	local manual = button(panel, "ManualPlay", "PLAY", "Control the squad yourself", UDim2.fromScale(.06, .43), Theme.Colors.Electric, "rbxassetid://136932491275794")
+	local manage = button(panel, "ManageMatch", "MANAGE", "Coach tactics while AI plays", UDim2.fromScale(.52, .43), Color3.fromHex("DDE6D8"), "rbxassetid://94181255091137")
 	local cancel = Instance.new("TextButton")
 	cancel.Name = "Cancel"
 	cancel.AnchorPoint = Vector2.new(.5, 1)

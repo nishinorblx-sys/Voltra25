@@ -8,6 +8,17 @@ local skinColors={Brown="8D5524",DeepBrown="6B3E24",Ebony="3B2417",Fair="E7C4A5"
 local hairColors={Black="17130F",Blonde="D5B06A",Brown="4A3020",DarkBrown="2B1A12",LightBrown="765039",Red="8F2F2F"}
 local accessoryColors={Black="111111",ClubPrimary="B7FF1A",ClubSecondary="050505",DarkGray="343834",NeonGreen="9FFF00",None="111111",White="F5F7F2"}
 local hairMap={Afro="Afro",BowlFade="Short",Braids="Curly",BuzzCut="BuzzCut",CaesarCut="Short",Cornrows="Curly",CrewCut="Short",CurlyMedium="Curly",CurlyShort="Curly",Fade="Fade",FlatTop="LongTop",HighFade="Fade",Locs="LongTop",LongStraight="LongTop",LongTopFade="LongTop",LowFade="Fade",MediumSweep="SidePart",MiniAfro="Afro",MohawkFade="Spiky",Ponytail="LongTop",Shaved="BuzzCut",ShortLocs="Curly",ShortMessy="Messy",SidePart="SidePart",SlickBack="SidePart",Spiky="Spiky",TempleFade="Fade",TexturedTop="Messy",Undercut="LongTop",WavyShort="Messy"}
+local function portraitId(playerData:any):string return tostring(playerData.playerId or playerData.PlayerId or playerData.Id or playerData.cardInstanceId or playerData.Name or playerData.displayName or "vtr_player") end
+local function cacheKey(playerData:any):string
+	local appearance=playerData.appearance or {}
+	return portraitId(playerData).."|"..tostring(playerData.portraitSeed or playerData.PortraitSeed or 0).."|"..tostring(appearance.skinTone or "").."|"..tostring(appearance.hairStyle or "").."|"..tostring(appearance.hairColor or "").."|"..tostring(appearance.faceShape or "")
+end
+local function cameraFor(size:UDim2?,special:boolean):(number,Vector3,Vector3)
+	local height=size and math.abs(size.Y.Offset) or 0
+	if height>0 and height<=54 then return special and 18 or 19,Vector3.new(0,1.2,special and -7.2 or -7.45),Vector3.new(0,1.22,0)end
+	if height>0 and height<=100 then return special and 20 or 21,Vector3.new(0,.98,special and -8.3 or -8.65),Vector3.new(0,1.02,0)end
+	return special and 22 or 23,Vector3.new(0,.78,special and -9.4 or -9.7),Vector3.new(0,.86,0)
+end
 
 local function bodyPart(model: Model, name: string, size: Vector3, position: Vector3, color: Color3, transparency: number?): Part
 	local item = Instance.new("Part")
@@ -112,7 +123,7 @@ local function createHair(model: Model, style: string, color: Color3)
 end
 
 local function buildR6Model(playerData: any): Model
-	local playerId = playerData.playerId or playerData.PlayerId or "vtr_player"
+	local playerId = portraitId(playerData)
 	local source=playerData.appearance;assert(type(source)=="table","CSV appearance missing for "..playerId);local appearance=table.clone(source);appearance.hairStyle=hairMap[appearance.hairStyle]or"BuzzCut"
 	local skin = Color3.fromHex(assert(skinColors[source.skinTone],"Invalid CSV skin tone"))
 	local hair = Color3.fromHex(assert(hairColors[source.hairColor],"Invalid CSV hair color"))
@@ -172,9 +183,10 @@ local function buildR6Model(playerData: any): Model
 end
 
 function AvatarPortraitGenerator.new(parent: Instance, playerData: any, size: UDim2?, circular: boolean?): ViewportFrame
-	local playerId = playerData.playerId or playerData.PlayerId or "vtr_player"
+	local playerId = portraitId(playerData)
+	local key = cacheKey(playerData)
 	assert(type(playerData.portraitSeed)=="number"or type(playerData.PortraitSeed)=="number","CSV portraitSeed missing for "..playerId)
-	if not modelCache[playerId] then modelCache[playerId] = buildR6Model(playerData);table.insert(cacheOrder,playerId);if#cacheOrder>MAX_CACHED_MODELS then local expired=table.remove(cacheOrder,1);if modelCache[expired]then modelCache[expired]:Destroy();modelCache[expired]=nil end end end
+	if not modelCache[key] then modelCache[key] = buildR6Model(playerData);table.insert(cacheOrder,key);if#cacheOrder>MAX_CACHED_MODELS then local expired=table.remove(cacheOrder,1);if modelCache[expired]then modelCache[expired]:Destroy();modelCache[expired]=nil end end end
 	local special=playerData.appearance and playerData.appearance.specialPortrait==true
 	local viewport = Instance.new("ViewportFrame")
 	viewport.Name = "R6PlayerPortrait"
@@ -195,10 +207,11 @@ function AvatarPortraitGenerator.new(parent: Instance, playerData: any, size: UD
 	stroke.Parent = viewport
 	local world = Instance.new("WorldModel")
 	world.Parent = viewport
-	modelCache[playerId]:Clone().Parent = world
+	modelCache[key]:Clone().Parent = world
 	local camera = Instance.new("Camera")
-	camera.FieldOfView = special and 23 or 24
-	camera.CFrame = CFrame.lookAt(Vector3.new(0, 0.55, special and -9.7 or -10.2), Vector3.new(0, 0.55, 0))
+	local fov,position,target=cameraFor(size,special)
+	camera.FieldOfView = fov
+	camera.CFrame = CFrame.lookAt(position,target)
 	camera.Parent = viewport
 	viewport.CurrentCamera = camera
 	return viewport

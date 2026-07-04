@@ -273,6 +273,51 @@ function Controller:_makeOverlay()
 	return gui
 end
 
+function Controller:_addSkipButton(gui: ScreenGui, requestSkip: () -> ()): RBXScriptConnection
+	local button = Instance.new("TextButton")
+	button.Name = "SkipReplayButton"
+	button.AnchorPoint = Vector2.new(1, 1)
+	button.BackgroundColor3 = Color3.fromRGB(13, 18, 16)
+	button.BackgroundTransparency = 0.04
+	button.BorderSizePixel = 0
+	button.Position = UDim2.new(1, -28, 1, -28)
+	button.Size = UDim2.fromOffset(176, 44)
+	button.AutoButtonColor = true
+	button.Font = Theme.Fonts.Display
+	button.Text = "SKIP REPLAY"
+	button.TextColor3 = Theme.Colors.White
+	button.TextSize = 14
+	button.TextStrokeTransparency = 1
+	button.ZIndex = 120
+	button.Parent = gui
+
+	local corner = Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(0, 8)
+	corner.Parent = button
+
+	local stroke = Instance.new("UIStroke")
+	stroke.Color = Theme.Colors.Electric
+	stroke.Thickness = 2
+	stroke.Transparency = 0.15
+	stroke.Parent = button
+
+	local hint = Instance.new("TextLabel")
+	hint.AnchorPoint = Vector2.new(1, 1)
+	hint.BackgroundTransparency = 1
+	hint.Position = UDim2.new(1, -30, 1, -78)
+	hint.Size = UDim2.fromOffset(250, 24)
+	hint.Font = Theme.Fonts.Strong
+	hint.Text = "A / TAP"
+	hint.TextColor3 = Theme.Colors.Electric
+	hint.TextSize = 13
+	hint.TextXAlignment = Enum.TextXAlignment.Right
+	hint.TextStrokeTransparency = 1
+	hint.ZIndex = 120
+	hint.Parent = gui
+
+	return button.Activated:Connect(requestSkip)
+end
+
 function Controller:_playSkipTransition(done: () -> ())
 	local gui = Instance.new("ScreenGui")
 	gui.Name = "VTRReplaySkipTransition"
@@ -357,11 +402,18 @@ function Controller:PlayGoalReplay(onFinished: (() -> ())?)
 		local skipped = false
 		local endedConnection: RBXScriptConnection?
 		local skipConnection: RBXScriptConnection?
+		local skipButtonConnection: RBXScriptConnection?
+		local function requestSkip()
+			if finished or skipped or not replay.Playing then return end
+			skipped = true
+			replay:StopReplay()
+		end
 		local function finish()
 			if finished then return end
 			finished = true
 			if endedConnection then endedConnection:Disconnect() end
 			if skipConnection then skipConnection:Disconnect() end
+			if skipButtonConnection then skipButtonConnection:Disconnect() end
 			replay:HideReplay()
 			if self.Overlay then
 				self.Overlay:Destroy()
@@ -379,11 +431,14 @@ function Controller:PlayGoalReplay(onFinished: (() -> ())?)
 			end
 		end
 		endedConnection = replay.ReplayEnded:Connect(finish)
+		skipButtonConnection = self:_addSkipButton(gui, requestSkip)
 		skipConnection = UserInputService.InputBegan:Connect(function(input, processed)
-			if processed then return end
-			if input.KeyCode == Enum.KeyCode.Space and replay.Playing then
-				skipped = true
-				replay:StopReplay()
+			local tap = input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch
+			local controllerSkip = input.KeyCode == Enum.KeyCode.ButtonA
+			local keyboardSkip = input.KeyCode == Enum.KeyCode.Space
+			if processed and not (tap or controllerSkip) then return end
+			if tap or controllerSkip or keyboardSkip then
+				requestSkip()
 			end
 		end)
 		if hasShotCinematic then

@@ -181,7 +181,7 @@ function UIController:Start()
 	markGlow.Transparency = 0.8
 	markGlow.Parent = mark
 	TweenService:Create(markGlow, TweenInfo.new(1.35, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true), { Transparency = 0.2, Thickness = 4 }):Play()
-	local logoTitle = label("VTR 25", 21, Theme.Colors.White, Theme.Fonts.Display)
+	local logoTitle = label("VTR X", 21, Theme.Colors.White, Theme.Fonts.Display)
 	logoTitle.Position = UDim2.fromOffset(54, 0)
 	logoTitle.Size = UDim2.new(1, -54, 0, 29)
 	logoTitle.Parent = logo
@@ -224,7 +224,7 @@ function UIController:Start()
 	topbar.Size = UDim2.new(1, -Theme.Layout.SidebarWidth, 0, Theme.Layout.TopbarHeight)
 	topbar.Parent = root
 	self.Topbar = topbar
-	local breadcrumb = label("VTR 25  /  HOME", 10, Theme.Colors.Muted, Theme.Fonts.Strong)
+	local breadcrumb = label("VTR X  /  HOME", 10, Theme.Colors.Muted, Theme.Fonts.Strong)
 	breadcrumb.Position = UDim2.fromOffset(30, 0)
 	breadcrumb.Size = UDim2.new(0.5, 0, 1, 0)
 	breadcrumb.Parent = topbar
@@ -265,23 +265,32 @@ function UIController:Start()
 	status.Position = UDim2.fromOffset(44, 22)
 	status.Size = UDim2.fromOffset(50, 16)
 	status.Parent = profile
-	local settingsButton = Instance.new("TextButton")
+	local settingsButton = Instance.new("ImageButton")
 	settingsButton.Name = "SettingsIcon"
 	settingsButton.AnchorPoint = Vector2.new(1, 0.5)
 	settingsButton.BackgroundColor3 = Theme.Colors.Gunmetal
 	settingsButton.BorderSizePixel = 0
+	settingsButton.Image = ""
 	settingsButton.Position = UDim2.new(1, -238, 0.5, 0)
 	settingsButton.Size = UDim2.fromOffset(38, 38)
-	settingsButton.Text = "SET"
-	settingsButton.TextColor3 = Theme.Colors.Electric
-	settingsButton.TextSize = 9
-	settingsButton.Font = Theme.Fonts.Strong
 	settingsButton.Parent = topbar
+	local settingsGear = Instance.new("ImageLabel")
+	settingsGear.Name = "Gear"
+	settingsGear.AnchorPoint = Vector2.new(.5, .5)
+	settingsGear.BackgroundTransparency = 1
+	settingsGear.Image = "rbxassetid://83473210181192"
+	settingsGear.ImageColor3 = Theme.Colors.Electric
+	settingsGear.Position = UDim2.fromScale(.5, .5)
+	settingsGear.ScaleType = Enum.ScaleType.Fit
+	settingsGear.Size = UDim2.fromOffset(24, 24)
+	settingsGear.Parent = settingsButton
 	local settingsCorner = Instance.new("UICorner")
 	settingsCorner.CornerRadius = UDim.new(0, Theme.Radius.Medium)
 	settingsCorner.Parent = settingsButton
 	settingsButton.Activated:Connect(function()
-		if self.Navigation then self.Flow:ModeTransition("Settings", function() self.Navigation:Navigate("Settings"); UIStateService:SetLastPage("Settings") end) end
+		if not self.Navigation then return end
+		if self.Navigation.Current == "Settings" then return end
+		self.Flow:ModeTransition("Settings", function() self.Navigation:Navigate("Settings"); UIStateService:SetLastPage("Settings") end)
 	end)
 
 	local content = Instance.new("Frame")
@@ -301,7 +310,7 @@ function UIController:Start()
 	end)
 
 	local season = self:_createSeasonCard(data.Season)
-	season.Position = UDim2.new(0, 14, 1, -154)
+	season.Position = UDim2.new(0, 14, 1, -238)
 	season.Size = UDim2.new(1, -28, 0, 106)
 	season.Parent = sidebar
 	self.SeasonCard = season
@@ -376,8 +385,32 @@ function UIController:Start()
 end
 
 function UIController:_replacePage(id: string)
+	self.PageReplaceTokens = self.PageReplaceTokens or {}
+	self.PageReplaceTokens[id] = (self.PageReplaceTokens[id] or 0) + 1
+	local token = self.PageReplaceTokens[id]
 	local oldPage = self.Navigation.Pages[id]
+	if oldPage then
+		local cleanup = oldPage:FindFirstChild("Cleanup")
+		if cleanup and cleanup:IsA("BindableEvent") then cleanup:Fire() end
+		oldPage.Visible = false
+		oldPage.Active = false
+		oldPage:Destroy()
+	end
+	self.Navigation.Pages[id] = nil
+	for _, child in self.Content:GetChildren() do
+		if child:IsA("CanvasGroup") and child.Name == id then
+			local cleanup = child:FindFirstChild("Cleanup")
+			if cleanup and cleanup:IsA("BindableEvent") then cleanup:Fire() end
+			child.Visible = false
+			child.Active = false
+			child:Destroy()
+		end
+	end
 	local newPage = PageModules[id].new(self.Context)
+	if self.PageReplaceTokens[id] ~= token then
+		newPage:Destroy()
+		return
+	end
 	newPage.Visible = self.Navigation.Current == id
 	newPage.Active = newPage.Visible
 	newPage.Parent = self.Content
@@ -387,11 +420,6 @@ function UIController:_replacePage(id: string)
 		newPage.Active = true
 		newPage.GroupTransparency = 0
 		newPage.Position = UDim2.fromOffset(0, 0)
-	end
-	if oldPage then
-		oldPage.Visible = false
-		oldPage.Active = false
-		oldPage:Destroy()
 	end
 	if self.Navigation and self.Navigation.SyncPageVisibility then
 		self.Navigation:SyncPageVisibility()
@@ -557,7 +585,7 @@ function UIController:_bindResponsive()
 		local navTop = logoTop + 68
 		self.Logo.Position = UDim2.fromOffset(24, logoTop)
 		self.NavHolder.Position = UDim2.fromOffset(14, navTop)
-		self.NavHolder.Size = UDim2.new(1, -28, 1, -(navTop + 166))
+		self.NavHolder.Size = UDim2.new(1, -28, 1, -(navTop + 250))
 		self.Currency.Visible = not compact
 	end
 	local function bindCamera()
