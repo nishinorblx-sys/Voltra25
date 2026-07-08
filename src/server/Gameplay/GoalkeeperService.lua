@@ -1179,6 +1179,7 @@ function Service:_begin(attackingSide: string, shotId: number)
 		MissOffsetSign = self.Random:NextNumber()<.5 and-1 or 1,
 		EffectiveGravity=(self.BallService.ShotPlan and tonumber(self.BallService.ShotPlan.EffectiveGravity))or workspace.Gravity,
 		ReachEvaluation=evaluation,
+		Ball=self.Ball,
 		DiveSpeed=tonumber(evaluation.DiveSpeed)or DEFAULT_DIVE_SPEED,
 		ReachHitbox=tonumber(evaluation.ReachHitbox)or 5.7,
 		ContactRadius=tonumber(evaluation.ContactRadius)or (self.Ball.Size.X*.5+1.2),
@@ -1493,9 +1494,61 @@ local function prototypeLandingPosition(save:any,target:Vector3,upAxis:Vector3,f
 	return landing+upAxis*(floorHeight-landing:Dot(upAxis))
 end
 
+
+local function vtrDiveBallDropAssist(save:any, ball:BasePart?, keeperRoot:BasePart?, upAxis:Vector3, floorHeight:number, currentHeight:number, elapsed:number, interceptTime:number):number
+	if not save or not ball or not ball.Parent or not keeperRoot then
+		return 0
+	end
+
+	if save.Launched ~= true then
+		return 0
+	end
+
+	local velocity = ball.AssemblyLinearVelocity
+	local flatVelocity = Vector3.new(velocity.X, 0, velocity.Z)
+	if flatVelocity.Magnitude < 8 then
+		return 0
+	end
+
+	local toKeeper = keeperRoot.Position - ball.Position
+	local flatToKeeper = Vector3.new(toKeeper.X, 0, toKeeper.Z)
+	local along = flatToKeeper:Dot(flatVelocity.Unit)
+	if along < -5 or along > 46 then
+		return 0
+	end
+
+	local time = math.clamp(along / math.max(flatVelocity.Magnitude, 1), 0, 1.1)
+	local predicted = ball.Position + velocity * time - upAxis * (0.5 * workspace.Gravity * time * time)
+	local ballHeight = predicted:Dot(upAxis)
+	local rootHeight = keeperRoot.Position:Dot(upAxis)
+	local dropGap = rootHeight + 2.45 - ballHeight
+	local dropping = velocity:Dot(upAxis) <= 3
+
+	if dropGap <= 0 or not dropping then
+		return 0
+	end
+
+	local urgency = math.clamp((1.05 - time) / 1.05, 0, 1)
+	local phase = math.clamp(elapsed / math.max(interceptTime, 0.08), 0, 1)
+	local scale = math.clamp(dropGap * (1.35 + urgency * 2.4) * (0.55 + phase), 0, 9.5)
+
+	save.LowDive = true
+	save.NoJump = true
+	save.Target = predicted
+	save.SavePoint = predicted
+	save.Keeper:SetAttribute("VTRLowShotFlatDive", true)
+	save.Keeper:SetAttribute("VTRFallingLowShotDive", true)
+	save.Keeper:SetAttribute("VTRKeeperNoJumpDive", true)
+	save.Keeper:SetAttribute("VTRDynamicFallAssist", scale)
+
+	return math.min(currentHeight - floorHeight, scale)
+end
+
+
 local function prototypeDiveFlightPosition(save:any,elapsed:number,upAxis:Vector3,forward:Vector3,lateralAxis:Vector3):(Vector3,number,boolean)
 	local startPosition:Vector3=save.StartPosition
 	local target:Vector3=save.RootTarget
+	local keeperRoot=save.Keeper and root(save.Keeper)
 	local interceptTime=math.max(.1,tonumber(save.DiveDuration)or.35)
 	local totalFlight=interceptTime+DIVE_FALL_THROUGH
 	local alpha=math.clamp(elapsed/totalFlight,0,1)
@@ -1534,6 +1587,8 @@ local function prototypeDiveFlightPosition(save:any,elapsed:number,upAxis:Vector
 		local targetHeight=target:Dot(upAxis)
 		local arc=math.sin(math.pi*phase)*DIVE_JUMP_HEIGHT
 		local height=math.max(floorHeight,startHeight+(targetHeight-startHeight)*glide+arc)
+		height-=vtrDiveBallDropAssist(save, workspace:FindFirstChild("Ball", true) or save.Ball, keeperRoot, upAxis, floorHeight, height, elapsed, interceptTime)
+		height=math.max(floorHeight,height)
 		return bounded(base+upAxis*(height-base:Dot(upAxis)),false)
 	end
 	local fallAlpha=math.clamp((elapsed-interceptTime)/DIVE_FALL_THROUGH,0,1)
@@ -1541,6 +1596,8 @@ local function prototypeDiveFlightPosition(save:any,elapsed:number,upAxis:Vector
 	local base=target:Lerp(landing,glide)
 	local targetHeight=target:Dot(upAxis)
 	local height=math.max(floorHeight,targetHeight+(floorHeight-targetHeight)*glide)
+	height-=vtrDiveBallDropAssist(save, workspace:FindFirstChild("Ball", true) or save.Ball, keeperRoot, upAxis, floorHeight, height, elapsed, interceptTime)
+	height=math.max(floorHeight,height)
 	return bounded(base+upAxis*(height-base:Dot(upAxis)),false)
 end
 
@@ -1757,11 +1814,9 @@ local function liveReachHitboxTouched(service:any,save:any,target:Vector3):boole
 end
 
 function Service:Step(dt:number?)
-	for _, save in self.ActiveSaves or {} do
-		self:_vtrAdjustDiveFallToTrajectory(save, dt)
-	end
 	
-	self:_vtrStepRollingLowDiveSwitch()dt=math.clamp(dt or 1/60,1/240,.1)
+	self:_vtrStepRollingLowDiveSwitch()
+	dt=math.clamp(dt or 1/60,1/240,.1)
 	local shotId = self.BallService.MotionKind == "Shot" and self.BallService.MotionStarted or 0
 	if shotId ~= 0 and shotId ~= self.ObservedShot then
 		self.ObservedShot = shotId
@@ -1918,6 +1973,7 @@ function Service:Step(dt:number?)
 		save.Keeper:SetAttribute("VTRDiveAim",diveAim)
 		save.Keeper:SetAttribute("VTRDiveLaunchTime",time)
 		save.Keeper:SetAttribute("VTRDiveAxis",lateralAxis)
+		save.Ball=self.Ball
 		save.Keeper:SetAttribute("VTRSavePredictedHeight",(target-rectangle.PlanePoint):Dot(upAxis))
 	end
 	if save.Launched then
@@ -1938,7 +1994,7 @@ function Service:Step(dt:number?)
 		save.DivePosePlan=posePlan
 		liftKeeperAboveFloor(save.Keeper,upAxis,self.PitchCFrame.Position:Dot(upAxis)+.58,.08)
 	end
-	if save.Launched and save.WillSave==false and ((save.Progress or 0)>=.86 or time<=EMERGENCY_SAVE_TIME) and os.clock()-(save.DiveStartedAt or os.clock())>=math.clamp(.42+(tonumber(save.MissDelay)or .35)*.25,.42,.72) then
+	if save.Launched and save.WillSave==false and ((save.Progress or 0)>=.94 or time<=EMERGENCY_SAVE_TIME) and os.clock()-(save.DiveStartedAt or os.clock())>=math.clamp(.58+(tonumber(save.MissDelay)or .35)*.25,.58,.86) then
 		self:_miss(save)
 		return
 	end
