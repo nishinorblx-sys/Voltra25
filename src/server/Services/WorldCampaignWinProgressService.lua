@@ -134,7 +134,7 @@ local function modules()
 		return cachedModules
 	end
 
-	cachedModules = profileModules()
+	cachedModules = profileModules() or {}
 	return cachedModules
 end
 

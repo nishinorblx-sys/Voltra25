@@ -1,35 +1,34 @@
 --!strict
-local function vtrLoadWorldCampaignWinProgress()
-	VTRWorldCampaignWinProgress.TryRegisterFromArgs(nil)
-	local current = script
-	while current do
-		local services = current:FindFirstChild("Services")
-		if services and services:FindFirstChild("WorldCampaignWinProgressService") then
-			VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request)
-			return require(services:WaitForChild("WorldCampaignWinProgressService"))
-		end
+local function vtrGetWorldCampaignWinProgress()
+	local serverScriptService = game:GetService("ServerScriptService")
+	local vtrServer = serverScriptService:FindFirstChild("VTRServer")
+	local services = vtrServer and vtrServer:FindFirstChild("Services")
+	local module = services and services:FindFirstChild("WorldCampaignWinProgressService")
 
-		if current.Parent then
-			local sibling = current.Parent:FindFirstChild("Services")
-			if sibling and sibling:FindFirstChild("WorldCampaignWinProgressService") then
-				VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request)
-				return require(sibling:WaitForChild("WorldCampaignWinProgressService"))
-			end
+	if module and module:IsA("ModuleScript") then
+		local ok, result = pcall(require, module)
+		if ok and typeof(result) == "table" and result.TryRegisterFromArgs then
+			return result
 		end
-
-		current = current.Parent
 	end
 
-	return require(game:GetService("ServerScriptService"):WaitForChild("VTRServer"):WaitForChild("Services"):WaitForChild("WorldCampaignWinProgressService"))
+	return {
+		TryRegisterFromArgs = function()
+			return false
+		end,
+		RegisterWin = function()
+			return false
+		end,
+	}
 end
 
-local VTRWorldCampaignWinProgress = vtrLoadWorldCampaignWinProgress()
+local VTRWorldCampaignWinProgress = vtrGetWorldCampaignWinProgress()
 
 local ObjectiveService = {}
 ObjectiveService.__index = ObjectiveService
 
 local function clientRecord(objective: any): any
-	VTRWorldCampaignWinProgress.TryRegisterFromArgs(nil)
+	pcall(function() VTRWorldCampaignWinProgress.TryRegisterFromArgs(nil) end)
 	local claimed = objective.status == "claimed"
 	return {
 		objectiveId = objective.objectiveId,
@@ -56,7 +55,7 @@ local function clientRecord(objective: any): any
 end
 
 function ObjectiveService.Serialize(objectives: any): any
-	VTRWorldCampaignWinProgress.TryRegisterFromArgs(nil)
+	pcall(function() VTRWorldCampaignWinProgress.TryRegisterFromArgs(nil) end)
 	local result = {}
 	for _, objective in objectives do table.insert(result, clientRecord(objective)) end
 	local groupPriority = { starter_journey = 1, daily = 2, weekly = 3, milestone = 4 }
@@ -77,7 +76,7 @@ function ObjectiveService:GetClientData(player: Player): any?
 end
 
 function ObjectiveService:Increment(player: Player, objectiveId: string, amount: number): boolean
-	VTRWorldCampaignWinProgress.TryRegisterFromArgs(self)
+	pcall(function() VTRWorldCampaignWinProgress.TryRegisterFromArgs(self) end)
 	if type(objectiveId) ~= "string" or #objectiveId > 64 or type(amount) ~= "number" or amount % 1 ~= 0 or amount <= 0 or amount > 100 then return false end
 	local profile = self.Profiles:GetProfile(player)
 	if not profile then return false end

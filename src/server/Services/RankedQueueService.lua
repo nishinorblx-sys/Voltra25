@@ -1,29 +1,28 @@
 --!strict
-local function vtrLoadWorldCampaignWinProgress()
-	VTRWorldCampaignWinProgress.TryRegisterFromArgs(nil)
-	local current = script
-	while current do
-		local services = current:FindFirstChild("Services")
-		if services and services:FindFirstChild("WorldCampaignWinProgressService") then
-			VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request)
-			return require(services:WaitForChild("WorldCampaignWinProgressService"))
-		end
+local function vtrGetWorldCampaignWinProgress()
+	local serverScriptService = game:GetService("ServerScriptService")
+	local vtrServer = serverScriptService:FindFirstChild("VTRServer")
+	local services = vtrServer and vtrServer:FindFirstChild("Services")
+	local module = services and services:FindFirstChild("WorldCampaignWinProgressService")
 
-		if current.Parent then
-			local sibling = current.Parent:FindFirstChild("Services")
-			if sibling and sibling:FindFirstChild("WorldCampaignWinProgressService") then
-				VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request)
-				return require(sibling:WaitForChild("WorldCampaignWinProgressService"))
-			end
+	if module and module:IsA("ModuleScript") then
+		local ok, result = pcall(require, module)
+		if ok and typeof(result) == "table" and result.TryRegisterFromArgs then
+			return result
 		end
-
-		current = current.Parent
 	end
 
-	return require(game:GetService("ServerScriptService"):WaitForChild("VTRServer"):WaitForChild("Services"):WaitForChild("WorldCampaignWinProgressService"))
+	return {
+		TryRegisterFromArgs = function()
+			return false
+		end,
+		RegisterWin = function()
+			return false
+		end,
+	}
 end
 
-local VTRWorldCampaignWinProgress = vtrLoadWorldCampaignWinProgress()
+local VTRWorldCampaignWinProgress = vtrGetWorldCampaignWinProgress()
 local function vtrLoadPackInventoryConsume()
 	local current = script
 	while current do
@@ -536,7 +535,7 @@ function Service:_nextPair(): (Player?, Player?)
 end
 
 function Service:_attachResultHandlers(session: any, home: Player, away: Player)
-	VTRWorldCampaignWinProgress.TryRegisterFromArgs(self)
+	pcall(function() VTRWorldCampaignWinProgress.TryRegisterFromArgs(self) end)
 	session.RankedWinRewards=session.RankedWinRewards or{}
 	session.RankedWinPackGrant=function(_,winner:Player)
 		session.RankedWinRewards=session.RankedWinRewards or{}

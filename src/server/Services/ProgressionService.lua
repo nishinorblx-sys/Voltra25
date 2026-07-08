@@ -1,29 +1,28 @@
 --!strict
-local function vtrLoadWorldCampaignWinProgress()
-	VTRWorldCampaignWinProgress.TryRegisterFromArgs(nil)
-	local current = script
-	while current do
-		local services = current:FindFirstChild("Services")
-		if services and services:FindFirstChild("WorldCampaignWinProgressService") then
-			VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request)
-			return require(services:WaitForChild("WorldCampaignWinProgressService"))
-		end
+local function vtrGetWorldCampaignWinProgress()
+	local serverScriptService = game:GetService("ServerScriptService")
+	local vtrServer = serverScriptService:FindFirstChild("VTRServer")
+	local services = vtrServer and vtrServer:FindFirstChild("Services")
+	local module = services and services:FindFirstChild("WorldCampaignWinProgressService")
 
-		if current.Parent then
-			local sibling = current.Parent:FindFirstChild("Services")
-			if sibling and sibling:FindFirstChild("WorldCampaignWinProgressService") then
-				VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request)
-				return require(sibling:WaitForChild("WorldCampaignWinProgressService"))
-			end
+	if module and module:IsA("ModuleScript") then
+		local ok, result = pcall(require, module)
+		if ok and typeof(result) == "table" and result.TryRegisterFromArgs then
+			return result
 		end
-
-		current = current.Parent
 	end
 
-	return require(game:GetService("ServerScriptService"):WaitForChild("VTRServer"):WaitForChild("Services"):WaitForChild("WorldCampaignWinProgressService"))
+	return {
+		TryRegisterFromArgs = function()
+			return false
+		end,
+		RegisterWin = function()
+			return false
+		end,
+	}
 end
 
-local VTRWorldCampaignWinProgress = vtrLoadWorldCampaignWinProgress()
+local VTRWorldCampaignWinProgress = vtrGetWorldCampaignWinProgress()
 local function vtrLoadPackInventoryConsume()
 	local current = script
 	while current do
@@ -78,7 +77,7 @@ function ProgressionService.new(profiles: any, publish: (Player, string, any) ->
 end
 
 function ProgressionService:GetClientData(player: Player): any?
-	VTRWorldCampaignWinProgress.TryRegisterFromArgs(self)
+	pcall(function() VTRWorldCampaignWinProgress.TryRegisterFromArgs(self) end)
 	local profile = self.Profiles:GetProfile(player)
 	if not profile then return nil end
 	return {
@@ -112,7 +111,7 @@ function ProgressionService:GetClientData(player: Player): any?
 end
 
 function ProgressionService:_setObjectiveProgress(profile: any, objectiveId: string, value: number): boolean
-	VTRWorldCampaignWinProgress.TryRegisterFromArgs(self)
+	pcall(function() VTRWorldCampaignWinProgress.TryRegisterFromArgs(self) end)
 	local objective = findObjective(profile, objectiveId)
 	if not objective or objective.status == "claimed" then return false end
 	local beforeProgress = tonumber(objective.progress) or 0
@@ -125,14 +124,14 @@ function ProgressionService:_setObjectiveProgress(profile: any, objectiveId: str
 end
 
 function ProgressionService:_incrementObjective(profile: any, objectiveId: string, amount: number): boolean
-	VTRWorldCampaignWinProgress.TryRegisterFromArgs(self)
+	pcall(function() VTRWorldCampaignWinProgress.TryRegisterFromArgs(self) end)
 	local objective = findObjective(profile, objectiveId)
 	if not objective or objective.status == "claimed" then return false end
 	return self:_setObjectiveProgress(profile, objectiveId, (tonumber(objective.progress) or 0) + math.max(0, amount))
 end
 
 function ProgressionService:_addXP(profile: any, amount: number): (number, number, boolean)
-	VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, number, boolean)
+	pcall(function() VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, number, boolean) end)
 	local xp = math.max(0, math.floor(amount))
 	if xp <= 0 then return 0, profile.Season.Level, false end
 	local oldLevel = tonumber(profile.Season.Level) or 1
@@ -156,7 +155,7 @@ function ProgressionService:_addCoins(profile: any, amount: number): number
 end
 
 function ProgressionService:_grantObjectiveReward(player: Player, profile: any, objective: any): boolean
-	VTRWorldCampaignWinProgress.TryRegisterFromArgs(self)
+	pcall(function() VTRWorldCampaignWinProgress.TryRegisterFromArgs(self) end)
 	local reward = objective.reward
 	if reward.Type == "XP" then
 		self:_addXP(profile, reward.Amount)
@@ -249,9 +248,9 @@ function ProgressionService:Claim(player: Player, kind: string, id: string): (bo
 		if not objective then return false, "Objective does not exist.", nil end
 		if objective.status == "claimed" then return false, "Objective reward already claimed.", nil end
 		if objective.status ~= "claimable" and objective.status ~= "completed" then return false, "Objective is not claimable.", nil end
-			VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request)
+			pcall(function() VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request) end)
 		if objective.progress < objective.target then return false, "Objective is not complete.", nil end
-			VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request)
+			pcall(function() VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request) end)
 
 		if not self:_grantObjectiveReward(player, profile, objective) then return false, "Objective reward grant failed.", nil end
 		objective.status = "claimed"

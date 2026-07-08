@@ -1,28 +1,27 @@
-local function vtrLoadWorldCampaignWinProgress()
-	VTRWorldCampaignWinProgress.TryRegisterFromArgs(nil)
-	local current = script
-	while current do
-		local services = current:FindFirstChild("Services")
-		if services and services:FindFirstChild("WorldCampaignWinProgressService") then
-			VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request)
-			return require(services:WaitForChild("WorldCampaignWinProgressService"))
-		end
+local function vtrGetWorldCampaignWinProgress()
+	local serverScriptService = game:GetService("ServerScriptService")
+	local vtrServer = serverScriptService:FindFirstChild("VTRServer")
+	local services = vtrServer and vtrServer:FindFirstChild("Services")
+	local module = services and services:FindFirstChild("WorldCampaignWinProgressService")
 
-		if current.Parent then
-			local sibling = current.Parent:FindFirstChild("Services")
-			if sibling and sibling:FindFirstChild("WorldCampaignWinProgressService") then
-				VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request)
-				return require(sibling:WaitForChild("WorldCampaignWinProgressService"))
-			end
+	if module and module:IsA("ModuleScript") then
+		local ok, result = pcall(require, module)
+		if ok and typeof(result) == "table" and result.TryRegisterFromArgs then
+			return result
 		end
-
-		current = current.Parent
 	end
 
-	return require(game:GetService("ServerScriptService"):WaitForChild("VTRServer"):WaitForChild("Services"):WaitForChild("WorldCampaignWinProgressService"))
+	return {
+		TryRegisterFromArgs = function()
+			return false
+		end,
+		RegisterWin = function()
+			return false
+		end,
+	}
 end
 
-local VTRWorldCampaignWinProgress = vtrLoadWorldCampaignWinProgress()
+local VTRWorldCampaignWinProgress = vtrGetWorldCampaignWinProgress()
 local function vtrLoadPackInventoryConsume()
 	local current = script
 	while current do
@@ -61,7 +60,7 @@ local PlayerDatabase=require(script.Parent.Parent.Data.PlayerDatabase)
 local ObjectiveService=require(script.Parent.ObjectiveService)
 local Service={};Service.__index=Service
 local function contains(list:any,value:any):boolean return table.find(list,value)~=nil end
-	VTRWorldCampaignWinProgress.TryRegisterFromArgs(value)
+	pcall(function() VTRWorldCampaignWinProgress.TryRegisterFromArgs(value) end)
 local PACK_FALLBACKS={rare_pack="elite_pack",legendary_pack="champion_pack",icon_pack="hero_pack"}
 local function packIdFor(id:string?):string return PACK_FALLBACKS[id or""]or id or"bronze_pack"end
 local function stadium(id:string):any?for _,item in MatchConfig.Stadiums do if item.Id==id then return item end end;return nil end
@@ -83,7 +82,7 @@ function Service.new(profiles:any,publish:(Player,string,any)->(),progression:an
 	return self
 end
 function Service:_ensure(profile:any):any local setup=profile.MatchSetup;if not setup or not TeamDatabase.Get(setup.HomeTeamId)or not TeamDatabase.Get(setup.AwayTeamId)or(setup.HomeTeamId==setup.AwayTeamId and setup.MatchType~="Friendly")then local home,away=TeamDatabase.Teams[1],TeamDatabase.Teams[2];setup={MatchLength=6,Difficulty="Professional",MatchType="Objective Match",HomeTeamId=home.teamId,AwayTeamId=away.teamId,HomeKit="Home",AwayKit="Away",StadiumId="voltra_arena",Weather="Clear",Time="Evening",Completed=false,SavedAt=0,KitConflict=false,CampaignTeamId="",CampaignTier=0,CampaignReplay=false};profile.MatchSetup=setup end;setup.CampaignTeamId=setup.CampaignTeamId or"";setup.CampaignTier=tonumber(setup.CampaignTier)or 0;setup.CampaignReplay=setup.CampaignReplay==true;return setup end
-	VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request)
+	pcall(function() VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request) end)
 function Service:_validate(setup:any):(boolean,string)
 	if not contains(MatchConfig.MatchLengths,setup.MatchLength)then return false,"Invalid match length."end;if not contains(MatchConfig.Difficulties,setup.Difficulty)then return false,"Invalid difficulty."end;if not contains(MatchConfig.MatchTypes,setup.MatchType)then return false,"Invalid match type."end;if not contains(MatchConfig.Weather,setup.Weather)or not contains(MatchConfig.Times,setup.Time)then return false,"Invalid presentation settings."end
 	local home,away=TeamDatabase.Get(setup.HomeTeamId),TeamDatabase.Get(setup.AwayTeamId);if not home or not away then return false,"Select two valid teams."end;if home.teamId==away.teamId and setup.MatchType~="Friendly"then return false,"Mirror matches are only available in Friendly mode."end;if not kit(home,setup.HomeKit)or not kit(away,setup.AwayKit)then return false,"Invalid kit selection."end;local venue=stadium(setup.StadiumId);if not venue or not contains(venue.WeatherSupport,setup.Weather)then return false,"Selected stadium does not support this weather."end;return true,"Match setup valid."
@@ -94,13 +93,13 @@ end
 
 function Service:_commitWorldCupPlayedMatch(player:Player,ended:any):boolean
 	if ended.WorldCupResultCommitted==true then return false end
-		VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request)
+		pcall(function() VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request) end)
 	local current=self.Profiles:GetProfile(player);if not current or type(current.WorldCup)~="table"then return false end
 	local currentFixture=current.WorldCup.NextFixture
 	if type(currentFixture)~="table"then return false end
 	local resultKey=tostring(currentFixture.Home or"").."|"..tostring(currentFixture.Away or"").."|"..tostring(currentFixture.Matchday or current.WorldCup.Stage or"")
 	if currentFixture.UserPlayedResultKey==resultKey then return false end
-		VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request)
+		pcall(function() VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request) end)
 	currentFixture.UserPlayedResultKey=resultKey
 	local selectedCountry=tostring(current.WorldCup.SelectedCountry or"")
 	local homeScore=ended.World.HomeScore.Value;local awayScore=ended.World.AwayScore.Value
@@ -988,9 +987,9 @@ function Service:_worldCupPrepareNextKnockout(state:any)
 	end
 	local round=tonumber(state.Knockout.Round)or 1
 	if not table.find(winners,selected)then state.Stage="Eliminated";state.NextFixture=nil;return end
-		VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request)
+		pcall(function() VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request) end)
 	if round>=4 then state.Stage="Champion";state.WorldCupWinner=selected;state.NextFixture=nil;return end
-		VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request)
+		pcall(function() VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request) end)
 	local nextFixtures={}
 	for index=1,#winners,2 do table.insert(nextFixtures,{Home=winners[index],Away=winners[index+1],Round=round+1})end
 	table.insert(state.Knockout.History,{Round=round,Fixtures=fixtures})
@@ -1079,7 +1078,7 @@ function Service:_worldCupAdvanceAfterMatch(state:any,homeGoals:number,awayGoals
 		local userWon=resolvedWinner and resolvedWinner==selected or (fixture.Home==selected and homeGoals>awayGoals)or(fixture.Away==selected and awayGoals>homeGoals)or homeGoals==awayGoals
 		fixture.Winner=resolvedWinner or(userWon and selected or(fixture.Home==selected and fixture.Away or fixture.Home))
 		if not userWon then state.Stage="Eliminated";state.NextFixture=nil;return end
-			VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request)
+			pcall(function() VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request) end)
 		self:_worldCupPrepareNextKnockout(state)
 	end
 end
@@ -1159,7 +1158,7 @@ function Service:ClaimWorldCupRewards(player:Player):(boolean,string,any?)
 	local profile=self.Profiles:GetProfile(player);if not profile then return false,"Profile unavailable.",nil end
 	local state=type(profile.WorldCup)=="table"and profile.WorldCup or nil
 	if not state or (state.Stage~="Champion"and state.Stage~="Eliminated")then return false,"Finish a World Cup run first.",self:_worldCupPublic(profile)end
-		VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request)
+		pcall(function() VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request) end)
 	local reward=state.PendingRewards or self:_worldCupRewardForState(state)
 	if state.RewardsClaimed==true then return false,"World Cup rewards already claimed.",self:_worldCupPublic(profile)end
 	local granted={}
@@ -1363,7 +1362,7 @@ function Service:StartMatch(player:Player):(boolean,string,any?)
 			local xp=110+(homeWon and 90 or drew and 45 or 20)
 			local reward=self.Progression:GrantMatchRewards(player,{Title=homeWon and"VICTORY REWARD"or drew and"DRAW REWARD"or"MATCH REWARD",Coins=coins,XP=xp})
 			if homeWon and campaignTeamId~="" then
-				VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request)
+				pcall(function() VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request) end)
 				local campaignReward=self:_commitCampaignWin(player,campaignTeamId,campaignTier,campaignReplay)
 				if campaignReward then
 					reward=reward or{}
@@ -1378,7 +1377,7 @@ function Service:StartMatch(player:Player):(boolean,string,any?)
 		end
 	end
 	local completed=false;for _,objective in profile.Objectives do if objective.objectiveId=="play_first_match_placeholder"and objective.status~="claimed"then completed=objective.progress<objective.target;objective.progress=1;if objective.status=="active"then objective.status="claimable"end;break end end
-		VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request)
+		pcall(function() VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request) end)
 	self.Publish(player,"Objective",ObjectiveService.Serialize(profile.Objectives));self.Publish(player,"Progression",self.Progression:GetClientData(player));data.ObjectiveCompletedNow=completed;return true,text,data
 end
 
@@ -1415,7 +1414,7 @@ function Service:StartShootingPractice(player:Player,payload:any?):(boolean,stri
 	local success,text,data=self.Runtime:StartMatch(player,setup,nil,nil,homeRoster,awayRoster)
 	if not success then return false,text,nil end
 	if data then data.AIMatchTeleport=true;data.MatchLaunchType="ShootingPractice";data.PracticeMode=true;data.ObjectiveCompletedNow=false end
-		VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request)
+		pcall(function() VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request) end)
 	return true,text,data
 end
 
@@ -1445,12 +1444,12 @@ function Service:StartWorldCupMatch(player:Player):(boolean,string,any?)
 	local homeRoster=buildWorldCupNationalRoster(selected);local awayRoster=buildWorldCupNationalRoster(opponent)
 	setup.HomeTeamId=homeRoster.Team.teamId;setup.HomeKit="Home";setup.AwayTeamId=awayRoster.Team.teamId;setup.AwayKit="Away";setup.MatchType="Objective Match";setup.Difficulty="Professional";setup.Completed=true;setup.CampaignTeamId="";setup.WorldCup=true;setup.WorldCupOpponent=opponent
 	local success,text,data=self.Runtime:StartMatch(player,setup,nil,nil,homeRoster,awayRoster);if not success then self.WorldCupStartLocks[player]=nil;player:SetAttribute("VTRWorldCupMatchStarting",nil);return false,text,nil end
-		VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request)
+		pcall(function() VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request) end)
 	self.WorldCupStartLocks[player]=nil
 	player:SetAttribute("VTRWorldCupMatchStarting",nil)
 	player:SetAttribute("VTRWorldCupMatchStarted",true)
 	if data then data.AIMatchTeleport=true;data.MatchLaunchType="WorldCup";data.WorldCup=true;data.ObjectiveCompletedNow=false end
-		VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request)
+		pcall(function() VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request) end)
 	local session=self.Runtime:GetSession(player)
 	if session then
 		self:_tagSoloCampaignSession(player,session)
@@ -1473,7 +1472,7 @@ function Service:SimulateWorldCupMatch(player:Player):(boolean,string,any?)
 	if state then self:_worldCupRepairGroupNextFixture(state)end
 	if not state or not state.NextFixture then return false,"No World Cup match is ready to simulate.",nil end
 	if state.Stage=="Champion"or state.Stage=="Eliminated"then return false,"This World Cup run is already complete.",self:_worldCupPublic(profile)end
-		VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request)
+		pcall(function() VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request) end)
 	local fixture=state.NextFixture
 	local home=tostring(fixture.Home or"")
 	local away=tostring(fixture.Away or"")
@@ -1517,7 +1516,7 @@ function Service:SimulateRestOfWorldCup(player:Player):(boolean,string,any?)
 	if not state then return false,"Start a World Cup first.",nil end
 	if state.Stage~="Eliminated"then return false,"You can simulate the rest after you are eliminated.",self:_worldCupPublic(profile)end
 	if state.RestSimulated==true and state.WorldCupWinner then return true,"World Cup already simulated.",{WorldCup=self:_worldCupPublic(profile),Winner=state.WorldCupWinner}end
-		VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request)
+		pcall(function() VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request) end)
 	self:_worldCupEnsureTeamRanks(state)
 	local winner=self:_worldCupSimulateKnockoutToChampion(state)
 	state.Stage="Eliminated"
@@ -1555,11 +1554,11 @@ function Service:WatchMatch(player:Player):(boolean,string,any?)
 		end
 		session.OnCompleted=function(ended:any)
 			if ended.World.HomeScore.Value>ended.World.AwayScore.Value then self:_commitCampaignWin(player,teamId,tierIndex,replay)end
-				VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request)
+				pcall(function() VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request) end)
 		end
 	end
 	if data then data.ObjectiveCompletedNow=false;data.WatchMode=true end
-		VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request)
+		pcall(function() VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request) end)
 	return true,"AI vs AI match loaded.",data
 end
 function Service:ReturnToMenu(player:Player):boolean
