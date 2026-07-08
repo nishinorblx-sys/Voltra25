@@ -1,28 +1,3 @@
-local function vtrLoadWorldCampaignWinProgress()
-	VTRWorldCampaignWinProgress.TryRegisterFromArgs(nil)
-	local current = script
-	while current do
-		local services = current:FindFirstChild("Services")
-		if services and services:FindFirstChild("WorldCampaignWinProgressService") then
-			VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request)
-			return require(services:WaitForChild("WorldCampaignWinProgressService"))
-		end
-
-		if current.Parent then
-			local sibling = current.Parent:FindFirstChild("Services")
-			if sibling and sibling:FindFirstChild("WorldCampaignWinProgressService") then
-				VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request)
-				return require(sibling:WaitForChild("WorldCampaignWinProgressService"))
-			end
-		end
-
-		current = current.Parent
-	end
-
-	return require(game:GetService("ServerScriptService"):WaitForChild("VTRServer"):WaitForChild("Services"):WaitForChild("WorldCampaignWinProgressService"))
-end
-
-local VTRWorldCampaignWinProgress = vtrLoadWorldCampaignWinProgress()
 local MATCHUP_PANEL_DELAY = 0.85
 --!strict
 
@@ -41,7 +16,6 @@ local POSITION_POINTS={
 }
 
 function SquadService.new(profiles:any,publish:(Player,string,any)->(),progression:any) return setmetatable({Profiles=profiles,Publish=publish,Progression=progression},SquadService) end
-	VTRWorldCampaignWinProgress.TryRegisterFromArgs(string, Publish, Progression, SquadService)
 function SquadService:_card(profile:any,reference:any):any? if type(reference)~="string" then return nil end;for _,card in profile.PlayerCardInventory do if card.Id==reference or card.cardInstanceId==reference or card.Name==reference then return card end end;return nil end
 function SquadService:_formation(profile:any):any return FormationConfig.Formations[profile.Formation] or FormationConfig.Formations[FormationConfig.Default] end
 function SquadService:_expected(profile:any,slot:string):string return self:_formation(profile)[slot].Expected end
@@ -127,7 +101,6 @@ function SquadService:_calculate(profile:any):(number,number,number)
 end
 function SquadService:_objective(profile:any,id:string):any? for _,objective in profile.Objectives do if objective.objectiveId==id then return objective end end;return nil end
 function SquadService:_visibleObjective(profile:any):(any?,boolean) local all=true;for _,o in profile.Objectives do if o.groupId=="starter_journey" then if o.status~="claimed" then all=false end;if o.status=="active" or o.status=="completed" or o.status=="claimable" then return o,false end end end;return nil,all end
-	VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request)
 function SquadService:_update(player:Player,profile:any):(boolean)
 	self:_writeState(profile);local filled,rating=self:_calculate(profile);local first=self:_objective(profile,"build_first_xi");local completed=false
 	if first and first.status~="claimed" then local old=first.status;first.progress=filled;if first.status~="locked" then first.status=filled>=first.target and "claimable" or "active" end;completed=old~="claimable" and first.status=="claimable" end

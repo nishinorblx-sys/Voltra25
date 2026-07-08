@@ -1,29 +1,4 @@
 --!strict
-local function vtrLoadWorldCampaignWinProgress()
-	VTRWorldCampaignWinProgress.TryRegisterFromArgs(nil)
-	local current = script
-	while current do
-		local services = current:FindFirstChild("Services")
-		if services and services:FindFirstChild("WorldCampaignWinProgressService") then
-			VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request)
-			return require(services:WaitForChild("WorldCampaignWinProgressService"))
-		end
-
-		if current.Parent then
-			local sibling = current.Parent:FindFirstChild("Services")
-			if sibling and sibling:FindFirstChild("WorldCampaignWinProgressService") then
-				VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request)
-				return require(sibling:WaitForChild("WorldCampaignWinProgressService"))
-			end
-		end
-
-		current = current.Parent
-	end
-
-	return require(game:GetService("ServerScriptService"):WaitForChild("VTRServer"):WaitForChild("Services"):WaitForChild("WorldCampaignWinProgressService"))
-end
-
-local VTRWorldCampaignWinProgress = vtrLoadWorldCampaignWinProgress()
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -153,7 +128,6 @@ function Service:_push(player: Player, profile: any)
 end
 
 function Service:_grant(player: Player, profile: any, reward: any, vip: boolean?): (boolean, string, any?)
-	VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, string)
 	if reward.Type == "Coins" then
 		local amount = math.max(0, math.floor(tonumber(reward.Amount) or 0)) * (vip and 2 or 1)
 		if amount <= 0 then return false, "Invalid coin reward.", nil end

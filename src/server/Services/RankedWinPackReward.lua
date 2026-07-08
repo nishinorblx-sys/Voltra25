@@ -1,26 +1,4 @@
 --!strict
-local function vtrLoadPackInventoryConsume()
-	local current = script
-	while current do
-		local services = current:FindFirstChild("Services")
-		if services and services:FindFirstChild("PackInventoryConsumeService") then
-			return require(services:WaitForChild("PackInventoryConsumeService"))
-		end
-
-		if current.Parent then
-			local sibling = current.Parent:FindFirstChild("Services")
-			if sibling and sibling:FindFirstChild("PackInventoryConsumeService") then
-				return require(sibling:WaitForChild("PackInventoryConsumeService"))
-			end
-		end
-
-		current = current.Parent
-	end
-
-	return require(game:GetService("ServerScriptService"):WaitForChild("VTRServer"):WaitForChild("Services"):WaitForChild("PackInventoryConsumeService"))
-end
-
-local VTRPackInventoryConsume = vtrLoadPackInventoryConsume()
 local VTRPendingPackAnimation = require(script.Parent:WaitForChild("PendingPackAnimationService"))
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Catalog = require(ReplicatedStorage.VTR.Shared.Catalog)

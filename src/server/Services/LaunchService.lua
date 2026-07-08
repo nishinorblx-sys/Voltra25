@@ -1,51 +1,4 @@
 --!strict
-local function vtrLoadWorldCampaignWinProgress()
-	VTRWorldCampaignWinProgress.TryRegisterFromArgs(nil)
-	local current = script
-	while current do
-		local services = current:FindFirstChild("Services")
-		if services and services:FindFirstChild("WorldCampaignWinProgressService") then
-			VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request)
-			return require(services:WaitForChild("WorldCampaignWinProgressService"))
-		end
-
-		if current.Parent then
-			local sibling = current.Parent:FindFirstChild("Services")
-			if sibling and sibling:FindFirstChild("WorldCampaignWinProgressService") then
-				VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request)
-				return require(sibling:WaitForChild("WorldCampaignWinProgressService"))
-			end
-		end
-
-		current = current.Parent
-	end
-
-	return require(game:GetService("ServerScriptService"):WaitForChild("VTRServer"):WaitForChild("Services"):WaitForChild("WorldCampaignWinProgressService"))
-end
-
-local VTRWorldCampaignWinProgress = vtrLoadWorldCampaignWinProgress()
-local function vtrLoadPackInventoryConsume()
-	local current = script
-	while current do
-		local services = current:FindFirstChild("Services")
-		if services and services:FindFirstChild("PackInventoryConsumeService") then
-			return require(services:WaitForChild("PackInventoryConsumeService"))
-		end
-
-		if current.Parent then
-			local sibling = current.Parent:FindFirstChild("Services")
-			if sibling and sibling:FindFirstChild("PackInventoryConsumeService") then
-				return require(sibling:WaitForChild("PackInventoryConsumeService"))
-			end
-		end
-
-		current = current.Parent
-	end
-
-	return require(game:GetService("ServerScriptService"):WaitForChild("VTRServer"):WaitForChild("Services"):WaitForChild("PackInventoryConsumeService"))
-end
-
-local VTRPackInventoryConsume = vtrLoadPackInventoryConsume()
 local VTRPendingPackAnimation = require(script.Parent:WaitForChild("PendingPackAnimationService"))
 local ReplicatedStorage=game:GetService("ReplicatedStorage")
 local Catalog=require(ReplicatedStorage.VTR.Shared.Catalog)
@@ -61,7 +14,6 @@ local VTRLiteConfig=require(ReplicatedStorage.VTR.Shared.VTRLiteConfig)
 local ClubNameFilterService=require(script.Parent.ClubNameFilterService)
 local LaunchService={};LaunchService.__index=LaunchService
 local function find(list:any,id:string):any? for _,item in list do if item.Id==id then return item end end;return nil end
-	VTRWorldCampaignWinProgress.TryRegisterFromArgs(nil)
 local function has(list:any,value:string):boolean return table.find(list,value)~=nil end
 local function recordItem(profile:any,id:string,kind:string,quantity:number) profile.Inventory=profile.Inventory or {Items={}};for _,item in profile.Inventory.Items do if item.Id==id and item.Kind==kind then item.Quantity+=quantity;return end end;table.insert(profile.Inventory.Items,{Id=id,Kind=kind,Quantity=quantity,AcquiredAt=os.time()}) end
 local function setObjectiveProgress(profile:any,id:string,value:number)
@@ -113,20 +65,14 @@ function LaunchService:Handle(player:Player,action:string,payload:any):(boolean,
 	elseif action=="ClaimStarterPack" then if o.ClubName=="" or o.Abbreviation==""or not o.IdentityConfigured or o.PrimaryColor=="" or o.SecondaryColor==""or o.AccentColor==""or o.BadgeShape==""or o.BadgeSymbol==""or o.KitStyle=="" or o.StarterPackClaimed then return false,"Starter pack unavailable.",nil end;if not self.Inventory:AddPack(player,"starter_launch",Catalog.Packs.starter_launch.Name,"Onboarding",1) then return false,"Starter pack grant failed.",nil end;o.StarterPackClaimed=true;o.Step=6
 	elseif action=="OpenStarterPack" then
 		if not o.StarterPackClaimed or o.StarterPackOpened then return false,"Starter pack cannot be opened.",nil end;if not self.Inventory:ConsumePack(player,"starter_launch") then return false,"Starter pack missing.",nil end
-			VTRPackInventoryConsume.ConsumeOpen(self, player, payload, data, request, pack, packId, packInstanceId)
 		local reveals={};local required={"GK","LB","CB","CB","RB","CM","CM","CM","LW","ST","RW"};local usedPlayers={}
 		for _,position in required do local candidates={};for _,definition in PlayerDatabase.Pools.Starter do if definition.bestPosition==position and not usedPlayers[definition.playerId] then table.insert(candidates,definition) end end;local definition=candidates[math.random(1,#candidates)];usedPlayers[definition.playerId]=true;local added,instance=self.Inventory:AddCard(player,definition);if added and instance then table.insert(reveals,instance);recordItem(p,instance.cardInstanceId,"PlayerCard",1) end end
 		while #reveals<18 do local pool=math.random(1,100)<=94 and PlayerDatabase.Pools.Starter or PlayerDatabase.Pools.Rare;local definition=pool[math.random(1,#pool)];if not usedPlayers[definition.playerId] then usedPlayers[definition.playerId]=true;local added,instance=self.Inventory:AddCard(player,definition);if added and instance then table.insert(reveals,instance);recordItem(p,instance.cardInstanceId,"PlayerCard",1) end end end
 		local bestRating=0;for _,card in reveals do bestRating=math.max(bestRating,math.floor(tonumber(card.Rating or card.overall)or 0))end;if self.RankedProfiles and self.RankedProfiles.RecordPackRating then self.RankedProfiles:RecordPackRating(player,bestRating)end;autoFill(p);o.StarterPackOpened=true;o.SquadFilled=true;o.ObjectivesActivated=true;o.Step=8;for _,objective in p.Objectives do if objective.groupId=="starter_journey" then if objective.objectiveId=="build_first_xi" then objective.progress=11;objective.status="claimable" elseif objective.objectiveId=="open_first_pack" then objective.progress=1 end elseif objective.status=="locked" then objective.status=objective.progress>=objective.target and "claimable" or "active" end end;self:_push(player,p);return true,"Starter pack opened and best XI selected.",reveals
-			VTRPackInventoryConsume.ConsumeOpen(self, player, payload, data, request, pack, packId, packInstanceId)
 	elseif action=="AutoFillSquad" then if not o.StarterPackOpened then return false,"Open the starter pack first.",nil end;autoFill(p);o.SquadFilled=true
-		VTRPackInventoryConsume.ConsumeOpen(self, player, payload, data, request, pack, packId, packInstanceId)
 	elseif action=="CompleteOnboarding" then if not o.SquadFilled or not o.ObjectivesActivated or o.ClubName=="" or o.Abbreviation=="" or o.PrimaryColor=="" or o.SecondaryColor==""or o.AccentColor==""or o.KitStyle=="" then return false,"Onboarding requirements are incomplete.",nil end;o.Complete=true;o.Step=10;p.OnboardingCompleted=true;p.ClubMembership.ClubId=p.ClubMembership.ClubId~=""and p.ClubMembership.ClubId or("identity_"..player.UserId);p.ClubMembership.Role="FOUNDER";p.ClubMembership.Members=math.max(1,p.ClubMembership.Members or 0);p.ClubMembership.Reputation="ROOKIE"
-		VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request)
 	elseif action=="ClaimInbox" then local reward=find(p.RewardsInbox,payload.Id);if not reward or reward.Claimed then return false,"Reward unavailable.",nil end;reward.Claimed=true;if reward.Id=="launch_welcome" then p.Currency.Coins+=500;p.Currency.Bolts+=50 end;setObjectiveProgress(p,"claim_daily_reward",1)
 	elseif action=="OpenPack" then local opened,result=self.Packs:Open(player,payload.PackInstanceId or payload.Id);if not opened then return false,result,nil end;local reveals=result::any;for _,instance in reveals do recordItem(p,instance.cardInstanceId,"PlayerCard",1) end;setObjectiveProgress(p,"open_first_pack",1);self:_push(player,p);return true,"Pack opened on server.",reveals
-		VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request)
-		VTRPackInventoryConsume.ConsumeOpen(self, player, payload, data, request, pack, packId, packInstanceId)
 	elseif action=="BuyCoins" then local bundle=Catalog.CoinBundles[payload.Id or payload.BundleId];if not bundle then return false,"Unknown coin bundle.",nil end;p.Currency.Coins=math.min(EconomyConfig.MaximumCoins,p.Currency.Coins+(bundle.Coins or 0));recordItem(p,bundle.Id,"Currency",bundle.Coins or 0);self:_push(player,p);return true,(bundle.Coins or 0).." coins added.",{Coins=p.Currency.Coins,Bundle=bundle.Id,Robux=bundle.Robux,ProductId=bundle.ProductId}
 	elseif action=="Purchase" then local itemType=payload.ItemType;local itemId=payload.Id;local item;if itemType=="Pack" then item=Catalog.Packs[itemId] elseif itemType=="Kit" then item=find(Catalog.Kits,itemId) elseif itemType=="Stadium" then item=find(Catalog.Stadiums,itemId) elseif itemType=="Cosmetic" then item=find(Catalog.Cosmetics,itemId) end;if not item then return false,"Unknown store item.",nil end;local quantity=itemType=="Pack" and math.clamp(math.floor(tonumber(payload.Quantity)or 1),1,25) or 1;local bucket=nil;if itemType~="Pack" then bucket=itemType=="Kit" and p.StoreOwnership.Kits or itemType=="Stadium" and p.StoreOwnership.Stadiums or p.StoreOwnership.Cosmetics;if has(bucket,itemId) then return false,"Item already owned.",nil end end;local coins=(item.PriceCoins or 0)*quantity;local bolts=(item.PriceBolts or 0)*quantity;local voltraPoints=(item.PriceVoltraPoints or 0)*quantity;p.Currency.VoltraPoints=tonumber(p.Currency.VoltraPoints)or 0;local infiniteCoins=DeveloperConfig.InfiniteCoinsEveryone==true;if (not infiniteCoins and p.Currency.Coins<coins) or p.Currency.Bolts<bolts or p.Currency.VoltraPoints<voltraPoints then return false,"Insufficient currency.",nil end;if infiniteCoins then p.Currency.Coins=EconomyConfig.MaximumCoins else p.Currency.Coins-=coins end;p.Currency.Bolts-=bolts;p.Currency.VoltraPoints-=voltraPoints;if itemType=="Pack" then local delivered,instances=self.Inventory:AddPack(player,itemId,item.Name,"Store",quantity);if not delivered or not instances or not instances[1] then if not infiniteCoins then p.Currency.Coins+=coins end;p.Currency.Bolts+=bolts;p.Currency.VoltraPoints+=voltraPoints;return false,"Pack delivery failed; currency was restored.",nil end;local pack=instances[1];responseData={Pack={packInstanceId=pack.packInstanceId,packId=pack.packId,name=pack.name,description=pack.description,quantity=quantity,status=pack.status,purchasedAt=pack.purchasedAt,openedAt=pack.openedAt},Packs=instances,Quantity=quantity};responseMessage=quantity>1 and(quantity.." packs added to inventory.")or"Pack added to inventory.";recordItem(p,itemId,"Pack",quantity) else table.insert(bucket,itemId);recordItem(p,itemId,itemType=="Stadium" and "StadiumTheme" or itemType,1) end
 	if player and typeof(player) == "Instance" and player:IsA("Player") then

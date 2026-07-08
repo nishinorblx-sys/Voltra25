@@ -1,29 +1,4 @@
 --!strict
-local function vtrLoadWorldCampaignWinProgress()
-	VTRWorldCampaignWinProgress.TryRegisterFromArgs(nil)
-	local current = script
-	while current do
-		local services = current:FindFirstChild("Services")
-		if services and services:FindFirstChild("WorldCampaignWinProgressService") then
-			VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request)
-			return require(services:WaitForChild("WorldCampaignWinProgressService"))
-		end
-
-		if current.Parent then
-			local sibling = current.Parent:FindFirstChild("Services")
-			if sibling and sibling:FindFirstChild("WorldCampaignWinProgressService") then
-				VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request)
-				return require(sibling:WaitForChild("WorldCampaignWinProgressService"))
-			end
-		end
-
-		current = current.Parent
-	end
-
-	return require(game:GetService("ServerScriptService"):WaitForChild("VTRServer"):WaitForChild("Services"):WaitForChild("WorldCampaignWinProgressService"))
-end
-
-local VTRWorldCampaignWinProgress = vtrLoadWorldCampaignWinProgress()
 local function vtrLoadShotPowerModel()
 	local ReplicatedStorage = game:GetService("ReplicatedStorage")
 	local vtr = ReplicatedStorage:FindFirstChild("VTR")
@@ -149,7 +124,6 @@ function Service:GetLastTouchPlayer(): Model?
 end
 
 function Service:SetReferee(referee:any)self.Referee=referee end
-	VTRWorldCampaignWinProgress.TryRegisterFromArgs(self)
 function Service:SetOffsideService(service:any)self.Offside=service end
 function Service:SetFoulPolicy(policy:any)self.FoulPolicy=policy end
 
