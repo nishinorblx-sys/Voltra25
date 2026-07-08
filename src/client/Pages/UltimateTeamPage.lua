@@ -647,7 +647,7 @@ function UltimateTeamPage.new(context:any):CanvasGroup
 		local function openOwned(pack:any)
 			local oddsText=oddsFor(pack);context.Flow:PackPreview({Title=pack.name,Subtitle=pack.CardCount.." PLAYER CARDS",Detail=(pack.description or "VTR player pack").."\n\n"..oddsText},{Label="OPEN PACK"},function()
 				local opened=PackService:Open(pack.packInstanceId);if not opened.Success then toast(opened.Message or "Pack opening failed.","Error");return end
-				overlay:Destroy();context.Flow:PackOpening(pack.name,function() local refreshed=SquadService:GetSquad();if refreshed.Success then snapshot=refreshed.Data;renderAll() end;toast("Pack contents secured in your Club.","Reward") end,opened.Data)
+				overlay:Destroy();local revealData=opened.Data and (opened.Data.Reveals or opened.Data) or opened.Data;context.Flow:PackOpening(pack.name,function() local refreshed=SquadService:GetSquad();if refreshed.Success then snapshot=refreshed.Data;renderAll() end;toast("Pack contents secured in your Club.","Reward") end,revealData)
 			end)
 		end
 		local function offerOpenNow(delivered:any)

@@ -28,6 +28,26 @@ local function rollRarity(odds: any): string
 	return "Starter"
 end
 
+local function vtrNormalizeNewPackCards(profile:any, startIndex:number)
+	profile.PlayerCardInventory=profile.PlayerCardInventory or{}
+	profile.PlayerCardMeta=profile.PlayerCardMeta or{}
+	for index=math.max(1,startIndex),#profile.PlayerCardInventory do
+		local card=profile.PlayerCardInventory[index]
+		if type(card)=="table" then
+			local id=card.Id or card.cardInstanceId
+			card.location="club"
+			card.Location="club"
+			card.RosterLocation="Club"
+			card.RosterSlot=nil
+			if id then
+				profile.PlayerCardMeta[id]=profile.PlayerCardMeta[id] or{}
+				profile.PlayerCardMeta[id].AcquiredAt=profile.PlayerCardMeta[id].AcquiredAt or os.time()
+				profile.PlayerCardMeta[id].NewPackPull=true
+			end
+		end
+	end
+end
+
 local function rollCardType(definition:any,index:number): string?
 	if index==1 and type(definition.GuaranteedCardType)=="string" then return definition.GuaranteedCardType end
 	local weights=definition.CardTypeWeights
@@ -211,6 +231,7 @@ function PackService:Open(player: Player, packInstanceId: string): (boolean, { a
 		return false,"Pack roll failed safely. The pack was not consumed."
 	end
 	owned.status = "opened";owned.Status = "opened";owned.openedAt = os.time();owned.Count = 0
+	vtrNormalizeNewPackCards(profile, previousCardCount + 1)
 	local best=reveals[1];for _,card in reveals do if (card.Rating or card.overall or 0)>(best.Rating or best.overall or 0) then best=card end end
 	local packRating=math.floor(tonumber(best.Rating or best.overall)or 0)
 	owned.bestPull={cardInstanceId=best.cardInstanceId or best.Id,playerId=best.playerId or best.PlayerId,name=best.Name or best.displayName,rating=packRating,position=best.Position or best.bestPosition,rarity=best.Rarity or best.rarity,cardType=best.CardType or best.cardType}

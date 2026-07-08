@@ -38,7 +38,7 @@ local function positionPenalty(card:any,expected:any):number
 		local normalized=normalizedPosition(position)
 		if normalized~=""then table.insert(candidates,normalized)end
 	end
-	local bestPenalty=18
+	local bestPenalty=30
 	for _,position in candidates do
 		if position==target then return 0 end
 		local point=POSITION_POINTS[position]
@@ -47,16 +47,16 @@ local function positionPenalty(card:any,expected:any):number
 			local dx=point[1]-targetPoint[1]
 			local dy=point[2]-targetPoint[2]
 			local distance=math.sqrt(dx*dx+dy*dy)
-			local penalty=keeperMismatch and 22 or math.floor(distance*3.2+.5)
-			if position=="ST"and(target=="CB"or target=="LB"or target=="RB")then penalty+=4 end
-			if (position=="CB"or position=="LB"or position=="RB")and(target=="ST"or target=="LW"or target=="RW")then penalty+=4 end
+			local penalty=keeperMismatch and 38 or math.floor(distance*5.4+.5)
+			if position=="ST"and(target=="CB"or target=="LB"or target=="RB")then penalty+=9 end
+			if (position=="CB"or position=="LB"or position=="RB")and(target=="ST"or target=="LW"or target=="RW")then penalty+=9 end
 			bestPenalty=math.min(bestPenalty,penalty)
 		end
 	end
-	return math.clamp(bestPenalty,0,24)
+	return math.clamp(bestPenalty,0,36)
 end
 local function ratingForSlot(card:any,expected:any):number
-	return math.max(1,math.floor((tonumber(card and card.Rating)or tonumber(card and card.overall)or 0)-positionPenalty(card,expected)+.5))
+	return math.max(1,math.floor((tonumber(card and card.BaseRating)or tonumber(card and card.overall)or tonumber(card and card.Rating)or 0)-positionPenalty(card,expected)+.5))
 end
 local function copyForSlot(card:any,expected:any,meta:any?):any?
 	if not card then return nil end
@@ -179,7 +179,7 @@ function SquadService:GetSquad(player:Player):any?
 	for _,slot in ORDER do local card=self:_card(p,p.Squad[slot]);local expected=formation[slot].Expected;local penalty=card and positionPenalty(card,expected)or 0;local cardCopy=copyForSlot(card,expected,card and p.PlayerCardMeta[card.Id]or nil);slots[slot]={Position=slot,Label=formation[slot].Label,ExpectedPosition=expected,Card=cardCopy,OutOfPosition=penalty>0,PositionPenalty=penalty,Coordinate={X=formation[slot].X,Y=formation[slot].Y}} end
 	local bench={};for index=1,7 do local card=self:_card(p,p.Bench[index]);local copy=card and table.clone(card)or nil;if copy then copy.Meta=table.clone(p.PlayerCardMeta[card.Id]or{})end;bench[index]={Index=index,Card=copy} end
 	local reserves={};for _,id in p.Reserves do local card=self:_card(p,id);if card then local copy=table.clone(card);copy.Meta=table.clone(p.PlayerCardMeta[card.Id]or{});table.insert(reserves,copy) end end
-	local club={};for _,card in p.PlayerCardInventory do local copy=table.clone(card);local kind,slot=self:_locate(p,card.Id);copy.RosterLocation=kind;copy.RosterSlot=slot;copy.Meta=table.clone(p.PlayerCardMeta[card.Id] or {});table.insert(club,copy) end
+	local club={};for _,card in p.PlayerCardInventory do local copy=table.clone(card);local kind,slot=self:_locate(p,card.Id);copy.RosterLocation=kind;copy.RosterSlot=slot;copy.Meta=table.clone(p.PlayerCardMeta[card.Id] or {});if kind=="Club" then copy.location="club";copy.Location="club" end;table.insert(club,copy) end
 	local objective,groupCompleted=self:_visibleObjective(p);local objectiveData=objective and {objectiveId=objective.objectiveId,title=objective.title,description=objective.description,progress=objective.progress,target=objective.target,status=objective.status,reward=objective.reward} or nil
 	local transferList={};for _,id in p.TransferList do local card=self:_card(p,id);if card then table.insert(transferList,table.clone(card)) end end
 	return {Slots=slots,SlotOrder=ORDER,Bench=bench,Reserves=reserves,TransferList=transferList,Club=club,Rating=rating,Chemistry=chemistry,Filled=filled,Formation=p.Formation,FormationOptions={"4-3-3","4-4-2","4-2-3-1","3-5-2","5-3-2"},TeamName=p.ClubMembership.Name,ClubIdentity=table.clone(p.ClubMembership),Objective=objectiveData,ObjectiveGroupCompleted=groupCompleted,CardMeta=p.PlayerCardMeta,SavedAt=os.time()}
