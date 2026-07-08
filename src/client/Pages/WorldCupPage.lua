@@ -1000,17 +1000,18 @@ local function showSimulatedMatchOverlay(score:any,done:()->())
 		speedButton.TextColor3=enabled and Theme.Colors.Black or Theme.Colors.White
 	end
 	local function enable2x()
-		if not vtrWorldCupRequire2xPass(context)then
-			has2xAccess=false
-			speedMultiplier=1
-			refresh2xButton()
-			return
-		end
-		has2xAccess=true
-		speedMultiplier=2
+	if not vtrWorldCupRequire2xPass(context) then
+		has2xAccess=false
+		speedMultiplier=1
 		refresh2xButton()
+		return
 	end
-	speedButton.Activated:Connect(function()
+	has2xAccess=true
+	speedMultiplier=2
+	refresh2xButton()
+end
+
+speedButton.Activated:Connect(function()
 	if speedMultiplier>=2 then
 		speedMultiplier=1
 		refresh2xButton()
@@ -1028,12 +1029,20 @@ local function showSimulatedMatchOverlay(score:any,done:()->())
 	speedMultiplier=2
 	refresh2xButton()
 end)
-	purchaseConnection=MarketplaceService.PromptGamePassPurchaseFinished:Connect(function(player:Player,gamePassId:number,purchased:boolean)
-		if player==Players.LocalPlayer and gamePassId==WORLD_CUP_SIM_2X_PASS_ID then
-			if purchased then enable2x()else has2xAccess=false;speedMultiplier=1;if speedButton.Parent then refresh2xButton()end end
+
+purchaseConnection=MarketplaceService.PromptGamePassPurchaseFinished:Connect(function(player:Player,gamePassId:number,purchased:boolean)
+	if player==Players.LocalPlayer and gamePassId==WORLD_CUP_SIM_2X_PASS_ID then
+		if purchased then
+			enable2x()
+		else
+			has2xAccess=false
+			speedMultiplier=1
+			if speedButton.Parent then refresh2xButton()end
 		end
 	end
-	local detail=Instance.new("Frame");detail.AnchorPoint=Vector2.new(.5,.5);detail.BackgroundColor3=Theme.Colors.Black;detail.BackgroundTransparency=.28;detail.BorderSizePixel=0;detail.Position=UDim2.fromScale(.5,.47);detail.Size=UDim2.fromScale(.58,.07);detail.ZIndex=1001;detail.Parent=overlay;corner(detail,8)
+end)
+
+local detail=Instance.new("Frame");detail.AnchorPoint=Vector2.new(.5,.5);detail.BackgroundColor3=Theme.Colors.Black;detail.BackgroundTransparency=.28;detail.BorderSizePixel=0;detail.Position=UDim2.fromScale(.5,.47);detail.Size=UDim2.fromScale(.58,.07);detail.ZIndex=1001;detail.Parent=overlay;corner(detail,8)
 	local goalIcon=Instance.new("ImageLabel");goalIcon.BackgroundTransparency=1;goalIcon.Image="rbxassetid://135771264315819";goalIcon.Position=UDim2.fromScale(.04,.2);goalIcon.Size=UDim2.fromScale(.055,.6);goalIcon.ScaleType=Enum.ScaleType.Fit;goalIcon.ZIndex=1002;goalIcon.Parent=detail
 	local scorerLabel=text(detail,"",UDim2.fromScale(.11,0),UDim2.fromScale(.34,1),14,Theme.Colors.White,Theme.Fonts.Display);scorerLabel.ZIndex=1002
 	local assistIcon=Instance.new("ImageLabel");assistIcon.BackgroundTransparency=1;assistIcon.Image="rbxassetid://93968131485797";assistIcon.Position=UDim2.fromScale(.49,.2);assistIcon.Size=UDim2.fromScale(.055,.6);assistIcon.ScaleType=Enum.ScaleType.Fit;assistIcon.ZIndex=1002;assistIcon.Parent=detail
