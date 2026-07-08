@@ -647,17 +647,10 @@ local function showWorldCupCompleteOverlay(root:Instance,state:any,done:()->())
 	TweenService:Create(winnerFlag,TweenInfo.new(.44,Enum.EasingStyle.Back,Enum.EasingDirection.Out),{Size=UDim2.fromOffset(142,142)}):Play()
 end
 
-local WORLD_CUP_SIM_2X_PASS=Catalog.GamePasses and Catalog.GamePasses.world_cup_sim_2x or nil
-local WORLD_CUP_SIM_2X_PASS_ID=tonumber(WORLD_CUP_SIM_2X_PASS and WORLD_CUP_SIM_2X_PASS.GamePassId)or 0
+local WORLD_CUP_SIM_2X_PASS_ID=1906308331
 
 local function ownsWorldCupSim2x():boolean
-	if WORLD_CUP_SIM_2X_PASS_ID<=0 then
-		return true
-	end
-	local ok,owns=pcall(function()
-		return MarketplaceService:UserOwnsGamePassAsync(Players.LocalPlayer.UserId,WORLD_CUP_SIM_2X_PASS_ID)
-	end)
-	return ok and owns==true
+	return vtrWorldCupOwns2xPass(context)
 end
 
 local COMMENTARY_TEMPLATES={
@@ -1007,30 +1000,38 @@ local function showSimulatedMatchOverlay(score:any,done:()->())
 		speedButton.TextColor3=enabled and Theme.Colors.Black or Theme.Colors.White
 	end
 	local function enable2x()
+		if not vtrWorldCupRequire2xPass(context)then
+			has2xAccess=false
+			speedMultiplier=1
+			refresh2xButton()
+			return
+		end
 		has2xAccess=true
-		if not vtrWorldCupRequire2xPass(context)then return end
 		speedMultiplier=2
 		refresh2xButton()
 	end
 	speedButton.Activated:Connect(function()
-		if has2xAccess or ownsWorldCupSim2x()then
-			has2xAccess=true
-			speedMultiplier=speedMultiplier>=2 and 1 or 2
-			refresh2xButton()
-		elseif WORLD_CUP_SIM_2X_PASS_ID>0 then
-			speedButton.Text="OPENING STORE"
-			MarketplaceService:PromptGamePassPurchase(Players.LocalPlayer,WORLD_CUP_SIM_2X_PASS_ID)
-		else
-			speedButton.Text="PASS ID NEEDED"
-			task.delay(1.2,function()if speedButton.Parent then refresh2xButton()end end)
+	if speedMultiplier>=2 then
+		speedMultiplier=1
+		refresh2xButton()
+		return
+	end
+
+	if not vtrWorldCupRequire2xPass(context) then
+		has2xAccess=false
+		speedMultiplier=1
+		refresh2xButton()
+		return
+	end
+
+	has2xAccess=true
+	speedMultiplier=2
+	refresh2xButton()
+end)
+	purchaseConnection=MarketplaceService.PromptGamePassPurchaseFinished:Connect(function(player:Player,gamePassId:number,purchased:boolean)
+		if player==Players.LocalPlayer and gamePassId==WORLD_CUP_SIM_2X_PASS_ID then
+			if purchased then enable2x()else has2xAccess=false;speedMultiplier=1;if speedButton.Parent then refresh2xButton()end end
 		end
-	end)
-	if WORLD_CUP_SIM_2X_PASS_ID>0 then
-		purchaseConnection=MarketplaceService.PromptGamePassPurchaseFinished:Connect(function(player:Player,gamePassId:number,purchased:boolean)
-			if player==Players.LocalPlayer and gamePassId==WORLD_CUP_SIM_2X_PASS_ID then
-				if purchased then enable2x()elseif speedButton.Parent then refresh2xButton()end
-			end
-		end)
 	end
 	local detail=Instance.new("Frame");detail.AnchorPoint=Vector2.new(.5,.5);detail.BackgroundColor3=Theme.Colors.Black;detail.BackgroundTransparency=.28;detail.BorderSizePixel=0;detail.Position=UDim2.fromScale(.5,.47);detail.Size=UDim2.fromScale(.58,.07);detail.ZIndex=1001;detail.Parent=overlay;corner(detail,8)
 	local goalIcon=Instance.new("ImageLabel");goalIcon.BackgroundTransparency=1;goalIcon.Image="rbxassetid://135771264315819";goalIcon.Position=UDim2.fromScale(.04,.2);goalIcon.Size=UDim2.fromScale(.055,.6);goalIcon.ScaleType=Enum.ScaleType.Fit;goalIcon.ZIndex=1002;goalIcon.Parent=detail
