@@ -1045,10 +1045,8 @@ function Service:_vtrStepRollingLowDiveSwitch()
 				end
 
 				if self.Animations then
-					self.Animations:PlayAction(keeper, animationName)
+					self:_vtrPlayTemporaryDiveAnimation(keeper, animationName, .44)
 				end
-
-				keeper:SetAttribute("VTRKeeperDiveAnimationLocked", true)
 
 				local current = keeperRoot.AssemblyLinearVelocity
 				local lateralVelocity = math.clamp(lateral * 8, -36, 36)
@@ -1605,7 +1603,7 @@ local function keeperDiveRootFrame(position: Vector3, forward: Vector3, upAxis: 
 		position = Vector3.zero
 	end
 	local up = upAxis
-	local roll = math.clamp(tonumber(rollAlpha)or 0,0,.82)
+	local roll = math.clamp(tonumber(rollAlpha)or 0,0,1)
 	if lateralAxis and lateralAxis.Magnitude>.05 and roll>.001 then
 		local lateral = lateralAxis - upAxis * lateralAxis:Dot(upAxis)
 		if lateral.Magnitude>.05 then
@@ -1705,7 +1703,14 @@ function Service:_continueDiveAftermath(save:any,outcome:string,parriedSave:bool
 			local position,progress=prototypeDiveFlightPosition(save,elapsed,upAxis,forward,lateralAxis)
 			if not isFiniteVector3(position) then break end
 			local roll=save.CenteredDive and 0 or math.sin(math.pi*math.clamp(progress,0,1))*.92
-		if save.LowDive==true or save.NoJump==true then roll*=0.55 end
+		if save.LowDive==true or save.NoJump==true then
+			local sidewaysUntil=tonumber(save.Keeper and save.Keeper:GetAttribute("VTRLowDiveSidewaysUntil"))or 0
+			if os.clock()<sidewaysUntil then roll=1 else roll=math.max(roll,.72)end
+		end
+		if save.LowDive==true or save.NoJump==true then
+			local sidewaysUntil=tonumber(save.Keeper and save.Keeper:GetAttribute("VTRLowDiveSidewaysUntil"))or 0
+			if os.clock()<sidewaysUntil then roll=1 else roll=math.max(roll,.72)end
+		end
 			keeper:PivotTo(keeperDiveRootFrame(position,forward,upAxis,lateralAxis,roll))
 			liftKeeperAboveFloor(keeper,upAxis,self.PitchCFrame.Position:Dot(upAxis)+.58,.08)
 			if outcome=="Held" then secureHeldBall(self.Ball,keeper)end
@@ -1811,6 +1816,38 @@ local function liveReachHitboxTouched(service:any,save:any,target:Vector3):boole
 end
 
 
+
+
+
+function Service:_vtrPlayTemporaryDiveAnimation(keeper:Model, animationName:string, duration:number?)
+	if not keeper or not keeper.Parent or not self.Animations then
+		return
+	end
+
+	local playDuration = tonumber(duration) or 0.44
+	local stopAt = os.clock() + playDuration
+
+	keeper:SetAttribute("VTRCurrentDiveAnimation", animationName)
+	keeper:SetAttribute("VTRLowDiveSidewaysUntil", stopAt)
+	keeper:SetAttribute("VTRKeeperDiveAnimationLocked", nil)
+	self.Animations:StopAction(keeper, 0.06)
+
+	task.delay(0.03, function()
+		if keeper.Parent and keeper:GetAttribute("VTRCurrentDiveAnimation") == animationName then
+			keeper:SetAttribute("VTRKeeperDiveAnimationLocked", true)
+			self.Animations:PlayAction(keeper, animationName)
+		end
+	end)
+
+	task.delay(playDuration, function()
+		if keeper.Parent and keeper:GetAttribute("VTRCurrentDiveAnimation") == animationName then
+			keeper:SetAttribute("VTRKeeperDiveAnimationLocked", nil)
+			self.Animations:StopAction(keeper, 0.12)
+			keeper:SetAttribute("VTRCurrentDiveAnimation", nil)
+			keeper:SetAttribute("VTRLowDiveSidewaysUntil", nil)
+		end
+	end)
+end
 
 
 function Service:Step(dt:number?)
@@ -1972,9 +2009,13 @@ function Service:Step(dt:number?)
 		save.Keeper:SetAttribute("VTRForceIdle",nil)
 		if self.Animations then
 			local diveAnimationName=goalkeeperDiveAnimationName(save)
-			save.Keeper:SetAttribute("VTRCurrentDiveAnimation",diveAnimationName)
-			save.Keeper:SetAttribute("VTRKeeperDiveAnimationLocked",true)
-			self.Animations:PlayAction(save.Keeper,diveAnimationName)
+			if diveAnimationName=="GoalkeeperDiveLowLeft" or diveAnimationName=="GoalkeeperDiveLowRight" then
+				self:_vtrPlayTemporaryDiveAnimation(save.Keeper,diveAnimationName,.44)
+			else
+				save.Keeper:SetAttribute("VTRCurrentDiveAnimation",diveAnimationName)
+				save.Keeper:SetAttribute("VTRKeeperDiveAnimationLocked",true)
+				self.Animations:PlayAction(save.Keeper,diveAnimationName)
+			end
 		end
 		save.Keeper:SetAttribute("VTRDiveLateralDistance",lateralDistance)
 		save.Keeper:SetAttribute("VTRDiveLateralSpeed",math.abs(lateralDistance)/flightTime)
@@ -1994,7 +2035,14 @@ function Service:Step(dt:number?)
 		end
 		save.Progress=progress
 		local roll=save.CenteredDive and 0 or math.sin(math.pi*math.clamp(progress,0,1))*.92
-		if save.LowDive==true or save.NoJump==true then roll*=0.55 end
+		if save.LowDive==true or save.NoJump==true then
+			local sidewaysUntil=tonumber(save.Keeper and save.Keeper:GetAttribute("VTRLowDiveSidewaysUntil"))or 0
+			if os.clock()<sidewaysUntil then roll=1 else roll=math.max(roll,.72)end
+		end
+		if save.LowDive==true or save.NoJump==true then
+			local sidewaysUntil=tonumber(save.Keeper and save.Keeper:GetAttribute("VTRLowDiveSidewaysUntil"))or 0
+			if os.clock()<sidewaysUntil then roll=1 else roll=math.max(roll,.72)end
+		end
 		local desiredFrame=keeperDiveRootFrame(position,forward,upAxis,lateralAxis,roll)
 		save.Keeper:SetAttribute("VTRSidewaysDive",not save.CenteredDive)
 		save.Keeper:SetAttribute("VTRDiveBodyAngle",math.floor(math.deg(math.acos(math.clamp(desiredFrame.UpVector:Dot(upAxis),-1,1)))+.5))
