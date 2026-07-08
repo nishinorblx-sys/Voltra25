@@ -13,6 +13,7 @@ local CATCH_RADIUS = 2.35
 local DEFAULT_DIVE_SPEED = 21
 local MAX_RATED_DIVE_SPEED_MULTIPLIER = 1.27
 local DIVE_JUMP_HEIGHT = 0.72
+local LOW_vtrDiveJumpHeight(save) = 0.05
 local DIVE_FALL_THROUGH = 1.08
 local DIVE_STRETCH_COMPLETE = 0.52
 local DIVE_LAND_HOLD = 0.34
@@ -818,14 +819,49 @@ local function keeperReachRootTarget(rectangle: any, target: Vector3, forward: V
 	return rootTarget + forward * (keeperDepth - rootDepth)
 end
 
+local function vtrKeeperShouldStayLow(keeper, keeperRoot, target, shotPlan)
+	if keeper and (keeper:GetAttribute("VTRLowShotFlatDive") == true or keeper:GetAttribute("VTRFallingLowShotDive") == true) then
+		return true
+	end
+
+	if typeof(target) ~= "Vector3" or not keeperRoot then
+		return false
+	end
+
+	local rootY = keeperRoot.Position.Y
+	local targetY = target.Y
+	local predictedY = tonumber(keeper and keeper:GetAttribute("VTRLongShotTargetY"))
+
+	if predictedY then
+		targetY = math.min(targetY, predictedY)
+	end
+
+	if targetY <= rootY + 3.25 then
+		return true
+	end
+
+	if shotPlan and tonumber(shotPlan.TargetY) and tonumber(shotPlan.TargetY) <= rootY + 3.25 then
+		return true
+	end
+
+	return false
+end
+
 local function physicalSaveDecision(service, keeper, rectangle, target, timeToGoal, shotPlan)
-	local predictedX = tonumber(keeper:GetAttribute("VTRLongShotTargetX"))
+	
+
+	local keeperRootForLow = root(keeper)
+	local stayLowDive = vtrKeeperShouldStayLow(keeper, keeperRootForLow, target, shotPlan)
+	if stayLowDive then
+		keeper:SetAttribute("VTRLowShotFlatDive", true)
+		keeper:SetAttribute("VTRKeeperNoJumpDive", true)
+	end
+local predictedX = tonumber(keeper:GetAttribute("VTRLongShotTargetX"))
 	local predictedY = tonumber(keeper:GetAttribute("VTRLongShotTargetY"))
 	local predictedZ = tonumber(keeper:GetAttribute("VTRLongShotTargetZ"))
 	if predictedX and predictedY and os.clock() < (tonumber(keeper:GetAttribute("VTRLongShotUntil")) or 0) then
 		target = Vector3.new(predictedX, predictedY, predictedZ or target.Z)
 	end
-: any
 	local keeperRoot = root(keeper)
 	if not keeperRoot then
 		return {WillSave = false, SavePercent = 0, Source = "NoKeeperRoot"}
@@ -1362,7 +1398,7 @@ local function prototypeDiveFlightPosition(save:any,elapsed:number,upAxis:Vector
 		local base=startPosition:Lerp(target,glide)
 		local startHeight=startPosition:Dot(upAxis)
 		local targetHeight=target:Dot(upAxis)
-		local arc=math.sin(math.pi*phase)*DIVE_JUMP_HEIGHT
+		local arc=math.sin(math.pi*phase)*vtrDiveJumpHeight(save)
 		local height=math.max(floorHeight,startHeight+(targetHeight-startHeight)*glide+arc)
 		return bounded(base+upAxis*(height-base:Dot(upAxis)),false)
 	end
@@ -1395,7 +1431,20 @@ end
 
 local function goalkeeperDiveAnimationName(save: any): string
 	
-	local keeper = save and save.Keeper
+	
+	if save and (save.LowDive == true or save.NoJump == true) then
+		local keeper = save.Keeper
+		local target = save.Target or save.SavePoint or save.Point
+		local keeperRoot = keeper and keeper:FindFirstChild("HumanoidRootPart")
+		local lateral = 0
+		if typeof(target) == "Vector3" and keeperRoot then
+			lateral = target.X - keeperRoot.Position.X
+		end
+		if lateral < -0.7 then return "GoalkeeperDiveLowLeft" end
+		if lateral > 0.7 then return "GoalkeeperDiveLowRight" end
+		return "GoalkeeperDiveLow"
+	end
+local keeper = save and save.Keeper
 	local target = save and (save.Target or save.SavePoint or save.Point)
 	local keeperRoot = keeper and keeper:FindFirstChild("HumanoidRootPart")
 	if keeper and (keeper:GetAttribute("VTRLowShotFlatDive")==true or keeper:GetAttribute("VTRFallingLowShotDive")==true) then
@@ -1716,7 +1765,7 @@ function Service:Step(dt:number?)
 		local endVertical=(rootTarget-rectangle.PlanePoint):Dot(upAxis)
 		local control=save.StartPosition:Lerp(rootTarget,.48)
 		local controlVertical=(control-rectangle.PlanePoint):Dot(upAxis)
-		local jumpHeight=DIVE_JUMP_HEIGHT
+		local jumpHeight=vtrDiveJumpHeight(save)
 		save.ApexPosition=control+upAxis*(math.max(startVertical,endVertical)+jumpHeight-controlVertical)
 		keeperRoot.Anchored=true
 		save.Keeper:SetAttribute("VTRForceIdle",nil)
