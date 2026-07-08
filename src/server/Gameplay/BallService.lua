@@ -28,22 +28,6 @@ local function flat(vector: Vector3): Vector3
 	return value.Magnitude > 0.01 and value.Unit or Vector3.zAxis
 end
 
-local function vtrDribbleVisualDistance()
-	return tonumber(workspace:GetAttribute("VTRDribbleVisualDistance")) or 2.15
-end
-
-local function vtrDribbleVisualImpulse(ownerRoot: BasePart, direction: Vector3): Vector3
-	local flatDirection = Vector3.new(direction.X, 0, direction.Z)
-	if flatDirection.Magnitude < 0.01 then
-		flatDirection = Vector3.new(ownerRoot.CFrame.LookVector.X, 0, ownerRoot.CFrame.LookVector.Z)
-	end
-	if flatDirection.Magnitude < 0.01 then
-		return Vector3.zero
-	end
-	local speed = tonumber(workspace:GetAttribute("VTRDribbleVisualImpulse")) or 5.5
-	return flatDirection.Unit * speed
-end
-
 local function keepDribbleTargetAtFeet(ball: BasePart, raycast: RaycastParams, ownerRoot: BasePart, target: Vector3, direction: Vector3): Vector3
 	local radius = math.max(ball.Size.Y * 0.5, Config.Ball.Radius or 0.1)
 	local visualRadius = math.max(radius - 0.18, radius * 0.86)
@@ -58,7 +42,7 @@ local function keepDribbleTargetAtFeet(ball: BasePart, raycast: RaycastParams, o
 
 	local origin = Vector3.new(targetFlat.X, ownerRoot.Position.Y + 3.5, targetFlat.Z)
 	local ground = workspace:Raycast(origin, Vector3.new(0, -10, 0), raycast)
-	local y = ownerRoot.Position.Y - math.max(0.55, (Config.Ball.DribbleVerticalOffset or 1.2) * 0.72)
+	local y = ownerRoot.Position.Y - Config.Ball.DribbleVerticalOffset
 	if ground and ground.Normal.Y > 0.55 then
 		y = ground.Position.Y + visualRadius + 0.015
 	end
