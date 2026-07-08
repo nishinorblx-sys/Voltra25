@@ -36,13 +36,11 @@ local BackgroundEffects = require(script.Parent.Parent.Components.BackgroundEffe
 local AnimatedNumber = require(script.Parent.Parent.Components.AnimatedNumber)
 local SplashScreen = require(script.Parent.Parent.Components.SplashScreen)
 local OnboardingController = require(script.Parent.OnboardingController)
-local NewcomerTutorialOverlay = require(script.Parent.Parent.Components.NewcomerTutorialOverlay)
-local COINS_ICON = "rbxassetid://93869095461582"
 
 local PageModules = {
 	Home = require(script.Parent.Parent.Pages.HomePage),
 	UltimateTeam = require(script.Parent.Parent.Pages.UltimateTeamPage),
-	WorldCup = require(script.Parent.Parent.Pages.WorldCupPage),
+	Shooting = require(script.Parent.Parent.Pages.ShootingPage),
 	Inventory = require(script.Parent.Parent.Pages.InventoryPage),
 	Play = require(script.Parent.Parent.Pages.CampaignPage),
 	Ranked = require(script.Parent.Parent.Pages.RankedPage),
@@ -74,11 +72,6 @@ local function formatNumber(value: number): string
 		formatted = nextValue
 	until substitutions == 0
 	return formatted
-end
-
-local function crispScale(value: number): number
-	local step = 0.125
-	return math.max(Theme.Layout.MinimumScale, math.floor(value / step + 1e-6) * step)
 end
 
 function UIController.new()
@@ -237,8 +230,8 @@ function UIController:Start()
 	breadcrumb.Size = UDim2.new(0.5, 0, 1, 0)
 	breadcrumb.Parent = topbar
 	local currency = CurrencyBar.new({
-		{ Icon = "C", IconImage = COINS_ICON, Value = data.Currency.Coins },
-		{ Icon = "VP", Value = data.Currency.VoltraPoints or 0 },
+		{ Icon = "◈", Value = data.Currency.Coins },
+		{ Icon = "ϟ", Value = data.Currency.Bolts },
 	})
 	currency.AnchorPoint = Vector2.new(1, 0.5)
 	currency.Position = UDim2.new(1, -132, 0.5, 0)
@@ -354,6 +347,7 @@ function UIController:Start()
 		Persist = function(mode: string, action: any, state: any)
 			if mode=="Ranked"and action.Operation=="RankedQueue"then return MatchSetupService:JoinRankedQueue()
 			elseif mode=="Ranked"and action.Operation=="RankedQueueCancel"then return MatchSetupService:LeaveRankedQueue()
+			elseif mode=="Shooting"and action.Operation=="StartShootingPractice"then return MatchSetupService:StartShootingPractice()
 			elseif action.ServerAction == "DeveloperGrantCoins" or action.ServerAction == "DeveloperResetProfile" then return LaunchService:Request(action.ServerAction,{})
 			elseif action.ServerAction == "BuyCoins" and action.ServerId then return LaunchService:Request("BuyCoins",{Id=action.ServerId})
 			elseif action.Operation == "Claim" and action.ServerId then return ProgressionService:Claim(action.ServerKind, action.ServerId)
@@ -364,7 +358,6 @@ function UIController:Start()
 			elseif action.Operation == "EquipToggle" then UIStateService:SetSquad(action.Slot, state.Equipped[action.Slot])
 			elseif mode == "Settings" and action.Operation == "Toggle" then UIStateService:SetSetting(action.Key, state.Values[action.Key])
 			elseif mode == "Settings" and action.Operation == "Select" then UIStateService:SetSetting(action.Key, state.Selections[action.Key])
-			elseif mode == "Settings" and action.Operation == "ShowTutorial" then self:_showNewcomerTutorialIfNeeded(true)
 			elseif (mode == "Store" or mode == "UltimateTeam") and action.Operation == "Select" then UIStateService:SetCosmetic(action.Key, action.Item)
 			elseif mode == "Career" and action.Key == "SaveSlot" then UIStateService:SelectCareerSave(tonumber(string.match(action.Item, "%d+")) or 1) end
 			return nil
@@ -380,89 +373,17 @@ function UIController:Start()
 		navigation:RegisterPage(id, page)
 	end
 	navigation:FinalizeSelectionOrder(order)
-	local lastPage = tostring(data.UIState.LastPage or "Home")
-	if lastPage == "Shooting" or not PageModules[lastPage] then lastPage = "Home" end
-	navigation:Navigate(lastPage)
+	navigation:Navigate(data.UIState.LastPage or "Home")
 	self:_bindDataUpdates()
 	NotificationService.Start(function(payload) self:_showNotification(payload) end)
 
 	self:_bindResponsive()
-	local function maybeShowTutorial()
-		self:_showNewcomerTutorialIfNeeded()
-	end
 	if not data.Progression.Onboarding.Complete then
 		LoadingScreen.complete(loading, function()
 			self.Onboarding = OnboardingController.new(root, self.Flow, data.Progression)
-			self.Onboarding:Start(function()
-				navigation:Navigate("Home")
-				UIStateService:SetLastPage("Home")
-				task.delay(0.35, function() self:_showNewcomerTutorialIfNeeded(true) end)
-			end)
+			self.Onboarding:Start(function() navigation:Navigate("Home"); UIStateService:SetLastPage("Home") end)
 		end)
-	else
-		LoadingScreen.complete(loading, function()
-			task.delay(0.35, maybeShowTutorial)
-		end)
-	end
-end
-
-function UIController:_showNewcomerTutorialIfNeeded(force: boolean?)
-	if self.TutorialShowing then return end
-	local settings = self.Data and self.Data.UIState and self.Data.UIState.Settings or {}
-	local initialStep = math.max(1, math.floor(tonumber(settings.TutorialStep) or 1))
-	if force == true and settings.TutorialComplete == true then
-		initialStep = 1
-		if self.Data and self.Data.UIState and self.Data.UIState.Settings then
-			self.Data.UIState.Settings.TutorialComplete = false
-			self.Data.UIState.Settings.TutorialStep = 1
-			self.Data.UIState.Settings.TutorialDevice = ""
-		end
-		UIStateService:SetTutorialProgress(1, "", false)
-	end
-	if force ~= true then
-		local isNew = Players.LocalPlayer:GetAttribute("VTRNewProfile") == true
-		local onboardingComplete = self.Data and self.Data.Progression and self.Data.Progression.Onboarding and self.Data.Progression.Onboarding.Complete == true
-		local tutorialStarted = initialStep > 1 or tostring(settings.TutorialDevice or "") ~= ""
-		if settings.TutorialComplete == true or not onboardingComplete or (not isNew and not tutorialStarted) then
-			return
-		end
-	end
-	local function persistTutorial(step: number, device: string, complete: boolean)
-		local savedStep = complete and 1 or math.max(1, math.floor(tonumber(step) or 1))
-		if self.Data and self.Data.UIState and self.Data.UIState.Settings then
-			self.Data.UIState.Settings.TutorialComplete = complete
-			self.Data.UIState.Settings.TutorialStep = savedStep
-			self.Data.UIState.Settings.TutorialDevice = tostring(device or "")
-		end
-		UIStateService:SetTutorialProgress(savedStep, tostring(device or ""), complete)
-	end
-	self.TutorialShowing = true
-	NewcomerTutorialOverlay.show(self.Root, {
-		InitialStep = initialStep,
-		GetCurrentPage = function()
-			return self.Navigation and self.Navigation.Current or nil
-		end,
-		GetTarget = function(id: string)
-			local item = self.Navigation and self.Navigation.Items and self.Navigation.Items[id]
-			return item and item.Instance or nil
-		end,
-		Navigate = function(id: string)
-			if self.Context and self.Context.Navigate then
-				self.Context.Navigate(id)
-			end
-		end,
-		OnStep = function(step: number, device: string)
-			persistTutorial(step, device, false)
-		end,
-		OnClose = function(step: number, device: string)
-			self.TutorialShowing = false
-			persistTutorial(step, device, false)
-		end,
-		OnComplete = function()
-			self.TutorialShowing = false
-			persistTutorial(1, "", true)
-		end,
-	})
+	else LoadingScreen.complete(loading) end
 end
 
 function UIController:_replacePage(id: string)
@@ -516,8 +437,8 @@ function UIController:_bindDataUpdates()
 	CurrencyService:Observe(function(value)
 		self.Data.Currency = value
 		local replacement = CurrencyBar.new({
-			{ Icon = "C", IconImage = COINS_ICON, Value = value.Coins },
-			{ Icon = "VP", Value = value.VoltraPoints or 0 },
+			{ Icon = "◈", Value = value.Coins },
+			{ Icon = "ϟ", Value = value.Bolts },
 		})
 		replacement.AnchorPoint = self.Currency.AnchorPoint
 		replacement.Position = self.Currency.Position
@@ -650,7 +571,6 @@ function UIController:_bindResponsive()
 		if UserInputService.TouchEnabled then
 			scaleValue = math.clamp(scaleValue * 1.2, Theme.Layout.MinimumScale, Theme.Layout.MaximumScale * 1.2)
 		end
-		scaleValue = crispScale(scaleValue)
 		local sidebarWidth = compact and Theme.Layout.CompactSidebarWidth or Theme.Layout.SidebarWidth
 		self.Scale.Scale = scaleValue
 		self.Root.Size = UDim2.fromScale(1 / scaleValue, 1 / scaleValue)
