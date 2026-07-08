@@ -1,3 +1,5 @@
+local RunService = game:GetService("RunService")
+if not RunService:IsStudio() then return { new = function() local f = Instance.new("Frame"); f.Name = "StudioOnlyShootingModeDisabled"; return f end } end
 --!strict
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
