@@ -108,6 +108,89 @@ local function freezeRootForCelebration(root: BasePart?): (() -> ())?
 	end
 end
 
+
+local function exactLivePoseLock(model: Model?, options: any?): (() -> ())?
+	if not model or not model.Parent then
+		return nil
+	end
+
+	if not options or options.LiveCharacter ~= true then
+		return nil
+	end
+
+	local humanoid = model:FindFirstChildOfClass("Humanoid")
+	local root = model:FindFirstChild("HumanoidRootPart") or model.PrimaryPart
+	local oldAutoRotate = humanoid and humanoid.AutoRotate
+	local oldPlatformStand = humanoid and humanoid.PlatformStand
+	local oldSit = humanoid and humanoid.Sit
+	local oldRootAnchored = root and root.Anchored
+	local oldRootCFrame = root and root.CFrame
+
+	if humanoid then
+		humanoid.PlatformStand = false
+		humanoid.Sit = false
+		humanoid.AutoRotate = false
+		humanoid:Move(Vector3.zero, false)
+		pcall(function()
+			humanoid:ChangeState(Enum.HumanoidStateType.Physics)
+		end)
+	end
+
+	if root then
+		root.AssemblyLinearVelocity = Vector3.zero
+		root.AssemblyAngularVelocity = Vector3.zero
+		root.Anchored = true
+	end
+
+	local animator = humanoid and humanoid:FindFirstChildOfClass("Animator")
+	if animator then
+		for _, track in animator:GetPlayingAnimationTracks() do
+			pcall(function()
+				track:Stop(0)
+			end)
+		end
+	end
+
+	for _, descendant in ipairs(model:GetDescendants()) do
+		if descendant:IsA("BasePart") then
+			descendant.AssemblyLinearVelocity = Vector3.zero
+			descendant.AssemblyAngularVelocity = Vector3.zero
+		elseif descendant:IsA("Motor6D") then
+			descendant.Transform = CFrame.identity
+		end
+	end
+
+	model:SetAttribute("VTRCelebratingLocal", true)
+	model:SetAttribute("VTRCelebrationPoseLocked", true)
+	model:SetAttribute("VTRForceIdle", nil)
+	model:SetAttribute("VTRFrozenIdle", nil)
+
+	return function()
+		if model and model.Parent then
+			model:SetAttribute("VTRCelebrationPoseLocked", nil)
+			model:SetAttribute("VTRCelebratingLocal", nil)
+		end
+
+		if humanoid and humanoid.Parent then
+			humanoid.PlatformStand = oldPlatformStand == true
+			humanoid.Sit = oldSit == true
+			humanoid.AutoRotate = oldAutoRotate ~= false
+			pcall(function()
+				humanoid:ChangeState(Enum.HumanoidStateType.Running)
+			end)
+		end
+
+		if root and root.Parent then
+			root.Anchored = oldRootAnchored == true
+			root.AssemblyLinearVelocity = Vector3.zero
+			root.AssemblyAngularVelocity = Vector3.zero
+			if oldRootCFrame then
+				root.CFrame = oldRootCFrame
+			end
+		end
+	end
+end
+
 function Controller.new()
 	return setmetatable({ Token = 0 }, Controller)
 end
@@ -142,6 +225,7 @@ function Controller:Play(model: Model?, celebrationId: string?, onComplete: (() 
 	local minimumDuration = math.max(duration, tonumber(options and options.MinDuration) or 0)
 	local forceLoop = options and options.ForceLoop == true
 	local pausedTracks = pauseAnimatorTracks(model)
+	local exactLiveRelease = exactLivePoseLock(model, options)
 	local suppressConnection = suppressAnimatorTracks(model)
 	local releaseRoot = options and options.AnchorRoot == true and freezeRootForCelebration(root) or nil
 	model:SetAttribute("VTRCelebratingLocal", true)
@@ -153,6 +237,7 @@ function Controller:Play(model: Model?, celebrationId: string?, onComplete: (() 
 		if releaseRoot then releaseRoot();releaseRoot=nil end
 		if model.Parent then model:SetAttribute("VTRCelebratingLocal", nil) end
 		resumeAnimatorTracks(pausedTracks)
+		if exactLiveRelease then exactLiveRelease() end
 	end
 
 	task.spawn(function()
@@ -240,7 +325,7 @@ function Controller:PlayGoalPresentation(model: Model?, celebrationId: string?, 
 	end
 	local root = model:FindFirstChild("HumanoidRootPart") :: BasePart?
 	if not root then
-		return self:Play(model, celebrationId, onComplete)
+		return self:Play(model, celebrationId, onComplete, {LiveCharacter = options and options.LiveCharacter == true, AnchorRoot = true})
 	end
 
 	self.Token += 1
