@@ -22,6 +22,64 @@ local SIM_FINAL_WHISTLE_SOUND="rbxassetid://116302042443605"
 local SIM_AMBIENCE_SOUND="rbxassetid://114836843250240"
 local SIM_GOAL_SOUND="rbxassetid://75642333208760"
 
+
+local VTR_WORLD_CUP_2X_GAMEPASS_ID=1906308331
+
+local function vtrWorldCupOwns2xPass(context:any?):boolean
+	local player=Players.LocalPlayer
+	if player and player:GetAttribute("VTRWorldCup2xSpeedPass")==true then
+		return true
+	end
+
+	local ownership=context and context.Data and context.Data.StoreOwnership
+	local passes=ownership and ownership.GamePasses
+	if type(passes)=="table" then
+		for _,value in passes do
+			if tostring(value)=="1906308331" or tostring(value)=="world_cup_2x_speed" or tostring(value)=="2x_speed" then
+				if player then player:SetAttribute("VTRWorldCup2xSpeedPass",true)end
+				return true
+			end
+		end
+	end
+
+	if not player then
+		return false
+	end
+
+	local ok,owned=pcall(function()
+		return MarketplaceService:UserOwnsGamePassAsync(player.UserId,VTR_WORLD_CUP_2X_GAMEPASS_ID)
+	end)
+
+	if ok and owned==true then
+		player:SetAttribute("VTRWorldCup2xSpeedPass",true)
+		return true
+	end
+
+	return false
+end
+
+local function vtrWorldCupRequire2xPass(context:any?):boolean
+	if vtrWorldCupOwns2xPass(context) then
+		return true
+	end
+
+	pcall(function()
+		MarketplaceService:PromptGamePassPurchase(Players.LocalPlayer,VTR_WORLD_CUP_2X_GAMEPASS_ID)
+	end)
+
+	if context and context.Toast then
+		context.Toast({Title="WORLD CUP",Message="2x match simulation speed requires the 2x Speed pass.",Kind="Info"})
+	end
+
+	return false
+end
+
+MarketplaceService.PromptGamePassPurchaseFinished:Connect(function(player,gamePassId,purchased)
+	if player==Players.LocalPlayer and gamePassId==VTR_WORLD_CUP_2X_GAMEPASS_ID and purchased then
+		player:SetAttribute("VTRWorldCup2xSpeedPass",true)
+	end
+end)
+
 local function wcCode(country:string):string
 	return string.upper(string.sub((country or""):gsub("[^%a]",""),1,3))
 end
@@ -950,6 +1008,7 @@ local function showSimulatedMatchOverlay(score:any,done:()->())
 	end
 	local function enable2x()
 		has2xAccess=true
+		if not vtrWorldCupRequire2xPass(context)then return end
 		speedMultiplier=2
 		refresh2xButton()
 	end
