@@ -13,7 +13,6 @@ local CATCH_RADIUS = 2.35
 local DEFAULT_DIVE_SPEED = 21
 local MAX_RATED_DIVE_SPEED_MULTIPLIER = 1.27
 local DIVE_JUMP_HEIGHT = 0.72
-local LOW_vtrDiveJumpHeight(save) = 0.05
 local DIVE_FALL_THROUGH = 1.08
 local DIVE_STRETCH_COMPLETE = 0.52
 local DIVE_LAND_HOLD = 0.34
@@ -1449,7 +1448,7 @@ local function prototypeDiveFlightPosition(save:any,elapsed:number,upAxis:Vector
 		local base=startPosition:Lerp(target,glide)
 		local startHeight=startPosition:Dot(upAxis)
 		local targetHeight=target:Dot(upAxis)
-		local arc=math.sin(math.pi*phase)*vtrDiveJumpHeight(save)
+		local arc=math.sin(math.pi*phase)*DIVE_JUMP_HEIGHT
 		local height=math.max(floorHeight,startHeight+(targetHeight-startHeight)*glide+arc)
 		return bounded(base+upAxis*(height-base:Dot(upAxis)),false)
 	end
@@ -1817,7 +1816,7 @@ function Service:Step(dt:number?)
 		local endVertical=(rootTarget-rectangle.PlanePoint):Dot(upAxis)
 		local control=save.StartPosition:Lerp(rootTarget,.48)
 		local controlVertical=(control-rectangle.PlanePoint):Dot(upAxis)
-		local jumpHeight=vtrDiveJumpHeight(save)
+		local jumpHeight=DIVE_JUMP_HEIGHT
 		save.ApexPosition=control+upAxis*(math.max(startVertical,endVertical)+jumpHeight-controlVertical)
 		keeperRoot.Anchored=true
 		save.Keeper:SetAttribute("VTRForceIdle",nil)
