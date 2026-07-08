@@ -744,6 +744,59 @@ function Service:_releasePlayersForLive(session:any)
 	end
 end
 
+
+local function reviveMatchBallForKickoff(session:any,reason:string?)
+	local ball=session.World and session.World.Ball
+	if not ball or not ball.Parent then
+		return
+	end
+
+	pcall(function()GoalShotPassThroughService.Clear(ball)end)
+	pcall(function()BallCollisionService.ApplyBall(ball)end)
+
+	ball.Anchored=false
+	ball.CanCollide=true
+	ball.CanTouch=true
+	ball.CanQuery=true
+	ball.Massless=false
+	ball.Transparency=0
+	pcall(function()ball.LocalTransparencyModifier=0 end)
+	ball.AssemblyLinearVelocity=Vector3.zero
+	ball.AssemblyAngularVelocity=Vector3.zero
+	ball.CFrame=CFrame.new(session.World.PitchCFrame.Position+Vector3.new(0,Config.Ball.Radius+.2,0))
+	setServerNetworkOwner(ball)
+
+	for _,attribute in{"OwnerModel","OwnerUserId","VTRWorldPaused","VTRPauseSavedVelocity","VTRPauseSavedAngularVelocity","VTRPostGoalPhysicsUntil","VTRPostGoalVelocity","VTRPostGoalAngularVelocity","VTRGoalCalledAt","VTRGoalEntryVelocity","VTRGoalEntryAngularVelocity","VTRGoalEntryPosition","VTRGoalEntryNormal","VTRPenaltyShotActive","VTRGoalkeeperHeld","VTRGoalkeeperTracking","VTRGoalkeeperReleaseCameraUntil","VTRPassTarget","VTRPassStartedAt","VTRPassTeam","VTRPassReceiver","VTRLobTarget","VTRLobPassActive","VTRSetPieceReady","VTRSetPieceKind","VTRSetPieceTeam","VTRSetPieceTaker","VTRSetPieceLocked","VTRCornerTarget","VTRLastCornerTeam","VTRCornerTakenAt","VTRMotionKind","VTRRestartDisplayKind"}do
+		ball:SetAttribute(attribute,nil)
+	end
+
+	if session.BallService then
+		session.BallService.MotionKind="Loose"
+		session.BallService.MotionStarted=os.clock()
+		session.BallService.ShotPlan=nil
+		session.BallService.PassPlan=nil
+		session.BallService.PassTargetPoint=nil
+		session.BallService.ExpectedReceiver=nil
+		session.BallService.PendingCurve=nil
+		session.BallService.Last={}
+		session.BallService.LastTouchPlayer=nil
+		session.BallService.LastTouchTeam=nil
+		if session.BallService.Curve then session.BallService.Curve:Stop()end
+		if session.BallService.ClearGoalkeeperHoldState then session.BallService:ClearGoalkeeperHoldState(nil)end
+	end
+
+	if session.Possession then
+		session.Possession:Reset()
+	end
+
+	if session.TeamControl and session.TeamControl.Receiving then
+		session.TeamControl.Receiving:Clear()
+	end
+
+	broadcast(session.State or session.Remote or Remotes.Create(),session,{Type="BallRevived",Reason=reason or"Kickoff",Ball=ball})
+end
+
+
 function Service:_resetForSecondHalfKickoff(session:any)
 	session.PendingReplayRestart=nil
 	session.FinalChance=nil
@@ -771,6 +824,9 @@ function Service:_resetForSecondHalfKickoff(session:any)
 	end
 	local ball=session.World and session.World.Ball
 	if ball then
+		reviveMatchBallForKickoff(session,"SecondHalfReset")
+		ball=session.World and session.World.Ball
+		if not ball then return end
 		ball.Anchored=false
 		ball.CanCollide=true
 		ball.CanTouch=true
@@ -1417,8 +1473,10 @@ function Service:_resumeHalfTime(session:any)
 		end
 	end
 	self:_resetForSecondHalfKickoff(session)
+	reviveMatchBallForKickoff(session,"SecondHalfKickoff")
 	session.SecondHalfStartedAt=os.clock()
-	session.Clock:StartSecondHalf();if session.AI and session.AI.SetHalf then session.AI:SetHalf(2)end;if session.Referee and session.Referee.SetHalf then session.Referee:SetHalf(2)end;if session.Offside and session.Offside.SetHalf then session.Offside:SetHalf(2)end;if session.Goalkeepers and session.Goalkeepers.SetHalf then session.Goalkeepers:SetHalf(2)end;if session.OutOfBounds and session.OutOfBounds.SetHalf then session.OutOfBounds:SetHalf(2)end;self:_startSetPiece(session,"Kickoff","Away",session.World.PitchCFrame.Position)
+	session.Clock:StartSecondHalf();if session.AI and session.AI.SetHalf then session.AI:SetHalf(2)end;if session.Referee and session.Referee.SetHalf then session.Referee:SetHalf(2)end;if session.Offside and session.Offside.SetHalf then session.Offside:SetHalf(2)end;if session.Goalkeepers and session.Goalkeepers.SetHalf then session.Goalkeepers:SetHalf(2)end;if session.OutOfBounds and session.OutOfBounds.SetHalf then session.OutOfBounds:SetHalf(2)end;reviveMatchBallForKickoff(session,"SecondHalfKickoffStart")
+	self:_startSetPiece(session,"Kickoff","Away",session.World.PitchCFrame.Position)
 	broadcast(self.State,session,{Type=session.ExtraTimeActive==true and "ExtraTimeResume" or "HalfTimeResume",ExtraTime=session.ExtraTimeActive==true})
 	task.delay(.35,function()
 		if not session.Ended and session.HalfTimeResuming and session.Phase=="Kickoff" then
@@ -1466,6 +1524,7 @@ function Service:_watchdogResetSecondHalf(session:any,player:Player?):boolean
 		setServerNetworkOwner(session.World and session.World.Ball)
 	end
 	self:_resetForSecondHalfKickoff(session)
+	reviveMatchBallForKickoff(session,"SecondHalfWatchdog")
 	if session.AI and session.AI.SetHalf then session.AI:SetHalf(2)end
 	if session.Referee and session.Referee.SetHalf then session.Referee:SetHalf(2)end
 	if session.Offside and session.Offside.SetHalf then session.Offside:SetHalf(2)end
@@ -1501,6 +1560,8 @@ function Service:_forceSecondHalfKickoffLive(session:any)
 	end
 	local ball=session.World and session.World.Ball
 	if ball then
+		reviveMatchBallForKickoff(session,"ForceSecondHalfLive")
+		ball=session.World and session.World.Ball
 		ball.Anchored=false
 		ball:SetAttribute("VTRWorldPaused",nil)
 		ball:SetAttribute("VTRSetPieceReady",nil)
