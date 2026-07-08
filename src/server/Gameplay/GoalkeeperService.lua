@@ -1045,7 +1045,7 @@ function Service:_vtrStepRollingLowDiveSwitch()
 				end
 
 				if self.Animations then
-					self:_vtrPlayTemporaryDiveAnimation(keeper, animationName, .44)
+					self:_vtrPlayTemporaryDiveAnimation(keeper, animationName, 1.0)
 				end
 
 				local current = keeperRoot.AssemblyLinearVelocity
@@ -1177,6 +1177,7 @@ function Service:_begin(attackingSide: string, shotId: number)
 end
 
 function Service:_miss(save:any)
+	if save and save.Keeper then self:_vtrStopLowDiveOverride(save.Keeper) end
 	local keeper:Model=save.Keeper
 	if save.Launched and save.Rectangle and save.Target then
 		if save.AftermathStarted then return end
@@ -1226,6 +1227,7 @@ function Service:_miss(save:any)
 end
 
 function Service:_finish(save: any)
+	if save and save.Keeper then self:_vtrStopLowDiveOverride(save.Keeper) end
 	if save and save.WillSave==false then
 		self:_miss(save)
 		return
@@ -1662,6 +1664,7 @@ local function goalkeeperDiveAnimationName(save: any): string
 end
 
 function Service:_continueDiveAftermath(save:any,outcome:string,parriedSave:boolean?)
+	if save and save.Keeper and (outcome=="Held" or outcome=="Parried" or outcome=="Miss") then self:_vtrStopLowDiveOverride(save.Keeper) end
 	if not save or save.AftermathStarted then return end
 	save.AftermathStarted=true
 	save.FinishTime=os.clock()
@@ -1824,29 +1827,46 @@ function Service:_vtrPlayTemporaryDiveAnimation(keeper:Model, animationName:stri
 		return
 	end
 
-	local playDuration = tonumber(duration) or 0.44
-	local stopAt = os.clock() + playDuration
+	local playDuration = tonumber(duration) or 1.0
+	local token = tostring(os.clock()) .. animationName
 
 	keeper:SetAttribute("VTRCurrentDiveAnimation", animationName)
-	keeper:SetAttribute("VTRLowDiveSidewaysUntil", stopAt)
+	keeper:SetAttribute("VTRLowDiveAnimationToken", token)
+	keeper:SetAttribute("VTRLowDiveSidewaysUntil", os.clock() + playDuration)
 	keeper:SetAttribute("VTRKeeperDiveAnimationLocked", nil)
-	self.Animations:StopAction(keeper, 0.06)
+
+	self.Animations:StopAction(keeper, 0.04)
 
 	task.delay(0.03, function()
-		if keeper.Parent and keeper:GetAttribute("VTRCurrentDiveAnimation") == animationName then
+		if keeper.Parent and keeper:GetAttribute("VTRLowDiveAnimationToken") == token then
 			keeper:SetAttribute("VTRKeeperDiveAnimationLocked", true)
 			self.Animations:PlayAction(keeper, animationName)
 		end
 	end)
 
 	task.delay(playDuration, function()
-		if keeper.Parent and keeper:GetAttribute("VTRCurrentDiveAnimation") == animationName then
+		if keeper.Parent and keeper:GetAttribute("VTRLowDiveAnimationToken") == token then
 			keeper:SetAttribute("VTRKeeperDiveAnimationLocked", nil)
 			self.Animations:StopAction(keeper, 0.12)
 			keeper:SetAttribute("VTRCurrentDiveAnimation", nil)
+			keeper:SetAttribute("VTRLowDiveAnimationToken", nil)
 			keeper:SetAttribute("VTRLowDiveSidewaysUntil", nil)
 		end
 	end)
+end
+
+function Service:_vtrStopLowDiveOverride(keeper:Model?)
+	if not keeper or not keeper.Parent or not self.Animations then
+		return
+	end
+
+	if keeper:GetAttribute("VTRLowDiveAnimationToken") ~= nil or keeper:GetAttribute("VTRCurrentDiveAnimation") == "GoalkeeperDiveLowLeft" or keeper:GetAttribute("VTRCurrentDiveAnimation") == "GoalkeeperDiveLowRight" then
+		keeper:SetAttribute("VTRKeeperDiveAnimationLocked", nil)
+		self.Animations:StopAction(keeper, 0.12)
+		keeper:SetAttribute("VTRCurrentDiveAnimation", nil)
+		keeper:SetAttribute("VTRLowDiveAnimationToken", nil)
+		keeper:SetAttribute("VTRLowDiveSidewaysUntil", nil)
+	end
 end
 
 
@@ -2010,7 +2030,7 @@ function Service:Step(dt:number?)
 		if self.Animations then
 			local diveAnimationName=goalkeeperDiveAnimationName(save)
 			if diveAnimationName=="GoalkeeperDiveLowLeft" or diveAnimationName=="GoalkeeperDiveLowRight" then
-				self:_vtrPlayTemporaryDiveAnimation(save.Keeper,diveAnimationName,.44)
+				self:_vtrPlayTemporaryDiveAnimation(save.Keeper,diveAnimationName,1.0)
 			else
 				save.Keeper:SetAttribute("VTRCurrentDiveAnimation",diveAnimationName)
 				save.Keeper:SetAttribute("VTRKeeperDiveAnimationLocked",true)
