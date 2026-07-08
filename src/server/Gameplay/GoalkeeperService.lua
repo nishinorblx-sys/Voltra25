@@ -24,6 +24,7 @@ local AI_KEEPER_DISTRIBUTION_DELAY = 0.65
 local AI_KEEPER_DISTRIBUTION_WINDOW = 3.8
 local AI_KEEPER_HOLD_FAILSAFE = 5.2
 local KEEPER_AGGRESSIVE_POSITION_DISTANCE = 160
+local KEEPER_LATERAL_REACT_DISTANCE = 160
 
 local function root(model: Model?): BasePart?
 	return model and model:FindFirstChild("HumanoidRootPart") :: BasePart?
@@ -1326,44 +1327,69 @@ function Service:_positionOnLine(defendingSide:string)
 	local rectangle=GoalModelResolver.ResolveSide(attackingSide,self.PitchCFrame,self.Width,self.Length)
 	local width=rectangle.RightBound-rectangle.Left
 	local center=(rectangle.Left+rectangle.RightBound)*.5
-	local ballOffset=self.Ball.Position-rectangle.PlanePoint
-	local ballHorizontal=ballOffset:Dot(rectangle.Right)
 	local owner=self.BallService.Possession:GetOwner()
 	local ownerRoot=owner and root(owner)
-	local ownPossession=owner and owner:GetAttribute("VTRTeam")==defendingSide
 	local opposingCarrier=owner and ownerRoot and owner:GetAttribute("VTRTeam")~=defendingSide
 	local carrierDistance=opposingCarrier and (ownerRoot.Position-keeperRoot.Position).Magnitude or math.huge
-	local pressureAlpha=opposingCarrier and math.clamp((KEEPER_AGGRESSIVE_POSITION_DISTANCE-carrierDistance)/KEEPER_AGGRESSIVE_POSITION_DISTANCE,0,1) or 0
-	local ownerPitch=owner and ownerRoot and PitchConfig.WorldToTeamPitchPosition(ownerRoot.Position,defendingSide,{PitchCFrame=self.PitchCFrame,Width=self.Width,Length=self.Length}) or nil
-	local advance=0
+	local pressureAlpha=opposingCarrier and math.clamp((KEEPER_LATERAL_REACT_DISTANCE-carrierDistance)/KEEPER_LATERAL_REACT_DISTANCE,0,1) or 0
+	local ballOffset=self.Ball.Position-rectangle.PlanePoint
+	local ballHorizontal=ballOffset:Dot(rectangle.Right)
+	local currentOffset=keeperRoot.Position-rectangle.PlanePoint
+	local currentHorizontal=currentOffset:Dot(rectangle.Right)
+	local targetHorizontal=currentHorizontal
 
-	if ownPossession and ownerPitch and ownerPitch.Z>PitchConfig.PITCH_LENGTH*.5 then
-		advance=math.clamp((ownerPitch.Z-PitchConfig.PITCH_LENGTH*.5)/(PitchConfig.PITCH_LENGTH*.5),0,1)
-	elseif opposingCarrier then
-		advance=pressureAlpha
+	if opposingCarrier and carrierDistance <= KEEPER_LATERAL_REACT_DISTANCE then
+		targetHorizontal=center+(ballHorizontal-center)*(.32+.42*pressureAlpha)
+	elseif not opposingCarrier then
+		targetHorizontal=center+(ballHorizontal-center)*.34
 	end
 
-	local coverScale=ownPossession and .34 or (.30 + .42 * pressureAlpha)
-	local horizontal=math.clamp(center+(ballHorizontal-center)*coverScale,rectangle.Left+width*.08,rectangle.RightBound-width*.08)
-	local height=rectangle.Bottom+math.min(2.75,(rectangle.Top-rectangle.Bottom)*.42)
+	targetHorizontal=math.clamp(targetHorizontal,rectangle.Left+width*.08,rectangle.RightBound-width*.08)
+
 	local forward=fieldDirection(rectangle,self.PitchCFrame)
+	local height=rectangle.Bottom+math.min(2.75,(rectangle.Top-rectangle.Bottom)*.42)
 	local lineDepth=saveLineOffset(rectangle,self.Ball.Size.X*.5)+1.1
 	local boxEdgeDepth=132
-	local targetDepth=lineDepth+(boxEdgeDepth-lineDepth)*advance
-	local target=GoalModelResolver.Point(rectangle,horizontal,height)+forward*targetDepth
-	local targetOffset=target-rectangle.PlanePoint
-	targetDepth=math.clamp(targetOffset:Dot(forward),lineDepth,boxEdgeDepth)
-	local targetHorizontal=math.clamp(targetOffset:Dot(rectangle.Right),rectangle.Left-15,rectangle.RightBound+15)
-	target=GoalModelResolver.Point(rectangle,targetHorizontal,height)+forward*targetDepth
+	local targetDepth=lineDepth
+
+	if opposingCarrier and carrierDistance <= KEEPER_LATERAL_REACT_DISTANCE then
+		targetDepth=lineDepth+(boxEdgeDepth-lineDepth)*pressureAlpha
+	elseif not opposingCarrier and owner and owner:GetAttribute("VTRTeam")==defendingSide and ownerRoot then
+		local ownerPitch=PitchConfig.WorldToTeamPitchPosition(ownerRoot.Position,defendingSide,{PitchCFrame=self.PitchCFrame,Width=self.Width,Length=self.Length})
+		if ownerPitch and ownerPitch.Z>PitchConfig.PITCH_LENGTH*.5 then
+			local advance=math.clamp((ownerPitch.Z-PitchConfig.PITCH_LENGTH*.5)/(PitchConfig.PITCH_LENGTH*.5),0,1)
+			targetDepth=lineDepth+(boxEdgeDepth-lineDepth)*advance
+		end
+	end
+
+	local target=GoalModelResolver.Point(rectangle,targetHorizontal,height)+forward*targetDepth
 	local humanoid=keeper:FindFirstChildOfClass("Humanoid")
-	if keeperRoot and humanoid then
+	if humanoid then
 		self:_faceBall(keeper,rectangle)
 		humanoid.AutoRotate=false
 		local flatTarget=Vector3.new(target.X,keeperRoot.Position.Y,target.Z)
-		local maxSpeed=opposingCarrier and (carrierDistance>KEEPER_AGGRESSIVE_POSITION_DISTANCE and 5.5 or 8+pressureAlpha*5) or 13
-		humanoid.WalkSpeed=math.max(humanoid.WalkSpeed,maxSpeed)
-		humanoid:MoveTo(flatTarget)
+		local distanceToMove=(Vector3.new(flatTarget.X,0,flatTarget.Z)-Vector3.new(keeperRoot.Position.X,0,keeperRoot.Position.Z)).Magnitude
+
+		if opposingCarrier and carrierDistance > KEEPER_LATERAL_REACT_DISTANCE then
+			humanoid.WalkSpeed=0
+			humanoid:Move(Vector3.zero,false)
+			keeper:SetAttribute("VTRGoalLineTarget",Vector3.new(keeperRoot.Position.X,keeperRoot.Position.Y,keeperRoot.Position.Z))
+			keeper:SetAttribute("VTRKeeperPositionHold",true)
+			keeper:SetAttribute("VTRKeeperCarrierDistance",math.floor(carrierDistance+.5))
+			keeper:SetAttribute("VTRKeeperPositionPressure",0)
+			return
+		end
+
+		local maxSpeed=opposingCarrier and (7+pressureAlpha*8) or 11
+		if distanceToMove < .75 then
+			humanoid:Move(Vector3.zero,false)
+		else
+			humanoid.WalkSpeed=math.max(humanoid.WalkSpeed,maxSpeed)
+			humanoid:MoveTo(flatTarget)
+		end
+
 		keeper:SetAttribute("VTRGoalLineTarget",flatTarget)
+		keeper:SetAttribute("VTRKeeperPositionHold",nil)
 		keeper:SetAttribute("VTRKeeperCarrierDistance",carrierDistance<math.huge and math.floor(carrierDistance+.5) or nil)
 		keeper:SetAttribute("VTRKeeperPositionPressure",pressureAlpha)
 	end
@@ -1380,7 +1406,7 @@ function Service:_rushCloseCarrier(defendingSide:string): boolean
 	local rectangle=GoalModelResolver.ResolveSide(attackingSide,self.PitchCFrame,self.Width,self.Length)
 	local goalCenter=GoalModelResolver.Point(rectangle,(rectangle.Left+rectangle.RightBound)*.5,rectangle.Bottom+2.6)
 	local carrierGoalDistance=Vector3.new(carrierRoot.Position.X-goalCenter.X,0,carrierRoot.Position.Z-goalCenter.Z).Magnitude
-	if keeperDistance>KEEPER_AGGRESSIVE_POSITION_DISTANCE or carrierGoalDistance>50 then return false end
+	if keeperDistance>KEEPER_LATERAL_REACT_DISTANCE or carrierGoalDistance>50 then return false end
 	local keeperDistance=(keeperRoot.Position-carrierRoot.Position).Magnitude
 	local humanoid=keeper:FindFirstChildOfClass("Humanoid")
 	if humanoid then
