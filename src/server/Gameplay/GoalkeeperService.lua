@@ -1350,30 +1350,23 @@ function Service:_positionOnLine(defendingSide:string)
 	local height=rectangle.Bottom+math.min(2.75,(rectangle.Top-rectangle.Bottom)*.42)
 	local lineDepth=saveLineOffset(rectangle,self.Ball.Size.X*.5)+1.1
 	local boxEdgeDepth=132
-	local targetDepth=lineDepth
-
-	if opposingCarrier and carrierDistance <= KEEPER_LATERAL_REACT_DISTANCE then
-		targetDepth=lineDepth+(boxEdgeDepth-lineDepth)*pressureAlpha
-	elseif not opposingCarrier and owner and owner:GetAttribute("VTRTeam")==defendingSide and ownerRoot then
-		local ownerPitch=PitchConfig.WorldToTeamPitchPosition(ownerRoot.Position,defendingSide,{PitchCFrame=self.PitchCFrame,Width=self.Width,Length=self.Length})
-		if ownerPitch and ownerPitch.Z>PitchConfig.PITCH_LENGTH*.5 then
-			local advance=math.clamp((ownerPitch.Z-PitchConfig.PITCH_LENGTH*.5)/(PitchConfig.PITCH_LENGTH*.5),0,1)
-			targetDepth=lineDepth+(boxEdgeDepth-lineDepth)*advance
-		end
-	end
-
+	local currentDepth=currentOffset:Dot(forward)
+	local targetDepth=currentDepth
+	local minDepth=lineDepth
+	local maxDepth=lineDepth+8
+	targetDepth=math.clamp(targetDepth,minDepth,maxDepth)
 	local target=GoalModelResolver.Point(rectangle,targetHorizontal,height)+forward*targetDepth
 	local humanoid=keeper:FindFirstChildOfClass("Humanoid")
 	if humanoid then
 		self:_faceBall(keeper,rectangle)
 		humanoid.AutoRotate=false
-		local flatTarget=Vector3.new(target.X,keeperRoot.Position.Y,target.Z)
+		local flatTarget=keeperRoot.Position+rectangle.Right*((target-keeperRoot.Position):Dot(rectangle.Right))
 		local distanceToMove=(Vector3.new(flatTarget.X,0,flatTarget.Z)-Vector3.new(keeperRoot.Position.X,0,keeperRoot.Position.Z)).Magnitude
 
 		if opposingCarrier and carrierDistance > KEEPER_LATERAL_REACT_DISTANCE then
 			humanoid.WalkSpeed=0
 			humanoid:Move(Vector3.zero,false)
-			keeper:SetAttribute("VTRGoalLineTarget",Vector3.new(keeperRoot.Position.X,keeperRoot.Position.Y,keeperRoot.Position.Z))
+			keeper:SetAttribute("VTRGoalLineTarget",keeperRoot.Position)
 			keeper:SetAttribute("VTRKeeperPositionHold",true)
 			keeper:SetAttribute("VTRKeeperCarrierDistance",math.floor(carrierDistance+.5))
 			keeper:SetAttribute("VTRKeeperPositionPressure",0)
