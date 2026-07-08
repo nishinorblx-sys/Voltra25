@@ -938,6 +938,90 @@ function Service.new(ball: BasePart, teams: any, pitchCFrame: CFrame, width: num
 end
 
 
+
+function Service:_vtrFallingShotPointAtKeeper(keeperRoot: BasePart): Vector3?
+	local ball = self.Ball
+	if not ball or not ball.Parent then
+		return nil
+	end
+
+	local velocity = ball.AssemblyLinearVelocity
+	local flatVelocity = Vector3.new(velocity.X, 0, velocity.Z)
+	if flatVelocity.Magnitude < 8 then
+		return nil
+	end
+
+	local toKeeper = keeperRoot.Position - ball.Position
+	local flatToKeeper = Vector3.new(toKeeper.X, 0, toKeeper.Z)
+	local along = flatToKeeper:Dot(flatVelocity.Unit)
+	if along < -3 or along > 40 then
+		return nil
+	end
+
+	local time = math.clamp(along / math.max(flatVelocity.Magnitude, 1), 0, 1.15)
+	local y = ball.Position.Y + velocity.Y * time - 0.5 * workspace.Gravity * time * time
+	local x = ball.Position.X + velocity.X * time
+	local z = ball.Position.Z + velocity.Z * time
+
+	return Vector3.new(x, y, z)
+end
+
+function Service:_vtrAdjustDiveFallToTrajectory(save: any, dt: number)
+	if not save or not save.Keeper then
+		return
+	end
+
+	local keeper = save.Keeper
+	local keeperRoot = root(keeper)
+	if not keeperRoot then
+		return
+	end
+
+	local predicted = self:_vtrFallingShotPointAtKeeper(keeperRoot)
+	if not predicted then
+		return
+	end
+
+	local belowKeeper = predicted.Y <= keeperRoot.Position.Y + 2.75
+	local ballDropping = self.Ball.AssemblyLinearVelocity.Y <= 2
+	local ballClose = (Vector3.new(self.Ball.Position.X, 0, self.Ball.Position.Z) - Vector3.new(keeperRoot.Position.X, 0, keeperRoot.Position.Z)).Magnitude <= 30
+
+	if not belowKeeper or not ballDropping or not ballClose then
+		return
+	end
+
+	keeper:SetAttribute("VTRLowShotFlatDive", true)
+	keeper:SetAttribute("VTRFallingLowShotDive", true)
+	keeper:SetAttribute("VTRKeeperNoJumpDive", true)
+	save.LowDive = true
+	save.NoJump = true
+	save.Target = predicted
+	save.SavePoint = predicted
+
+	local lateral = predicted.X - keeperRoot.Position.X
+	local downward = math.clamp((keeperRoot.Position.Y + 2.75 - predicted.Y) * 18, 18, 62)
+	local lateralVelocity = math.clamp(lateral * 10, -42, 42)
+	local current = keeperRoot.AssemblyLinearVelocity
+
+	keeperRoot.AssemblyLinearVelocity = Vector3.new(lateralVelocity, -downward, current.Z * 0.12)
+
+	if self.Animations and keeper:GetAttribute("VTRKeeperLowDiveSwitched") ~= true then
+		keeper:SetAttribute("VTRKeeperLowDiveSwitched", true)
+		keeper:SetAttribute("VTRKeeperDiveAnimationLocked", nil)
+
+		local animationName = "GoalkeeperDiveLow"
+		if lateral < -0.75 then
+			animationName = "GoalkeeperDiveLowLeft"
+		elseif lateral > 0.75 then
+			animationName = "GoalkeeperDiveLowRight"
+		end
+
+		self.Animations:PlayAction(keeper, animationName)
+		keeper:SetAttribute("VTRKeeperDiveAnimationLocked", true)
+	end
+end
+
+
 function Service:_vtrStepRollingLowDiveSwitch()
 	local ball = self.Ball
 	if not ball or not ball.Parent then
@@ -1673,6 +1757,9 @@ local function liveReachHitboxTouched(service:any,save:any,target:Vector3):boole
 end
 
 function Service:Step(dt:number?)
+	for _, save in self.ActiveSaves or {} do
+		self:_vtrAdjustDiveFallToTrajectory(save, dt)
+	end
 	
 	self:_vtrStepRollingLowDiveSwitch()dt=math.clamp(dt or 1/60,1/240,.1)
 	local shotId = self.BallService.MotionKind == "Shot" and self.BallService.MotionStarted or 0
