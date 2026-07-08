@@ -1,27 +1,28 @@
-local function vtrGetWorldCampaignWinProgress()
-	local serverScriptService = game:GetService("ServerScriptService")
-	local vtrServer = serverScriptService:FindFirstChild("VTRServer")
-	local services = vtrServer and vtrServer:FindFirstChild("Services")
-	local module = services and services:FindFirstChild("WorldCampaignWinProgressService")
-
-	if module and module:IsA("ModuleScript") then
-		local ok, result = pcall(require, module)
-		if ok and typeof(result) == "table" and result.TryRegisterFromArgs then
-			return result
+local function vtrLoadWorldCampaignWinProgress()
+	VTRWorldCampaignWinProgress.TryRegisterFromArgs(nil)
+	local current = script
+	while current do
+		local services = current:FindFirstChild("Services")
+		if services and services:FindFirstChild("WorldCampaignWinProgressService") then
+			VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request)
+			return require(services:WaitForChild("WorldCampaignWinProgressService"))
 		end
+
+		if current.Parent then
+			local sibling = current.Parent:FindFirstChild("Services")
+			if sibling and sibling:FindFirstChild("WorldCampaignWinProgressService") then
+				VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request)
+				return require(sibling:WaitForChild("WorldCampaignWinProgressService"))
+			end
+		end
+
+		current = current.Parent
 	end
 
-	return {
-		TryRegisterFromArgs = function()
-			return false
-		end,
-		RegisterWin = function()
-			return false
-		end,
-	}
+	return require(game:GetService("ServerScriptService"):WaitForChild("VTRServer"):WaitForChild("Services"):WaitForChild("WorldCampaignWinProgressService"))
 end
 
-local VTRWorldCampaignWinProgress = vtrGetWorldCampaignWinProgress()
+local VTRWorldCampaignWinProgress = vtrLoadWorldCampaignWinProgress()
 local function vtrLoadPackInventoryConsume()
 	local current = script
 	while current do
@@ -99,7 +100,7 @@ local function remote(parent: Instance, className: string, name: string): Instan
 end
 
 function ServerApp.Start()
-	pcall(function() VTRWorldCampaignWinProgress.TryRegisterFromArgs(nil) end)
+	VTRWorldCampaignWinProgress.TryRegisterFromArgs(nil)
 	local vtr = ReplicatedStorage:WaitForChild("VTR")
 	local remotes = vtr:FindFirstChild(NetworkConfig.FolderName) or Instance.new("Folder")
 	remotes.Name = NetworkConfig.FolderName
@@ -213,7 +214,7 @@ function ServerApp.Start()
 	local lastProgressionAction: { [Player]: number } = {}
 	progressionAction.OnServerInvoke = function(player:Player,kind:any,id:any)
 		if type(kind)~="string" or (kind~="Ranked" and kind~="Objective") or type(id)~="string" or #id>64 then return {Success=false,Message="Invalid request."} end
-			pcall(function() VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request) end)
+			VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request)
 		local now=os.clock();if now-(lastProgressionAction[player] or 0)<.5 then return {Success=false,Message="Please wait."} end;lastProgressionAction[player]=now
 		local ok,success,message,data=pcall(function() local claimed,text,result=progression:Claim(player,kind,id);return claimed,text,result end)
 		return {Success=ok and success,Message=ok and message or "Claim failed.",Data=ok and data or nil}
@@ -268,7 +269,7 @@ function ServerApp.Start()
 		if type(action)~="string" or #action>24 then return {Success=false,Message="Invalid pack request."} end
 		if action=="GetInventory" then local data=packs:GetClientData(player);return data and {Success=true,Data=data} or {Success=false,Message="Pack inventory unavailable."} end
 		if action=="OpenAll" then if type(payload)~="table" or type(payload.PackId)~="string" or #payload.PackId>48 then return {Success=false,Message="Invalid pack type."} end;local now=os.clock();if now-(lastPackAction[player] or 0)<.9 then return {Success=false,Message="Pack chamber is cooling down."} end;lastPackAction[player]=now;local ok,success,result,count=pcall(function() return packs:OpenAll(player,payload.PackId) end);if not ok or not success then return {Success=false,Message=ok and result or "Open All failed."} end;local p=profiles:GetProfile(player);if p then for _,instance in result do local exists=false;for _,item in p.Inventory.Items do if item.Id==instance.cardInstanceId then exists=true;break end end;if not exists then table.insert(p.Inventory.Items,{Id=instance.cardInstanceId,Kind="PlayerCard",Quantity=1,AcquiredAt=os.time()}) end end;for _,objective in p.Objectives do if objective.objectiveId=="open_first_pack" and objective.status~="claimed" then objective.progress=1;if objective.status=="active" then objective.status="claimable" end;break end end;launch:_push(player,p) end;return {Success=true,Message=count.." packs opened.",Data=result,OpenedCount=count,Inventory=packs:GetClientData(player)} end
-			pcall(function() VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request) end)
+			VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request)
 		if action~="OpenPack" or type(payload)~="table" or type(payload.PackInstanceId)~="string" or #payload.PackInstanceId>80 then return {Success=false,Message="Invalid pack action."} end
 			VTRPackInventoryConsume.ConsumeOpen(self, player, payload, data, request, pack, packId, packInstanceId)
 		local now=os.clock();if now-(lastPackAction[player] or 0)<.9 then return {Success=false,Message="Pack chamber is cooling down."} end;lastPackAction[player]=now
@@ -282,9 +283,9 @@ function ServerApp.Start()
 	local lastMatchAction:{[Player]:number}={}
 	matchAction.OnServerInvoke=function(player:Player,action:any,payload:any)
 		if type(action)~="string"or#action>32 then return{Success=false,Message="Invalid match action."}end;payload=type(payload)=="table"and payload or{};local now=os.clock();if action~="GetConfig"and action~="GetRoster"and action~="GetTeams"and action~="GetWorldCup"and action~="GetRankedLeaderboards"and now-(lastMatchAction[player]or 0)<.2 then return{Success=false,Message="Please wait."}end;lastMatchAction[player]=now
-			pcall(function() VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request) end)
+			VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request)
 		local ok,success,message,data=pcall(function()if action=="GetConfig"then local result=matchSetup:GetClientData(player);if not result and profiles.WaitForProfile then profiles:WaitForProfile(player,8);result=matchSetup:GetClientData(player)end;return result~=nil,result and"Match setup loaded."or"Match setup unavailable.",result elseif action=="GetRoster"then local result=matchSetup:GetRoster(player,payload.TeamId);return result~=nil,result and"Roster loaded."or"Unknown team.",result elseif action=="GetTeams"then local result=matchSetup:GetTeams(player,payload.Country,payload.League);return result~=nil,result and"Teams loaded."or"Invalid country or league.",result elseif action=="SaveSetup"then return matchSetup:Save(player,payload)elseif action=="StartMatch"then return matchSetup:StartMatch(player)elseif action=="WatchMatch"then return matchSetup:WatchMatch(player)elseif action=="StartShootingPractice"then return matchSetup:StartShootingPractice(player,payload) elseif action=="GetWorldCup"then return matchSetup:GetWorldCup(player)elseif action=="BeginWorldCup"then return matchSetup:BeginWorldCup(player,tostring(payload.Country or""))elseif action=="ResetWorldCup"then return matchSetup:ResetWorldCup(player)elseif action=="EndWorldCup"then return matchSetup:EndWorldCup(player)elseif action=="ClaimWorldCupRewards"then return matchSetup:ClaimWorldCupRewards(player)elseif action=="StartWorldCupMatch"then return matchSetup:StartWorldCupMatch(player)elseif action=="SimulateWorldCupMatch"then return matchSetup:SimulateWorldCupMatch(player)elseif action=="SimulateRestOfWorldCup"then return matchSetup:SimulateRestOfWorldCup(player)elseif action=="JoinRankedQueue"then
-			pcall(function() VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request) end)
+			VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request)
 		if player:GetAttribute("VTRInMatch")==true or (tonumber(player:GetAttribute("VTRRankedQueueLockedUntil"))or 0)>os.clock() then
 			return{Success=false,Message="Finish the current ranked match first."}
 		end

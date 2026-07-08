@@ -1,34 +1,35 @@
 --!strict
-local function vtrGetWorldCampaignWinProgress()
-	local serverScriptService = game:GetService("ServerScriptService")
-	local vtrServer = serverScriptService:FindFirstChild("VTRServer")
-	local services = vtrServer and vtrServer:FindFirstChild("Services")
-	local module = services and services:FindFirstChild("WorldCampaignWinProgressService")
-
-	if module and module:IsA("ModuleScript") then
-		local ok, result = pcall(require, module)
-		if ok and typeof(result) == "table" and result.TryRegisterFromArgs then
-			return result
+local function vtrLoadWorldCampaignWinProgress()
+	VTRWorldCampaignWinProgress.TryRegisterFromArgs(nil)
+	local current = script
+	while current do
+		local services = current:FindFirstChild("Services")
+		if services and services:FindFirstChild("WorldCampaignWinProgressService") then
+			VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request)
+			return require(services:WaitForChild("WorldCampaignWinProgressService"))
 		end
+
+		if current.Parent then
+			local sibling = current.Parent:FindFirstChild("Services")
+			if sibling and sibling:FindFirstChild("WorldCampaignWinProgressService") then
+				VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request)
+				return require(sibling:WaitForChild("WorldCampaignWinProgressService"))
+			end
+		end
+
+		current = current.Parent
 	end
 
-	return {
-		TryRegisterFromArgs = function()
-			return false
-		end,
-		RegisterWin = function()
-			return false
-		end,
-	}
+	return require(game:GetService("ServerScriptService"):WaitForChild("VTRServer"):WaitForChild("Services"):WaitForChild("WorldCampaignWinProgressService"))
 end
 
-local VTRWorldCampaignWinProgress = vtrGetWorldCampaignWinProgress()
+local VTRWorldCampaignWinProgress = vtrLoadWorldCampaignWinProgress()
 local ReplicatedStorage=game:GetService("ReplicatedStorage")
 local Schema=require(ReplicatedStorage.VTR.Shared.UIStateSchema)
 local UIStateService={};UIStateService.__index=UIStateService
 
 local function copy(value:any):any if type(value)~="table" then return value end;local result={};for key,child in value do result[key]=copy(child) end;return result end
-	pcall(function() VTRWorldCampaignWinProgress.TryRegisterFromArgs(nil) end)
+	VTRWorldCampaignWinProgress.TryRegisterFromArgs(nil)
 local function safeString(value:any,max:number):boolean return type(value)=="string" and #value>0 and #value<=max end
 local function clampTutorialStep(value:any):number
 	local step=math.floor(tonumber(value) or 1)

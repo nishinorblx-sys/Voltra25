@@ -1,0 +1,1241 @@
+[1mdiff --git a/src/server/Data/DefaultProfile.lua b/src/server/Data/DefaultProfile.lua[m
+[1mindex b7642d9..0485207 100644[m
+[1m--- a/src/server/Data/DefaultProfile.lua[m
+[1m+++ b/src/server/Data/DefaultProfile.lua[m
+[36m@@ -1,29 +1,4 @@[m
+ --!strict[m
+[31m-local function vtrLoadWorldCampaignWinProgress()[m
+[31m-	VTRWorldCampaignWinProgress.TryRegisterFromArgs(nil)[m
+[31m-	local current = script[m
+[31m-	while current do[m
+[31m-		local services = current:FindFirstChild("Services")[m
+[31m-		if services and services:FindFirstChild("WorldCampaignWinProgressService") then[m
+[31m-			VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request)[m
+[31m-			return require(services:WaitForChild("WorldCampaignWinProgressService"))[m
+[31m-		end[m
+[31m-[m
+[31m-		if current.Parent then[m
+[31m-			local sibling = current.Parent:FindFirstChild("Services")[m
+[31m-			if sibling and sibling:FindFirstChild("WorldCampaignWinProgressService") then[m
+[31m-				VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request)[m
+[31m-				return require(sibling:WaitForChild("WorldCampaignWinProgressService"))[m
+[31m-			end[m
+[31m-		end[m
+[31m-[m
+[31m-		current = current.Parent[m
+[31m-	end[m
+[31m-[m
+[31m-	return require(game:GetService("ServerScriptService"):WaitForChild("VTRServer"):WaitForChild("Services"):WaitForChild("WorldCampaignWinProgressService"))[m
+[31m-end[m
+[31m-[m
+[31m-local VTRWorldCampaignWinProgress = vtrLoadWorldCampaignWinProgress()[m
+ local function vtrLoadPackInventoryConsume()[m
+ 	local current = script[m
+ 	while current do[m
+[1mdiff --git a/src/server/Data/Objectives.lua b/src/server/Data/Objectives.lua[m
+[1mindex 8189c9f..b2e664d 100644[m
+[1m--- a/src/server/Data/Objectives.lua[m
+[1m+++ b/src/server/Data/Objectives.lua[m
+[36m@@ -1,29 +1,4 @@[m
+ --!strict[m
+[31m-local function vtrLoadWorldCampaignWinProgress()[m
+[31m-	VTRWorldCampaignWinProgress.TryRegisterFromArgs(nil)[m
+[31m-	local current = script[m
+[31m-	while current do[m
+[31m-		local services = current:FindFirstChild("Services")[m
+[31m-		if services and services:FindFirstChild("WorldCampaignWinProgressService") then[m
+[31m-			VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request)[m
+[31m-			return require(services:WaitForChild("WorldCampaignWinProgressService"))[m
+[31m-		end[m
+[31m-[m
+[31m-		if current.Parent then[m
+[31m-			local sibling = current.Parent:FindFirstChild("Services")[m
+[31m-			if sibling and sibling:FindFirstChild("WorldCampaignWinProgressService") then[m
+[31m-				VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request)[m
+[31m-				return require(sibling:WaitForChild("WorldCampaignWinProgressService"))[m
+[31m-			end[m
+[31m-		end[m
+[31m-[m
+[31m-		current = current.Parent[m
+[31m-	end[m
+[31m-[m
+[31m-	return require(game:GetService("ServerScriptService"):WaitForChild("VTRServer"):WaitForChild("Services"):WaitForChild("WorldCampaignWinProgressService"))[m
+[31m-end[m
+[31m-[m
+[31m-local VTRWorldCampaignWinProgress = vtrLoadWorldCampaignWinProgress()[m
+ local function vtrLoadPackInventoryConsume()[m
+ 	local current = script[m
+ 	while current do[m
+[1mdiff --git a/src/server/Gameplay/BallService.lua b/src/server/Gameplay/BallService.lua[m
+[1mindex afa0784..bd8f1ec 100644[m
+[1m--- a/src/server/Gameplay/BallService.lua[m
+[1m+++ b/src/server/Gameplay/BallService.lua[m
+[36m@@ -1,29 +1,28 @@[m
+ --!strict[m
+[31m-local function vtrLoadWorldCampaignWinProgress()[m
+[31m-	VTRWorldCampaignWinProgress.TryRegisterFromArgs(nil)[m
+[31m-	local current = script[m
+[31m-	while current do[m
+[31m-		local services = current:FindFirstChild("Services")[m
+[31m-		if services and services:FindFirstChild("WorldCampaignWinProgressService") then[m
+[31m-			VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request)[m
+[31m-			return require(services:WaitForChild("WorldCampaignWinProgressService"))[m
+[31m-		end[m
+[32m+[m[32mlocal function vtrGetWorldCampaignWinProgress()[m
+[32m+[m	[32mlocal serverScriptService = game:GetService("ServerScriptService")[m
+[32m+[m	[32mlocal vtrServer = serverScriptService:FindFirstChild("VTRServer")[m
+[32m+[m	[32mlocal services = vtrServer and vtrServer:FindFirstChild("Services")[m
+[32m+[m	[32mlocal module = services and services:FindFirstChild("WorldCampaignWinProgressService")[m
+ [m
+[31m-		if current.Parent then[m
+[31m-			local sibling = current.Parent:FindFirstChild("Services")[m
+[31m-			if sibling and sibling:FindFirstChild("WorldCampaignWinProgressService") then[m
+[31m-				VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request)[m
+[31m-				return require(sibling:WaitForChild("WorldCampaignWinProgressService"))[m
+[31m-			end[m
+[32m+[m	[32mif module and module:IsA("ModuleScript") then[m
+[32m+[m		[32mlocal ok, result = pcall(require, module)[m
+[32m+[m		[32mif ok and typeof(result) == "table" and result.TryRegisterFromArgs then[m
+[32m+[m			[32mreturn result[m
+ 		end[m
+[31m-[m
+[31m-		current = current.Parent[m
+ 	end[m
+ [m
+[31m-	return require(game:GetService("ServerScriptService"):WaitForChild("VTRServer"):WaitForChild("Services"):WaitForChild("WorldCampaignWinProgressService"))[m
+[32m+[m	[32mreturn {[m
+[32m+[m		[32mTryRegisterFromArgs = function()[m
+[32m+[m			[32mreturn false[m
+[32m+[m		[32mend,[m
+[32m+[m		[32mRegisterWin = function()[m
+[32m+[m			[32mreturn false[m
+[32m+[m		[32mend,[m
+[32m+[m	[32m}[m
+ end[m
+ [m
+[31m-local VTRWorldCampaignWinProgress = vtrLoadWorldCampaignWinProgress()[m
+[32m+[m[32mlocal VTRWorldCampaignWinProgress = vtrGetWorldCampaignWinProgress()[m
+ local function vtrLoadShotPowerModel()[m
+ 	local ReplicatedStorage = game:GetService("ReplicatedStorage")[m
+ 	local vtr = ReplicatedStorage:FindFirstChild("VTR")[m
+[36m@@ -149,7 +148,7 @@[m [mfunction Service:GetLastTouchPlayer(): Model?[m
+ end[m
+ [m
+ function Service:SetReferee(referee:any)self.Referee=referee end[m
+[31m-	VTRWorldCampaignWinProgress.TryRegisterFromArgs(self)[m
+[32m+[m	[32mpcall(function() VTRWorldCampaignWinProgress.TryRegisterFromArgs(self) end)[m
+ function Service:SetOffsideService(service:any)self.Offside=service end[m
+ function Service:SetFoulPolicy(policy:any)self.FoulPolicy=policy end[m
+ [m
+[1mdiff --git a/src/server/Gameplay/KitApplier.lua b/src/server/Gameplay/KitApplier.lua[m
+[1mindex 673fae5..255af39 100644[m
+[1m--- a/src/server/Gameplay/KitApplier.lua[m
+[1m+++ b/src/server/Gameplay/KitApplier.lua[m
+[36m@@ -1,33 +1,32 @@[m
+ --!strict[m
+[31m-local function vtrLoadWorldCampaignWinProgress()[m
+[31m-	VTRWorldCampaignWinProgress.TryRegisterFromArgs(nil)[m
+[31m-	local current = script[m
+[31m-	while current do[m
+[31m-		local services = current:FindFirstChild("Services")[m
+[31m-		if services and services:FindFirstChild("WorldCampaignWinProgressService") then[m
+[31m-			VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request)[m
+[31m-			return require(services:WaitForChild("WorldCampaignWinProgressService"))[m
+[31m-		end[m
+[32m+[m[32mlocal function vtrGetWorldCampaignWinProgress()[m
+[32m+[m	[32mlocal serverScriptService = game:GetService("ServerScriptService")[m
+[32m+[m	[32mlocal vtrServer = serverScriptService:FindFirstChild("VTRServer")[m
+[32m+[m	[32mlocal services = vtrServer and vtrServer:FindFirstChild("Services")[m
+[32m+[m	[32mlocal module = services and services:FindFirstChild("WorldCampaignWinProgressService")[m
+ [m
+[31m-		if current.Parent then[m
+[31m-			local sibling = current.Parent:FindFirstChild("Services")[m
+[31m-			if sibling and sibling:FindFirstChild("WorldCampaignWinProgressService") then[m
+[31m-				VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request)[m
+[31m-				return require(sibling:WaitForChild("WorldCampaignWinProgressService"))[m
+[31m-			end[m
+[32m+[m	[32mif module and module:IsA("ModuleScript") then[m
+[32m+[m		[32mlocal ok, result = pcall(require, module)[m
+[32m+[m		[32mif ok and typeof(result) == "table" and result.TryRegisterFromArgs then[m
+[32m+[m			[32mreturn result[m
+ 		end[m
+[31m-[m
+[31m-		current = current.Parent[m
+ 	end[m
+ [m
+[31m-	return require(game:GetService("ServerScriptService"):WaitForChild("VTRServer"):WaitForChild("Services"):WaitForChild("WorldCampaignWinProgressService"))[m
+[32m+[m	[32mreturn {[m
+[32m+[m		[32mTryRegisterFromArgs = function()[m
+[32m+[m			[32mreturn false[m
+[32m+[m		[32mend,[m
+[32m+[m		[32mRegisterWin = function()[m
+[32m+[m			[32mreturn false[m
+[32m+[m		[32mend,[m
+[32m+[m	[32m}[m
+ end[m
+ [m
+[31m-local VTRWorldCampaignWinProgress = vtrLoadWorldCampaignWinProgress()[m
+[32m+[m[32mlocal VTRWorldCampaignWinProgress = vtrGetWorldCampaignWinProgress()[m
+ local TweenService=game:GetService("TweenService")[m
+ local Service={}[m
+ local function color(value:any,fallback:Color3):Color3 local ok,result=pcall(Color3.fromHex,tostring(value or""));return ok and result or fallback end[m
+[31m-	VTRWorldCampaignWinProgress.TryRegisterFromArgs(result)[m
+[32m+[m	[32mpcall(function() VTRWorldCampaignWinProgress.TryRegisterFromArgs(result) end)[m
+ local function textSurface(part:BasePart,face:Enum.NormalId,value:string,textColor:Color3,size:number,name:string)local gui=Instance.new("SurfaceGui");gui.Name=name;gui.Face=face;gui.LightInfluence=0;gui.PixelsPerStud=70;gui.SizingMode=Enum.SurfaceGuiSizingMode.PixelsPerStud;gui.Parent=part;local label=Instance.new("TextLabel");label.BackgroundTransparency=1;label.Size=UDim2.fromScale(1,1);label.Text=value;label.TextColor3=textColor;label.TextScaled=true;label.Font=Enum.Font.GothamBlack;label.Parent=gui;local padding=Instance.new("UIPadding");padding.PaddingLeft=UDim.new(.18,0);padding.PaddingRight=UDim.new(.18,0);padding.PaddingTop=UDim.new(size,0);padding.PaddingBottom=UDim.new(size,0);padding.Parent=label end[m
+ local function frontBadgePlate(torso:BasePart,value:string,textColor:Color3)[m
+ 	local plate=Instance.new("Part");plate.Name="ChestBadgePlate";plate.Anchored=false;plate.CanCollide=false;plate.CanTouch=false;plate.CanQuery=false;plate.CastShadow=false;plate.Massless=true;plate.Material=Enum.Material.SmoothPlastic;plate.Transparency=1;plate.Size=Vector3.new(math.max(.8,torso.Size.X*.62),math.max(.18,torso.Size.Y*.16),.025);plate.CFrame=torso.CFrame*CFrame.new(0,torso.Size.Y*.12,-torso.Size.Z*.5-.045);plate.Parent=torso.Parent[m
+[1mdiff --git a/src/server/Gameplay/MatchRuntimeService.lua b/src/server/Gameplay/MatchRuntimeService.lua[m
+[1mindex c8465c8..623fe37 100644[m
+[1m--- a/src/server/Gameplay/MatchRuntimeService.lua[m
+[1m+++ b/src/server/Gameplay/MatchRuntimeService.lua[m
+[36m@@ -1,28 +1,27 @@[m
+[31m-local function vtrLoadWorldCampaignWinProgress()[m
+[31m-	VTRWorldCampaignWinProgress.TryRegisterFromArgs(nil)[m
+[31m-	local current = script[m
+[31m-	while current do[m
+[31m-		local services = current:FindFirstChild("Services")[m
+[31m-		if services and services:FindFirstChild("WorldCampaignWinProgressService") then[m
+[31m-			VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request)[m
+[31m-			return require(services:WaitForChild("WorldCampaignWinProgressService"))[m
+[31m-		end[m
+[31m-[m
+[31m-		if current.Parent then[m
+[31m-			local sibling = current.Parent:FindFirstChild("Services")[m
+[31m-			if sibling and sibling:FindFirstChild("WorldCampaignWinProgressService") then[m
+[31m-				VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request)[m
+[31m-				return require(sibling:WaitForChild("WorldCampaignWinProgressService"))[m
+[31m-			end[m
+[31m-		end[m
+[31m-[m
+[31m-		current = current.Parent[m
+[31m-	end[m
+[31m-[m
+[31m-	return require(game:GetService("ServerScriptService"):WaitForChild("VTRServer"):WaitForChild("Services"):WaitForChild("WorldCampaignWinProgressService"))[m
+[32m+[m[32mlocal function vtrGetWorldCampaignWinProgress()[m
+[32m+[m	[32mlocal serverScriptService = game:GetService("ServerScriptService")[m
+[32m+[m	[32mlocal vtrServer = serverScriptService:FindFirstChild("VTRServer")[m
+[32m+[m	[32mlocal services = vtrServer and vtrServer:FindFirstChild("Services")[m
+[32m+[m	[32mlocal module = services and services:FindFirstChild("WorldCampaignWinProgressService")[m
+[32m+[m
+[32m+[m	[32mif module and module:IsA("ModuleScript") then[m
+[32m+[m		[32mlocal ok, result = pcall(require, module)[m
+[32m+[m		[32mif ok and typeof(result) == "table" and result.TryRegisterFromArgs then[m
+[32m+[m			[32mreturn result[m
+[32m+[m		[32mend[m
+[32m+[m	[32mend[m
+[32m+[m
+[32m+[m	[32mreturn {[m
+[32m+[m		[32mTryRegisterFromArgs = function()[m
+[32m+[m			[32mreturn false[m
+[32m+[m		[32mend,[m
+[32m+[m		[32mRegisterWin = function()[m
+[32m+[m			[32mreturn false[m
+[32m+[m		[32mend,[m
+[32m+[m	[32m}[m
+ end[m
+ [m
+[31m-local VTRWorldCampaignWinProgress = vtrLoadWorldCampaignWinProgress()[m
+[32m+[m[32mlocal VTRWorldCampaignWinProgress = vtrGetWorldCampaignWinProgress()[m
+ local function vtrLoadPackInventoryConsume()[m
+ 	local current = script[m
+ 	while current do[m
+[36m@@ -229,7 +228,7 @@[m [mlocal function applyStandForFansColors(homeKit:any)[m
+ 	end[m
+ end[m
+ local function part(parent:Instance,name:string,size:Vector3,cframe:CFrame,color:Color3,collide:boolean?):Part local p=Instance.new("Part");p.Name=name;p.Size=size;p.CFrame=cframe;p.Anchored=true;p.CanCollide=collide~=false;p.Color=color;p.Material=Enum.Material.SmoothPlastic;p.Parent=parent;return p end[m
+[31m-	VTRWorldCampaignWinProgress.TryRegisterFromArgs(nil)[m
+[32m+[m	[32mpcall(function() VTRWorldCampaignWinProgress.TryRegisterFromArgs(nil) end)[m
+ local function buildWorld(player:Player,setup:any):any[m
+ 	local old=Workspace:FindFirstChild("VTRMatch_"..player.UserId);if old then old:Destroy()end[m
+ 	local analysisOk,analysis=pcall(StadiumAnalyzer.Analyze,nil);if not analysisOk then warn("[VTR STADIUM ANALYZER] "..tostring(analysis));analysis=nil end[m
+[1mdiff --git a/src/server/Gameplay/RefereeService.lua b/src/server/Gameplay/RefereeService.lua[m
+[1mindex 7173622..a087753 100644[m
+[1m--- a/src/server/Gameplay/RefereeService.lua[m
+[1m+++ b/src/server/Gameplay/RefereeService.lua[m
+[36m@@ -1,29 +1,4 @@[m
+ --!strict[m
+[31m-local function vtrLoadWorldCampaignWinProgress()[m
+[31m-	VTRWorldCampaignWinProgress.TryRegisterFromArgs(nil)[m
+[31m-	local current = script[m
+[31m-	while current do[m
+[31m-		local services = current:FindFirstChild("Services")[m
+[31m-		if services and services:FindFirstChild("WorldCampaignWinProgressService") then[m
+[31m-			VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request)[m
+[31m-			return require(services:WaitForChild("WorldCampaignWinProgressService"))[m
+[31m-		end[m
+[31m-[m
+[31m-		if current.Parent then[m
+[31m-			local sibling = current.Parent:FindFirstChild("Services")[m
+[31m-			if sibling and sibling:FindFirstChild("WorldCampaignWinProgressService") then[m
+[31m-				VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request)[m
+[31m-				return require(sibling:WaitForChild("WorldCampaignWinProgressService"))[m
+[31m-			end[m
+[31m-		end[m
+[31m-[m
+[31m-		current = current.Parent[m
+[31m-	end[m
+[31m-[m
+[31m-	return require(game:GetService("ServerScriptService"):WaitForChild("VTRServer"):WaitForChild("Services"):WaitForChild("WorldCampaignWinProgressService"))[m
+[31m-end[m
+[31m-[m
+[31m-local VTRWorldCampaignWinProgress = vtrLoadWorldCampaignWinProgress()[m
+ local VTRGoalPassThrough = require(script.Parent:WaitForChild("GoalShotPassThroughService"))[m
+ local function vtrXGPercent(value)[m
+ 	local n = tonumber(value) or 0[m
+[1mdiff --git a/src/server/Gameplay/SetPieceService.lua b/src/server/Gameplay/SetPieceService.lua[m
+[1mindex 4666b54..5fac6d9 100644[m
+[1m--- a/src/server/Gameplay/SetPieceService.lua[m
+[1m+++ b/src/server/Gameplay/SetPieceService.lua[m
+[36m@@ -1,29 +1,4 @@[m
+ --!strict[m
+[31m-local function vtrLoadWorldCampaignWinProgress()[m
+[31m-	VTRWorldCampaignWinProgress.TryRegisterFromArgs(nil)[m
+[31m-	local current = script[m
+[31m-	while current do[m
+[31m-		local services = current:FindFirstChild("Services")[m
+[31m-		if services and services:FindFirstChild("WorldCampaignWinProgressService") then[m
+[31m-			VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request)[m
+[31m-			return require(services:WaitForChild("WorldCampaignWinProgressService"))[m
+[31m-		end[m
+[31m-[m
+[31m-		if current.Parent then[m
+[31m-			local sibling = current.Parent:FindFirstChild("Services")[m
+[31m-			if sibling and sibling:FindFirstChild("WorldCampaignWinProgressService") then[m
+[31m-				VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request)[m
+[31m-				return require(sibling:WaitForChild("WorldCampaignWinProgressService"))[m
+[31m-			end[m
+[31m-		end[m
+[31m-[m
+[31m-		current = current.Parent[m
+[31m-	end[m
+[31m-[m
+[31m-	return require(game:GetService("ServerScriptService"):WaitForChild("VTRServer"):WaitForChild("Services"):WaitForChild("WorldCampaignWinProgressService"))[m
+[31m-end[m
+[31m-[m
+[31m-local VTRWorldCampaignWinProgress = vtrLoadWorldCampaignWinProgress()[m
+ local function vtrLoadShotPowerModel()[m
+ 	local ReplicatedStorage = game:GetService("ReplicatedStorage")[m
+ 	local vtr = ReplicatedStorage:FindFirstChild("VTR")[m
+[1mdiff --git a/src/server/Gameplay/TeamSpawnService.lua b/src/server/Gameplay/TeamSpawnService.lua[m
+[1mindex feecbe7..42f2dab 100644[m
+[1m--- a/src/server/Gameplay/TeamSpawnService.lua[m
+[1m+++ b/src/server/Gameplay/TeamSpawnService.lua[m
+[36m@@ -1,35 +1,34 @@[m
+ --!strict[m
+[31m-local function vtrLoadWorldCampaignWinProgress()[m
+[31m-	VTRWorldCampaignWinProgress.TryRegisterFromArgs(nil)[m
+[31m-	local current = script[m
+[31m-	while current do[m
+[31m-		local services = current:FindFirstChild("Services")[m
+[31m-		if services and services:FindFirstChild("WorldCampaignWinProgressService") then[m
+[31m-			VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request)[m
+[31m-			return require(services:WaitForChild("WorldCampaignWinProgressService"))[m
+[31m-		end[m
+[32m+[m[32mlocal function vtrGetWorldCampaignWinProgress()[m
+[32m+[m	[32mlocal serverScriptService = game:GetService("ServerScriptService")[m
+[32m+[m	[32mlocal vtrServer = serverScriptService:FindFirstChild("VTRServer")[m
+[32m+[m	[32mlocal services = vtrServer and vtrServer:FindFirstChild("Services")[m
+[32m+[m	[32mlocal module = services and services:FindFirstChild("WorldCampaignWinProgressService")[m
+ [m
+[31m-		if current.Parent then[m
+[31m-			local sibling = current.Parent:FindFirstChild("Services")[m
+[31m-			if sibling and sibling:FindFirstChild("WorldCampaignWinProgressService") then[m
+[31m-				VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request)[m
+[31m-				return require(sibling:WaitForChild("WorldCampaignWinProgressService"))[m
+[31m-			end[m
+[32m+[m	[32mif module and module:IsA("ModuleScript") then[m
+[32m+[m		[32mlocal ok, result = pcall(require, module)[m
+[32m+[m		[32mif ok and typeof(result) == "table" and result.TryRegisterFromArgs then[m
+[32m+[m			[32mreturn result[m
+ 		end[m
+[31m-[m
+[31m-		current = current.Parent[m
+ 	end[m
+ [m
+[31m-	return require(game:GetService("ServerScriptService"):WaitForChild("VTRServer"):WaitForChild("Services"):WaitForChild("WorldCampaignWinProgressService"))[m
+[32m+[m	[32mreturn {[m
+[32m+[m		[32mTryRegisterFromArgs = function()[m
+[32m+[m			[32mreturn false[m
+[32m+[m		[32mend,[m
+[32m+[m		[32mRegisterWin = function()[m
+[32m+[m			[32mreturn false[m
+[32m+[m		[32mend,[m
+[32m+[m	[32m}[m
+ end[m
+ [m
+[31m-local VTRWorldCampaignWinProgress = vtrLoadWorldCampaignWinProgress()[m
+[32m+[m[32mlocal VTRWorldCampaignWinProgress = vtrGetWorldCampaignWinProgress()[m
+ local MatchCharacterFactory=require(script.Parent.MatchCharacterFactory)[m
+ local FormationService=require(script.Parent.FormationService)[m
+ local Service={}[m
+ local styles={Home="Vertical Stripes",Away="Solid",Third="Diagonal Sash"}[m
+ local function selectedKit(team:any,name:string):any local source=team.kits[name]or team.kits.Home;local result=table.clone(source);result.Style=result.Style or styles[name]or"Solid";result.Accent=result.Accent or team.colors.Accent;result.NumberColor=result.NumberColor or team.colors.Accent;return result end[m
+[31m-	VTRWorldCampaignWinProgress.TryRegisterFromArgs(nil)[m
+[32m+[m	[32mpcall(function() VTRWorldCampaignWinProgress.TryRegisterFromArgs(nil) end)[m
+ local function hexToRgb(hex:string):(number,number,number)[m
+ 	hex=tostring(hex or ""):gsub("#","")[m
+ 	if #hex<6 then return 1,1,1 end[m
+[1mdiff --git a/src/server/ServerApp.lua b/src/server/ServerApp.lua[m
+[1mindex 9403ed3..a3f8f4c 100644[m
+[1m--- a/src/server/ServerApp.lua[m
+[1m+++ b/src/server/ServerApp.lua[m
+[36m@@ -1,28 +1,27 @@[m
+[31m-local function vtrLoadWorldCampaignWinProgress()[m
+[31m-	VTRWorldCampaignWinProgress.TryRegisterFromArgs(nil)[m
+[31m-	local current = script[m
+[31m-	while current do[m
+[31m-		local services = current:FindFirstChild("Services")[m
+[31m-		if services and services:FindFirstChild("WorldCampaignWinProgressService") then[m
+[31m-			VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request)[m
+[31m-			return require(services:WaitForChild("WorldCampaignWinProgressService"))[m
+[31m-		end[m
+[32m+[m[32mlocal function vtrGetWorldCampaignWinProgress()[m
+[32m+[m	[32mlocal serverScriptService = game:GetService("ServerScriptService")[m
+[32m+[m	[32mlocal vtrServer = serverScriptService:FindFirstChild("VTRServer")[m
+[32m+[m	[32mlocal services = vtrServer and vtrServer:FindFirstChild("Services")[m
+[32m+[m	[32mlocal module = services and services:FindFirstChild("WorldCampaignWinProgressService")[m
+ [m
+[31m-		if current.Parent then[m
+[31m-			local sibling = current.Parent:FindFirstChild("Services")[m
+[31m-			if sibling and sibling:FindFirstChild("WorldCampaignWinProgressService") then[m
+[31m-				VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request)[m
+[31m-				return require(sibling:WaitForChild("WorldCampaignWinProgressService"))[m
+[31m-			end[m
+[32m+[m	[32mif module and module:IsA("ModuleScript") then[m
+[32m+[m		[32mlocal ok, result = pcall(require, module)[m
+[32m+[m		[32mif ok and typeof(result) == "table" and result.TryRegisterFromArgs then[m
+[32m+[m			[32mreturn result[m
+ 		end[m
+[31m-[m
+[31m-		current = current.Parent[m
+ 	end[m
+ [m
+[31m-	return require(game:GetService("ServerScriptService"):WaitForChild("VTRServer"):WaitForChild("Services"):WaitForChild("WorldCampaignWinProgressService"))[m
+[32m+[m	[32mreturn {[m
+[32m+[m		[32mTryRegisterFromArgs = function()[m
+[32m+[m			[32mreturn false[m
+[32m+[m		[32mend,[m
+[32m+[m		[32mRegisterWin = function()[m
+[32m+[m			[32mreturn false[m
+[32m+[m		[32mend,[m
+[32m+[m	[32m}[m
+ end[m
+ [m
+[31m-local VTRWorldCampaignWinProgress = vtrLoadWorldCampaignWinProgress()[m
+[32m+[m[32mlocal VTRWorldCampaignWinProgress = vtrGetWorldCampaignWinProgress()[m
+ local function vtrLoadPackInventoryConsume()[m
+ 	local current = script[m
+ 	while current do[m
+[36m@@ -100,7 +99,7 @@[m [mlocal function remote(parent: Instance, className: string, name: string): Instan[m
+ end[m
+ [m
+ function ServerApp.Start()[m
+[31m-	VTRWorldCampaignWinProgress.TryRegisterFromArgs(nil)[m
+[32m+[m	[32mpcall(function() VTRWorldCampaignWinProgress.TryRegisterFromArgs(nil) end)[m
+ 	local vtr = ReplicatedStorage:WaitForChild("VTR")[m
+ 	local remotes = vtr:FindFirstChild(NetworkConfig.FolderName) or Instance.new("Folder")[m
+ 	remotes.Name = NetworkConfig.FolderName[m
+[36m@@ -214,7 +213,7 @@[m [mfunction ServerApp.Start()[m
+ 	local lastProgressionAction: { [Player]: number } = {}[m
+ 	progressionAction.OnServerInvoke = function(player:Player,kind:any,id:any)[m
+ 		if type(kind)~="string" or (kind~="Ranked" and kind~="Objective") or type(id)~="string" or #id>64 then return {Success=false,Message="Invalid request."} end[m
+[31m-			VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request)[m
+[32m+[m			[32mpcall(function() VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request) end)[m
+ 		local now=os.clock();if now-(lastProgressionAction[player] or 0)<.5 then return {Success=false,Message="Please wait."} end;lastProgressionAction[player]=now[m
+ 		local ok,success,message,data=pcall(function() local claimed,text,result=progression:Claim(player,kind,id);return claimed,text,result end)[m
+ 		return {Success=ok and success,Message=ok and message or "Claim failed.",Data=ok and data or nil}[m
+[36m@@ -269,7 +268,7 @@[m [mfunction ServerApp.Start()[m
+ 		if type(action)~="string" or #action>24 then return {Success=false,Message="Invalid pack request."} end[m
+ 		if action=="GetInventory" then local data=packs:GetClientData(player);return data and {Success=true,Data=data} or {Success=false,Message="Pack inventory unavailable."} end[m
+ 		if action=="OpenAll" then if type(payload)~="table" or type(payload.PackId)~="string" or #payload.PackId>48 then return {Success=false,Message="Invalid pack type."} end;local now=os.clock();if now-(lastPackAction[player] or 0)<.9 then return {Success=false,Message="Pack chamber is cooling down."} end;lastPackAction[player]=now;local ok,success,result,count=pcall(function() return packs:OpenAll(player,payload.PackId) end);if not ok or not success then return {Success=false,Message=ok and result or "Open All failed."} end;local p=profiles:GetProfile(player);if p then for _,instance in result do local exists=false;for _,item in p.Inventory.Items do if item.Id==instance.cardInstanceId then exists=true;break end end;if not exists then table.insert(p.Inventory.Items,{Id=instance.cardInstanceId,Kind="PlayerCard",Quantity=1,AcquiredAt=os.time()}) end end;for _,objective in p.Objectives do if objective.objectiveId=="open_first_pack" and objective.status~="claimed" then objective.progress=1;if objective.status=="active" then objective.status="claimable" end;break end end;launch:_push(player,p) end;return {Success=true,Message=count.." packs opened.",Data=result,OpenedCount=count,Inventory=packs:GetClientData(player)} end[m
+[31m-			VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request)[m
+[32m+[m			[32mpcall(function() VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request) end)[m
+ 		if action~="OpenPack" or type(payload)~="table" or type(payload.PackInstanceId)~="string" or #payload.PackInstanceId>80 then return {Success=false,Message="Invalid pack action."} end[m
+ 			VTRPackInventoryConsume.ConsumeOpen(self, player, payload, data, request, pack, packId, packInstanceId)[m
+ 		local now=os.clock();if now-(lastPackAction[player] or 0)<.9 then return {Success=false,Message="Pack chamber is cooling down."} end;lastPackAction[player]=now[m
+[36m@@ -283,9 +282,9 @@[m [mfunction ServerApp.Start()[m
+ 	local lastMatchAction:{[Player]:number}={}[m
+ 	matchAction.OnServerInvoke=function(player:Player,action:any,payload:any)[m
+ 		if type(action)~="string"or#action>32 then return{Success=false,Message="Invalid match action."}end;payload=type(payload)=="table"and payload or{};local now=os.clock();if action~="GetConfig"and action~="GetRoster"and action~="GetTeams"and action~="GetWorldCup"and action~="GetRankedLeaderboards"and now-(lastMatchAction[player]or 0)<.2 then return{Success=false,Message="Please wait."}end;lastMatchAction[player]=now[m
+[31m-			VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request)[m
+[32m+[m			[32mpcall(function() VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request) end)[m
+ 		local ok,success,message,data=pcall(function()if action=="GetConfig"then local result=matchSetup:GetClientData(player);if not result and profiles.WaitForProfile then profiles:WaitForProfile(player,8);result=matchSetup:GetClientData(player)end;return result~=nil,result and"Match setup loaded."or"Match setup unavailable.",result elseif action=="GetRoster"then local result=matchSetup:GetRoster(player,payload.TeamId);return result~=nil,result and"Roster loaded."or"Unknown team.",result elseif action=="GetTeams"then local result=matchSetup:GetTeams(player,payload.Country,payload.League);return result~=nil,result and"Teams loaded."or"Invalid country or league.",result elseif action=="SaveSetup"then return matchSetup:Save(player,payload)elseif action=="StartMatch"then return matchSetup:StartMatch(player)elseif action=="WatchMatch"then return matchSetup:WatchMatch(player)elseif action=="StartShootingPractice"then return matchSetup:StartShootingPractice(player,payload) elseif action=="GetWorldCup"then return matchSetup:GetWorldCup(player)elseif action=="BeginWorldCup"then return matchSetup:BeginWorldCup(player,tostring(payload.Country or""))elseif action=="ResetWorldCup"then return matchSetup:ResetWorldCup(player)elseif action=="EndWorldCup"then return matchSetup:EndWorldCup(player)elseif action=="ClaimWorldCupRewards"then return matchSetup:ClaimWorldCupRewards(player)elseif action=="StartWorldCupMatch"then return matchSetup:StartWorldCupMatch(player)elseif action=="SimulateWorldCupMatch"then return matchSetup:SimulateWorldCupMatch(player)elseif action=="SimulateRestOfWorldCup"then return matchSetup:SimulateRestOfWorldCup(player)elseif action=="JoinRankedQueue"then[m
+[31m-			VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request)[m
+[32m+[m			[32mpcall(function() VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request) end)[m
+ 		if player:GetAttribute("VTRInMatch")==true or (tonumber(player:GetAttribute("VTRRankedQueueLockedUntil"))or 0)>os.clock() then[m
+ 			return{Success=false,Message="Finish the current ranked match first."}[m
+ 		end[m
+[1mdiff --git a/src/server/Services/DailyLoginRewardService.lua b/src/server/Services/DailyLoginRewardService.lua[m
+[1mindex 7998412..93e02d4 100644[m
+[1m--- a/src/server/Services/DailyLoginRewardService.lua[m
+[1m+++ b/src/server/Services/DailyLoginRewardService.lua[m
+[36m@@ -1,29 +1,28 @@[m
+ --!strict[m
+[31m-local function vtrLoadWorldCampaignWinProgress()[m
+[31m-	VTRWorldCampaignWinProgress.TryRegisterFromArgs(nil)[m
+[31m-	local current = script[m
+[31m-	while current do[m
+[31m-		local services = current:FindFirstChild("Services")[m
+[31m-		if services and services:FindFirstChild("WorldCampaignWinProgressService") then[m
+[31m-			VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request)[m
+[31m-			return require(services:WaitForChild("WorldCampaignWinProgressService"))[m
+[31m-		end[m
+[32m+[m[32mlocal function vtrGetWorldCampaignWinProgress()[m
+[32m+[m	[32mlocal serverScriptService = game:GetService("ServerScriptService")[m
+[32m+[m	[32mlocal vtrServer = serverScriptService:FindFirstChild("VTRServer")[m
+[32m+[m	[32mlocal services = vtrServer and vtrServer:FindFirstChild("Services")[m
+[32m+[m	[32mlocal module = services and services:FindFirstChild("WorldCampaignWinProgressService")[m
+ [m
+[31m-		if current.Parent then[m
+[31m-			local sibling = current.Parent:FindFirstChild("Services")[m
+[31m-			if sibling and sibling:FindFirstChild("WorldCampaignWinProgressService") then[m
+[31m-				VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request)[m
+[31m-				return require(sibling:WaitForChild("WorldCampaignWinProgressService"))[m
+[31m-			end[m
+[32m+[m	[32mif module and module:IsA("ModuleScript") then[m
+[32m+[m		[32mlocal ok, result = pcall(require, module)[m
+[32m+[m		[32mif ok and typeof(result) == "table" and result.TryRegisterFromArgs then[m
+[32m+[m			[32mreturn result[m
+ 		end[m
+[31m-[m
+[31m-		current = current.Parent[m
+ 	end[m
+ [m
+[31m-	return require(game:GetService("ServerScriptService"):WaitForChild("VTRServer"):WaitForChild("Services"):WaitForChild("WorldCampaignWinProgressService"))[m
+[32m+[m	[32mreturn {[m
+[32m+[m		[32mTryRegisterFromArgs = function()[m
+[32m+[m			[32mreturn false[m
+[32m+[m		[32mend,[m
+[32m+[m		[32mRegisterWin = function()[m
+[32m+[m			[32mreturn false[m
+[32m+[m		[32mend,[m
+[32m+[m	[32m}[m
+ end[m
+ [m
+[31m-local VTRWorldCampaignWinProgress = vtrLoadWorldCampaignWinProgress()[m
+[32m+[m[32mlocal VTRWorldCampaignWinProgress = vtrGetWorldCampaignWinProgress()[m
+ [m
+ local Players = game:GetService("Players")[m
+ local ReplicatedStorage = game:GetService("ReplicatedStorage")[m
+[36m@@ -153,7 +152,7 @@[m [mfunction Service:_push(player: Player, profile: any)[m
+ end[m
+ [m
+ function Service:_grant(player: Player, profile: any, reward: any, vip: boolean?): (boolean, string, any?)[m
+[31m-	VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, string)[m
+[32m+[m	[32mpcall(function() VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, string) end)[m
+ 	if reward.Type == "Coins" then[m
+ 		local amount = math.max(0, math.floor(tonumber(reward.Amount) or 0)) * (vip and 2 or 1)[m
+ 		if amount <= 0 then return false, "Invalid coin reward.", nil end[m
+[1mdiff --git a/src/server/Services/LaunchService.lua b/src/server/Services/LaunchService.lua[m
+[1mindex 5ba45ef..a96603c 100644[m
+[1m--- a/src/server/Services/LaunchService.lua[m
+[1m+++ b/src/server/Services/LaunchService.lua[m
+[36m@@ -1,29 +1,28 @@[m
+ --!strict[m
+[31m-local function vtrLoadWorldCampaignWinProgress()[m
+[31m-	VTRWorldCampaignWinProgress.TryRegisterFromArgs(nil)[m
+[31m-	local current = script[m
+[31m-	while current do[m
+[31m-		local services = current:FindFirstChild("Services")[m
+[31m-		if services and services:FindFirstChild("WorldCampaignWinProgressService") then[m
+[31m-			VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request)[m
+[31m-			return require(services:WaitForChild("WorldCampaignWinProgressService"))[m
+[31m-		end[m
+[32m+[m[32mlocal function vtrGetWorldCampaignWinProgress()[m
+[32m+[m	[32mlocal serverScriptService = game:GetService("ServerScriptService")[m
+[32m+[m	[32mlocal vtrServer = serverScriptService:FindFirstChild("VTRServer")[m
+[32m+[m	[32mlocal services = vtrServer and vtrServer:FindFirstChild("Services")[m
+[32m+[m	[32mlocal module = services and services:FindFirstChild("WorldCampaignWinProgressService")[m
+ [m
+[31m-		if current.Parent then[m
+[31m-			local sibling = current.Parent:FindFirstChild("Services")[m
+[31m-			if sibling and sibling:FindFirstChild("WorldCampaignWinProgressService") then[m
+[31m-				VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request)[m
+[31m-				return require(sibling:WaitForChild("WorldCampaignWinProgressService"))[m
+[31m-			end[m
+[32m+[m	[32mif module and module:IsA("ModuleScript") then[m
+[32m+[m		[32mlocal ok, result = pcall(require, module)[m
+[32m+[m		[32mif ok and typeof(result) == "table" and result.TryRegisterFromArgs then[m
+[32m+[m			[32mreturn result[m
+ 		end[m
+[31m-[m
+[31m-		current = current.Parent[m
+ 	end[m
+ [m
+[31m-	return require(game:GetService("ServerScriptService"):WaitForChild("VTRServer"):WaitForChild("Services"):WaitForChild("WorldCampaignWinProgressService"))[m
+[32m+[m	[32mreturn {[m
+[32m+[m		[32mTryRegisterFromArgs = function()[m
+[32m+[m			[32mreturn false[m
+[32m+[m		[32mend,[m
+[32m+[m		[32mRegisterWin = function()[m
+[32m+[m			[32mreturn false[m
+[32m+[m		[32mend,[m
+[32m+[m	[32m}[m
+ end[m
+ [m
+[31m-local VTRWorldCampaignWinProgress = vtrLoadWorldCampaignWinProgress()[m
+[32m+[m[32mlocal VTRWorldCampaignWinProgress = vtrGetWorldCampaignWinProgress()[m
+ local function vtrLoadPackInventoryConsume()[m
+ 	local current = script[m
+ 	while current do[m
+[36m@@ -61,7 +60,7 @@[m [mlocal VTRLiteConfig=require(ReplicatedStorage.VTR.Shared.VTRLiteConfig)[m
+ local ClubNameFilterService=require(script.Parent.ClubNameFilterService)[m
+ local LaunchService={};LaunchService.__index=LaunchService[m
+ local function find(list:any,id:string):any? for _,item in list do if item.Id==id then return item end end;return nil end[m
+[31m-	VTRWorldCampaignWinProgress.TryRegisterFromArgs(nil)[m
+[32m+[m	[32mpcall(function() VTRWorldCampaignWinProgress.TryRegisterFromArgs(nil) end)[m
+ local function has(list:any,value:string):boolean return table.find(list,value)~=nil end[m
+ local function recordItem(profile:any,id:string,kind:string,quantity:number) profile.Inventory=profile.Inventory or {Items={}};for _,item in profile.Inventory.Items do if item.Id==id and item.Kind==kind then item.Quantity+=quantity;return end end;table.insert(profile.Inventory.Items,{Id=id,Kind=kind,Quantity=quantity,AcquiredAt=os.time()}) end[m
+ local function setObjectiveProgress(profile:any,id:string,value:number)[m
+[36m@@ -122,10 +121,10 @@[m [mfunction LaunchService:Handle(player:Player,action:string,payload:any):(boolean,[m
+ 	elseif action=="AutoFillSquad" then if not o.StarterPackOpened then return false,"Open the starter pack first.",nil end;autoFill(p);o.SquadFilled=true[m
+ 		VTRPackInventoryConsume.ConsumeOpen(self, player, payload, data, request, pack, packId, packInstanceId)[m
+ 	elseif action=="CompleteOnboarding" then if not o.SquadFilled or not o.ObjectivesActivated or o.ClubName=="" or o.Abbreviation=="" or o.PrimaryColor=="" or o.SecondaryColor==""or o.AccentColor==""or o.KitStyle=="" then return false,"Onboarding requirements are incomplete.",nil end;o.Complete=true;o.Step=10;p.OnboardingCompleted=true;p.ClubMembership.ClubId=p.ClubMembership.ClubId~=""and p.ClubMembership.ClubId or("identity_"..player.UserId);p.ClubMembership.Role="FOUNDER";p.ClubMembership.Members=math.max(1,p.ClubMembership.Members or 0);p.ClubMembership.Reputation="ROOKIE"[m
+[31m-		VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request)[m
+[32m+[m		[32mpcall(function() VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request) end)[m
+ 	elseif action=="ClaimInbox" then local reward=find(p.RewardsInbox,payload.Id);if not reward or reward.Claimed then return false,"Reward unavailable.",nil end;reward.Claimed=true;if reward.Id=="launch_welcome" then p.Currency.Coins+=500;p.Currency.Bolts+=50 end;setObjectiveProgress(p,"claim_daily_reward",1)[m
+ 	elseif action=="OpenPack" then local opened,result=self.Packs:Open(player,payload.PackInstanceId or payload.Id);if not opened then return false,result,nil end;local reveals=result::any;for _,instance in reveals do recordItem(p,instance.cardInstanceId,"PlayerCard",1) end;setObjectiveProgress(p,"open_first_pack",1);self:_push(player,p);return true,"Pack opened on server.",reveals[m
+[31m-		VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request)[m
+[32m+[m		[32mpcall(function() VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request) end)[m
+ 		VTRPackInventoryConsume.ConsumeOpen(self, player, payload, data, request, pack, packId, packInstanceId)[m
+ 	elseif action=="BuyCoins" then local bundle=Catalog.CoinBundles[payload.Id or payload.BundleId];if not bundle then return false,"Unknown coin bundle.",nil end;p.Currency.Coins=math.min(EconomyConfig.MaximumCoins,p.Currency.Coins+(bundle.Coins or 0));recordItem(p,bundle.Id,"Currency",bundle.Coins or 0);self:_push(player,p);return true,(bundle.Coins or 0).." coins added.",{Coins=p.Currency.Coins,Bundle=bundle.Id,Robux=bundle.Robux,ProductId=bundle.ProductId}[m
+ 	elseif action=="Purchase" then local itemType=payload.ItemType;local itemId=payload.Id;local item;if itemType=="Pack" then item=Catalog.Packs[itemId] elseif itemType=="Kit" then item=find(Catalog.Kits,itemId) elseif itemType=="Stadium" then item=find(Catalog.Stadiums,itemId) elseif itemType=="Cosmetic" then item=find(Catalog.Cosmetics,itemId) end;if not item then return false,"Unknown store item.",nil end;local quantity=itemType=="Pack" and math.clamp(math.floor(tonumber(payload.Quantity)or 1),1,25) or 1;local bucket=nil;if itemType~="Pack" then bucket=itemType=="Kit" and p.StoreOwnership.Kits or itemType=="Stadium" and p.StoreOwnership.Stadiums or p.StoreOwnership.Cosmetics;if has(bucket,itemId) then return false,"Item already owned.",nil end end;local coins=(item.PriceCoins or 0)*quantity;local bolts=(item.PriceBolts or 0)*quantity;local voltraPoints=(item.PriceVoltraPoints or 0)*quantity;p.Currency.VoltraPoints=tonumber(p.Currency.VoltraPoints)or 0;local infiniteCoins=DeveloperConfig.InfiniteCoinsEveryone==true;if (not infiniteCoins and p.Currency.Coins<coins) or p.Currency.Bolts<bolts or p.Currency.VoltraPoints<voltraPoints then return false,"Insufficient currency.",nil end;if infiniteCoins then p.Currency.Coins=EconomyConfig.MaximumCoins else p.Currency.Coins-=coins end;p.Currency.Bolts-=bolts;p.Currency.VoltraPoints-=voltraPoints;if itemType=="Pack" then local delivered,instances=self.Inventory:AddPack(player,itemId,item.Name,"Store",quantity);if not delivered or not instances or not instances[1] then if not infiniteCoins then p.Currency.Coins+=coins end;p.Currency.Bolts+=bolts;p.Currency.VoltraPoints+=voltraPoints;return false,"Pack delivery failed; currency was restored.",nil end;local pack=instances[1];responseData={Pack={packInstanceId=pack.packInstanceId,packId=pack.packId,name=pack.name,description=pack.description,quantity=quantity,status=pack.status,purchasedAt=pack.purchasedAt,openedAt=pack.openedAt},Packs=instances,Quantity=quantity};responseMessage=quantity>1 and(quantity.." packs added to inventory.")or"Pack added to inventory.";recordItem(p,itemId,"Pack",quantity) else table.insert(bucket,itemId);recordItem(p,itemId,itemType=="Stadium" and "StadiumTheme" or itemType,1) end[m
+[1mdiff --git a/src/server/Services/MatchSetupService.lua b/src/server/Services/MatchSetupService.lua[m
+[1mindex 6aaa606..ec7b2ce 100644[m
+[1m--- a/src/server/Services/MatchSetupService.lua[m
+[1m+++ b/src/server/Services/MatchSetupService.lua[m
+[36m@@ -1,28 +1,27 @@[m
+[31m-local function vtrLoadWorldCampaignWinProgress()[m
+[31m-	VTRWorldCampaignWinProgress.TryRegisterFromArgs(nil)[m
+[31m-	local current = script[m
+[31m-	while current do[m
+[31m-		local services = current:FindFirstChild("Services")[m
+[31m-		if services and services:FindFirstChild("WorldCampaignWinProgressService") then[m
+[31m-			VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request)[m
+[31m-			return require(services:WaitForChild("WorldCampaignWinProgressService"))[m
+[31m-		end[m
+[31m-[m
+[31m-		if current.Parent then[m
+[31m-			local sibling = current.Parent:FindFirstChild("Services")[m
+[31m-			if sibling and sibling:FindFirstChild("WorldCampaignWinProgressService") then[m
+[31m-				VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request)[m
+[31m-				return require(sibling:WaitForChild("WorldCampaignWinProgressService"))[m
+[31m-			end[m
+[32m+[m[32mlocal function vtrGetWorldCampaignWinProgress()[m
+[32m+[m	[32mlocal serverScriptService = game:GetService("ServerScriptService")[m
+[32m+[m	[32mlocal vtrServer = serverScriptService:FindFirstChild("VTRServer")[m
+[32m+[m	[32mlocal services = vtrServer and vtrServer:FindFirstChild("Services")[m
+[32m+[m	[32mlocal module = services and services:FindFirstChild("WorldCampaignWinProgressService")[m
+[32m+[m
+[32m+[m	[32mif module and module:IsA("ModuleScript") then[m
+[32m+[m		[32mlocal ok, result = pcall(require, module)[m
+[32m+[m		[32mif ok and typeof(result) == "table" and result.TryRegisterFromArgs then[m
+[32m+[m			[32mreturn result[m
+ 		end[m
+[31m-[m
+[31m-		current = current.Parent[m
+ 	end[m
+ [m
+[31m-	return require(game:GetService("ServerScriptService"):WaitForChild("VTRServer"):WaitForChild("Services"):WaitForChild("WorldCampaignWinProgressService"))[m
+[32m+[m	[32mreturn {[m
+[32m+[m		[32mTryRegisterFromArgs = function()[m
+[32m+[m			[32mreturn false[m
+[32m+[m		[32mend,[m
+[32m+[m		[32mRegisterWin = function()[m
+[32m+[m			[32mreturn false[m
+[32m+[m		[32mend,[m
+[32m+[m	[32m}[m
+ end[m
+ [m
+[31m-local VTRWorldCampaignWinProgress = vtrLoadWorldCampaignWinProgress()[m
+[32m+[m[32mlocal VTRWorldCampaignWinProgress = vtrGetWorldCampaignWinProgress()[m
+ local function vtrLoadPackInventoryConsume()[m
+ 	local current = script[m
+ 	while current do[m
+[36m@@ -61,7 +60,7 @@[m [mlocal PlayerDatabase=require(script.Parent.Parent.Data.PlayerDatabase)[m
+ local ObjectiveService=require(script.Parent.ObjectiveService)[m
+ local Service={};Service.__index=Service[m
+ local function contains(list:any,value:any):boolean return table.find(list,value)~=nil end[m
+[31m-	VTRWorldCampaignWinProgress.TryRegisterFromArgs(value)[m
+[32m+[m	[32mpcall(function() VTRWorldCampaignWinProgress.TryRegisterFromArgs(value) end)[m
+ local PACK_FALLBACKS={rare_pack="elite_pack",legendary_pack="champion_pack",icon_pack="hero_pack"}[m
+ local function packIdFor(id:string?):string return PACK_FALLBACKS[id or""]or id or"bronze_pack"end[m
+ local function stadium(id:string):any?for _,item in MatchConfig.Stadiums do if item.Id==id then return item end end;return nil end[m
+[36m@@ -83,7 +82,7 @@[m [mfunction Service.new(profiles:any,publish:(Player,string,any)->(),progression:an[m
+ 	return self[m
+ end[m
+ function Service:_ensure(profile:any):any local setup=profile.MatchSetup;if not setup or not TeamDatabase.Get(setup.HomeTeamId)or not TeamDatabase.Get(setup.AwayTeamId)or(setup.HomeTeamId==setup.AwayTeamId and setup.MatchType~="Friendly")then local home,away=TeamDatabase.Teams[1],TeamDatabase.Teams[2];setup={MatchLength=6,Difficulty="Professional",MatchType="Objective Match",HomeTeamId=home.teamId,AwayTeamId=away.teamId,HomeKit="Home",AwayKit="Away",StadiumId="voltra_arena",Weather="Clear",Time="Evening",Completed=false,SavedAt=0,KitConflict=false,CampaignTeamId="",CampaignTier=0,CampaignReplay=false};profile.MatchSetup=setup end;setup.CampaignTeamId=setup.CampaignTeamId or"";setup.CampaignTier=tonumber(setup.CampaignTier)or 0;setup.CampaignReplay=setup.CampaignReplay==true;return setup end[m
+[31m-	VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request)[m
+[32m+[m	[32mpcall(function() VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request) end)[m
+ function Service:_validate(setup:any):(boolean,string)[m
+ 	if not contains(MatchConfig.MatchLengths,setup.MatchLength)then return false,"Invalid match length."end;if not contains(MatchConfig.Difficulties,setup.Difficulty)then return false,"Invalid difficulty."end;if not contains(MatchConfig.MatchTypes,setup.MatchType)then return false,"Invalid match type."end;if not contains(MatchConfig.Weather,setup.Weather)or not contains(MatchConfig.Times,setup.Time)then return false,"Invalid presentation settings."end[m
+ 	local home,away=TeamDatabase.Get(setup.HomeTeamId),TeamDatabase.Get(setup.AwayTeamId);if not home or not away then return false,"Select two valid teams."end;if home.teamId==away.teamId and setup.MatchType~="Friendly"then return false,"Mirror matches are only available in Friendly mode."end;if not kit(home,setup.HomeKit)or not kit(away,setup.AwayKit)then return false,"Invalid kit selection."end;local venue=stadium(setup.StadiumId);if not venue or not contains(venue.WeatherSupport,setup.Weather)then return false,"Selected stadium does not support this weather."end;return true,"Match setup valid."[m
+[36m@@ -94,13 +93,13 @@[m [mend[m
+ [m
+ function Service:_commitWorldCupPlayedMatch(player:Player,ended:any):boolean[m
+ 	if ended.WorldCupResultCommitted==true then return false end[m
+[31m-		VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request)[m
+[32m+[m		[32mpcall(function() VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request) end)[m
+ 	local current=self.Profiles:GetProfile(player);if not current or type(current.WorldCup)~="table"then return false end[m
+ 	local currentFixture=current.WorldCup.NextFixture[m
+ 	if type(currentFixture)~="table"then return false end[m
+ 	local resultKey=tostring(currentFixture.Home or"").."|"..tostring(currentFixture.Away or"").."|"..tostring(currentFixture.Matchday or current.WorldCup.Stage or"")[m
+ 	if currentFixture.UserPlayedResultKey==resultKey then return false end[m
+[31m-		VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request)[m
+[32m+[m		[32mpcall(function() VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request) end)[m
+ 	currentFixture.UserPlayedResultKey=resultKey[m
+ 	local selectedCountry=tostring(current.WorldCup.SelectedCountry or"")[m
+ 	local homeScore=ended.World.HomeScore.Value;local awayScore=ended.World.AwayScore.Value[m
+[36m@@ -988,9 +987,9 @@[m [mfunction Service:_worldCupPrepareNextKnockout(state:any)[m
+ 	end[m
+ 	local round=tonumber(state.Knockout.Round)or 1[m
+ 	if not table.find(winners,selected)then state.Stage="Eliminated";state.NextFixture=nil;return end[m
+[31m-		VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request)[m
+[32m+[m		[32mpcall(function() VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request) end)[m
+ 	if round>=4 then state.Stage="Champion";state.WorldCupWinner=selected;state.NextFixture=nil;return end[m
+[31m-		VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request)[m
+[32m+[m		[32mpcall(function() VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request) end)[m
+ 	local nextFixtures={}[m
+ 	for index=1,#winners,2 do table.insert(nextFixtures,{Home=winners[index],Away=winners[index+1],Round=round+1})end[m
+ 	table.insert(state.Knockout.History,{Round=round,Fixtures=fixtures})[m
+[36m@@ -1079,7 +1078,7 @@[m [mfunction Service:_worldCupAdvanceAfterMatch(state:any,homeGoals:number,awayGoals[m
+ 		local userWon=resolvedWinner and resolvedWinner==selected or (fixture.Home==selected and homeGoals>awayGoals)or(fixture.Away==selected and awayGoals>homeGoals)or homeGoals==awayGoals[m
+ 		fixture.Winner=resolvedWinner or(userWon and selected or(fixture.Home==selected and fixture.Away or fixture.Home))[m
+ 		if not userWon then state.Stage="Eliminated";state.NextFixture=nil;return end[m
+[31m-			VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request)[m
+[32m+[m			[32mpcall(function() VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request) end)[m
+ 		self:_worldCupPrepareNextKnockout(state)[m
+ 	end[m
+ end[m
+[36m@@ -1159,7 +1158,7 @@[m [mfunction Service:ClaimWorldCupRewards(player:Player):(boolean,string,any?)[m
+ 	local profile=self.Profiles:GetProfile(player);if not profile then return false,"Profile unavailable.",nil end[m
+ 	local state=type(profile.WorldCup)=="table"and profile.WorldCup or nil[m
+ 	if not state or (state.Stage~="Champion"and state.Stage~="Eliminated")then return false,"Finish a World Cup run first.",self:_worldCupPublic(profile)end[m
+[31m-		VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request)[m
+[32m+[m		[32mpcall(function() VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request) end)[m
+ 	local reward=state.PendingRewards or self:_worldCupRewardForState(state)[m
+ 	if state.RewardsClaimed==true then return false,"World Cup rewards already claimed.",self:_worldCupPublic(profile)end[m
+ 	local granted={}[m
+[36m@@ -1363,7 +1362,7 @@[m [mfunction Service:StartMatch(player:Player):(boolean,string,any?)[m
+ 			local xp=110+(homeWon and 90 or drew and 45 or 20)[m
+ 			local reward=self.Progression:GrantMatchRewards(player,{Title=homeWon and"VICTORY REWARD"or drew and"DRAW REWARD"or"MATCH REWARD",Coins=coins,XP=xp})[m
+ 			if homeWon and campaignTeamId~="" then[m
+[31m-				VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request)[m
+[32m+[m				[32mpcall(function() VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request) end)[m
+ 				local campaignReward=self:_commitCampaignWin(player,campaignTeamId,campaignTier,campaignReplay)[m
+ 				if campaignReward then[m
+ 					reward=reward or{}[m
+[36m@@ -1378,7 +1377,7 @@[m [mfunction Service:StartMatch(player:Player):(boolean,string,any?)[m
+ 		end[m
+ 	end[m
+ 	local completed=false;for _,objective in profile.Objectives do if objective.objectiveId=="play_first_match_placeholder"and objective.status~="claimed"then completed=objective.progress<objective.target;objective.progress=1;if objective.status=="active"then objective.status="claimable"end;break end end[m
+[31m-		VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request)[m
+[32m+[m		[32mpcall(function() VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request) end)[m
+ 	self.Publish(player,"Objective",ObjectiveService.Serialize(profile.Objectives));self.Publish(player,"Progression",self.Progression:GetClientData(player));data.ObjectiveCompletedNow=completed;return true,text,data[m
+ end[m
+ [m
+[36m@@ -1415,7 +1414,7 @@[m [mfunction Service:StartShootingPractice(player:Player,payload:any?):(boolean,stri[m
+ 	local success,text,data=self.Runtime:StartMatch(player,setup,nil,nil,homeRoster,awayRoster)[m
+ 	if not success then return false,text,nil end[m
+ 	if data then data.AIMatchTeleport=true;data.MatchLaunchType="ShootingPractice";data.PracticeMode=true;data.ObjectiveCompletedNow=false end[m
+[31m-		VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request)[m
+[32m+[m		[32mpcall(function() VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request) end)[m
+ 	return true,text,data[m
+ end[m
+ [m
+[36m@@ -1445,12 +1444,12 @@[m [mfunction Service:StartWorldCupMatch(player:Player):(boolean,string,any?)[m
+ 	local homeRoster=buildWorldCupNationalRoster(selected);local awayRoster=buildWorldCupNationalRoster(opponent)[m
+ 	setup.HomeTeamId=homeRoster.Team.teamId;setup.HomeKit="Home";setup.AwayTeamId=awayRoster.Team.teamId;setup.AwayKit="Away";setup.MatchType="Objective Match";setup.Difficulty="Professional";setup.Completed=true;setup.CampaignTeamId="";setup.WorldCup=true;setup.WorldCupOpponent=opponent[m
+ 	local success,text,data=self.Runtime:StartMatch(player,setup,nil,nil,homeRoster,awayRoster);if not success then self.WorldCupStartLocks[player]=nil;player:SetAttribute("VTRWorldCupMatchStarting",nil);return false,text,nil end[m
+[31m-		VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request)[m
+[32m+[m		[32mpcall(function() VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request) end)[m
+ 	self.WorldCupStartLocks[player]=nil[m
+ 	player:SetAttribute("VTRWorldCupMatchStarting",nil)[m
+ 	player:SetAttribute("VTRWorldCupMatchStarted",true)[m
+ 	if data then data.AIMatchTeleport=true;data.MatchLaunchType="WorldCup";data.WorldCup=true;data.ObjectiveCompletedNow=false end[m
+[31m-		VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request)[m
+[32m+[m		[32mpcall(function() VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request) end)[m
+ 	local session=self.Runtime:GetSession(player)[m
+ 	if session then[m
+ 		self:_tagSoloCampaignSession(player,session)[m
+[36m@@ -1473,7 +1472,7 @@[m [mfunction Service:SimulateWorldCupMatch(player:Player):(boolean,string,any?)[m
+ 	if state then self:_worldCupRepairGroupNextFixture(state)end[m
+ 	if not state or not state.NextFixture then return false,"No World Cup match is ready to simulate.",nil end[m
+ 	if state.Stage=="Champion"or state.Stage=="Eliminated"then return false,"This World Cup run is already complete.",self:_worldCupPublic(profile)end[m
+[31m-		VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request)[m
+[32m+[m		[32mpcall(function() VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request) end)[m
+ 	local fixture=state.NextFixture[m
+ 	local home=tostring(fixture.Home or"")[m
+ 	local away=tostring(fixture.Away or"")[m
+[36m@@ -1517,7 +1516,7 @@[m [mfunction Service:SimulateRestOfWorldCup(player:Player):(boolean,string,any?)[m
+ 	if not state then return false,"Start a World Cup first.",nil end[m
+ 	if state.Stage~="Eliminated"then return false,"You can simulate the rest after you are eliminated.",self:_worldCupPublic(profile)end[m
+ 	if state.RestSimulated==true and state.WorldCupWinner then return true,"World Cup already simulated.",{WorldCup=self:_worldCupPublic(profile),Winner=state.WorldCupWinner}end[m
+[31m-		VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request)[m
+[32m+[m		[32mpcall(function() VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request) end)[m
+ 	self:_worldCupEnsureTeamRanks(state)[m
+ 	local winner=self:_worldCupSimulateKnockoutToChampion(state)[m
+ 	state.Stage="Eliminated"[m
+[36m@@ -1555,11 +1554,11 @@[m [mfunction Service:WatchMatch(player:Player):(boolean,string,any?)[m
+ 		end[m
+ 		session.OnCompleted=function(ended:any)[m
+ 			if ended.World.HomeScore.Value>ended.World.AwayScore.Value then self:_commitCampaignWin(player,teamId,tierIndex,replay)end[m
+[31m-				VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request)[m
+[32m+[m				[32mpcall(function() VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request) end)[m
+ 		end[m
+ 	end[m
+ 	if data then data.ObjectiveCompletedNow=false;data.WatchMode=true end[m
+[31m-		VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request)[m
+[32m+[m		[32mpcall(function() VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request) end)[m
+ 	return true,"AI vs AI match loaded.",data[m
+ end[m
+ function Service:ReturnToMenu(player:Player):boolean[m
+[1mdiff --git a/src/server/Services/ObjectiveService.lua b/src/server/Services/ObjectiveService.lua[m
+[1mindex e275168..dc0b3b5 100644[m
+[1m--- a/src/server/Services/ObjectiveService.lua[m
+[1m+++ b/src/server/Services/ObjectiveService.lua[m
+[36m@@ -1,35 +1,34 @@[m
+ --!strict[m
+[31m-local function vtrLoadWorldCampaignWinProgress()[m
+[31m-	VTRWorldCampaignWinProgress.TryRegisterFromArgs(nil)[m
+[31m-	local current = script[m
+[31m-	while current do[m
+[31m-		local services = current:FindFirstChild("Services")[m
+[31m-		if services and services:FindFirstChild("WorldCampaignWinProgressService") then[m
+[31m-			VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request)[m
+[31m-			return require(services:WaitForChild("WorldCampaignWinProgressService"))[m
+[31m-		end[m
+[32m+[m[32mlocal function vtrGetWorldCampaignWinProgress()[m
+[32m+[m	[32mlocal serverScriptService = game:GetService("ServerScriptService")[m
+[32m+[m	[32mlocal vtrServer = serverScriptService:FindFirstChild("VTRServer")[m
+[32m+[m	[32mlocal services = vtrServer and vtrServer:FindFirstChild("Services")[m
+[32m+[m	[32mlocal module = services and services:FindFirstChild("WorldCampaignWinProgressService")[m
+ [m
+[31m-		if current.Parent then[m
+[31m-			local sibling = current.Parent:FindFirstChild("Services")[m
+[31m-			if sibling and sibling:FindFirstChild("WorldCampaignWinProgressService") then[m
+[31m-				VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request)[m
+[31m-				return require(sibling:WaitForChild("WorldCampaignWinProgressService"))[m
+[31m-			end[m
+[32m+[m	[32mif module and module:IsA("ModuleScript") then[m
+[32m+[m		[32mlocal ok, result = pcall(require, module)[m
+[32m+[m		[32mif ok and typeof(result) == "table" and result.TryRegisterFromArgs then[m
+[32m+[m			[32mreturn result[m
+ 		end[m
+[31m-[m
+[31m-		current = current.Parent[m
+ 	end[m
+ [m
+[31m-	return require(game:GetService("ServerScriptService"):WaitForChild("VTRServer"):WaitForChild("Services"):WaitForChild("WorldCampaignWinProgressService"))[m
+[32m+[m	[32mreturn {[m
+[32m+[m		[32mTryRegisterFromArgs = function()[m
+[32m+[m			[32mreturn false[m
+[32m+[m		[32mend,[m
+[32m+[m		[32mRegisterWin = function()[m
+[32m+[m			[32mreturn false[m
+[32m+[m		[32mend,[m
+[32m+[m	[32m}[m
+ end[m
+ [m
+[31m-local VTRWorldCampaignWinProgress = vtrLoadWorldCampaignWinProgress()[m
+[32m+[m[32mlocal VTRWorldCampaignWinProgress = vtrGetWorldCampaignWinProgress()[m
+ [m
+ local ObjectiveService = {}[m
+ ObjectiveService.__index = ObjectiveService[m
+ [m
+ local function clientRecord(objective: any): any[m
+[31m-	VTRWorldCampaignWinProgress.TryRegisterFromArgs(nil)[m
+[32m+[m	[32mpcall(function() VTRWorldCampaignWinProgress.TryRegisterFromArgs(nil) end)[m
+ 	local claimed = objective.status == "claimed"[m
+ 	return {[m
+ 		objectiveId = objective.objectiveId,[m
+[36m@@ -56,7 +55,7 @@[m [mlocal function clientRecord(objective: any): any[m
+ end[m
+ [m
+ function ObjectiveService.Serialize(objectives: any): any[m
+[31m-	VTRWorldCampaignWinProgress.TryRegisterFromArgs(nil)[m
+[32m+[m	[32mpcall(function() VTRWorldCampaignWinProgress.TryRegisterFromArgs(nil) end)[m
+ 	local result = {}[m
+ 	for _, objective in objectives do table.insert(result, clientRecord(objective)) end[m
+ 	local groupPriority = { starter_journey = 1, daily = 2, weekly = 3, milestone = 4 }[m
+[36m@@ -77,7 +76,7 @@[m [mfunction ObjectiveService:GetClientData(player: Player): any?[m
+ end[m
+ [m
+ function ObjectiveService:Increment(player: Player, objectiveId: string, amount: number): boolean[m
+[31m-	VTRWorldCampaignWinProgress.TryRegisterFromArgs(self)[m
+[32m+[m	[32mpcall(function() VTRWorldCampaignWinProgress.TryRegisterFromArgs(self) end)[m
+ 	if type(objectiveId) ~= "string" or #objectiveId > 64 or type(amount) ~= "number" or amount % 1 ~= 0 or amount <= 0 or amount > 100 then return false end[m
+ 	local profile = self.Profiles:GetProfile(player)[m
+ 	if not profile then return false end[m
+[1mdiff --git a/src/server/Services/ProfileService.lua b/src/server/Services/ProfileService.lua[m
+[1mindex 3281612..e470ea4 100644[m
+[1m--- a/src/server/Services/ProfileService.lua[m
+[1m+++ b/src/server/Services/ProfileService.lua[m
+[36m@@ -1,29 +1,28 @@[m
+ --!strict[m
+[31m-local function vtrLoadWorldCampaignWinProgress()[m
+[31m-	VTRWorldCampaignWinProgress.TryRegisterFromArgs(nil)[m
+[31m-	local current = script[m
+[31m-	while current do[m
+[31m-		local services = current:FindFirstChild("Services")[m
+[31m-		if services and services:FindFirstChild("WorldCampaignWinProgressService") then[m
+[31m-			VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request)[m
+[31m-			return require(services:WaitForChild("WorldCampaignWinProgressService"))[m
+[31m-		end[m
+[32m+[m[32mlocal function vtrGetWorldCampaignWinProgress()[m
+[32m+[m	[32mlocal serverScriptService = game:GetService("ServerScriptService")[m
+[32m+[m	[32mlocal vtrServer = serverScriptService:FindFirstChild("VTRServer")[m
+[32m+[m	[32mlocal services = vtrServer and vtrServer:FindFirstChild("Services")[m
+[32m+[m	[32mlocal module = services and services:FindFirstChild("WorldCampaignWinProgressService")[m
+ [m
+[31m-		if current.Parent then[m
+[31m-			local sibling = current.Parent:FindFirstChild("Services")[m
+[31m-			if sibling and sibling:FindFirstChild("WorldCampaignWinProgressService") then[m
+[31m-				VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request)[m
+[31m-				return require(sibling:WaitForChild("WorldCampaignWinProgressService"))[m
+[31m-			end[m
+[32m+[m	[32mif module and module:IsA("ModuleScript") then[m
+[32m+[m		[32mlocal ok, result = pcall(require, module)[m
+[32m+[m		[32mif ok and typeof(result) == "table" and result.TryRegisterFromArgs then[m
+[32m+[m			[32mreturn result[m
+ 		end[m
+[31m-[m
+[31m-		current = current.Parent[m
+ 	end[m
+ [m
+[31m-	return require(game:GetService("ServerScriptService"):WaitForChild("VTRServer"):WaitForChild("Services"):WaitForChild("WorldCampaignWinProgressService"))[m
+[32m+[m	[32mreturn {[m
+[32m+[m		[32mTryRegisterFromArgs = function()[m
+[32m+[m			[32mreturn false[m
+[32m+[m		[32mend,[m
+[32m+[m		[32mRegisterWin = function()[m
+[32m+[m			[32mreturn false[m
+[32m+[m		[32mend,[m
+[32m+[m	[32m}[m
+ end[m
+ [m
+[31m-local VTRWorldCampaignWinProgress = vtrLoadWorldCampaignWinProgress()[m
+[32m+[m[32mlocal VTRWorldCampaignWinProgress = vtrGetWorldCampaignWinProgress()[m
+ local function vtrLoadPackInventoryConsume()[m
+ 	local current = script[m
+ 	while current do[m
+[36m@@ -60,7 +59,7 @@[m [mlocal DefaultProfile=require(script.Parent.Parent.Data.DefaultProfile)[m
+ local ProfileService={};ProfileService.__index=ProfileService[m
+ [m
+ local function copy(value:any):any if type(value)~="table" then return value end;local result={};for key,child in value do result[key]=copy(child) end;return result end[m
+[31m-	VTRWorldCampaignWinProgress.TryRegisterFromArgs(nil)[m
+[32m+[m	[32mpcall(function() VTRWorldCampaignWinProgress.TryRegisterFromArgs(nil) end)[m
+ [m
+ local function ensureList(parent:any,key:string)[m
+ 	parent[key]=type(parent[key])=="table" and parent[key] or {}[m
+[1mdiff --git a/src/server/Services/ProgressionService.lua b/src/server/Services/ProgressionService.lua[m
+[1mindex c83e5d6..af0b8de 100644[m
+[1m--- a/src/server/Services/ProgressionService.lua[m
+[1m+++ b/src/server/Services/ProgressionService.lua[m
+[36m@@ -1,29 +1,28 @@[m
+ --!strict[m
+[31m-local function vtrLoadWorldCampaignWinProgress()[m
+[31m-	VTRWorldCampaignWinProgress.TryRegisterFromArgs(nil)[m
+[31m-	local current = script[m
+[31m-	while current do[m
+[31m-		local services = current:FindFirstChild("Services")[m
+[31m-		if services and services:FindFirstChild("WorldCampaignWinProgressService") then[m
+[31m-			VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request)[m
+[31m-			return require(services:WaitForChild("WorldCampaignWinProgressService"))[m
+[31m-		end[m
+[32m+[m[32mlocal function vtrGetWorldCampaignWinProgress()[m
+[32m+[m	[32mlocal serverScriptService = game:GetService("ServerScriptService")[m
+[32m+[m	[32mlocal vtrServer = serverScriptService:FindFirstChild("VTRServer")[m
+[32m+[m	[32mlocal services = vtrServer and vtrServer:FindFirstChild("Services")[m
+[32m+[m	[32mlocal module = services and services:FindFirstChild("WorldCampaignWinProgressService")[m
+ [m
+[31m-		if current.Parent then[m
+[31m-			local sibling = current.Parent:FindFirstChild("Services")[m
+[31m-			if sibling and sibling:FindFirstChild("WorldCampaignWinProgressService") then[m
+[31m-				VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request)[m
+[31m-				return require(sibling:WaitForChild("WorldCampaignWinProgressService"))[m
+[31m-			end[m
+[32m+[m	[32mif module and module:IsA("ModuleScript") then[m
+[32m+[m		[32mlocal ok, result = pcall(require, module)[m
+[32m+[m		[32mif ok and typeof(result) == "table" and result.TryRegisterFromArgs then[m
+[32m+[m			[32mreturn result[m
+ 		end[m
+[31m-[m
+[31m-		current = current.Parent[m
+ 	end[m
+ [m
+[31m-	return require(game:GetService("ServerScriptService"):WaitForChild("VTRServer"):WaitForChild("Services"):WaitForChild("WorldCampaignWinProgressService"))[m
+[32m+[m	[32mreturn {[m
+[32m+[m		[32mTryRegisterFromArgs = function()[m
+[32m+[m			[32mreturn false[m
+[32m+[m		[32mend,[m
+[32m+[m		[32mRegisterWin = function()[m
+[32m+[m			[32mreturn false[m
+[32m+[m		[32mend,[m
+[32m+[m	[32m}[m
+ end[m
+ [m
+[31m-local VTRWorldCampaignWinProgress = vtrLoadWorldCampaignWinProgress()[m
+[32m+[m[32mlocal VTRWorldCampaignWinProgress = vtrGetWorldCampaignWinProgress()[m
+ local function vtrLoadPackInventoryConsume()[m
+ 	local current = script[m
+ 	while current do[m
+[36m@@ -78,7 +77,7 @@[m [mfunction ProgressionService.new(profiles: any, publish: (Player, string, any) ->[m
+ end[m
+ [m
+ function ProgressionService:GetClientData(player: Player): any?[m
+[31m-	VTRWorldCampaignWinProgress.TryRegisterFromArgs(self)[m
+[32m+[m	[32mpcall(function() VTRWorldCampaignWinProgress.TryRegisterFromArgs(self) end)[m
+ 	local profile = self.Profiles:GetProfile(player)[m
+ 	if not profile then return nil end[m
+ 	return {[m
+[36m@@ -112,7 +111,7 @@[m [mfunction ProgressionService:GetClientData(player: Player): any?[m
+ end[m
+ [m
+ function ProgressionService:_setObjectiveProgress(profile: any, objectiveId: string, value: number): boolean[m
+[31m-	VTRWorldCampaignWinProgress.TryRegisterFromArgs(self)[m
+[32m+[m	[32mpcall(function() VTRWorldCampaignWinProgress.TryRegisterFromArgs(self) end)[m
+ 	local objective = findObjective(profile, objectiveId)[m
+ 	if not objective or objective.status == "claimed" then return false end[m
+ 	local beforeProgress = tonumber(objective.progress) or 0[m
+[36m@@ -125,14 +124,14 @@[m [mfunction ProgressionService:_setObjectiveProgress(profile: any, objectiveId: str[m
+ end[m
+ [m
+ function ProgressionService:_incrementObjective(profile: any, objectiveId: string, amount: number): boolean[m
+[31m-	VTRWorldCampaignWinProgress.TryRegisterFromArgs(self)[m
+[32m+[m	[32mpcall(function() VTRWorldCampaignWinProgress.TryRegisterFromArgs(self) end)[m
+ 	local objective = findObjective(profile, objectiveId)[m
+ 	if not objective or objective.status == "claimed" then return false end[m
+ 	return self:_setObjectiveProgress(profile, objectiveId, (tonumber(objective.progress) or 0) + math.max(0, amount))[m
+ end[m
+ [m
+ function ProgressionService:_addXP(profile: any, amount: number): (number, number, boolean)[m
+[31m-	VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, number, boolean)[m
+[32m+[m	[32mpcall(function() VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, number, boolean) end)[m
+ 	local xp = math.max(0, math.floor(amount))[m
+ 	if xp <= 0 then return 0, profile.Season.Level, false end[m
+ 	local oldLevel = tonumber(profile.Season.Level) or 1[m
+[36m@@ -156,7 +155,7 @@[m [mfunction ProgressionService:_addCoins(profile: any, amount: number): number[m
+ end[m
+ [m
+ function ProgressionService:_grantObjectiveReward(player: Player, profile: any, objective: any): boolean[m
+[31m-	VTRWorldCampaignWinProgress.TryRegisterFromArgs(self)[m
+[32m+[m	[32mpcall(function() VTRWorldCampaignWinProgress.TryRegisterFromArgs(self) end)[m
+ 	local reward = objective.reward[m
+ 	if reward.Type == "XP" then[m
+ 		self:_addXP(profile, reward.Amount)[m
+[36m@@ -249,9 +248,9 @@[m [mfunction ProgressionService:Claim(player: Player, kind: string, id: string): (bo[m
+ 		if not objective then return false, "Objective does not exist.", nil end[m
+ 		if objective.status == "claimed" then return false, "Objective reward already claimed.", nil end[m
+ 		if objective.status ~= "claimable" and objective.status ~= "completed" then return false, "Objective is not claimable.", nil end[m
+[31m-			VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request)[m
+[32m+[m			[32mpcall(function() VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request) end)[m
+ 		if objective.progress < objective.target then return false, "Objective is not complete.", nil end[m
+[31m-			VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request)[m
+[32m+[m			[32mpcall(function() VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request) end)[m
+ [m
+ 		if not self:_grantObjectiveReward(player, profile, objective) then return false, "Objective reward grant failed.", nil end[m
+ 		objective.status = "claimed"[m
+[1mdiff --git a/src/server/Services/RankedQueueService.lua b/src/server/Services/RankedQueueService.lua[m
+[1mindex dbeeb3e..c6c3439 100644[m
+[1m--- a/src/server/Services/RankedQueueService.lua[m
+[1m+++ b/src/server/Services/RankedQueueService.lua[m
+[36m@@ -1,29 +1,28 @@[m
+ --!strict[m
+[31m-local function vtrLoadWorldCampaignWinProgress()[m
+[31m-	VTRWorldCampaignWinProgress.TryRegisterFromArgs(nil)[m
+[31m-	local current = script[m
+[31m-	while current do[m
+[31m-		local services = current:FindFirstChild("Services")[m
+[31m-		if services and services:FindFirstChild("WorldCampaignWinProgressService") then[m
+[31m-			VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request)[m
+[31m-			return require(services:WaitForChild("WorldCampaignWinProgressService"))[m
+[31m-		end[m
+[31m-[m
+[31m-		if current.Parent then[m
+[31m-			local sibling = current.Parent:FindFirstChild("Services")[m
+[31m-			if sibling and sibling:FindFirstChild("WorldCampaignWinProgressService") then[m
+[31m-				VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request)[m
+[31m-				return require(sibling:WaitForChild("WorldCampaignWinProgressService"))[m
+[31m-			end[m
+[32m+[m[32mlocal function vtrGetWorldCampaignWinProgress()[m
+[32m+[m	[32mlocal serverScriptService = game:GetService("ServerScriptService")[m
+[32m+[m	[32mlocal vtrServer = serverScriptService:FindFirstChild("VTRServer")[m
+[32m+[m	[32mlocal services = vtrServer and vtrServer:FindFirstChild("Services")[m
+[32m+[m	[32mlocal module = services and services:FindFirstChild("WorldCampaignWinProgressService")[m
+[32m+[m
+[32m+[m	[32mif module and module:IsA("ModuleScript") then[m
+[32m+[m		[32mlocal ok, result = pcall(require, module)[m
+[32m+[m		[32mif ok and typeof(result) == "table" and result.TryRegisterFromArgs then[m
+[32m+[m			[32mreturn result[m
+ 		end[m
+[31m-[m
+[31m-		current = current.Parent[m
+ 	end[m
+ [m
+[31m-	return require(game:GetService("ServerScriptService"):WaitForChild("VTRServer"):WaitForChild("Services"):WaitForChild("WorldCampaignWinProgressService"))[m
+[32m+[m	[32mreturn {[m
+[32m+[m		[32mTryRegisterFromArgs = function()[m
+[32m+[m			[32mreturn false[m
+[32m+[m		[32mend,[m
+[32m+[m		[32mRegisterWin = function()[m
+[32m+[m			[32mreturn false[m
+[32m+[m		[32mend,[m
+[32m+[m	[32m}[m
+ end[m
+ [m
+[31m-local VTRWorldCampaignWinProgress = vtrLoadWorldCampaignWinProgress()[m
+[32m+[m[32mlocal VTRWorldCampaignWinProgress = vtrGetWorldCampaignWinProgress()[m
+ local function vtrLoadPackInventoryConsume()[m
+ 	local current = script[m
+ 	while current do[m
+[36m@@ -536,7 +535,7 @@[m [mfunction Service:_nextPair(): (Player?, Player?)[m
+ end[m
+ [m
+ function Service:_attachResultHandlers(session: any, home: Player, away: Player)[m
+[31m-	VTRWorldCampaignWinProgress.TryRegisterFromArgs(self)[m
+[32m+[m	[32mpcall(function() VTRWorldCampaignWinProgress.TryRegisterFromArgs(self) end)[m
+ 	session.RankedWinRewards=session.RankedWinRewards or{}[m
+ 	session.RankedWinPackGrant=function(_,winner:Player)[m
+ 		session.RankedWinRewards=session.RankedWinRewards or{}[m
+[1mdiff --git a/src/server/Services/SquadService.lua b/src/server/Services/SquadService.lua[m
+[1mindex cb026a3..20a3309 100644[m
+[1m--- a/src/server/Services/SquadService.lua[m
+[1m+++ b/src/server/Services/SquadService.lua[m
+[36m@@ -1,28 +1,27 @@[m
+[31m-local function vtrLoadWorldCampaignWinProgress()[m
+[31m-	VTRWorldCampaignWinProgress.TryRegisterFromArgs(nil)[m
+[31m-	local current = script[m
+[31m-	while current do[m
+[31m-		local services = current:FindFirstChild("Services")[m
+[31m-		if services and services:FindFirstChild("WorldCampaignWinProgressService") then[m
+[31m-			VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request)[m
+[31m-			return require(services:WaitForChild("WorldCampaignWinProgressService"))[m
+[31m-		end[m
+[32m+[m[32mlocal function vtrGetWorldCampaignWinProgress()[m
+[32m+[m	[32mlocal serverScriptService = game:GetService("ServerScriptService")[m
+[32m+[m	[32mlocal vtrServer = serverScriptService:FindFirstChild("VTRServer")[m
+[32m+[m	[32mlocal services = vtrServer and vtrServer:FindFirstChild("Services")[m
+[32m+[m	[32mlocal module = services and services:FindFirstChild("WorldCampaignWinProgressService")[m
+ [m
+[31m-		if current.Parent then[m
+[31m-			local sibling = current.Parent:FindFirstChild("Services")[m
+[31m-			if sibling and sibling:FindFirstChild("WorldCampaignWinProgressService") then[m
+[31m-				VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request)[m
+[31m-				return require(sibling:WaitForChild("WorldCampaignWinProgressService"))[m
+[31m-			end[m
+[32m+[m	[32mif module and module:IsA("ModuleScript") then[m
+[32m+[m		[32mlocal ok, result = pcall(require, module)[m
+[32m+[m		[32mif ok and typeof(result) == "table" and result.TryRegisterFromArgs then[m
+[32m+[m			[32mreturn result[m
+ 		end[m
+[31m-[m
+[31m-		current = current.Parent[m
+ 	end[m
+ [m
+[31m-	return require(game:GetService("ServerScriptService"):WaitForChild("VTRServer"):WaitForChild("Services"):WaitForChild("WorldCampaignWinProgressService"))[m
+[32m+[m	[32mreturn {[m
+[32m+[m		[32mTryRegisterFromArgs = function()[m
+[32m+[m			[32mreturn false[m
+[32m+[m		[32mend,[m
+[32m+[m		[32mRegisterWin = function()[m
+[32m+[m			[32mreturn false[m
+[32m+[m		[32mend,[m
+[32m+[m	[32m}[m
+ end[m
+ [m
+[31m-local VTRWorldCampaignWinProgress = vtrLoadWorldCampaignWinProgress()[m
+[32m+[m[32mlocal VTRWorldCampaignWinProgress = vtrGetWorldCampaignWinProgress()[m
+ local MATCHUP_PANEL_DELAY = 0.85[m
+ --!strict[m
+ [m
+[36m@@ -41,7 +40,7 @@[m [mlocal POSITION_POINTS={[m
+ }[m
+ [m
+ function SquadService.new(profiles:any,publish:(Player,string,any)->(),progression:any) return setmetatable({Profiles=profiles,Publish=publish,Progression=progression},SquadService) end[m
+[31m-	VTRWorldCampaignWinProgress.TryRegisterFromArgs(string, Publish, Progression, SquadService)[m
+[32m+[m	[32mpcall(function() VTRWorldCampaignWinProgress.TryRegisterFromArgs(string, Publish, Progression, SquadService) end)[m
+ function SquadService:_card(profile:any,reference:any):any? if type(reference)~="string" then return nil end;for _,card in profile.PlayerCardInventory do if card.Id==reference or card.cardInstanceId==reference or card.Name==reference then return card end end;return nil end[m
+ function SquadService:_formation(profile:any):any return FormationConfig.Formations[profile.Formation] or FormationConfig.Formations[FormationConfig.Default] end[m
+ function SquadService:_expected(profile:any,slot:string):string return self:_formation(profile)[slot].Expected end[m
+[36m@@ -127,7 +126,7 @@[m [mfunction SquadService:_calculate(profile:any):(number,number,number)[m
+ end[m
+ function SquadService:_objective(profile:any,id:string):any? for _,objective in profile.Objectives do if objective.objectiveId==id then return objective end end;return nil end[m
+ function SquadService:_visibleObjective(profile:any):(any?,boolean) local all=true;for _,o in profile.Objectives do if o.groupId=="starter_journey" then if o.status~="claimed" then all=false end;if o.status=="active" or o.status=="completed" or o.status=="claimable" then return o,false end end end;return nil,all end[m
+[31m-	VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request)[m
+[32m+[m	[32mpcall(function() VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request) end)[m
+ function SquadService:_update(player:Player,profile:any):(boolean)[m
+ 	self:_writeState(profile);local filled,rating=self:_calculate(profile);local first=self:_objective(profile,"build_first_xi");local completed=false[m
+ 	if first and first.status~="claimed" then local old=first.status;first.progress=filled;if first.status~="locked" then first.status=filled>=first.target and "claimable" or "active" end;completed=old~="claimable" and first.status=="claimable" end[m
+[1mdiff --git a/src/server/Services/UIStateService.lua b/src/server/Services/UIStateService.lua[m
+[1mindex 320648a..f9e8307 100644[m
+[1m--- a/src/server/Services/UIStateService.lua[m
+[1m+++ b/src/server/Services/UIStateService.lua[m
+[36m@@ -1,35 +1,34 @@[m
+ --!strict[m
+[31m-local function vtrLoadWorldCampaignWinProgress()[m
+[31m-	VTRWorldCampaignWinProgress.TryRegisterFromArgs(nil)[m
+[31m-	local current = script[m
+[31m-	while current do[m
+[31m-		local services = current:FindFirstChild("Services")[m
+[31m-		if services and services:FindFirstChild("WorldCampaignWinProgressService") then[m
+[31m-			VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request)[m
+[31m-			return require(services:WaitForChild("WorldCampaignWinProgressService"))[m
+[31m-		end[m
+[32m+[m[32mlocal function vtrGetWorldCampaignWinProgress()[m
+[32m+[m	[32mlocal serverScriptService = game:GetService("ServerScriptService")[m
+[32m+[m	[32mlocal vtrServer = serverScriptService:FindFirstChild("VTRServer")[m
+[32m+[m	[32mlocal services = vtrServer and vtrServer:FindFirstChild("Services")[m
+[32m+[m	[32mlocal module = services and services:FindFirstChild("WorldCampaignWinProgressService")[m
+ [m
+[31m-		if current.Parent then[m
+[31m-			local sibling = current.Parent:FindFirstChild("Services")[m
+[31m-			if sibling and sibling:FindFirstChild("WorldCampaignWinProgressService") then[m
+[31m-				VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request)[m
+[31m-				return require(sibling:WaitForChild("WorldCampaignWinProgressService"))[m
+[31m-			end[m
+[32m+[m	[32mif module and module:IsA("ModuleScript") then[m
+[32m+[m		[32mlocal ok, result = pcall(require, module)[m
+[32m+[m		[32mif ok and typeof(result) == "table" and result.TryRegisterFromArgs then[m
+[32m+[m			[32mreturn result[m
+ 		end[m
+[31m-[m
+[31m-		current = current.Parent[m
+ 	end[m
+ [m
+[31m-	return require(game:GetService("ServerScriptService"):WaitForChild("VTRServer"):WaitForChild("Services"):WaitForChild("WorldCampaignWinProgressService"))[m
+[32m+[m	[32mreturn {[m
+[32m+[m		[32mTryRegisterFromArgs = function()[m
+[32m+[m			[32mreturn false[m
+[32m+[m		[32mend,[m
+[32m+[m		[32mRegisterWin = function()[m
+[32m+[m			[32mreturn false[m
+[32m+[m		[32mend,[m
+[32m+[m	[32m}[m
+ end[m
+ [m
+[31m-local VTRWorldCampaignWinProgress = vtrLoadWorldCampaignWinProgress()[m
+[32m+[m[32mlocal VTRWorldCampaignWinProgress = vtrGetWorldCampaignWinProgress()[m
+ local ReplicatedStorage=game:GetService("ReplicatedStorage")[m
+ local Schema=require(ReplicatedStorage.VTR.Shared.UIStateSchema)[m
+ local UIStateService={};UIStateService.__index=UIStateService[m
+ [m
+ local function copy(value:any):any if type(value)~="table" then return value end;local result={};for key,child in value do result[key]=copy(child) end;return result end[m
+[31m-	VTRWorldCampaignWinProgress.TryRegisterFromArgs(nil)[m
+[32m+[m	[32mpcall(function() VTRWorldCampaignWinProgress.TryRegisterFromArgs(nil) end)[m
+ local function safeString(value:any,max:number):boolean return type(value)=="string" and #value>0 and #value<=max end[m
+ local function clampTutorialStep(value:any):number[m
+ 	local step=math.floor(tonumber(value) or 1)[m
+[1mdiff --git a/src/server/Services/WorldCampaignWinProgressService.lua b/src/server/Services/WorldCampaignWinProgressService.lua[m
+[1mindex b856310..add418e 100644[m
+[1m--- a/src/server/Services/WorldCampaignWinProgressService.lua[m
+[1m+++ b/src/server/Services/WorldCampaignWinProgressService.lua[m
+[36m@@ -134,7 +134,7 @@[m [mlocal function modules()[m
+ 		return cachedModules[m
+ 	end[m
+ [m
+[31m-	cachedModules = profileModules()[m
+[32m+[m	[32mcachedModules = profileModules() or {}[m
+ 	return cachedModules[m
+ end[m
+ [m

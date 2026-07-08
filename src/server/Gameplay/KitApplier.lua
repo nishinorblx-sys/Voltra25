@@ -1,32 +1,33 @@
 --!strict
-local function vtrGetWorldCampaignWinProgress()
-	local serverScriptService = game:GetService("ServerScriptService")
-	local vtrServer = serverScriptService:FindFirstChild("VTRServer")
-	local services = vtrServer and vtrServer:FindFirstChild("Services")
-	local module = services and services:FindFirstChild("WorldCampaignWinProgressService")
-
-	if module and module:IsA("ModuleScript") then
-		local ok, result = pcall(require, module)
-		if ok and typeof(result) == "table" and result.TryRegisterFromArgs then
-			return result
+local function vtrLoadWorldCampaignWinProgress()
+	VTRWorldCampaignWinProgress.TryRegisterFromArgs(nil)
+	local current = script
+	while current do
+		local services = current:FindFirstChild("Services")
+		if services and services:FindFirstChild("WorldCampaignWinProgressService") then
+			VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request)
+			return require(services:WaitForChild("WorldCampaignWinProgressService"))
 		end
+
+		if current.Parent then
+			local sibling = current.Parent:FindFirstChild("Services")
+			if sibling and sibling:FindFirstChild("WorldCampaignWinProgressService") then
+				VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request)
+				return require(sibling:WaitForChild("WorldCampaignWinProgressService"))
+			end
+		end
+
+		current = current.Parent
 	end
 
-	return {
-		TryRegisterFromArgs = function()
-			return false
-		end,
-		RegisterWin = function()
-			return false
-		end,
-	}
+	return require(game:GetService("ServerScriptService"):WaitForChild("VTRServer"):WaitForChild("Services"):WaitForChild("WorldCampaignWinProgressService"))
 end
 
-local VTRWorldCampaignWinProgress = vtrGetWorldCampaignWinProgress()
+local VTRWorldCampaignWinProgress = vtrLoadWorldCampaignWinProgress()
 local TweenService=game:GetService("TweenService")
 local Service={}
 local function color(value:any,fallback:Color3):Color3 local ok,result=pcall(Color3.fromHex,tostring(value or""));return ok and result or fallback end
-	pcall(function() VTRWorldCampaignWinProgress.TryRegisterFromArgs(result) end)
+	VTRWorldCampaignWinProgress.TryRegisterFromArgs(result)
 local function textSurface(part:BasePart,face:Enum.NormalId,value:string,textColor:Color3,size:number,name:string)local gui=Instance.new("SurfaceGui");gui.Name=name;gui.Face=face;gui.LightInfluence=0;gui.PixelsPerStud=70;gui.SizingMode=Enum.SurfaceGuiSizingMode.PixelsPerStud;gui.Parent=part;local label=Instance.new("TextLabel");label.BackgroundTransparency=1;label.Size=UDim2.fromScale(1,1);label.Text=value;label.TextColor3=textColor;label.TextScaled=true;label.Font=Enum.Font.GothamBlack;label.Parent=gui;local padding=Instance.new("UIPadding");padding.PaddingLeft=UDim.new(.18,0);padding.PaddingRight=UDim.new(.18,0);padding.PaddingTop=UDim.new(size,0);padding.PaddingBottom=UDim.new(size,0);padding.Parent=label end
 local function frontBadgePlate(torso:BasePart,value:string,textColor:Color3)
 	local plate=Instance.new("Part");plate.Name="ChestBadgePlate";plate.Anchored=false;plate.CanCollide=false;plate.CanTouch=false;plate.CanQuery=false;plate.CastShadow=false;plate.Massless=true;plate.Material=Enum.Material.SmoothPlastic;plate.Transparency=1;plate.Size=Vector3.new(math.max(.8,torso.Size.X*.62),math.max(.18,torso.Size.Y*.16),.025);plate.CFrame=torso.CFrame*CFrame.new(0,torso.Size.Y*.12,-torso.Size.Z*.5-.045);plate.Parent=torso.Parent

@@ -1,3 +1,11 @@
+from pathlib import Path
+import re
+
+root = Path.cwd()
+service_path = root / "src/server/Services/WorldCampaignWinProgressService.lua"
+service_path.parent.mkdir(parents=True, exist_ok=True)
+
+service_path.write_text(r'''
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local ServerScriptService = game:GetService("ServerScriptService")
@@ -431,3 +439,177 @@ function WorldCampaignWinProgressService.TryRegisterFromArgs(...)
 end
 
 return WorldCampaignWinProgressService
+'''.strip() + "\n", encoding="utf-8")
+
+loader = r'''
+local function vtrLoadWorldCampaignWinProgress()
+	local current = script
+	while current do
+		local services = current:FindFirstChild("Services")
+		if services and services:FindFirstChild("WorldCampaignWinProgressService") then
+			return require(services:WaitForChild("WorldCampaignWinProgressService"))
+		end
+
+		if current.Parent then
+			local sibling = current.Parent:FindFirstChild("Services")
+			if sibling and sibling:FindFirstChild("WorldCampaignWinProgressService") then
+				return require(sibling:WaitForChild("WorldCampaignWinProgressService"))
+			end
+		end
+
+		current = current.Parent
+	end
+
+	return require(game:GetService("ServerScriptService"):WaitForChild("VTRServer"):WaitForChild("Services"):WaitForChild("WorldCampaignWinProgressService"))
+end
+
+local VTRWorldCampaignWinProgress = vtrLoadWorldCampaignWinProgress()
+'''
+
+def clean_line(line):
+	line = re.sub(r'".*?"', '""', line)
+	line = re.sub(r"'.*?'", "''", line)
+	line = re.sub(r"--.*$", "", line)
+	return line
+
+def delta(line):
+	c = clean_line(line)
+	inc = len(re.findall(r"\bfunction\b", c)) + len(re.findall(r"\bthen\b", c)) + len(re.findall(r"\bdo\b", c)) + len(re.findall(r"\brepeat\b", c))
+	dec = len(re.findall(r"\bend\b", c)) + len(re.findall(r"\buntil\b", c))
+	return inc - dec
+
+def insert_loader(text):
+	if "VTRWorldCampaignWinProgress" in text:
+		return text
+
+	lines = text.splitlines()
+	index = 0
+	while index < len(lines) and lines[index].startswith("--!"):
+		index += 1
+
+	lines.insert(index, loader.strip())
+	return "\n".join(lines) + "\n"
+
+def args_from(raw):
+	args = []
+	for part in raw.split(","):
+		part = part.strip()
+		if part == "" or part == "...":
+			continue
+		part = part.split("=")[0].strip()
+		if re.match(r"^[A-Za-z_][A-Za-z0-9_]*$", part):
+			args.append(part)
+	return args
+
+def function_should_patch(name, block):
+	low = (name + "\n" + block).lower()
+
+	if "vtrworldcampaignwinprogress" in low:
+		return False
+
+	if not any(x in low for x in ["campaign", "worldcup", "world cup", "fixture", "objective", "mission"]):
+		return False
+
+	return any(x in low for x in ["win", "won", "victory", "complete", "finish", "result", "resolve", "endmatch", "matchend", "award", "progress"])
+
+def patch_functions(text):
+	lines = text.splitlines()
+	out = []
+	i = 0
+	changed = False
+
+	while i < len(lines):
+		line = lines[i]
+		m = re.match(r"^(\s*)(?:local\s+)?function\s+([A-Za-z_][A-Za-z0-9_:\.]*)\s*\((.*)\)", line)
+
+		if not m:
+			out.append(line)
+			i += 1
+			continue
+
+		start = i
+		depth = 1
+		j = i + 1
+		block = [line]
+
+		while j < len(lines) and depth > 0:
+			block.append(lines[j])
+			depth += delta(lines[j])
+			j += 1
+
+		block_text = "\n".join(block)
+
+		if not function_should_patch(m.group(2), block_text):
+			out.extend(block)
+			i = j
+			continue
+
+		args = args_from(m.group(3))
+		passed = ["self"] if ":" in m.group(2) else []
+		passed.extend(args)
+		passed_expr = ", ".join(passed) if passed else "nil"
+		indent = m.group(1) + "\t"
+
+		out.append(block[0])
+		out.append(indent + "VTRWorldCampaignWinProgress.TryRegisterFromArgs(" + passed_expr + ")")
+		out.extend(block[1:])
+		changed = True
+		i = j
+
+	return "\n".join(out) + "\n", changed
+
+def patch_branches(text):
+	if "VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request)" in text:
+		return text, False
+
+	lines = text.splitlines()
+	out = []
+	changed = False
+
+	for i, line in enumerate(lines):
+		out.append(line)
+		low = line.lower()
+
+		if not any(x in low for x in ["campaign", "worldcup", "world cup", "fixture", "objective", "mission"]):
+			continue
+
+		if not any(x in low for x in ["win", "won", "victory", "complete", "result", "finish", "success"]):
+			continue
+
+		if not re.search(r"\bif\b|\belseif\b", line) or "then" not in low:
+			continue
+
+		indent = re.match(r"^(\s*)", line).group(1) + "\t"
+		out.append(indent + "VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request)")
+		changed = True
+
+	return "\n".join(out) + "\n", changed
+
+patched = []
+
+for path in sorted((root / "src/server").rglob("*.lua")):
+	if path == service_path:
+		continue
+
+	text = path.read_text(encoding="utf-8", errors="ignore")
+	low = text.lower()
+	path_low = path.as_posix().lower()
+
+	if not any(x in low or x in path_low for x in ["campaign", "worldcup", "world cup", "fixture", "objective", "mission", "matchruntime", "referee"]):
+		continue
+
+	if not any(x in low for x in ["win", "won", "victory", "complete", "finish", "result", "resolve", "award", "progress"]):
+		continue
+
+	original = text
+	text = insert_loader(text)
+	text, a = patch_functions(text)
+	text, b = patch_branches(text)
+
+	if text != original and (a or b):
+		path.write_text(text.strip() + "\n", encoding="utf-8")
+		patched.append(path.relative_to(root).as_posix())
+
+print("created src/server/Services/WorldCampaignWinProgressService.lua")
+for item in patched:
+	print("patched", item)
