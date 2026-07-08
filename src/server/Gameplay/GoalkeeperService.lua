@@ -938,6 +938,57 @@ function Service.new(ball: BasePart, teams: any, pitchCFrame: CFrame, width: num
 	return self
 end
 
+
+function Service:_vtrStepRollingLowDiveSwitch()
+	local ball = self.Ball
+	if not ball or not ball.Parent then
+		return
+	end
+
+	local velocity = ball.AssemblyLinearVelocity
+	local flatSpeed = Vector3.new(velocity.X, 0, velocity.Z).Magnitude
+	if flatSpeed < 10 then
+		return
+	end
+
+	for _, side in {"Home", "Away"} do
+		local keeper = self.Teams and self.Teams[side] and goalkeeper(self.Teams[side])
+		local keeperRoot = keeper and root(keeper)
+		if keeper and keeperRoot and (keeper:GetAttribute("VTRGoalkeeperSaving") == true or keeper:GetAttribute("VTRGoalkeeperState") == "Diving" or keeper:GetAttribute("VTRKeeperDiveAnimationLocked") == true) then
+			local ballBelowDive = ball.Position.Y <= keeperRoot.Position.Y + 2.85
+			local rollingOrDropping = math.abs(velocity.Y) <= 8 or velocity.Y < -2
+			local closeEnough = (Vector3.new(ball.Position.X, 0, ball.Position.Z) - Vector3.new(keeperRoot.Position.X, 0, keeperRoot.Position.Z)).Magnitude <= 28
+
+			if ballBelowDive and rollingOrDropping and closeEnough then
+				keeper:SetAttribute("VTRLowShotFlatDive", true)
+				keeper:SetAttribute("VTRFallingLowShotDive", true)
+				keeper:SetAttribute("VTRKeeperNoJumpDive", true)
+				keeper:SetAttribute("VTRKeeperDiveAnimationLocked", nil)
+				keeper:SetAttribute("VTRGoalkeeperState", "Diving")
+
+				local lateral = ball.Position.X - keeperRoot.Position.X
+				local animationName = "GoalkeeperDiveLow"
+				if lateral < -0.75 then
+					animationName = "GoalkeeperDiveLowLeft"
+				elseif lateral > 0.75 then
+					animationName = "GoalkeeperDiveLowRight"
+				end
+
+				if self.Animations then
+					self.Animations:PlayAction(keeper, animationName)
+				end
+
+				keeper:SetAttribute("VTRKeeperDiveAnimationLocked", true)
+
+				local current = keeperRoot.AssemblyLinearVelocity
+				local lateralVelocity = math.clamp(lateral * 8, -36, 36)
+				keeperRoot.AssemblyLinearVelocity = Vector3.new(lateralVelocity, math.min(current.Y, 0), current.Z * 0.2)
+			end
+		end
+	end
+end
+
+
 function Service:SetHalf(half:number?)
 	local nextHalf=half or 1
 	if self.Half~=nextHalf then
@@ -1447,7 +1498,7 @@ local function goalkeeperDiveAnimationName(save: any): string
 local keeper = save and save.Keeper
 	local target = save and (save.Target or save.SavePoint or save.Point)
 	local keeperRoot = keeper and keeper:FindFirstChild("HumanoidRootPart")
-	if keeper and (keeper:GetAttribute("VTRLowShotFlatDive")==true or keeper:GetAttribute("VTRFallingLowShotDive")==true) then
+	if keeper and (keeper:GetAttribute("VTRLowShotFlatDive")==true or keeper:GetAttribute("VTRFallingLowShotDive")==true or keeper:GetAttribute("VTRKeeperNoJumpDive")==true) then
 		local lateral = 0
 		if typeof(target)=="Vector3" and keeperRoot then
 			lateral = target.X - keeperRoot.Position.X
@@ -1623,7 +1674,8 @@ local function liveReachHitboxTouched(service:any,save:any,target:Vector3):boole
 end
 
 function Service:Step(dt:number?)
-	dt=math.clamp(dt or 1/60,1/240,.1)
+	
+	self:_vtrStepRollingLowDiveSwitch()dt=math.clamp(dt or 1/60,1/240,.1)
 	local shotId = self.BallService.MotionKind == "Shot" and self.BallService.MotionStarted or 0
 	if shotId ~= 0 and shotId ~= self.ObservedShot then
 		self.ObservedShot = shotId
