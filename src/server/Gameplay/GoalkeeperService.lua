@@ -818,7 +818,14 @@ local function keeperReachRootTarget(rectangle: any, target: Vector3, forward: V
 	return rootTarget + forward * (keeperDepth - rootDepth)
 end
 
-local function physicalSaveDecision(service: any, keeper: Model, rectangle: any, target: Vector3, timeToGoal: number, shotPlan: any): any
+local function physicalSaveDecision(service: any, keeper: Model, rectangle: any, target: Vector3, timeToGoal: number, shotPlan: any)
+	local predictedX = tonumber(keeper:GetAttribute("VTRLongShotTargetX"))
+	local predictedY = tonumber(keeper:GetAttribute("VTRLongShotTargetY"))
+	local predictedZ = tonumber(keeper:GetAttribute("VTRLongShotTargetZ"))
+	if predictedX and predictedY and os.clock() < (tonumber(keeper:GetAttribute("VTRLongShotUntil")) or 0) then
+		target = Vector3.new(predictedX, predictedY, predictedZ or target.Z)
+	end
+: any
 	local keeperRoot = root(keeper)
 	if not keeperRoot then
 		return {WillSave = false, SavePercent = 0, Source = "NoKeeperRoot"}
@@ -1008,6 +1015,7 @@ function Service:_begin(attackingSide: string, shotId: number)
 	}
 	if penaltyDuel then
 		local guessPoint=keeper:GetAttribute("VTRPenaltyGuessPoint")
+		if typeof(guessPoint)=="Vector3" then target=guessPoint end
 		if typeof(guessPoint)=="Vector3"then self.ActiveSave.PenaltyDiveTarget=guessPoint end
 	end
 end
@@ -1386,7 +1394,26 @@ local function keeperDiveRootFrame(position: Vector3, forward: Vector3, upAxis: 
 end
 
 local function goalkeeperDiveAnimationName(save: any): string
-	local posePlan = save and save.DivePosePlan
+	
+	local keeper = save and save.Keeper
+	local target = save and (save.Target or save.SavePoint or save.Point)
+	local keeperRoot = keeper and keeper:FindFirstChild("HumanoidRootPart")
+	if keeper and (keeper:GetAttribute("VTRLowShotFlatDive")==true or keeper:GetAttribute("VTRFallingLowShotDive")==true) then
+		local lateral = 0
+		if typeof(target)=="Vector3" and keeperRoot then
+			lateral = target.X - keeperRoot.Position.X
+		end
+		if lateral < -0.7 then return "GoalkeeperDiveLowLeft" end
+		if lateral > 0.7 then return "GoalkeeperDiveLowRight" end
+		return "GoalkeeperDiveLow"
+	end
+	if typeof(target)=="Vector3" and keeperRoot and target.Y <= keeperRoot.Position.Y + 3.75 then
+		local lateral = target.X - keeperRoot.Position.X
+		if lateral < -0.7 then return "GoalkeeperDiveLowLeft" end
+		if lateral > 0.7 then return "GoalkeeperDiveLowRight" end
+		return "GoalkeeperDiveLow"
+	end
+local posePlan = save and save.DivePosePlan
 	if posePlan and posePlan.PoseKind == "LowDive" then
 		local rectangle = save.Rectangle
 		local right = rectangle and rectangle.Right

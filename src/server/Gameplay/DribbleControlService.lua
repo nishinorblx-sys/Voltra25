@@ -1,27 +1,88 @@
---!strict
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local Tuning = require(ReplicatedStorage.VTR.Shared.DribbleTuningConfig)
+local DribbleControlService = {}
 
-local Service = {}
+local LastFacing = setmetatable({}, { __mode = "k" })
 
-function Service.Rotate(model: Model, direction: Vector3, hasBall: boolean, sprinting: boolean, dt: number)
-	local root = model:FindFirstChild("HumanoidRootPart") :: BasePart?
-	if not root or direction.Magnitude < 0.05 then
-		return
-	end
-	local current = Vector3.new(root.CFrame.LookVector.X, 0, root.CFrame.LookVector.Z)
-	local target = Vector3.new(direction.X, 0, direction.Z).Unit
-	if current.Magnitude < 0.05 then current = target else current = current.Unit end
-	local dot = math.clamp(current:Dot(target), -1, 1)
-	local signedAngle = math.atan2(current:Cross(target).Y, dot)
-	local agility = math.clamp(tonumber(model:GetAttribute("Agility")) or 60, 1, 99) / 99
-	local maxRate = not hasBall and Tuning.MaxTurnRateNoBall or sprinting and Tuning.MaxTurnRateSprintingWithBall or Tuning.MaxTurnRateDribbling
-	maxRate *= 0.72 + agility * 0.42
-	local step = math.clamp(signedAngle, -maxRate * dt, maxRate * dt)
-	local rotated = CFrame.fromAxisAngle(Vector3.yAxis, step):VectorToWorldSpace(current)
-	local desired = CFrame.lookAt(root.Position, root.Position + rotated)
-	local smoothing = hasBall and (sprinting and 0.075 or 0.052) or 0.04
-	root.CFrame = root.CFrame:Lerp(desired, 1 - math.exp(-dt / smoothing))
+local function root(model)
+	return model and model:FindFirstChild("HumanoidRootPart")
 end
 
-return Service
+local function flat(value)
+	if typeof(value) ~= "Vector3" then
+		return Vector3.zero
+	end
+
+	return Vector3.new(value.X, 0, value.Z)
+end
+
+local function finite(value)
+	return value == value and value ~= math.huge and value ~= -math.huge
+end
+
+local function safeUnit(value, fallback)
+	local f = flat(value)
+
+	if f.Magnitude > 0.001 and finite(f.X) and finite(f.Z) then
+		return f.Unit
+	end
+
+	local b = flat(fallback)
+
+	if b.Magnitude > 0.001 then
+		return b.Unit
+	end
+
+	return Vector3.zAxis
+end
+
+local function signedAngle(from, to)
+	local cross = from.X * to.Z - from.Z * to.X
+	local dot = math.clamp(from:Dot(to), -1, 1)
+	return math.atan2(cross, dot)
+end
+
+function DribbleControlService.Rotate(model, direction, ownsBall, sprinting, dt)
+	local modelRoot = root(model)
+	if not modelRoot then
+		return
+	end
+
+	dt = math.clamp(tonumber(dt) or 1 / 60, 1 / 240, 1 / 15)
+
+	local current = LastFacing[model] or safeUnit(modelRoot.CFrame.LookVector, Vector3.zAxis)
+	local target = safeUnit(direction, current)
+
+	local dot = math.clamp(current:Dot(target), -1, 1)
+	local penalty = ownsBall and math.clamp((1 - dot) * 0.42, 0, 0.5) or 0
+	local turnRate = ownsBall and 5.6 or 8.4
+
+	if sprinting then
+		turnRate *= 0.82
+	end
+
+	local angle = signedAngle(current, target)
+	local maxStep = turnRate * dt
+	local step = math.clamp(angle, -maxStep, maxStep)
+	local rotated = CFrame.fromAxisAngle(Vector3.yAxis, step):VectorToWorldSpace(current)
+
+	if rotated.Magnitude < 0.001 then
+		rotated = target
+	end
+
+	rotated = rotated.Unit
+	LastFacing[model] = rotated
+
+	local position = modelRoot.Position
+	model:PivotTo(CFrame.lookAt(position, position + rotated))
+
+	model:SetAttribute("InputTurnDot", dot)
+	model:SetAttribute("VTRTurnDot", dot)
+	model:SetAttribute("DribbleTurnPenalty", penalty)
+	model:SetAttribute("VTRDribbleFacingX", rotated.X)
+	model:SetAttribute("VTRDribbleFacingZ", rotated.Z)
+end
+
+function DribbleControlService.Clear(model)
+	LastFacing[model] = nil
+end
+
+return DribbleControlService

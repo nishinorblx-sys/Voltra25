@@ -124,6 +124,8 @@ local function applyKeeperMove(self, model, humanoid, root, prediction)
 	model:SetAttribute("VTRLongShotTimeToGoal", prediction.Time)
 	model:SetAttribute("VTRLongShotTargetX", point.X)
 	model:SetAttribute("VTRLongShotTargetY", point.Y)
+	model:SetAttribute("VTRLongShotTargetZ", point.Z)
+	model:SetAttribute("VTRLongShotUntil", os.clock() + math.max(0.45, prediction.Time + 0.25))
 	model:SetAttribute("VTRLongShotFalling", true)
 
 	local dx = math.clamp(point.X - root.Position.X, -GOAL_HALF_WIDTH, GOAL_HALF_WIDTH)
@@ -179,6 +181,10 @@ local function clear(self, model)
 	end
 
 	model:SetAttribute("VTRLongShotPredicted", false)
+	model:SetAttribute("VTRLongShotUntil", nil)
+	model:SetAttribute("VTRLongShotTargetX", nil)
+	model:SetAttribute("VTRLongShotTargetY", nil)
+	model:SetAttribute("VTRLongShotTargetZ", nil)
 	model:SetAttribute("VTRFallingLowShotDive", false)
 	model:SetAttribute("VTRLowShotFlatDive", false)
 	self.BaseY[model] = nil
