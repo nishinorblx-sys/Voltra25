@@ -1,3 +1,13 @@
+from pathlib import Path
+
+root = Path.cwd()
+
+service_path = root / "src/server/Gameplay/GoalkeeperFallingLowShotService.lua"
+runner_path = root / "src/server/GoalkeeperFallingLowShot.server.lua"
+
+service_path.parent.mkdir(parents=True, exist_ok=True)
+
+service_path.write_text(r'''
 local RunService = game:GetService("RunService")
 
 local Service = {}
@@ -225,3 +235,32 @@ function Service:Start()
 end
 
 return Service
+'''.strip() + "\n", encoding="utf-8")
+
+runner_path.write_text(r'''
+local ServerScriptService = game:GetService("ServerScriptService")
+
+task.defer(function()
+	local vtrServer = ServerScriptService:FindFirstChild("VTRServer")
+	local gameplay = vtrServer and vtrServer:FindFirstChild("Gameplay")
+	local module = gameplay and gameplay:FindFirstChild("GoalkeeperFallingLowShotService")
+
+	if module and module:IsA("ModuleScript") then
+		local ok, service = pcall(require, module)
+		if ok and type(service) == "table" and service.Start then
+			service:Start()
+		end
+	end
+end)
+'''.strip() + "\n", encoding="utf-8")
+
+old_runner = root / "src/server/GoalkeeperLowShotDive.server.lua"
+old_service = root / "src/server/Gameplay/GoalkeeperLowShotDiveService.lua"
+
+if old_runner.exists():
+	old_runner.unlink()
+
+if old_service.exists():
+	old_service.unlink()
+
+print("updated long falling shot goalkeeper prediction")

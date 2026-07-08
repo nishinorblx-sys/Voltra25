@@ -1,0 +1,89 @@
+[1mdiff --git a/src/server/Services/MatchSetupService.lua b/src/server/Services/MatchSetupService.lua[m
+[1mindex 02afbb9..41b8f4d 100644[m
+[1m--- a/src/server/Services/MatchSetupService.lua[m
+[1m+++ b/src/server/Services/MatchSetupService.lua[m
+[36m@@ -98,6 +98,84 @@[m [mfunction Service:_commitCampaignWin(player:Player,teamId:string,tierIndex:number[m
+ 	return{Title=firstTierClear and"CAMPAIGN TIER CLEAR"or"CAMPAIGN CLEAR",Coins=0,XP=0,Pack=(tier and tier.Reward or"Campaign Pack")..(voltraGranted and" + Voltra Pack"or""),BonusPack=voltraGranted and"VOLTRA PACK"or nil,VoltraPack=voltraGranted,LeagueClear=voltraGranted,PackId=packId,Packs=packsGranted}[m
+ end[m
+ [m
+[32m+[m[32mfunction Service:_returnedMatchIsWin(ended:any,setup:any):boolean[m
+[32m+[m	[32mif type(ended)=="table" then[m
+[32m+[m		[32mlocal result=tostring(ended.Result or ended.result or ended.Outcome or ended.outcome or ended.MatchResult or ended.matchResult or "")[m
+[32m+[m		[32mif result=="Win" or result=="Won" or result=="Victory" or result=="ForfeitWin" then[m
+[32m+[m			[32mreturn true[m
+[32m+[m		[32mend[m
+[32m+[m
+[32m+[m		[32mlocal home=tonumber(ended.HomeScore or ended.homeScore or ended.HomeGoals or ended.homeGoals or ended.Home or ended.home)[m
+[32m+[m		[32mlocal away=tonumber(ended.AwayScore or ended.awayScore or ended.AwayGoals or ended.awayGoals or ended.Away or ended.away)[m
+[32m+[m		[32mlocal side=tostring(ended.PlayerSide or ended.playerSide or ended.UserSide or ended.userSide or setup.PlayerSide or setup.UserSide or "Home")[m
+[32m+[m
+[32m+[m		[32mif home and away then[m
+[32m+[m			[32mif side=="Away" then[m
+[32m+[m				[32mreturn away>home[m
+[32m+[m			[32mend[m
+[32m+[m
+[32m+[m			[32mreturn home>away[m
+[32m+[m		[32mend[m
+[32m+[m	[32mend[m
+[32m+[m
+[32m+[m	[32mreturn false[m
+[32m+[m[32mend[m
+[32m+[m
+[32m+[m[32mfunction Service:_commitReturnedSoloMatch(player:Player,profile:any):boolean[m
+[32m+[m	[32mif not player or not profile then[m
+[32m+[m		[32mreturn false[m
+[32m+[m	[32mend[m
+[32m+[m
+[32m+[m	[32mlocal setup=profile.MatchSetup[m
+[32m+[m	[32mif type(setup)~="table" then[m
+[32m+[m		[32mreturn false[m
+[32m+[m	[32mend[m
+[32m+[m
+[32m+[m	[32mlocal ended=setup.EndedMatch or setup.CompletedMatch or setup.MatchResult or setup.ResultPayload or setup.LastResult or setup[m
+[32m+[m
+[32m+[m	[32mif setup.Completed~=true and setup.ResultCommitted~=false and type(setup.EndedMatch)~="table" and type(setup.CompletedMatch)~="table" and type(setup.MatchResult)~="table" and type(setup.ResultPayload)~="table" then[m
+[32m+[m		[32mreturn false[m
+[32m+[m	[32mend[m
+[32m+[m
+[32m+[m	[32mlocal changed=false[m
+[32m+[m	[32mlocal matchType=tostring(setup.MatchType or setup.MatchMode or setup.Mode or setup.Type or "")[m
+[32m+[m	[32mlocal teleportMode=tostring(setup.TeleportMatchMode or setup.ReturnMatchMode or "")[m
+[32m+[m
+[32m+[m	[32mif setup.WorldCup==true or matchType=="WorldCup" or matchType=="World Cup" or teleportMode=="WorldCupSolo" or matchType=="WorldCupSolo" then[m
+[32m+[m		[32mchanged=self:_commitWorldCupPlayedMatch(player,ended) or changed[m
+[32m+[m	[32mend[m
+[32m+[m
+[32m+[m	[32mif self:_isCampaignMatch(setup) and self:_returnedMatchIsWin(ended,setup) then[m
+[32m+[m		[32mchanged=self:_commitCampaignWin(player,tostring(setup.CampaignTeamId or ""),tonumber(setup.CampaignTier) or 1,setup.CampaignReplay==true) or changed[m
+[32m+[m	[32mend[m
+[32m+[m
+[32m+[m	[32mif changed then[m
+[32m+[m		[32msetup.Completed=false[m
+[32m+[m		[32msetup.ResultCommitted=true[m
+[32m+[m		[32msetup.EndedMatch=nil[m
+[32m+[m		[32msetup.CompletedMatch=nil[m
+[32m+[m		[32msetup.MatchResult=nil[m
+[32m+[m		[32msetup.ResultPayload=nil[m
+[32m+[m		[32msetup.LastResult=nil[m
+[32m+[m		[32msetup.SavedAt=os.time()[m
+[32m+[m
+[32m+[m		[32mif self.Publish then[m
+[32m+[m			[32mpcall(function()[m
+[32m+[m				[32mlocal vtrProgressionData=self.Progression and self.Progression.GetClientData and self.Progression:GetClientData(player) or nil;if vtrProgressionData then self.Publish(player,"Progression",vtrProgressionData) end[m
+[32m+[m			[32mend)[m
+[32m+[m			[32mpcall(function()[m
+[32m+[m				[32mself.Publish(player,"MatchSetup",setup)[m
+[32m+[m			[32mend)[m
+[32m+[m			[32mpcall(function()[m
+[32m+[m				[32mself.Publish(player,"WorldCup",profile.WorldCup)[m
+[32m+[m			[32mend)[m
+[32m+[m		[32mend[m
+[32m+[m	[32mend[m
+[32m+[m
+[32m+[m	[32mreturn changed[m
+[32m+[m[32mend[m
+[32m+[m
+[32m+[m
+ local function clonePracticePlayer(player:any):any?[m
+ 	if type(player)~="table"then return nil end[m
+ 	local copy=table.clone(player)[m

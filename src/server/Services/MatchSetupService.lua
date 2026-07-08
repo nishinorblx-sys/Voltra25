@@ -98,6 +98,84 @@ function Service:_commitCampaignWin(player:Player,teamId:string,tierIndex:number
 	return{Title=firstTierClear and"CAMPAIGN TIER CLEAR"or"CAMPAIGN CLEAR",Coins=0,XP=0,Pack=(tier and tier.Reward or"Campaign Pack")..(voltraGranted and" + Voltra Pack"or""),BonusPack=voltraGranted and"VOLTRA PACK"or nil,VoltraPack=voltraGranted,LeagueClear=voltraGranted,PackId=packId,Packs=packsGranted}
 end
 
+function Service:_returnedMatchIsWin(ended:any,setup:any):boolean
+	if type(ended)=="table" then
+		local result=tostring(ended.Result or ended.result or ended.Outcome or ended.outcome or ended.MatchResult or ended.matchResult or "")
+		if result=="Win" or result=="Won" or result=="Victory" or result=="ForfeitWin" then
+			return true
+		end
+
+		local home=tonumber(ended.HomeScore or ended.homeScore or ended.HomeGoals or ended.homeGoals or ended.Home or ended.home)
+		local away=tonumber(ended.AwayScore or ended.awayScore or ended.AwayGoals or ended.awayGoals or ended.Away or ended.away)
+		local side=tostring(ended.PlayerSide or ended.playerSide or ended.UserSide or ended.userSide or setup.PlayerSide or setup.UserSide or "Home")
+
+		if home and away then
+			if side=="Away" then
+				return away>home
+			end
+
+			return home>away
+		end
+	end
+
+	return false
+end
+
+function Service:_commitReturnedSoloMatch(player:Player,profile:any):boolean
+	if not player or not profile then
+		return false
+	end
+
+	local setup=profile.MatchSetup
+	if type(setup)~="table" then
+		return false
+	end
+
+	local ended=setup.EndedMatch or setup.CompletedMatch or setup.MatchResult or setup.ResultPayload or setup.LastResult or setup
+
+	if setup.Completed~=true and setup.ResultCommitted~=false and type(setup.EndedMatch)~="table" and type(setup.CompletedMatch)~="table" and type(setup.MatchResult)~="table" and type(setup.ResultPayload)~="table" then
+		return false
+	end
+
+	local changed=false
+	local matchType=tostring(setup.MatchType or setup.MatchMode or setup.Mode or setup.Type or "")
+	local teleportMode=tostring(setup.TeleportMatchMode or setup.ReturnMatchMode or "")
+
+	if setup.WorldCup==true or matchType=="WorldCup" or matchType=="World Cup" or teleportMode=="WorldCupSolo" or matchType=="WorldCupSolo" then
+		changed=self:_commitWorldCupPlayedMatch(player,ended) or changed
+	end
+
+	if self:_isCampaignMatch(setup) and self:_returnedMatchIsWin(ended,setup) then
+		changed=self:_commitCampaignWin(player,tostring(setup.CampaignTeamId or ""),tonumber(setup.CampaignTier) or 1,setup.CampaignReplay==true) or changed
+	end
+
+	if changed then
+		setup.Completed=false
+		setup.ResultCommitted=true
+		setup.EndedMatch=nil
+		setup.CompletedMatch=nil
+		setup.MatchResult=nil
+		setup.ResultPayload=nil
+		setup.LastResult=nil
+		setup.SavedAt=os.time()
+
+		if self.Publish then
+			pcall(function()
+				local vtrProgressionData=self.Progression and self.Progression.GetClientData and self.Progression:GetClientData(player) or nil;if vtrProgressionData then self.Publish(player,"Progression",vtrProgressionData) end
+			end)
+			pcall(function()
+				self.Publish(player,"MatchSetup",setup)
+			end)
+			pcall(function()
+				self.Publish(player,"WorldCup",profile.WorldCup)
+			end)
+		end
+	end
+
+	return changed
+end
+
+
 local function clonePracticePlayer(player:any):any?
 	if type(player)~="table"then return nil end
 	local copy=table.clone(player)
