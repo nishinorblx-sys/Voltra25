@@ -217,6 +217,19 @@ local function formatLeaderboardValue(key: string, value: any): string
 	return tostring(math.floor(number))
 end
 
+local function leaderboardPlayerName(rowData: any): string
+	local name = tostring(rowData and (rowData.Name or rowData.DisplayName or rowData.Username) or "")
+	local id = tostring(rowData and (rowData.UserId or rowData.userId or "") or "")
+	if name == "" or string.match(name, "^USER%s+%d+$") or name == id then
+		local username = tostring(rowData and rowData.Username or "")
+		if username ~= "" and username ~= id then
+			return username
+		end
+		return id ~= "" and ("PLAYER " .. id) or "PLAYER"
+	end
+	return name
+end
+
 local function inputShield(parent: Instance, zIndex: number?)
 	local shield = Instance.new("TextButton")
 	shield.Name = "VTRInputShield"
@@ -530,7 +543,7 @@ function RankedPage.new(context: any): CanvasGroup
 			rowCorner.CornerRadius = UDim.new(0, 6)
 			rowCorner.Parent = row
 			text(row, "#" .. tostring(rowData.Rank or index), UDim2.fromOffset(12, 6), UDim2.fromOffset(54, 18), 9, Theme.Colors.Electric, Theme.Fonts.Display)
-			text(row, tostring(rowData.Name or "PLAYER"), UDim2.fromOffset(76, 6), UDim2.new(1, -250, 0, 18), 10, Theme.Colors.White, Theme.Fonts.Strong)
+			text(row, leaderboardPlayerName(rowData), UDim2.fromOffset(76, 6), UDim2.new(1, -250, 0, 18), 10, Theme.Colors.White, Theme.Fonts.Strong)
 			local value = text(row, formatLeaderboardValue(key, rowData.Value), UDim2.new(1, -146, 0, 6), UDim2.fromOffset(128, 18), 10, Theme.Colors.White, Theme.Fonts.Display)
 			value.TextXAlignment = Enum.TextXAlignment.Right
 		end

@@ -5,6 +5,7 @@ local Players = game:GetService("Players")
 local SoundService = game:GetService("SoundService")
 
 local Service = {}
+local blurGuardBound = false
 
 local function volume(value: any, fallback: number): number
 	if type(value) == "number" then
@@ -35,6 +36,21 @@ local function highContrastEffect(): ColorCorrectionEffect
 	return effect
 end
 
+local function disableSoftFocusEffects()
+	for _, effect in Lighting:GetChildren() do
+		if effect:IsA("BlurEffect") or effect:IsA("DepthOfFieldEffect") then
+			effect.Enabled = false
+		end
+	end
+	if blurGuardBound then return end
+	blurGuardBound = true
+	Lighting.ChildAdded:Connect(function(effect)
+		if effect:IsA("BlurEffect") or effect:IsA("DepthOfFieldEffect") then
+			effect.Enabled = false
+		end
+	end)
+end
+
 local function applySound(sound: Sound, master: number, menuEnabled: boolean)
 	local base = sound:GetAttribute("VTRBaseVolume")
 	if type(base) ~= "number" then
@@ -58,6 +74,7 @@ end
 
 function Service.Apply(settings: any)
 	settings = type(settings) == "table" and settings or {}
+	disableSoftFocusEffects()
 	local master = volume(settings.MasterVolume, 0.8)
 	SoundService:SetAttribute("VTRMasterVolume", master)
 	workspace:SetAttribute("VTRReducedMotion", settings.ReducedMotion == true)

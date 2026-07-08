@@ -46,11 +46,18 @@ local function isNumberLabel(obj)
 	if not string.match(text, "^%s*#?%d%d?%s*$") then
 		return false
 	end
+	local objectName = lower(obj.Name)
+	if not (string.find(objectName, "kitnumber") or string.find(objectName, "jerseynumber") or string.find(objectName, "shirtnumber") or string.find(objectName, "kitwatermark")) then
+		return false
+	end
 
 	local current = obj
 	while current do
 		local name = lower(current.Name)
-		if string.find(name, "ranked") or name == "vtr25" then
+		if name == "vtr25" then
+			return false
+		end
+		if string.find(name, "overall") or string.find(name, "ovr") or string.find(name, "stat") or string.find(name, "rankedqueuepresentation") or string.find(name, "badge") then
 			return false
 		end
 		if string.find(name, "lineup") or string.find(name, "presentation") or string.find(name, "prematch") or string.find(name, "broadcast") then

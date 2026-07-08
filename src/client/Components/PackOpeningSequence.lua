@@ -6,6 +6,7 @@ local TweenService = game:GetService("TweenService")
 
 local Theme = require(ReplicatedStorage.VTR.Shared.Theme)
 local CardVisualConfig = require(ReplicatedStorage.VTR.Shared.CardVisualConfig)
+local WorldCupConfig = require(ReplicatedStorage.VTR.Shared.WorldCupConfig)
 local CardSurface = require(script.Parent.CardSurface)
 local WidePlayerCard = require(script.Parent.WidePlayerCard)
 local Button = require(script.Parent.Button)
@@ -270,6 +271,34 @@ function PackOpeningSequence.play(parent: Instance, props: any): CanvasGroup
 	packRatingBanner.TextTransparency = .18
 	local status = label(overlay, "INITIALIZING VOLTRA CHAMBER", UDim2.fromScale(0.25, 0.9), UDim2.fromScale(0.5, 0.04), 9, Theme.Colors.Electric, Theme.Fonts.Strong, 112)
 	status.TextXAlignment = Enum.TextXAlignment.Center
+	local vipBoost = false
+	for _, card in reveals do
+		if card.VTRVipPackBoost == true then vipBoost = true;break end
+	end
+	if vipBoost then
+		local vip = Instance.new("Frame")
+		vip.Name = "VIPPackBoostBanner"
+		vip.AnchorPoint = Vector2.new(.5,0)
+		vip.BackgroundColor3 = Color3.fromHex("1C1403")
+		vip.BackgroundTransparency = .08
+		vip.BorderSizePixel = 0
+		vip.Position = UDim2.fromScale(.5,.13)
+		vip.Size = UDim2.fromScale(.46,.07)
+		vip.ZIndex = 116
+		vip.Parent = overlay
+		corner(vip,10)
+		local stroke = Instance.new("UIStroke")
+		stroke.Color = Color3.fromHex("FFD43B")
+		stroke.Thickness = 2
+		stroke.Transparency = .1
+		stroke.Parent = vip
+		local gradient = Instance.new("UIGradient")
+		gradient.Color = ColorSequence.new(Color3.fromHex("2E2108"), Color3.fromHex("050505"))
+		gradient.Rotation = 0
+		gradient.Parent = vip
+		local vipText = label(vip, "VIP BOOST ACTIVE  /  +10% BETTER PACK ODDS", UDim2.fromScale(.05,.08), UDim2.fromScale(.9,.84), 15, Color3.fromHex("FFD43B"), Theme.Fonts.Display, 117)
+		vipText.TextXAlignment = Enum.TextXAlignment.Center
+	end
 
 	local energy = Instance.new("Frame")
 	energy.Name = "EnergyCore"
@@ -376,75 +405,163 @@ function PackOpeningSequence.play(parent: Instance, props: any): CanvasGroup
 			hero.Name = "WalkoutReveal"
 			hero.AnchorPoint = Vector2.new(0.5, 0.5)
 			hero.Position = UDim2.fromScale(0.5, 0.5)
-			hero.Size = UDim2.fromOffset(600, 360)
+			hero.Size = UDim2.fromOffset(760, 430)
 			hero.GroupTransparency = 1
 			hero.ZIndex = 110
 			hero.Parent = overlay
-			CardSurface.apply(hero, rarity, cardType, 14)
-			local kicker = label(hero, "HIGHEST RATED REVEAL", UDim2.fromOffset(28, 18), UDim2.new(1, -56, 0, 20), 8, visual.glowColor, Theme.Fonts.Strong, 114)
+			CardSurface.apply(hero, rarity, cardType, 16)
+			local brightWash = Instance.new("Frame")
+			brightWash.BackgroundColor3 = Theme.Colors.White
+			brightWash.BackgroundTransparency = 0.97
+			brightWash.BorderSizePixel = 0
+			brightWash.Size = UDim2.fromScale(1, 1)
+			brightWash.ZIndex = 111
+			brightWash.Parent = hero
+			corner(brightWash, 16)
+			local kicker = label(hero, "HIGHEST RATED REVEAL", UDim2.fromOffset(28, 18), UDim2.new(1, -56, 0, 25), 13, visual.glowColor, Theme.Fonts.Display, 160)
 			kicker.TextXAlignment = Enum.TextXAlignment.Center
+			kicker.TextTransparency = 1
 			local facts = Instance.new("Frame")
 			facts.BackgroundTransparency = 1
-			facts.Position = UDim2.fromOffset(28, 55)
-			facts.Size = UDim2.fromOffset(260, 265)
-			facts.ZIndex = 113
+			facts.Position = UDim2.fromOffset(34, 68)
+			facts.Size = UDim2.fromOffset(320, 292)
+			facts.ZIndex = 128
 			facts.Parent = hero
 			local factLayout = Instance.new("UIListLayout")
-			factLayout.Padding = UDim.new(0, 5)
+			factLayout.Padding = UDim.new(0, 8)
 			factLayout.Parent = facts
 			local factData = {
 				{ "RARITY", string.upper(rarity), visual.trimColor },
-				{ "POSITION", tostring(best.Position or best.bestPosition or "--"), Theme.Colors.White },
-				{ "NATIONALITY", tostring(best.Nation or best.nationality or "VTR REGION"), Theme.Colors.Silver },
-				{ "CLUB", tostring(best.Club or best.fictionalClub or "VTR FREE AGENT"), Theme.Colors.Silver },
+				{ "POSITION", tostring(best.Position or best.bestPosition or "--"), Color3.fromHex("080A08") },
+				{ "NATIONALITY", tostring(best.Nation or best.nationality or "VTR REGION"), Color3.fromHex("080A08") },
+				{ "CLUB", tostring(best.Club or best.fictionalClub or "VTR FREE AGENT"), Color3.fromHex("080A08") },
 			}
 			local factRows = {}
 			for _, fact in factData do
-				local row = Instance.new("TextLabel")
-				row.BackgroundColor3 = Color3.new()
-				row.BackgroundTransparency = 0.62
+				local row = Instance.new("Frame")
+				row.BackgroundColor3 = Color3.fromHex("FFF9FF")
+				row.BackgroundTransparency = 1
 				row.BorderSizePixel = 0
-				row.Size = UDim2.new(1, 0, 0, 45)
-				row.Text = fact[1] .. "   /   " .. tostring(fact[2] or "--")
-				row.TextColor3 = fact[3]
-				row.TextSize = 10
-				row.Font = Theme.Fonts.Strong
-				row.TextTransparency = 1
-				row.ZIndex = 114
+				row.Size = UDim2.new(1, 0, 0, 62)
+				row.ZIndex = 150
 				row.Parent = facts
-				corner(row, 5)
-				table.insert(factRows, row)
+				corner(row, 8)
+				local rowStroke = Instance.new("UIStroke")
+				rowStroke.Color = visual.glowColor
+				rowStroke.Transparency = 0.28
+				rowStroke.Thickness = 1.25
+				rowStroke.Parent = row
+				local caption = label(row, fact[1], UDim2.fromOffset(18, 8), UDim2.fromOffset(125, 18), 10, Color3.fromHex("51207F"), Theme.Fonts.Strong, 162)
+				caption.TextTransparency = 1
+				local value = label(row, tostring(fact[2] or "--"), UDim2.fromOffset(18, 26), UDim2.new(1, -36, 0, 28), 18, fact[3], Theme.Fonts.Display, 162)
+				value.TextXAlignment = Enum.TextXAlignment.Right
+				value.TextTruncate = Enum.TextTruncate.AtEnd
+				value.TextTransparency = 1
+				local flagImage: ImageLabel? = nil
+				if fact[1] == "NATIONALITY" then
+					local flagAsset = WorldCupConfig.Flag(tostring(fact[2] or ""))
+					if flagAsset ~= "" then
+						flagImage = Instance.new("ImageLabel")
+						flagImage.BackgroundColor3 = Color3.fromHex("E8E4F2")
+						flagImage.BackgroundTransparency = 0
+						flagImage.BorderSizePixel = 0
+						flagImage.Image = flagAsset
+						flagImage.ImageTransparency = 1
+						flagImage.Position = UDim2.fromOffset(18, 28)
+						flagImage.ScaleType = Enum.ScaleType.Crop
+						flagImage.Size = UDim2.fromOffset(40, 24)
+						flagImage.ZIndex = 162
+						flagImage.Parent = row
+						corner(flagImage, 4)
+						value.Position = UDim2.fromOffset(66, 26)
+						value.Size = UDim2.new(1, -82, 0, 28)
+						value.TextXAlignment = Enum.TextXAlignment.Left
+					end
+				end
+				table.insert(factRows, {
+					Row = row,
+					Caption = caption,
+					Value = value,
+					Flag = flagImage,
+				})
 			end
-			local rating = label(hero, tostring(best.Rating or best.overall or "--"), UDim2.fromOffset(316, 32), UDim2.fromOffset(230, 100), 74, Theme.Colors.White, Theme.Fonts.Display, 114)
+			local divider = Instance.new("Frame")
+			divider.BackgroundColor3 = visual.glowColor
+			divider.BackgroundTransparency = 0.2
+			divider.BorderSizePixel = 0
+			divider.Position = UDim2.fromOffset(384, 72)
+			divider.Size = UDim2.fromOffset(2, 290)
+			divider.ZIndex = 127
+			divider.Parent = hero
+			local ovrText = label(hero, "OVR", UDim2.fromOffset(478, 54), UDim2.fromOffset(140, 28), 16, visual.glowColor, Theme.Fonts.Display, 160)
+			ovrText.TextXAlignment = Enum.TextXAlignment.Center
+			ovrText.TextTransparency = 1
+			local rating = label(hero, tostring(best.Rating or best.overall or "--"), UDim2.fromOffset(440, 80), UDim2.fromOffset(220, 92), 76, Theme.Colors.White, Theme.Fonts.Display, 160)
 			rating.TextXAlignment = Enum.TextXAlignment.Center
 			rating.TextTransparency = 1
-			local portrait = AvatarPortraitGenerator.new(hero, best, UDim2.fromOffset(230, 175), false)
-			portrait.Position = UDim2.fromOffset(316, 115)
-			portrait.ZIndex = 113
+			local ratingStroke = Instance.new("UIStroke")
+			ratingStroke.Color = visual.glowColor
+			ratingStroke.Thickness = 3
+			ratingStroke.Transparency = 0.16
+			ratingStroke.Parent = rating
+			local portraitFrame = Instance.new("CanvasGroup")
+			portraitFrame.Name = "PlayerRevealFrame"
+			portraitFrame.BackgroundColor3 = Color3.fromHex("F6F1FF")
+			portraitFrame.BackgroundTransparency = 0.1
+			portraitFrame.Position = UDim2.fromOffset(430, 170)
+			portraitFrame.Size = UDim2.fromOffset(260, 172)
+			portraitFrame.GroupTransparency = 1
+			portraitFrame.ZIndex = 113
+			portraitFrame.Parent = hero
+			corner(portraitFrame, 14)
+			local portraitStroke = Instance.new("UIStroke")
+			portraitStroke.Color = visual.glowColor
+			portraitStroke.Thickness = 2
+			portraitStroke.Transparency = 0.12
+			portraitStroke.Parent = portraitFrame
+			local portraitGlow = Instance.new("Frame")
+			portraitGlow.BackgroundColor3 = visual.glowColor
+			portraitGlow.BackgroundTransparency = 0.82
+			portraitGlow.BorderSizePixel = 0
+			portraitGlow.Position = UDim2.fromScale(0, 0.63)
+			portraitGlow.Size = UDim2.fromScale(1, 0.22)
+			portraitGlow.ZIndex = 113
+			portraitGlow.Parent = portraitFrame
+			local portrait = AvatarPortraitGenerator.new(portraitFrame, best, UDim2.fromScale(0.96, 0.96), false)
+			portrait.Position = UDim2.fromScale(0.02, 0.02)
+			portrait.ZIndex = 116
 			portrait.Visible = false
-			local playerName = label(hero, tostring(best.Name or best.displayName or "VTR PLAYER"), UDim2.fromOffset(300, 297), UDim2.fromOffset(262, 40), 18, Theme.Colors.White, Theme.Fonts.Display, 114)
+			local playerName = label(hero, tostring(best.Name or best.displayName or "VTR PLAYER"), UDim2.fromOffset(402, 352), UDim2.fromOffset(318, 46), 22, Theme.Colors.White, Theme.Fonts.Display, 160)
 			playerName.TextXAlignment = Enum.TextXAlignment.Center
 			playerName.TextTransparency = 1
 			tweenWait(hero, TweenInfo.new(0.36, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { GroupTransparency = 0 })
-			for index, row in factRows do
+			TweenService:Create(kicker, TweenInfo.new(0.22), { TextTransparency = 0 }):Play()
+			for index, item in factRows do
 				status.Text = ({ "RARITY DETECTED", "POSITION LOCKED", "NATIONALITY CONFIRMED", "CLUB SIGNAL FOUND" })[index]
 				playPlaceholder(revealSound)
-				tweenWait(row, TweenInfo.new(0.22), { TextTransparency = 0 })
-				task.wait(0.18)
+				TweenService:Create(item.Caption, TweenInfo.new(0.14), { TextTransparency = 0 }):Play()
+				TweenService:Create(item.Value, TweenInfo.new(0.14), { TextTransparency = 0 }):Play()
+				if item.Flag then
+					TweenService:Create(item.Flag, TweenInfo.new(0.14), { ImageTransparency = 0 }):Play()
+				end
+				tweenWait(item.Row, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { BackgroundTransparency = 0.02 })
+				task.wait(0.11)
 			end
 			status.Text = "RATING VERIFIED"
 			packRatingBanner.Text = "PACK RATING  " .. tostring(packRating) .. " OVR"
 			playPlaceholder(revealSound)
+			TweenService:Create(ovrText, TweenInfo.new(0.18), { TextTransparency = 0 }):Play()
 			tweenWait(rating, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { TextTransparency = 0 })
-			task.wait(0.35)
+			task.wait(0.22)
 			status.Text = "PLAYER REVEALED"
 			portrait.Visible = true
-			playerName.TextTransparency = 0
+			TweenService:Create(portraitFrame, TweenInfo.new(0.24, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { GroupTransparency = 0 }):Play()
+			TweenService:Create(playerName, TweenInfo.new(0.22), { TextTransparency = 0 }):Play()
 			local portraitScale = Instance.new("UIScale")
-			portraitScale.Scale = 0.82
+			portraitScale.Scale = 0.74
 			portraitScale.Parent = portrait
-			tweenWait(portraitScale, TweenInfo.new(0.4, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1 })
-			task.wait(1)
+			tweenWait(portraitScale, TweenInfo.new(0.32, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1 })
+			task.wait(1.2)
 			tweenWait(hero, TweenInfo.new(0.25), { GroupTransparency = 1 })
 			if overlay.Parent then showResults(overlay, props.Title or "VTR PACK", reveals, props) end
 		end)

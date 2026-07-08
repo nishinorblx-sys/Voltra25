@@ -3,6 +3,7 @@ local ReplicatedStorage=game:GetService("ReplicatedStorage")
 local PlayerDatabase=require(script.Parent.Parent.Data.PlayerDatabase)
 local ClubIdentityConfig=require(ReplicatedStorage.VTR.Shared.ClubIdentityConfig)
 local FormationConfig=require(ReplicatedStorage.VTR.Shared.FormationConfig)
+local Catalog=require(ReplicatedStorage.VTR.Shared.Catalog)
 
 local Service={}
 Service.__index=Service
@@ -10,6 +11,12 @@ local ORDER=FormationConfig.Order
 local ATTACK={LW=true,RW=true,ST=true,CF=true,LM=true,RM=true}
 local MIDFIELD={CM=true,CDM=true,CAM=true,LM=true,RM=true}
 local DEFENSE={GK=true,LB=true,RB=true,CB=true,LWB=true,RWB=true}
+local POSITION_ALIASES={
+	["LEFT WING"]="LW",["RIGHT WING"]="RW",["STRIKER"]="ST",["CENTRE FORWARD"]="CF",["CENTER FORWARD"]="CF",
+	["LEFT MIDFIELD"]="LM",["RIGHT MIDFIELD"]="RM",["CENTRE MIDFIELD"]="CM",["CENTER MIDFIELD"]="CM",
+	["DEFENSIVE MIDFIELD"]="CDM",["ATTACKING MIDFIELD"]="CAM",["LEFT BACK"]="LB",["RIGHT BACK"]="RB",
+	["CENTRE BACK"]="CB",["CENTER BACK"]="CB",["GOALKEEPER"]="GK",
+}
 
 local function findCard(profile:any,reference:any):any?
 	if type(reference)~="string"then return nil end
@@ -23,12 +30,14 @@ local function matchPlayer(card:any):any?
 end
 
 local function average(players:{any},group:any?):number
-	local total,count=0,0;for _,player in players do if not group or group[player.bestPosition]==true then total+=tonumber(player.overall)or 0;count+=1 end end;return count>0 and math.floor(total/count+.5)or 0
+	local total,count=0,0;for _,player in players do local position=tostring(player.PositionSlot or player.SquadSlot or player.ExpectedPosition or player.bestPosition or player.Position or""):upper();position=POSITION_ALIASES[position]or position;if not group or group[position]==true then total+=tonumber(player.overall)or 0;count+=1 end end;return count>0 and math.floor(total/count+.5)or 0
 end
 
 local function identityTeam(player:Player,profile:any,starting:{any}):any
 	local identity=profile.ClubMembership or{};local primary=ClubIdentityConfig.ResolveColor(identity.PrimaryColor);local secondary=ClubIdentityConfig.ResolveColor(identity.SecondaryColor);local accent=ClubIdentityConfig.ResolveColor(identity.AccentColor);local name=identity.Name;if type(name)~="string"or name==""or name=="NO CLUB"then name=string.upper(player.DisplayName).." XI"end;local abbreviation=identity.Abbreviation;if type(abbreviation)~="string"or#abbreviation<2 then abbreviation=string.upper(string.sub(name:gsub("[^%a]",""),1,3))end;if abbreviation==""then abbreviation="VTR"end
-	local style=ClubIdentityConfig.ResolveStyle(identity.KitStyle);local home={Name="Home",Primary=primary,Secondary=secondary,Accent=accent,Style=style,NumberColor=accent};local away={Name="Away",Primary=secondary,Secondary=primary,Accent=accent,Style=style,NumberColor=accent};local third={Name="Third",Primary=accent,Secondary=primary,Accent=secondary,Style="Solid",NumberColor=secondary}
+	local equipped=profile.UIState and profile.UIState.EquippedCosmetics or{};local activeKit=nil;for _,kit in Catalog.Kits do if kit.Id==equipped.ActiveKit then activeKit=kit;break end end
+	local style=ClubIdentityConfig.ResolveStyle(identity.KitStyle);local bootStyle=tostring(equipped.BootStyle or"");local home={Name="Home",Primary=primary,Secondary=secondary,Accent=accent,Style=style,NumberColor=accent,BootStyle=bootStyle};local away={Name="Away",Primary=secondary,Secondary=primary,Accent=accent,Style=style,NumberColor=accent,BootStyle=bootStyle};local third={Name="Third",Primary=accent,Secondary=primary,Accent=secondary,Style="Solid",NumberColor=secondary,BootStyle=bootStyle}
+	if activeKit then home={Name=activeKit.Name or"Home",Primary=activeKit.Primary or primary,Secondary=activeKit.Secondary or secondary,Accent=activeKit.Accent or accent,Style=activeKit.Style or style,NumberColor=activeKit.NumberColor or activeKit.Accent or accent,Animated=activeKit.Animated==true,BootStyle=bootStyle};away={Name=(activeKit.Name or"Away").." AWAY",Primary=activeKit.Secondary or secondary,Secondary=activeKit.Primary or primary,Accent=activeKit.Accent or accent,Style=activeKit.Style or style,NumberColor=activeKit.NumberColor or activeKit.Accent or accent,Animated=activeKit.Animated==true,BootStyle=bootStyle};third={Name=(activeKit.Name or"Third").." THIRD",Primary=activeKit.Accent or accent,Secondary=activeKit.Primary or primary,Accent=activeKit.Secondary or secondary,Style=activeKit.Style or"Solid",NumberColor=activeKit.NumberColor or secondary,Animated=activeKit.Animated==true,BootStyle=bootStyle}end
 	local sorted=table.clone(starting);table.sort(sorted,function(a,b)return(a.overall or 0)>(b.overall or 0)end)
 	local badgeIdentity={PrimaryColor=primary,SecondaryColor=secondary,AccentColor=accent,BadgePreset=identity.BadgePreset or"Modern",BadgeShape=identity.BadgeShape or"Shield",BadgeSymbol=identity.BadgeSymbol or"Lightning Bolt",BadgeColorBehavior=identity.BadgeColorBehavior or"Tri Color"}
 	return{teamId="ultimate_team_"..player.UserId,teamName=name,country="VTR UNIVERSE",league="RANKED ULTIMATE TEAM",overall=average(starting),attack=average(starting,ATTACK),midfield=average(starting,MIDFIELD),defense=average(starting,DEFENSE),formation=profile.Formation or"4-3-3",badgePreset=identity.BadgeShape or identity.BadgePreset or"Shield",logo=string.upper(abbreviation),colors={Primary=primary,Secondary=secondary,Accent=accent},BadgeIdentity=badgeIdentity,badgeIdentity=badgeIdentity,kits={Home=home,Away=away,Third=third},starPlayers={sorted[1],sorted[2],sorted[3]},generated=false}

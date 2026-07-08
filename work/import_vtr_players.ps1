@@ -1,5 +1,5 @@
 $ErrorActionPreference = 'Stop'
-$source = 'C:\Users\user\Downloads\VTRPlayers_With_Appearance.csv'
+$source = 'C:\Users\user\Downloads\VTRPlayers_OriginalNames_FictionalClubs.csv'
 $root = Join-Path $PSScriptRoot '..\src\data'
 $shards = Join-Path $root 'Players'
 New-Item -ItemType Directory -Force -Path $shards | Out-Null
@@ -28,7 +28,7 @@ for ($shardIndex = 0; $shardIndex -lt $shardCount; $shardIndex++) {
  $end = [math]::Min($start + $chunkSize, $rows.Count)
  $builder = [Text.StringBuilder]::new()
  [void]$builder.AppendLine('--!strict')
- [void]$builder.AppendLine('-- Generated from VTRPlayers_With_Appearance.csv. Do not edit by hand.')
+ [void]$builder.AppendLine('-- Generated from VTRPlayers_OriginalNames_FictionalClubs.csv. Do not edit by hand.')
  [void]$builder.AppendLine('return {')
  for ($index = $start; $index -lt $end; $index++) {
   $row = $rows[$index]

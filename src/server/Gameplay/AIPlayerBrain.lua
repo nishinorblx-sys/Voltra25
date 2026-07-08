@@ -561,6 +561,10 @@ function Service:_defensiveActions(context: any, assignmentsBySide: any, onlySid
 		if side == carrier.Side then
 			continue
 		end
+		local manualTackleSides = context.ManualTackleSides
+		if type(manualTackleSides) == "table" and manualTackleSides[side] == true then
+			continue
+		end
 		for model, assignment in pairs(assignmentsBySide[side]) do
 			local defender = context.Players[model]
 			if defender then

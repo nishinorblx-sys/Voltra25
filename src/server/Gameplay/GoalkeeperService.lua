@@ -7,10 +7,17 @@ local PitchConfig = require(script.Parent.PitchConfig)
 local Service = {}
 Service.__index = Service
 
-local DIVE_LEAD_TIME = 0.72
+local DIVE_LEAD_TIME = 0.08
 local EMERGENCY_SAVE_TIME = 0.025
 local CATCH_RADIUS = 2.35
-local MAX_DIVE_SPEED = 42
+local DEFAULT_DIVE_SPEED = 21
+local MAX_RATED_DIVE_SPEED_MULTIPLIER = 1.27
+local DIVE_JUMP_HEIGHT = 0.72
+local DIVE_FALL_THROUGH = 1.08
+local DIVE_STRETCH_COMPLETE = 0.52
+local DIVE_LAND_HOLD = 0.34
+local DIVE_RECOVER = 0.72
+local DIVE_RETURN_HOME = 0.28
 local SAFE_ROOT_HEIGHT = 3.05
 local MIN_VISUAL_DIVE_TIME = 0.34
 local AI_KEEPER_DISTRIBUTION_DELAY = 0.65
@@ -68,7 +75,509 @@ local function keeperRating(keeper:Model):number
 	local diving=tonumber(keeper:GetAttribute("gkDiving"))or tonumber(keeper:GetAttribute("GKDIV"))or overall
 	local reflexes=tonumber(keeper:GetAttribute("gkReflexes"))or tonumber(keeper:GetAttribute("GKREF"))or overall
 	local handling=tonumber(keeper:GetAttribute("gkHandling"))or tonumber(keeper:GetAttribute("GKHAN"))or overall
-	return math.clamp(overall*.35+diving*.25+reflexes*.3+handling*.1,1,99)
+	return math.clamp((overall*.35+diving*.25+reflexes*.3+handling*.1)*1.05,1,99)
+end
+
+local function boostedKeeperStat(keeper:Model, primary:string, fallback:string, rating:number):number
+	local raw = tonumber(keeper:GetAttribute(primary)) or tonumber(keeper:GetAttribute(fallback))
+	return raw and math.clamp(raw * 1.05, 1, 99) or rating
+end
+
+local function reflexDiveSpeed(reflexes:number):number
+	local alpha = math.clamp((reflexes - 27) / (99 - 27), 0, 1)
+	return 16 + (DEFAULT_DIVE_SPEED * MAX_RATED_DIVE_SPEED_MULTIPLIER - 16) * alpha
+end
+
+local function smoothStep(alpha:number):number
+	alpha = math.clamp(alpha, 0, 1)
+	return alpha * alpha * (3 - 2 * alpha)
+end
+
+local function finiteNumber(value: number): boolean
+	return value == value and value ~= math.huge and value ~= -math.huge
+end
+
+local function isFiniteVector3(value: any): boolean
+	return typeof(value) == "Vector3" and finiteNumber(value.X) and finiteNumber(value.Y) and finiteNumber(value.Z)
+end
+
+local DivePoseRigCache = setmetatable({}, {__mode = "k"})
+
+local function findDiveMotor(model: Model, names: {string}): Motor6D?
+	for _, descendant in model:GetDescendants() do
+		if descendant:IsA("Motor6D") then
+			for _, name in names do
+				if descendant.Name == name then
+					return descendant
+				end
+			end
+		end
+	end
+	return nil
+end
+
+local function divePoseRig(model: Model): any?
+	local cached = DivePoseRigCache[model]
+	if cached then
+		return cached
+	end
+	local joints = {
+		Root = findDiveMotor(model, {"RootJoint", "Root"}),
+		Neck = findDiveMotor(model, {"Neck"}),
+		LeftShoulder = findDiveMotor(model, {"Left Shoulder", "LeftShoulder"}),
+		RightShoulder = findDiveMotor(model, {"Right Shoulder", "RightShoulder"}),
+		LeftHip = findDiveMotor(model, {"Left Hip", "LeftHip"}),
+		RightHip = findDiveMotor(model, {"Right Hip", "RightHip"}),
+	}
+	for _, joint in pairs(joints) do
+		if not joint then
+			return nil
+		end
+	end
+	local baseC0 = {}
+	for name, joint in pairs(joints) do
+		baseC0[name] = joint.C0
+	end
+	cached = {Joints = joints, BaseC0 = baseC0}
+	DivePoseRigCache[model] = cached
+	return cached
+end
+
+local function clearKeeperDivePose(model: Model?)
+	if not model then return end
+	local rig = DivePoseRigCache[model] or divePoseRig(model)
+	if not rig then return end
+	for name, joint in pairs(rig.Joints) do
+		joint.Transform = CFrame.new()
+		if rig.BaseC0[name] then
+			joint.C0 = rig.BaseC0[name]
+		end
+	end
+end
+
+local function blendKeeperDivePoseToBase(model: Model?, alpha: number)
+	if not model then return end
+	local rig = DivePoseRigCache[model] or divePoseRig(model)
+	if not rig then return end
+	alpha = math.clamp(alpha, 0, 1)
+	for name, joint in pairs(rig.Joints) do
+		joint.Transform = CFrame.new()
+		local base = rig.BaseC0[name]
+		if base then
+			joint.C0 = joint.C0:Lerp(base, alpha)
+		end
+	end
+end
+
+local function classifyDivePose(rectangle: any, target: Vector3): (string, number, number)
+	local offset = target - rectangle.PlanePoint
+	local width = math.max(0.1, rectangle.RightBound - rectangle.Left)
+	local height = math.max(0.1, rectangle.Top - rectangle.Bottom)
+	local horizontal = offset:Dot(rectangle.Right)
+	local vertical = offset:Dot(rectangle.Up)
+	local center = (rectangle.Left + rectangle.RightBound) * 0.5
+	local xNorm = math.clamp((horizontal - center) / (width * 0.5), -1, 1)
+	local yNorm = math.clamp((vertical - rectangle.Bottom) / height, 0, 1)
+	local absX = math.abs(xNorm)
+	if absX < 0.18 and yNorm < 0.38 then
+		return "CenterLow", xNorm, yNorm
+	elseif absX < 0.18 then
+		return "CenterBlock", xNorm, yNorm
+	elseif yNorm < 0.28 then
+		return "LowDive", xNorm, yNorm
+	elseif yNorm > 0.72 and absX > 0.55 then
+		return "TopCorner", xNorm, yNorm
+	elseif yNorm > 0.62 then
+		return "HighDive", xNorm, yNorm
+	end
+	return "MidDive", xNorm, yNorm
+end
+
+local function makeDivePosePlan(rectangle: any, target: Vector3, startPosition: Vector3?, lateralAxis: Vector3): any
+	local poseKind, xNorm, yNorm = classifyDivePose(rectangle, target)
+	local side = xNorm >= 0 and 1 or -1
+	if math.abs(xNorm) < 0.08 and startPosition then
+		local lateral = (target - startPosition):Dot(lateralAxis)
+		if math.abs(lateral) > 0.2 then
+			side = lateral >= 0 and 1 or -1
+		end
+	end
+	local absX = math.abs(xNorm)
+	local twoHandChance = math.clamp(0.28 + (1 - absX) * 0.34 + (1 - yNorm) * 0.18, 0.22, 0.7)
+	local handStyle = twoHandChance >= 0.46 and "TwoHand" or "OneHand"
+	if poseKind == "TopCorner" or poseKind == "HighDive" then
+		handStyle = "TwoHand"
+	end
+	return {
+		Side = side,
+		PoseKind = poseKind,
+		XNorm = xNorm,
+		YNorm = yNorm,
+		HandStyle = handStyle,
+	}
+end
+
+local function isOverheadDivePose(plan: any): boolean
+	return plan.PoseKind == "TopCorner" or plan.PoseKind == "HighDive" or (plan.PoseKind == "MidDive" and (tonumber(plan.YNorm) or 0) >= 0.42)
+end
+
+local function setShoulders(rig: any, leftOffset: CFrame, rightOffset: CFrame, alpha: number)
+	alpha = math.clamp(alpha, 0, 1)
+	local joints = rig.Joints
+	local baseC0 = rig.BaseC0
+	joints.LeftShoulder.C0 = baseC0.LeftShoulder:Lerp(baseC0.LeftShoulder * leftOffset, alpha)
+	joints.RightShoulder.C0 = baseC0.RightShoulder:Lerp(baseC0.RightShoulder * rightOffset, alpha)
+end
+
+local function applyLowDiveArms(rig: any, alpha: number, side: number, twoHanded: boolean)
+	if twoHanded then
+		setShoulders(
+			rig,
+			CFrame.Angles(math.rad(20), math.rad(-2 * side), math.rad(-142)),
+			CFrame.Angles(math.rad(20), math.rad(2 * side), math.rad(142)),
+			alpha
+		)
+	elseif side < 0 then
+		setShoulders(
+			rig,
+			CFrame.Angles(math.rad(18), math.rad(-3), math.rad(-154)),
+			CFrame.Angles(math.rad(12), math.rad(5), math.rad(86)),
+			alpha
+		)
+	else
+		setShoulders(
+			rig,
+			CFrame.Angles(math.rad(12), math.rad(-5), math.rad(-86)),
+			CFrame.Angles(math.rad(18), math.rad(3), math.rad(154)),
+			alpha
+		)
+	end
+end
+
+local function applyMidDiveArms(rig: any, alpha: number, side: number, twoHanded: boolean)
+	if twoHanded then
+		setShoulders(
+			rig,
+			CFrame.Angles(math.rad(-56), math.rad(-4 * side), math.rad(-88)),
+			CFrame.Angles(math.rad(-58), math.rad(4 * side), math.rad(88)),
+			alpha
+		)
+	elseif side < 0 then
+		setShoulders(
+			rig,
+			CFrame.Angles(math.rad(-66), math.rad(-5), math.rad(-106)),
+			CFrame.Angles(math.rad(-30), math.rad(7), math.rad(54)),
+			alpha
+		)
+	else
+		setShoulders(
+			rig,
+			CFrame.Angles(math.rad(-30), math.rad(-7), math.rad(-54)),
+			CFrame.Angles(math.rad(-66), math.rad(5), math.rad(106)),
+			alpha
+		)
+	end
+end
+
+local function highCornerOffsets(side: number, twoHanded: boolean, floorAdjust: number?): (CFrame, CFrame)
+	local adjust = math.clamp(floorAdjust or 0, 0, 1)
+	if twoHanded then
+		-- R6 shoulders have rotated base C0s, so these overhead targets are
+		-- calibrated per shoulder instead of using generic local X/Z guesses.
+		return
+			CFrame.Angles(math.rad(-91 + adjust * 17), math.rad(-4 * side), math.rad(-42 + adjust * 10)),
+			CFrame.Angles(math.rad(-92 + adjust * 17), math.rad(4 * side), math.rad(42 - adjust * 10))
+	end
+	if side < 0 then
+		return
+			CFrame.Angles(math.rad(-96 + adjust * 15), math.rad(-6), math.rad(-52 + adjust * 10)),
+			CFrame.Angles(math.rad(-76 + adjust * 15), math.rad(6), math.rad(34 - adjust * 7))
+	end
+	return
+		CFrame.Angles(math.rad(-76 + adjust * 15), math.rad(-6), math.rad(-34 + adjust * 7)),
+		CFrame.Angles(math.rad(-96 + adjust * 15), math.rad(6), math.rad(52 - adjust * 10))
+end
+
+local function applyHighCornerArms(rig: any, alpha: number, side: number, twoHanded: boolean)
+	local leftOffset, rightOffset = highCornerOffsets(side, twoHanded, 0)
+	setShoulders(rig, leftOffset, rightOffset, alpha)
+end
+
+local function applyLandingArms(rig: any, alpha: number, side: number, poseKind: string, twoHanded: boolean, floorAdjust: number?)
+	if poseKind == "TopCorner" or poseKind == "HighDive" then
+		local leftOffset, rightOffset = highCornerOffsets(side, twoHanded, floorAdjust or 0.45)
+		setShoulders(rig, leftOffset, rightOffset, alpha)
+	elseif poseKind == "MidDive" then
+		local adjust = math.clamp(floorAdjust or 0, 0, 1)
+		if twoHanded then
+			setShoulders(
+				rig,
+				CFrame.Angles(math.rad(-42 + adjust * 16), math.rad(-3 * side), math.rad(-72 + adjust * 12)),
+				CFrame.Angles(math.rad(-44 + adjust * 16), math.rad(3 * side), math.rad(72 - adjust * 12)),
+				alpha
+			)
+		elseif side < 0 then
+			setShoulders(
+				rig,
+				CFrame.Angles(math.rad(-50 + adjust * 14), math.rad(-4), math.rad(-86 + adjust * 12)),
+				CFrame.Angles(math.rad(-18 + adjust * 10), math.rad(5), math.rad(34 - adjust * 8)),
+				alpha
+			)
+		else
+			setShoulders(
+				rig,
+				CFrame.Angles(math.rad(-18 + adjust * 10), math.rad(-5), math.rad(-34 + adjust * 8)),
+				CFrame.Angles(math.rad(-50 + adjust * 14), math.rad(4), math.rad(86 - adjust * 12)),
+				alpha
+			)
+		end
+	elseif poseKind == "LowDive" then
+		applyLowDiveArms(rig, alpha, side, twoHanded)
+	end
+end
+
+local function partMinAlong(part: BasePart, axis: Vector3): number
+	local frame = part.CFrame
+	local size = part.Size
+	local radius =
+		math.abs(frame.RightVector:Dot(axis)) * size.X * 0.5
+		+ math.abs(frame.UpVector:Dot(axis)) * size.Y * 0.5
+		+ math.abs(frame.LookVector:Dot(axis)) * size.Z * 0.5
+	return frame.Position:Dot(axis) - radius
+end
+
+local function liftKeeperAboveFloor(model: Model, upAxis: Vector3, floorHeight: number, clearance: number?)
+	local minimum = math.huge
+	for _, descendant in model:GetDescendants() do
+		if descendant:IsA("BasePart") and descendant.Transparency < 1 then
+			minimum = math.min(minimum, partMinAlong(descendant, upAxis))
+		end
+	end
+	if minimum == math.huge then return end
+	local lift = floorHeight + (clearance or 0.08) - minimum
+	if lift > 0.01 then
+		model:PivotTo(model:GetPivot() + upAxis * lift)
+	end
+end
+
+local function setKeeperDivePose(model: Model, alpha: number, plan: any)
+	local rig = divePoseRig(model)
+	if not rig then return end
+	alpha = math.clamp(alpha, 0, 1)
+	local joints = rig.Joints
+	local baseC0 = rig.BaseC0
+	for _, joint in pairs(joints) do
+		joint.Transform = CFrame.new()
+	end
+	local side = plan.Side == 0 and 1 or plan.Side
+	local rollSide = -side
+	local poseKind = plan.PoseKind
+	local twoHanded = plan.HandStyle == "TwoHand"
+	local overheadDive = isOverheadDivePose(plan)
+	local high = math.clamp((plan.YNorm - 0.45) / 0.55, 0, 1)
+	local low = math.clamp((0.42 - plan.YNorm) / 0.42, 0, 1)
+	local wide = math.clamp(math.abs(plan.XNorm), 0, 1)
+	local reach = math.clamp(wide * 0.72 + high * 0.46 + 0.18, 0, 1)
+	local rootPitch = -8 - 12 * low + 12 * high
+	local rootRoll = (48 + 50 * wide + 14 * high - 10 * low) * rollSide
+	local rootYaw = 10 * side * wide
+	if plan.WorldTilted == true then
+		rootPitch *= 0.38
+		rootRoll *= overheadDive and 0.12 or 0.35
+		rootYaw *= 0.2
+	end
+	local neckPitch = 5 + 12 * high - 8 * low
+	local neckRoll = -rootRoll * 0.2
+	local neckYaw = 12 * side * wide
+	local leadArmZ = 136 + 48 * reach + 18 * high - 18 * low
+	local trailArmZ = 78 + 28 * reach - 8 * low
+	local leadArmX = -26 - 52 * high + 28 * low
+	local trailArmX = -2 - 26 * high + 12 * low
+	local leftArmZ = -trailArmZ
+	local rightArmZ = trailArmZ
+	local leftArmX = trailArmX
+	local rightArmX = trailArmX
+	local leftLegX = 8 + 18 * low - 16 * high
+	local rightLegX = -8 - 16 * low - 6 * high
+	local leftLegZ = 28 * rollSide + 22 * wide * rollSide
+	local rightLegZ = -18 * rollSide - 12 * wide * rollSide
+	if side < 0 then
+		leftArmZ = -leadArmZ
+		leftArmX = leadArmX
+	else
+		rightArmZ = leadArmZ
+		rightArmX = leadArmX
+	end
+	if twoHanded and poseKind ~= "CenterBlock" and poseKind ~= "CenterLow" then
+		local twoHandX = leadArmX + (trailArmX - leadArmX) * 0.25
+		local twoHandZ = leadArmZ - 8
+		leftArmX = twoHandX
+		rightArmX = twoHandX
+		leftArmZ = -twoHandZ
+		rightArmZ = twoHandZ
+	end
+	if poseKind == "CenterBlock" then
+		rootPitch = -4 + 8 * high
+		rootRoll = 0
+		rootYaw = 0
+		leftArmZ = -122
+		rightArmZ = 122
+		leftArmX = -34 - 22 * high
+		rightArmX = leftArmX
+		leftLegX = 12
+		rightLegX = -12
+		leftLegZ = -10
+		rightLegZ = 10
+	elseif poseKind == "CenterLow" then
+		rootPitch = -38
+		rootRoll = 0
+		rootYaw = 0
+		leftArmZ = -66
+		rightArmZ = 66
+		leftArmX = 46
+		rightArmX = 46
+		leftLegX = 48
+		rightLegX = 48
+		leftLegZ = -24
+		rightLegZ = 24
+	elseif poseKind == "LowDive" then
+		rootPitch = -24
+		rootRoll = 72 * rollSide
+		leadArmX = 18
+		trailArmX = 14
+		leadArmZ = 138
+		trailArmZ = 66
+		if side < 0 then
+			leftArmX = leadArmX
+			leftArmZ = -leadArmZ
+			rightArmX = trailArmX
+			rightArmZ = trailArmZ
+		else
+			rightArmX = leadArmX
+			rightArmZ = leadArmZ
+			leftArmX = trailArmX
+			leftArmZ = -trailArmZ
+		end
+		if twoHanded then
+			leftArmX = 18
+			rightArmX = 18
+			leftArmZ = -126
+			rightArmZ = 126
+		end
+		if side < 0 then
+			leftLegX = -14
+			rightLegX = 46
+			leftLegZ = 66 * rollSide
+			rightLegZ = -38 * rollSide
+		else
+			rightLegX = -14
+			leftLegX = 46
+			leftLegZ = 38 * rollSide
+			rightLegZ = -66 * rollSide
+		end
+	elseif overheadDive then
+		rootPitch = -24
+		rootRoll = 28 * rollSide
+		rootYaw = 4 * side
+		neckPitch = 12
+		neckYaw = 5 * side
+		if side < 0 then
+			leftLegX = -18 - 8 * high
+			rightLegX = 34 + 8 * high
+			leftLegZ = 44 * rollSide
+			rightLegZ = -30 * rollSide
+		else
+			rightLegX = -18 - 8 * high
+			leftLegX = 34 + 8 * high
+			leftLegZ = 30 * rollSide
+			rightLegZ = -44 * rollSide
+		end
+	end
+	joints.Root.C0 = baseC0.Root * CFrame.Angles(math.rad(rootPitch) * alpha, math.rad(rootYaw) * alpha, math.rad(rootRoll) * alpha)
+	joints.Neck.C0 = baseC0.Neck * CFrame.Angles(math.rad(neckPitch) * alpha, math.rad(neckYaw) * alpha, math.rad(neckRoll) * alpha)
+	if poseKind == "LowDive" then
+		applyLowDiveArms(rig, alpha, side, twoHanded)
+	elseif overheadDive then
+		if poseKind == "MidDive" then
+			applyMidDiveArms(rig, alpha, side, twoHanded)
+		else
+			applyHighCornerArms(rig, alpha, side, twoHanded)
+		end
+	else
+		joints.LeftShoulder.C0 = baseC0.LeftShoulder * CFrame.Angles(math.rad(leftArmX) * alpha, 0, math.rad(leftArmZ) * alpha)
+		joints.RightShoulder.C0 = baseC0.RightShoulder * CFrame.Angles(math.rad(rightArmX) * alpha, 0, math.rad(rightArmZ) * alpha)
+	end
+	joints.LeftHip.C0 = baseC0.LeftHip * CFrame.Angles(math.rad(leftLegX) * alpha, 0, math.rad(leftLegZ) * alpha)
+	joints.RightHip.C0 = baseC0.RightHip * CFrame.Angles(math.rad(rightLegX) * alpha, 0, math.rad(rightLegZ) * alpha)
+end
+
+local function setKeeperLandingPose(model: Model, plan: any, phaseAlpha: number?)
+	local rig = divePoseRig(model)
+	if not rig then return end
+	local joints = rig.Joints
+	local baseC0 = rig.BaseC0
+	for _, joint in pairs(joints) do
+		joint.Transform = CFrame.new()
+	end
+	local side = plan.Side == 0 and 1 or plan.Side
+	local rollSide = -side
+	phaseAlpha = math.clamp(phaseAlpha or 1, 0, 1)
+	local high = math.clamp((plan.YNorm - 0.45) / 0.55, 0, 1)
+	local low = math.clamp((0.42 - plan.YNorm) / 0.42, 0, 1)
+	local overheadDive = isOverheadDivePose(plan)
+	local groundRoll = (78 - 12 * low + 6 * high) * rollSide
+	local groundPitch = -8 - 14 * low + 6 * high
+	if plan.WorldTilted == true then
+		groundRoll *= 0.18
+		groundPitch *= 0.55
+	end
+	local shoulderX = 18 + 22 * low - 18 * high
+	setKeeperDivePose(model, 1, plan)
+	if overheadDive then
+		local impact = smoothStep(phaseAlpha)
+		local settle = math.clamp((phaseAlpha - 0.35) / 0.65, 0, 1)
+		local floorAdjust = math.clamp((phaseAlpha - 0.62) / 0.38, 0, 1)
+		local rootRoll = (58 + 16 * impact) * rollSide
+		local rootPitch = (-18 + 16 * impact) - 6 * settle
+		local rootYaw = 12 * side * impact
+		if plan.WorldTilted == true then
+			rootRoll *= 0.18
+			rootPitch *= 0.55
+			rootYaw *= 0.45
+		end
+		joints.Root.C0 = baseC0.Root * CFrame.Angles(math.rad(rootPitch), math.rad(rootYaw), math.rad(rootRoll))
+		joints.Neck.C0 = baseC0.Neck * CFrame.Angles(math.rad(8 + 10 * settle), math.rad(8 * side), math.rad(-rootRoll * 0.12))
+		applyLandingArms(rig, 1, side, plan.PoseKind, plan.HandStyle == "TwoHand", floorAdjust * 0.55)
+		if side < 0 then
+			joints.LeftHip.C0 = baseC0.LeftHip * CFrame.Angles(math.rad(-8 + 16 * settle), 0, math.rad(48 * rollSide))
+			joints.RightHip.C0 = baseC0.RightHip * CFrame.Angles(math.rad(34 + 10 * settle), 0, math.rad(-34 * rollSide))
+		else
+			joints.LeftHip.C0 = baseC0.LeftHip * CFrame.Angles(math.rad(34 + 10 * settle), 0, math.rad(34 * rollSide))
+			joints.RightHip.C0 = baseC0.RightHip * CFrame.Angles(math.rad(-8 + 16 * settle), 0, math.rad(-48 * rollSide))
+		end
+		return
+	end
+	joints.Root.C0 = baseC0.Root * CFrame.Angles(math.rad(groundPitch), 0, math.rad(groundRoll))
+	joints.Neck.C0 = baseC0.Neck * CFrame.Angles(math.rad(8), math.rad(10 * side), math.rad(-groundRoll * 0.16))
+	if plan.PoseKind == "LowDive" then
+		applyLandingArms(rig, 1, side, plan.PoseKind, plan.HandStyle == "TwoHand", 0.25)
+	elseif plan.HandStyle == "TwoHand" then
+		joints.LeftShoulder.C0 = baseC0.LeftShoulder * CFrame.Angles(math.rad(shoulderX), 0, math.rad(-118))
+		joints.RightShoulder.C0 = baseC0.RightShoulder * CFrame.Angles(math.rad(shoulderX), 0, math.rad(118))
+	elseif side < 0 then
+		joints.LeftShoulder.C0 = baseC0.LeftShoulder * CFrame.Angles(math.rad(shoulderX - 8), 0, math.rad(-142))
+		joints.RightShoulder.C0 = baseC0.RightShoulder * CFrame.Angles(math.rad(shoulderX + 18), 0, math.rad(72))
+	else
+		joints.RightShoulder.C0 = baseC0.RightShoulder * CFrame.Angles(math.rad(shoulderX - 8), 0, math.rad(142))
+		joints.LeftShoulder.C0 = baseC0.LeftShoulder * CFrame.Angles(math.rad(shoulderX + 18), 0, math.rad(-72))
+	end
+	if side < 0 then
+		joints.LeftHip.C0 = baseC0.LeftHip * CFrame.Angles(math.rad(8 + 38 * low), 0, math.rad(46 * rollSide))
+		joints.RightHip.C0 = baseC0.RightHip * CFrame.Angles(math.rad(44 + 20 * low), 0, math.rad(-30 * rollSide))
+	else
+		joints.LeftHip.C0 = baseC0.LeftHip * CFrame.Angles(math.rad(44 + 20 * low), 0, math.rad(30 * rollSide))
+		joints.RightHip.C0 = baseC0.RightHip * CFrame.Angles(math.rad(8 + 38 * low), 0, math.rad(-46 * rollSide))
+	end
 end
 
 local function inGoalkeeperBox(service:any,rectangle:any,point:Vector3):boolean
@@ -320,65 +829,46 @@ local function physicalSaveDecision(service: any, keeper: Model, rectangle: any,
 	local delta = rootTarget - keeperRoot.Position
 	local lateral = math.abs(delta:Dot(rectangle.Right))
 	local rise = math.max(0, delta:Dot(upAxis))
-	local width = math.max(1, rectangle.RightBound - rectangle.Left)
-	local height = math.max(1, rectangle.Top - rectangle.Bottom)
-	local targetOffset = target - rectangle.PlanePoint
-	local targetHorizontal = targetOffset:Dot(rectangle.Right)
-	local targetVertical = targetOffset:Dot(rectangle.Up)
-	local center = (rectangle.Left + rectangle.RightBound) * 0.5
-	local centerNorm = math.clamp(math.abs(targetHorizontal - center) / math.max(width * 0.5, 0.01), 0, 1)
-	local topNorm = math.clamp((targetVertical - rectangle.Bottom) / height, 0, 1)
 	local rating = keeperRating(keeper)
-	local diving = tonumber(keeper:GetAttribute("gkDiving")) or tonumber(keeper:GetAttribute("GKDIV")) or rating
 	local reflexes = tonumber(keeper:GetAttribute("gkReflexes")) or tonumber(keeper:GetAttribute("GKREF")) or rating
-	local handling = tonumber(keeper:GetAttribute("gkHandling")) or tonumber(keeper:GetAttribute("GKHAN")) or rating
+	local diving = tonumber(keeper:GetAttribute("gkDiving")) or tonumber(keeper:GetAttribute("GKDIV")) or rating
+	local handling = boostedKeeperStat(keeper, "gkHandling", "GKHAN", rating)
 	local shotSpeed = shotPlanNumber(shotPlan, "Speed", service.Ball.AssemblyLinearVelocity.Magnitude)
 	local shotCharge = shotPlanNumber(shotPlan, "Charge", 0.68)
 	local fullPower = math.clamp((shotCharge - 0.74) / 0.26, 0, 1)
 	local powerQuality = shotPlanNumber(shotPlan, "PowerQuality", 0.72)
-	local shotQuality = shotPlanNumber(shotPlan, "Quality", 0.62)
 	local reactionQuickness = math.clamp(tonumber(keeper:GetAttribute("VTRPracticeKeeperReaction")) or 1, 0.05, 2.2)
 	local diveScale = math.clamp(tonumber(keeper:GetAttribute("VTRPracticeKeeperDiveSpeed")) or 1, 0.05, 2.2)
 	local reachScale = math.clamp(tonumber(keeper:GetAttribute("VTRPracticeKeeperReach")) or 1, 0.05, 2.2)
 	local handlingScale = math.clamp(tonumber(keeper:GetAttribute("VTRPracticeKeeperHandling")) or 1, 0.05, 2.2)
 	local saveBias = math.clamp(tonumber(keeper:GetAttribute("VTRPracticeKeeperSaveBias")) or 1, 0.05, 2.2)
-	local reaction = math.clamp((0.56 - reflexes * 0.00165 + math.max(0, shotSpeed - 98) * 0.0029 + math.max(0, shotSpeed - 132) * 0.0016 + fullPower * 0.06 + math.max(0, 0.62 - powerQuality) * 0.16) / reactionQuickness, 0.08, 2.35)
+	local reaction = math.clamp(0.11 / reactionQuickness, 0.02, 0.9)
 	local lateralDelta = delta:Dot(rectangle.Right)
 	local lateralVelocity = keeperRoot.AssemblyLinearVelocity:Dot(rectangle.Right)
 	local wrongFooted = math.abs(lateralDelta) > 2.5 and lateralVelocity * lateralDelta < -4
 	if wrongFooted then
 		reaction += 0.18
 	end
-	local available = timeToGoal - reaction
-	local diveSpeed = math.clamp(24 + diving * 0.155 + rating * 0.05, 29, MAX_DIVE_SPEED) * diveScale
-	local lateralRequired = math.max(0, lateral - CATCH_RADIUS * handlingScale * (0.58 + handling / 520)) / math.max(1,diveSpeed)
-	local verticalRequired = rise > 0.2 and math.sqrt((2 * rise) / math.max(workspace.Gravity * (0.72 + diving / 520) * diveScale, 1)) or 0
-	local keeperHorizontal = (keeperRoot.Position - rectangle.PlanePoint):Dot(rectangle.Right)
-	local oppositeSide = (targetHorizontal - center) * (keeperHorizontal - center) < -1.5
-	local cleanCorner = centerNorm > 0.72 and shotQuality > 0.74 and powerQuality > 0.72
-	local cornerDifficulty = centerNorm * 0.18 + math.max(0, topNorm - 0.48) * 0.18
-	if shotQuality > 0.78 and powerQuality > 0.72 then
-		cornerDifficulty += centerNorm * 0.09
-	end
-	if cleanCorner then
-		cornerDifficulty += 0.1 + centerNorm * 0.08
-	end
-	if oppositeSide then
-		cornerDifficulty += 0.08 + centerNorm * 0.06
-	end
-	local required = (math.max(lateralRequired, verticalRequired) / reachScale) + cornerDifficulty
-	required += fullPower * (0.035 + math.max(0, shotSpeed - 132) * 0.0009)
-	local saveMargin = available - required + (saveBias - 1) * 0.9
-	local willSave = saveMargin >= 0
+	local available = math.max(0, timeToGoal - reaction - DIVE_LEAD_TIME)
+	local diveSpeed = reflexDiveSpeed(math.max(diving, reflexes)) * diveScale
+	local ballRadius = service.Ball.Size.X * 0.5
+	local keeperReach = math.clamp((5.7 + (handling - 60) * 0.018) * handlingScale * reachScale * math.clamp(saveBias, 0.65, 1.35), 3, 14)
+	local distanceToCover = Vector2.new(lateral, rise).Magnitude
+	local canReach = distanceToCover <= keeperReach + ballRadius and distanceToCover <= diveSpeed * available + ballRadius
+	local required = distanceToCover / math.max(1, diveSpeed)
+	local saveMargin = math.min(keeperReach + ballRadius - distanceToCover, diveSpeed * available + ballRadius - distanceToCover)
 	return {
-		WillSave = willSave,
-		SavePercent = math.clamp(50 + saveMargin * 155, 0, 100),
-		Source = willSave and "PhysicalReach" or (wrongFooted and "WrongFooted" or "OutOfReach"),
+		WillSave = canReach,
+		SavePercent = math.clamp(50 + saveMargin * 12, 0, 100),
+		Source = canReach and "ReachHitboxPlanned" or (wrongFooted and "WrongFooted" or "OutOfReach"),
 		RootTarget = rootTarget,
 		Reaction = reaction,
 		Required = required,
 		Available = available,
 		WrongFooted = wrongFooted,
+		DiveSpeed = diveSpeed,
+		ReachHitbox = keeperReach,
+		ContactRadius = ballRadius + 1.2,
 	}
 end
 
@@ -444,7 +934,10 @@ function Service:_prediction(attackingSide: string,gravityOverride:number?): (an
 	local target=position+velocity*time-self.PitchCFrame.UpVector*(.5*gravity*time*time)
 	local goalPlaneTarget=target-forward*lineOffset
 	if not insideGoal(rectangle,goalPlaneTarget,self.Ball.Size.X*.5)then return nil,nil,nil end
-	return rectangle,GoalModelResolver.ClampPoint(rectangle,goalPlaneTarget)+forward*lineOffset,time
+	local clamped=GoalModelResolver.ClampPoint(rectangle,goalPlaneTarget)+forward*lineOffset
+	self.Ball:SetAttribute("VTRPredictedGoalImpact",clamped)
+	self.Ball:SetAttribute("VTRPredictedGoalImpactTime",time)
+	return rectangle,clamped,time
 end
 
 function Service:_begin(attackingSide: string, shotId: number)
@@ -476,14 +969,11 @@ function Service:_begin(attackingSide: string, shotId: number)
 	local keeperRoot = root(keeper)
 	local humanoid = keeper:FindFirstChildOfClass("Humanoid")
 	if humanoid then humanoid.AutoRotate = false end
-	local shotCharge = shotPlanNumber(shotPlan, "Charge", 0.68)
-	local fullPower = math.clamp((shotCharge - 0.74) / 0.26, 0, 1)
-	local shotSpeed = shotPlanNumber(shotPlan, "Speed", self.Ball.AssemblyLinearVelocity.Magnitude)
 	local practiceDiveScale=math.clamp(tonumber(keeper:GetAttribute("VTRPracticeKeeperDiveSpeed"))or 1,.05,2.2)
 	local missSeverity=willSave and 0 or math.clamp((tonumber(evaluation.Required)or 0)-(tonumber(evaluation.Available)or 0),.08,1.8)
 	local missDelay=willSave and 0 or math.clamp(.2+missSeverity*.42,.2,.95)
-	local baseDiveLead=math.max(0.08, (DIVE_LEAD_TIME - fullPower * 0.22 - math.max(0, shotSpeed - 132) * 0.0024) * math.clamp(practiceDiveScale,.12,1.25))
-	local baseLaunchAllowance=math.max(0.008, (0.12 - fullPower * 0.07 - math.max(0, shotSpeed - 145) * 0.0008) * math.clamp(practiceDiveScale,.08,1.25))
+	local baseDiveLead=DIVE_LEAD_TIME
+	local baseLaunchAllowance=0.12
 	if not willSave then
 		baseDiveLead=math.max(.05,baseDiveLead-missDelay*.52)
 		baseLaunchAllowance=math.max(.004,baseLaunchAllowance*.38)
@@ -495,6 +985,8 @@ function Service:_begin(attackingSide: string, shotId: number)
 		Keeper = keeper,
 		Rectangle = rectangle,
 		Target = target,
+		LockedTarget = target,
+		PlannedRootTarget = evaluation.RootTarget,
 		PenaltyDiveTarget = nil,
 		WillSave = willSave,
 		DivePlayed = false,
@@ -510,6 +1002,9 @@ function Service:_begin(attackingSide: string, shotId: number)
 		MissOffsetSign = self.Random:NextNumber()<.5 and-1 or 1,
 		EffectiveGravity=(self.BallService.ShotPlan and tonumber(self.BallService.ShotPlan.EffectiveGravity))or workspace.Gravity,
 		ReachEvaluation=evaluation,
+		DiveSpeed=tonumber(evaluation.DiveSpeed)or DEFAULT_DIVE_SPEED,
+		ReachHitbox=tonumber(evaluation.ReachHitbox)or 5.7,
+		ContactRadius=tonumber(evaluation.ContactRadius)or (self.Ball.Size.X*.5+1.2),
 	}
 	if penaltyDuel then
 		local guessPoint=keeper:GetAttribute("VTRPenaltyGuessPoint")
@@ -519,6 +1014,21 @@ end
 
 function Service:_miss(save:any)
 	local keeper:Model=save.Keeper
+	if save.Launched and save.Rectangle and save.Target then
+		if save.AftermathStarted then return end
+		save.Finished=true
+		save.FinishTime=os.clock()
+		keeper:SetAttribute("VTRGoalkeeperSaving",true)
+		keeper:SetAttribute("VTRSaveTarget",nil)
+		keeper:SetAttribute("VTRGoalkeeperState","Beaten")
+		keeper:SetAttribute("VTRShotWillScore",nil)
+		keeper:SetAttribute("VTRShotOutcomeSource",nil)
+		keeper:SetAttribute("VTRNoAutoPassUntil",os.clock()+1.2)
+		self.Ball:SetAttribute("VTRGoalkeeperTracking",nil)
+		self.Remote:FireAllClients({Type="GoalkeeperMiss",Model=keeper,Name=keeper:GetAttribute("DisplayName")})
+		self:_continueDiveAftermath(save,"Miss",false)
+		return
+	end
 	local keeperRoot=root(keeper)
 	if keeperRoot then
 		local localRoot=self.PitchCFrame:PointToObjectSpace(keeperRoot.Position)
@@ -530,6 +1040,8 @@ function Service:_miss(save:any)
 	if save.DiveAlign then save.DiveAlign:Destroy();save.DiveAlign=nil end
 	if save.DiveVelocity then save.DiveVelocity:Destroy();save.DiveVelocity=nil end
 	if save.DiveAttachment then save.DiveAttachment:Destroy();save.DiveAttachment=nil end
+	clearKeeperDivePose(keeper)
+	keeper:SetAttribute("VTRKeeperDiveAnimationLocked",nil)
 	local humanoid=keeper:FindFirstChildOfClass("Humanoid")
 	if humanoid then
 		humanoid.PlatformStand=false
@@ -554,6 +1066,10 @@ function Service:_finish(save: any)
 		self:_miss(save)
 		return
 	end
+	if save.AftermathStarted then return end
+	save.Saved=true
+	save.Finished=true
+	save.FinishTime=os.clock()
 	local keeper: Model = save.Keeper
 	local keeperRoot = root(keeper)
 	if not keeperRoot then self.ActiveSave = nil return end
@@ -564,6 +1080,7 @@ function Service:_finish(save: any)
 	if save.DiveAttachment then save.DiveAttachment:Destroy();save.DiveAttachment=nil end
 	keeperRoot.AssemblyLinearVelocity=Vector3.zero;keeperRoot.AssemblyAngularVelocity=Vector3.zero
 	self.BallService:GoalkeeperSave(keeper, save.Target)
+	local parriedSave = self.Ball:GetAttribute("VTRGoalkeeperHeld") ~= true
 	self.Ball:SetAttribute("VTRPenaltyShotActive",nil)
 	self.BallService.Stats:RecordSave(keeper,self.BallService.LastShotXG)
 	if self.BallService.LastShooter and(self.BallService.LastShotXG or 0)>=.3 then self.BallService.Stats:Event(self.BallService.LastShooter,"BigChanceMissed")end
@@ -574,62 +1091,18 @@ function Service:_finish(save: any)
 	self.Ball:SetAttribute("VTRGoalkeeperTracking", nil)
 	keeper:SetAttribute("VTRNoAutoPassUntil", os.clock() + (userControlledKeeper(keeper) and 999 or 1))
 	self.Remote:FireAllClients({Type = "GoalkeeperSave", Model = keeper, Name = keeper:GetAttribute("DisplayName")})
-	local rectangle = save.Rectangle
-	task.spawn(function()
-		if not keeper.Parent then return end
-		local humanoid=keeper:FindFirstChildOfClass("Humanoid")
-		local fallRoot=root(keeper);if not fallRoot then return end
-		local fallStart=fallRoot.CFrame
-		local startLocal=self.PitchCFrame:PointToObjectSpace(fallStart.Position)
-		local landingWorld=self.PitchCFrame:PointToWorldSpace(Vector3.new(startLocal.X,SAFE_ROOT_HEIGHT,startLocal.Z))
-		local fallStarted=os.clock();local fallDuration=.38
-		repeat
-			task.wait()
-			fallRoot=root(keeper);if not fallRoot then return end
-			local alpha=math.clamp((os.clock()-fallStarted)/fallDuration,0,1)
-			local eased=1-(1-alpha)^2
-			local position=fallStart.Position:Lerp(landingWorld,eased)
-			keeper:PivotTo(CFrame.new(position)*fallStart.Rotation)
-		until os.clock()-fallStarted>=fallDuration
-		if not keeper.Parent then return end
-		local currentRoot = root(keeper)
-		local forward=fieldDirection(rectangle,self.PitchCFrame)
-		if currentRoot then
-			keeper:PivotTo(CFrame.lookAt(landingWorld,landingWorld+forward,self.PitchCFrame.UpVector))
-			currentRoot=root(keeper);if currentRoot then currentRoot.AssemblyLinearVelocity=Vector3.zero;currentRoot.AssemblyAngularVelocity=Vector3.zero;currentRoot.Anchored=false end
-		end
-		secureHeldBall(self.Ball, keeper)
-		self.Animations:StopAction(keeper,.1)
-		if humanoid then humanoid.PlatformStand=false;humanoid.AutoRotate=true;humanoid:ChangeState(Enum.HumanoidStateType.GettingUp)end
-		if save.DiveAlign then save.DiveAlign:Destroy()end
-		if save.DiveVelocity then save.DiveVelocity:Destroy()end
-		if save.DiveAttachment then save.DiveAttachment:Destroy()end
-		local facing=self.LineFacing[keeper];if facing then facing.Align.Enabled=true end
-		currentRoot=root(keeper)
-		if currentRoot then
-			currentRoot.AssemblyLinearVelocity=Vector3.zero
-			currentRoot.AssemblyAngularVelocity=Vector3.zero
-		end
-		keeper:SetAttribute("VTRGoalkeeperSaving",false)
-		if userControlledKeeper(keeper) then
-			keeper:SetAttribute("VTRNoAutoPassUntil",os.clock()+999)
-			keeper:SetAttribute("VTRKeeperMustDistributeUntil",nil)
-			keeper:SetAttribute("AIAssignment","GoalkeeperPosition")
-		else
-			self:_beginAIGoalkeeperDistribution(keeper,save.DefendingSide,AI_KEEPER_DISTRIBUTION_WINDOW)
-		end
-		keeper:SetAttribute("VTRGoalkeeperState", "Held")
-		if currentRoot then currentRoot.AssemblyLinearVelocity=Vector3.zero;currentRoot.AssemblyAngularVelocity=Vector3.zero end
-		if userControlledKeeper(keeper) then self:_monitorControlledHold(keeper,rectangle,save.DefendingSide)end
-	end)
-	self.ActiveSave = nil
+	self:_continueDiveAftermath(save,parriedSave and"Parried"or"Held",parriedSave)
 end
 
 local function boundedRootTarget(rectangle:any,target:Vector3,forward:Vector3):(Vector3,number,number)
 	local goalHeight=rectangle.Top-rectangle.Bottom
 	local verticalPadding=math.min(3.15,goalHeight*.36)
 	local widthPadding=math.min(1.35,(rectangle.RightBound-rectangle.Left)*.16)
-	local rootTarget=target-rectangle.Up*1.05
+	local targetOffset=target-rectangle.PlanePoint
+	local targetHeight=targetOffset:Dot(rectangle.Up)
+	local heightRatio=math.clamp((targetHeight-rectangle.Bottom)/math.max(.1,goalHeight),0,1)
+	local handReach=1.78-heightRatio*.42
+	local rootTarget=target-rectangle.Up*handReach
 	local offset=rootTarget-rectangle.PlanePoint
 	local horizontal=offset:Dot(rectangle.Right)
 	local vertical=offset:Dot(rectangle.Up)
@@ -685,14 +1158,23 @@ function Service:_positionOnLine(defendingSide:string)
 	local center=(rectangle.Left+rectangle.RightBound)*.5
 	local ballOffset=self.Ball.Position-rectangle.PlanePoint
 	local ballHorizontal=ballOffset:Dot(rectangle.Right)
-	local horizontal=math.clamp(center+(ballHorizontal-center)*.58,rectangle.Left+width*.12,rectangle.RightBound-width*.12)
+	local owner=self.BallService.Possession:GetOwner()
+	local ownPossession=owner and owner:GetAttribute("VTRTeam")==defendingSide
+	local ownerPitch=owner and root(owner) and PitchConfig.WorldToTeamPitchPosition(root(owner).Position,defendingSide,{PitchCFrame=self.PitchCFrame,Width=self.Width,Length=self.Length}) or nil
+	local advance=0
+	if ownPossession and ownerPitch and ownerPitch.Z>PitchConfig.PITCH_LENGTH*.5 then
+		advance=math.clamp((ownerPitch.Z-PitchConfig.PITCH_LENGTH*.5)/(PitchConfig.PITCH_LENGTH*.5),0,1)
+	end
+	local coverScale=ownPossession and .34 or .72
+	local horizontal=math.clamp(center+(ballHorizontal-center)*coverScale,rectangle.Left+width*.08,rectangle.RightBound-width*.08)
 	local height=rectangle.Bottom+math.min(2.75,(rectangle.Top-rectangle.Bottom)*.42)
 	local forward=fieldDirection(rectangle,self.PitchCFrame)
-	local ballDepth=math.max(0,ballOffset:Dot(forward))
-	local aggressiveDepth=math.clamp(ballDepth*.16,saveLineOffset(rectangle,self.Ball.Size.X*.5),24)
-	local target=GoalModelResolver.Point(rectangle,horizontal,height)+forward*aggressiveDepth
+	local lineDepth=saveLineOffset(rectangle,self.Ball.Size.X*.5)+1.1
+	local boxEdgeDepth=132
+	local targetDepth=lineDepth+(boxEdgeDepth-lineDepth)*advance
+	local target=GoalModelResolver.Point(rectangle,horizontal,height)+forward*targetDepth
 	local targetOffset=target-rectangle.PlanePoint
-	local targetDepth=math.clamp(targetOffset:Dot(forward),1.8,35)
+	targetDepth=math.clamp(targetOffset:Dot(forward),lineDepth,boxEdgeDepth)
 	local targetHorizontal=math.clamp(targetOffset:Dot(rectangle.Right),rectangle.Left-15,rectangle.RightBound+15)
 	target=GoalModelResolver.Point(rectangle,targetHorizontal,height)+forward*targetDepth
 	local keeperRoot=root(keeper);local humanoid=keeper:FindFirstChildOfClass("Humanoid")
@@ -717,26 +1199,16 @@ function Service:_rushCloseCarrier(defendingSide:string): boolean
 	local rectangle=GoalModelResolver.ResolveSide(attackingSide,self.PitchCFrame,self.Width,self.Length)
 	local goalCenter=GoalModelResolver.Point(rectangle,(rectangle.Left+rectangle.RightBound)*.5,rectangle.Bottom+2.6)
 	local carrierGoalDistance=Vector3.new(carrierRoot.Position.X-goalCenter.X,0,carrierRoot.Position.Z-goalCenter.Z).Magnitude
-	if carrierGoalDistance>30 then return false end
+	if carrierGoalDistance>50 then return false end
 	local keeperDistance=(keeperRoot.Position-carrierRoot.Position).Magnitude
-	local ballDistance=(self.Ball.Position-keeperRoot.Position).Magnitude
-	if keeperDistance<=4.6 and ballDistance<=6.2 and self.BallService.Possession:GetOwner()==carrier then
-		self.BallService:GoalkeeperClaim(keeper)
-		keeper:SetAttribute("VTRGoalkeeperState","Smothered")
-		if userControlledKeeper(keeper) then
-			keeper:SetAttribute("VTRNoAutoPassUntil",os.clock()+1.6)
-		else
-			self:_beginAIGoalkeeperDistribution(keeper,defendingSide,AI_KEEPER_DISTRIBUTION_WINDOW)
-		end
-		return true
-	end
 	local humanoid=keeper:FindFirstChildOfClass("Humanoid")
 	if humanoid then
 		self:_faceBall(keeper,rectangle)
 		humanoid.AutoRotate=false
-		humanoid.WalkSpeed=math.max(humanoid.WalkSpeed,18)
+		local closeIn=math.clamp((50-keeperDistance)/50,0,1)
+		humanoid.WalkSpeed=math.max(humanoid.WalkSpeed,10+closeIn*7)
 		humanoid:MoveTo(Vector3.new(carrierRoot.Position.X,keeperRoot.Position.Y,carrierRoot.Position.Z))
-		keeper:SetAttribute("VTRGoalkeeperState","Rushing")
+		keeper:SetAttribute("VTRGoalkeeperState","ClosingDown")
 		return true
 	end
 	return false
@@ -774,17 +1246,6 @@ function Service:_interceptGoalBoundPass(defendingSide:string): boolean
 		danger=targetDepth<=38 and targetHorizontal>=rectangle.Left-13 and targetHorizontal<=rectangle.RightBound+13
 	end
 	if not danger then return false end
-	local claimDistance=math.min((keeperRoot.Position-self.Ball.Position).Magnitude,(keeperRoot.Position-projected).Magnitude)
-	if claimDistance<=9.5 or time<=.18 then
-		self.BallService:GoalkeeperClaim(keeper)
-		keeper:SetAttribute("VTRGoalkeeperState","CollectedPass")
-		if userControlledKeeper(keeper) then
-			keeper:SetAttribute("VTRNoAutoPassUntil",os.clock()+1.4)
-		else
-			self:_beginAIGoalkeeperDistribution(keeper,defendingSide,AI_KEEPER_DISTRIBUTION_WINDOW)
-		end
-		return true
-	end
 	local humanoid=keeper:FindFirstChildOfClass("Humanoid")
 	if humanoid then
 		local target=Vector3.new(projected.X,keeperRoot.Position.Y,projected.Z)
@@ -831,8 +1292,8 @@ local function diveCatchFrame(position:Vector3,lookVector:Vector3,upAxis:Vector3
 		lateral=Vector3.xAxis
 	end
 	local lateralDirection=lateral.Unit
-	local bodyUp=(lateralDirection+upAxis*math.clamp(.08+lift*.18,.08,.26)).Unit
-	local bodyLook=(forward*.74+aim*.26)
+	local bodyUp=(lateralDirection+upAxis*math.clamp(.3+lift*.18,.3,.48)).Unit
+	local bodyLook=forward
 	bodyLook-=bodyUp*bodyLook:Dot(bodyUp)
 	if bodyLook.Magnitude<.05 then
 		bodyLook=forward-bodyUp*forward:Dot(bodyUp)
@@ -844,11 +1305,245 @@ local function diveCatchFrame(position:Vector3,lookVector:Vector3,upAxis:Vector3
 	return CFrame.lookAt(position,position+bodyLook,bodyUp)
 end
 
+local function prototypeLandingPosition(save:any,target:Vector3,upAxis:Vector3,forward:Vector3,lateralAxis:Vector3):Vector3
+	local startPosition:Vector3=save.StartPosition or target
+	local side=((target-startPosition):Dot(lateralAxis)>=0)and 1 or-1
+	local travel=math.abs((target-startPosition):Dot(lateralAxis))
+	local carry=math.clamp(1.65+travel*.16,1.65,4.25)
+	local landing=target+lateralAxis*side*carry-forward*.12
+	local floorHeight=tonumber(save.DiveFloorHeight)or(startPosition:Dot(upAxis))
+	return landing+upAxis*(floorHeight-landing:Dot(upAxis))
+end
+
+local function prototypeDiveFlightPosition(save:any,elapsed:number,upAxis:Vector3,forward:Vector3,lateralAxis:Vector3):(Vector3,number,boolean)
+	local startPosition:Vector3=save.StartPosition
+	local target:Vector3=save.RootTarget
+	local interceptTime=math.max(.1,tonumber(save.DiveDuration)or.35)
+	local totalFlight=interceptTime+DIVE_FALL_THROUGH
+	local alpha=math.clamp(elapsed/totalFlight,0,1)
+	local landing=prototypeLandingPosition(save,target,upAxis,forward,lateralAxis)
+	local floorHeight=landing:Dot(upAxis)
+	local maxHeight=floorHeight+10
+	if not finiteNumber(maxHeight) or maxHeight < floorHeight then
+		maxHeight = floorHeight + 11
+	end
+	local function bounded(position:Vector3, landed:boolean):(Vector3,number,boolean)
+		if not isFiniteVector3(position) then
+			position=landing
+			landed=true
+			alpha=1
+		end
+		local currentHeight=position:Dot(upAxis)
+		local clampedHeight=math.clamp(currentHeight,floorHeight,maxHeight)
+		if clampedHeight~=currentHeight then
+			position+=upAxis*(clampedHeight-currentHeight)
+		end
+		return position,alpha,landed
+	end
+	if save.LandedAt then
+		alpha=1
+		return bounded(save.LandedPosition or landing,true)
+	end
+	if alpha>=1 then
+		save.LandedPosition=landing
+		return bounded(landing,true)
+	end
+	if elapsed<=interceptTime then
+		local phase=math.clamp(elapsed/interceptTime,0,1)
+		local glide=smoothStep(phase)
+		local base=startPosition:Lerp(target,glide)
+		local startHeight=startPosition:Dot(upAxis)
+		local targetHeight=target:Dot(upAxis)
+		local arc=math.sin(math.pi*phase)*DIVE_JUMP_HEIGHT
+		local height=math.max(floorHeight,startHeight+(targetHeight-startHeight)*glide+arc)
+		return bounded(base+upAxis*(height-base:Dot(upAxis)),false)
+	end
+	local fallAlpha=math.clamp((elapsed-interceptTime)/DIVE_FALL_THROUGH,0,1)
+	local glide=smoothStep(fallAlpha)
+	local base=target:Lerp(landing,glide)
+	local targetHeight=target:Dot(upAxis)
+	local height=math.max(floorHeight,targetHeight+(floorHeight-targetHeight)*glide)
+	return bounded(base+upAxis*(height-base:Dot(upAxis)),false)
+end
+
+local function keeperDiveRootFrame(position: Vector3, forward: Vector3, upAxis: Vector3, lateralAxis: Vector3?, rollAlpha: number?): CFrame
+	local look = forward - upAxis * forward:Dot(upAxis)
+	if look.Magnitude < 0.05 then
+		look = Vector3.zAxis
+	end
+	if not isFiniteVector3(position) then
+		position = Vector3.zero
+	end
+	local up = upAxis
+	local roll = math.clamp(tonumber(rollAlpha)or 0,0,.82)
+	if lateralAxis and lateralAxis.Magnitude>.05 and roll>.001 then
+		local lateral = lateralAxis - upAxis * lateralAxis:Dot(upAxis)
+		if lateral.Magnitude>.05 then
+			up = (upAxis:Lerp(lateral.Unit, roll)).Unit
+		end
+	end
+	return CFrame.lookAt(position, position + look.Unit, up)
+end
+
+local function goalkeeperDiveAnimationName(save: any): string
+	local posePlan = save and save.DivePosePlan
+	if posePlan and posePlan.PoseKind == "LowDive" then
+		local rectangle = save.Rectangle
+		local right = rectangle and rectangle.Right
+		local startPosition = save.StartPosition
+		local targetPosition = save.RootTarget or save.DiveAim or save.Target
+		if typeof(right) == "Vector3" and typeof(startPosition) == "Vector3" and typeof(targetPosition) == "Vector3" and (targetPosition - startPosition):Dot(right) < 0 then
+			return "GoalkeeperDiveLowLeft"
+		end
+		return "GoalkeeperDiveLowRight"
+	end
+	return "GoalkeeperDive"
+end
+
+function Service:_continueDiveAftermath(save:any,outcome:string,parriedSave:boolean?)
+	if not save or save.AftermathStarted then return end
+	save.AftermathStarted=true
+	save.FinishTime=os.clock()
+	save.DiveState="Falling"
+	local keeper:Model=save.Keeper
+	task.spawn(function()
+		if not keeper or not keeper.Parent then return end
+		local keeperRoot=root(keeper)
+		local rectangle=save.Rectangle
+		if not keeperRoot or not rectangle then return end
+		local humanoid=keeper:FindFirstChildOfClass("Humanoid")
+		local forward=fieldDirection(rectangle,self.PitchCFrame)
+		local upAxis=self.PitchCFrame.UpVector
+		local lateralAxis=save.LateralAxis or rectangle.Right
+		if lateralAxis.Magnitude<.05 then lateralAxis=self.PitchCFrame.RightVector end
+		lateralAxis=lateralAxis.Unit
+		save.DiveFloorHeight=save.DiveFloorHeight or (self.PitchCFrame.Position:Dot(upAxis)+SAFE_ROOT_HEIGHT+.25)
+		keeperRoot.Anchored=true
+		if humanoid then
+			humanoid.PlatformStand=true
+			humanoid.AutoRotate=false
+			humanoid:Move(Vector3.zero,false)
+		end
+		if save.DiveAlign then save.DiveAlign:Destroy();save.DiveAlign=nil end
+		if save.DiveVelocity then save.DiveVelocity:Destroy();save.DiveVelocity=nil end
+		if save.DiveAttachment then save.DiveAttachment:Destroy();save.DiveAttachment=nil end
+		local posePlan=save.DivePosePlan or makeDivePosePlan(rectangle,save.DiveAim or save.Target or keeperRoot.Position,save.StartPosition or keeperRoot.Position,lateralAxis)
+		posePlan.WorldTilted=true
+		save.DivePosePlan=posePlan
+		local startedAt=tonumber(save.DiveStartedAt)or os.clock()
+		local interceptTime=math.max(.1,tonumber(save.DiveDuration)or .35)
+		local totalFlight=interceptTime+DIVE_FALL_THROUGH
+		while keeper.Parent do
+			if save.LandedAt then break end
+			local elapsed=os.clock()-startedAt
+			if elapsed>=totalFlight then break end
+			save.DiveState="Falling"
+			keeper:SetAttribute("VTRGoalkeeperState","Falling")
+			local position,progress=prototypeDiveFlightPosition(save,elapsed,upAxis,forward,lateralAxis)
+			if not isFiniteVector3(position) then break end
+			local roll=save.CenteredDive and 0 or math.sin(math.pi*math.clamp(progress,0,1))*.92
+			keeper:PivotTo(keeperDiveRootFrame(position,forward,upAxis,lateralAxis,roll))
+			liftKeeperAboveFloor(keeper,upAxis,self.PitchCFrame.Position:Dot(upAxis)+.58,.08)
+			if outcome=="Held" then secureHeldBall(self.Ball,keeper)end
+			task.wait()
+		end
+		if not keeper.Parent then return end
+		local finalPosition=prototypeDiveFlightPosition(save,totalFlight,upAxis,forward,lateralAxis)
+		if not isFiniteVector3(finalPosition) then
+			finalPosition=save.LandedPosition or prototypeLandingPosition(save,save.RootTarget or keeperRoot.Position,upAxis,forward,lateralAxis)
+		end
+		save.LandedPosition=finalPosition
+		save.LandedAt=os.clock()
+		keeper:PivotTo(keeperDiveRootFrame(finalPosition,forward,upAxis,lateralAxis,0))
+		save.DiveState="Landed"
+		keeper:SetAttribute("VTRGoalkeeperState",outcome=="Miss"and"Beaten"or"Landing")
+		liftKeeperAboveFloor(keeper,upAxis,self.PitchCFrame.Position:Dot(upAxis)+.58,.08)
+		local holdUntil=os.clock()+DIVE_LAND_HOLD
+		while keeper.Parent and os.clock()<holdUntil do
+			keeper:PivotTo(keeperDiveRootFrame(save.LandedPosition or finalPosition,forward,upAxis,lateralAxis,0))
+			if outcome=="Held" then secureHeldBall(self.Ball,keeper)end
+			task.wait()
+		end
+		if not keeper.Parent then return end
+		keeper:SetAttribute("VTRKeeperDiveAnimationLocked",nil)
+		if self.Animations then self.Animations:StopAction(keeper,.1)end
+		save.DiveState="Recovering"
+		keeper:SetAttribute("VTRGoalkeeperState","Recovering")
+		local recoverStarted=os.clock()
+		while keeper.Parent do
+			local alpha=math.clamp((os.clock()-recoverStarted)/DIVE_RECOVER,0,1)
+			if outcome=="Held" then secureHeldBall(self.Ball,keeper)end
+			if alpha>=1 then break end
+			task.wait()
+		end
+		save.DiveState="ReturnHome"
+		task.wait(DIVE_RETURN_HOME)
+		clearKeeperDivePose(keeper)
+		keeperRoot=root(keeper)
+		if keeperRoot then
+			keeperRoot.Anchored=false
+			keeperRoot.AssemblyLinearVelocity=Vector3.zero
+			keeperRoot.AssemblyAngularVelocity=Vector3.zero
+		end
+		if humanoid then
+			humanoid.PlatformStand=false
+			humanoid.AutoRotate=true
+			humanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
+		end
+		local facing=self.LineFacing[keeper];if facing then facing.Align.Enabled=true end
+		keeper:SetAttribute("VTRGoalkeeperSaving",false)
+		if outcome=="Held" and self.Ball:GetAttribute("VTRGoalkeeperHeld")==true then
+			secureHeldBall(self.Ball,keeper)
+			if userControlledKeeper(keeper) then
+				keeper:SetAttribute("VTRNoAutoPassUntil",os.clock()+999)
+				keeper:SetAttribute("VTRKeeperMustDistributeUntil",nil)
+				keeper:SetAttribute("AIAssignment","GoalkeeperPosition")
+				self:_monitorControlledHold(keeper,rectangle,save.DefendingSide)
+			else
+				self:_beginAIGoalkeeperDistribution(keeper,save.DefendingSide,AI_KEEPER_DISTRIBUTION_WINDOW)
+			end
+			keeper:SetAttribute("VTRGoalkeeperState","Held")
+		elseif outcome=="Parried" or parriedSave then
+			keeper:SetAttribute("VTRGoalkeeperState","Parried")
+			keeper:SetAttribute("VTRNoAutoPassUntil",os.clock()+.8)
+		elseif outcome=="Miss" then
+			keeper:SetAttribute("VTRGoalkeeperState","Beaten")
+			keeper:SetAttribute("VTRNoAutoPassUntil",os.clock()+1.2)
+		else
+			keeper:SetAttribute("VTRGoalkeeperState","Recovered")
+		end
+		if self.ActiveSave==save then self.ActiveSave=nil end
+	end)
+end
+
+function Service:FinishActiveDiveAfterGoal()
+	local save=self.ActiveSave
+	if not save or save.AftermathStarted or not save.Launched or not save.Rectangle or not save.Target then return end
+	save.Finished=true
+	save.FinishTime=os.clock()
+	local keeper:Model=save.Keeper
+	if keeper and keeper.Parent then
+		keeper:SetAttribute("VTRGoalkeeperSaving",true)
+		keeper:SetAttribute("VTRGoalkeeperState","Falling")
+		keeper:SetAttribute("VTRKeeperDiveAnimationLocked",true)
+	end
+	self:_continueDiveAftermath(save,"Miss",false)
+end
+
 local function createLateralDrive(save:any,keeperRoot:BasePart,lateralAxis:Vector3,lateralSpeed:number)
 	local attachment=save.DiveAttachment
 	if not attachment then attachment=Instance.new("Attachment");attachment.Name="VTRKeeperDiveAttachment";attachment.Parent=keeperRoot;save.DiveAttachment=attachment end
 	local drive=Instance.new("LinearVelocity");drive.Name="VTRKeeperLateralDive";drive.Attachment0=attachment;drive.RelativeTo=Enum.ActuatorRelativeTo.World;drive.VelocityConstraintMode=Enum.VelocityConstraintMode.Line;drive.LineDirection=lateralAxis;drive.LineVelocity=lateralSpeed;drive.ForceLimitsEnabled=false;drive.Parent=keeperRoot
 	save.DiveVelocity=drive
+end
+
+local function liveReachHitboxTouched(service:any,save:any,target:Vector3):boolean
+	if save.WillSave~=true then return false end
+	local radius=math.max(0.1,tonumber(save.ContactRadius)or(service.Ball.Size.X*.5+1.2))
+	local distance=(service.Ball.Position-target).Magnitude
+	save.Keeper:SetAttribute("VTRLiveSaveHitboxRadius",radius)
+	save.Keeper:SetAttribute("VTRLiveSaveHitboxDistance",math.floor(distance*100)/100)
+	return distance<=radius
 end
 
 function Service:Step(dt:number?)
@@ -864,10 +1559,11 @@ function Service:Step(dt:number?)
 	local save = self.ActiveSave
 	if not save then
 		self:_keeperSafety("Home");self:_keeperSafety("Away")
-		local homeBusy=self:_rushCloseCarrier("Home") or self:_interceptGoalBoundPass("Home")
-		local awayBusy=self:_rushCloseCarrier("Away") or self:_interceptGoalBoundPass("Away")
-		if not homeBusy then self:_positionOnLine("Home")end
-		if not awayBusy then self:_positionOnLine("Away")end
+		self:_positionOnLine("Home")
+		self:_positionOnLine("Away")
+		return
+	end
+	if save.DiveState=="Falling" or save.DiveState=="Landed" or save.DiveState=="Recovering" or save.DiveState=="ReturnHome" then
 		return
 	end
 	if self.BallService.MotionKind ~= "Shot" or self.BallService.MotionStarted ~= save.ShotId then
@@ -881,6 +1577,8 @@ function Service:Step(dt:number?)
 		save.Keeper:SetAttribute("VTRShotWillScore", nil)
 		save.Keeper:SetAttribute("VTRShotOutcomeSource", nil)
 		if save.DiveAlign then save.DiveAlign:Destroy()end;if save.DiveVelocity then save.DiveVelocity:Destroy()end;if save.DiveAttachment then save.DiveAttachment:Destroy()end
+		clearKeeperDivePose(save.Keeper)
+		save.Keeper:SetAttribute("VTRKeeperDiveAnimationLocked",nil)
 		local cancelledFacing=self.LineFacing[save.Keeper];if cancelledFacing then cancelledFacing.Align.Enabled=true end
 		local cancelledRoot=root(save.Keeper);if cancelledRoot then cancelledRoot.Anchored=false end
 		local cancelledHumanoid=save.Keeper:FindFirstChildOfClass("Humanoid");if cancelledHumanoid then cancelledHumanoid.PlatformStand=false;cancelledHumanoid.AutoRotate=true end
@@ -896,10 +1594,9 @@ function Service:Step(dt:number?)
 			target=save.Target
 			time=EMERGENCY_SAVE_TIME
 		elseif save.Launched then
-			if save.WillSave ~= false then
+			if save.Target and liveReachHitboxTouched(self,save,save.Target) then
 				self:_finish(save)
 			else
-				if os.clock()-(save.DiveStartedAt or os.clock())<MIN_VISUAL_DIVE_TIME then return end
 				self:_miss(save)
 			end
 		else
@@ -908,8 +1605,14 @@ function Service:Step(dt:number?)
 		if not rectangle or not target or not time then return end
 	end
 	save.Rectangle = rectangle
+	if not save.Launched and save.WillSave~=false then
+		save.LockedTarget=target
+		save.PlannedRootTarget=nil
+	end
 	if save.PenaltyDiveTarget then
 		target=save.PenaltyDiveTarget
+	elseif save.LockedTarget then
+		target=save.LockedTarget
 	end
 	save.Target = target
 	local keeperRoot = root(save.Keeper)
@@ -924,6 +1627,9 @@ function Service:Step(dt:number?)
 	local keeperDepth=(keeperRoot.Position-rectangle.PlanePoint):Dot(forward)
 	local rootDepth=(rootTarget-rectangle.PlanePoint):Dot(forward)
 	rootTarget+=forward*(keeperDepth-rootDepth)
+	if save.PlannedRootTarget and save.WillSave~=false then
+		rootTarget=save.PlannedRootTarget
+	end
 	local toEndpoint=rootTarget-keeperRoot.Position
 	local sideVector=toEndpoint-forward*toEndpoint:Dot(forward)-upAxis*toEndpoint:Dot(upAxis)
 	local fallbackAxis=rectangle.Right.Magnitude>.05 and rectangle.Right or self.PitchCFrame.RightVector
@@ -937,22 +1643,13 @@ function Service:Step(dt:number?)
 		rootTarget=missedRootTarget(save,keeperRoot,rootTarget,rectangle,lateralAxis,upAxis,forward)
 		diveAim=save.MissAim or(rootTarget+upAxis*1.05)
 	end
-	if save.Launched and save.RootTarget then
-		local correction=1-math.exp(-(time<.12 and 80 or 20)*dt)
-		save.RootTarget=save.RootTarget:Lerp(rootTarget,correction)
-		rootTarget=save.RootTarget
-		local endVertical=(rootTarget-rectangle.PlanePoint):Dot(upAxis)
-		local control=save.StartPosition:Lerp(rootTarget,.48)
-		local controlVertical=(control-rectangle.PlanePoint):Dot(upAxis)
-		local startVertical=(save.StartPosition-rectangle.PlanePoint):Dot(upAxis)
-		local jumpHeight=math.max(4, math.abs(endVertical-startVertical)*0.55+2.5)
-		save.ApexPosition=control+upAxis*(math.max(startVertical,endVertical)+jumpHeight-controlVertical)
-	end
+	if save.Launched and save.RootTarget then rootTarget=save.RootTarget end
 	local travel=math.abs((rootTarget-keeperRoot.Position):Dot(lateralAxis))
 	local rise=math.max(0,(rootTarget-keeperRoot.Position):Dot(upAxis))
-	local diveScale=math.clamp(tonumber(save.Keeper:GetAttribute("VTRPracticeKeeperDiveSpeed"))or 1,.05,2.2)
 	local catchScale=math.clamp(tonumber(save.Keeper:GetAttribute("VTRPracticeKeeperHandling"))or 1,.05,2.2)
-	local requiredTime=math.clamp(math.max(travel/(MAX_DIVE_SPEED*diveScale),math.sqrt(2*rise/math.max(workspace.Gravity*diveScale,1))),.16,3.0)
+	local diveSpeed=math.max(1,tonumber(save.DiveSpeed)or DEFAULT_DIVE_SPEED)
+	local distanceToCover=Vector2.new(travel,rise).Magnitude
+	local requiredTime=math.clamp(distanceToCover/diveSpeed,.12,3.0)
 	local reactionReady=os.clock()>=(tonumber(save.ReactionReadyAt)or 0)
 	local forceLateDive=save.WillSave==false and (save.ShotExpired==true or time<=EMERGENCY_SAVE_TIME or os.clock()-(tonumber(save.ShotId)or os.clock())>math.max(.3,tonumber(save.ReactionDelay)or 0))
 	if not save.Launched then
@@ -962,25 +1659,28 @@ function Service:Step(dt:number?)
 			humanoid:MoveTo(keeperRoot.Position+lateralAxis*math.clamp(lateral,-.6,.6))
 		end
 	end
-	if not save.Launched and (reactionReady or forceLateDive) and (forceLateDive or time<=math.min(save.DiveLeadTime or DIVE_LEAD_TIME,requiredTime+(save.LaunchAllowance or .12)))then
+	if not save.Launched and (reactionReady or forceLateDive) then
 		save.Launched=true
 		save.DivePlayed=true
 		save.Keeper:SetAttribute("VTRGoalkeeperState","Diving")
 		humanoid:Move(Vector3.zero,false)
 		humanoid.PlatformStand=true
-		local flightTime=math.clamp(time,.09,.92)
+		local flightTime=math.max(.12,requiredTime)
 		if save.WillSave==false then flightTime=math.clamp(requiredTime+(tonumber(save.MissDelay)or .35),forceLateDive and .42 or .35,1.45)end
 		save.DiveStartedAt=os.clock()
 		save.DiveDuration=flightTime
-		save.InitialInterceptTime=save.WillSave==false and math.max(forceLateDive and flightTime*.62 or time+(tonumber(save.MissDelay)or .35),.01)or math.max(time,.01)
+		save.InitialInterceptTime=save.WillSave==false and math.max(forceLateDive and flightTime*.62 or time+(tonumber(save.MissDelay)or .35),.01)or math.max(flightTime,.01)
 		save.Progress=0
 		save.StartPosition=keeperRoot.Position
 		save.RootTarget=rootTarget
+		save.DiveFloorHeight=self.PitchCFrame.Position:Dot(upAxis)+SAFE_ROOT_HEIGHT+.25
 		save.DiveLook=(rootTarget-keeperRoot.Position)
 		save.DiveAim=diveAim
 		save.FixedDiveDepth=(keeperRoot.Position-rectangle.PlanePoint):Dot(forward)
 		save.LateralAxis=candidateAxis
 		save.CenteredDive=centeredDive
+		save.DivePosePlan=makeDivePosePlan(rectangle,diveAim,save.StartPosition,lateralAxis)
+		save.DivePosePlan.WorldTilted=true
 		lateralAxis=candidateAxis
 		local facing=self.LineFacing[save.Keeper];if facing then facing.Align.Enabled=false end
 		local delta=rootTarget-keeperRoot.Position
@@ -989,13 +1689,14 @@ function Service:Step(dt:number?)
 		local endVertical=(rootTarget-rectangle.PlanePoint):Dot(upAxis)
 		local control=save.StartPosition:Lerp(rootTarget,.48)
 		local controlVertical=(control-rectangle.PlanePoint):Dot(upAxis)
-		local jumpHeight=math.max(4, math.abs(endVertical-startVertical)*0.55+2.5)
+		local jumpHeight=DIVE_JUMP_HEIGHT
 		save.ApexPosition=control+upAxis*(math.max(startVertical,endVertical)+jumpHeight-controlVertical)
 		keeperRoot.Anchored=true
 		save.Keeper:SetAttribute("VTRForceIdle",nil)
 		if self.Animations then
 			self.Animations:StopAction(save.Keeper,.02)
-			self.Animations:PlayActionTimed(save.Keeper,"GoalkeeperDive",math.max(.34,flightTime+.14))
+			save.Keeper:SetAttribute("VTRKeeperDiveAnimationLocked",true)
+			self.Animations:PlayAction(save.Keeper,goalkeeperDiveAnimationName(save))
 		end
 		save.Keeper:SetAttribute("VTRDiveLateralDistance",lateralDistance)
 		save.Keeper:SetAttribute("VTRDiveLateralSpeed",math.abs(lateralDistance)/flightTime)
@@ -1006,35 +1707,33 @@ function Service:Step(dt:number?)
 		save.Keeper:SetAttribute("VTRSavePredictedHeight",(target-rectangle.PlanePoint):Dot(upAxis))
 	end
 	if save.Launched then
-		local startPosition:Vector3=save.StartPosition
-		local apexPosition:Vector3=save.ApexPosition
-		local endPosition:Vector3=save.RootTarget
-		local arrivalProgress=math.clamp(1-time/math.max(save.InitialInterceptTime,.01),0,1)
-		local elapsedProgress=math.clamp((os.clock()-(save.DiveStartedAt or os.clock()))/math.max(save.DiveDuration or .35,.05),0,1)
-		local desiredProgress=save.WillSave==false and elapsedProgress or math.max(arrivalProgress,elapsedProgress)
-		save.Progress=math.max(save.Progress or 0,desiredProgress)
-		local progress=math.clamp(save.Progress,0,1)
-		local inverse=1-progress
-		local position=startPosition*(inverse*inverse)+apexPosition*(2*inverse*progress)+endPosition*(progress*progress)
-		local tangent=(apexPosition-startPosition)*(2*inverse)+(endPosition-apexPosition)*(2*progress)
-		local diveLook=save.DiveLook or (endPosition-startPosition)
-		local liveAim=diveAim-position
-		local blend=liveAim.Magnitude>.05 and diveLook:Lerp(liveAim,.35) or diveLook
-		local desiredFrame=diveCatchFrame(position,blend,upAxis,forward)
+		local elapsed=os.clock()-(save.DiveStartedAt or os.clock())
+		local position,progress=prototypeDiveFlightPosition(save,elapsed,upAxis,forward,lateralAxis)
+		if not isFiniteVector3(position) then
+			self:_miss(save)
+			return
+		end
+		save.Progress=progress
+		local roll=save.CenteredDive and 0 or math.sin(math.pi*math.clamp(progress,0,1))*.92
+		local desiredFrame=keeperDiveRootFrame(position,forward,upAxis,lateralAxis,roll)
 		save.Keeper:SetAttribute("VTRSidewaysDive",not save.CenteredDive)
 		save.Keeper:SetAttribute("VTRDiveBodyAngle",math.floor(math.deg(math.acos(math.clamp(desiredFrame.UpVector:Dot(upAxis),-1,1)))+.5))
 		save.Keeper:PivotTo(desiredFrame)
-		local syncTime=save.WillSave==false and math.max((save.DiveDuration or .5)*(1-progress),.16)or time
-		self.Animations:SyncActionToArrival(save.Keeper,"GoalkeeperDive",syncTime)
+		local posePlan=save.DivePosePlan or makeDivePosePlan(rectangle,diveAim,save.StartPosition,lateralAxis)
+		posePlan.WorldTilted=true
+		save.DivePosePlan=posePlan
+		liftKeeperAboveFloor(save.Keeper,upAxis,self.PitchCFrame.Position:Dot(upAxis)+.58,.08)
 	end
 	if save.Launched and save.WillSave==false and ((save.Progress or 0)>=.86 or time<=EMERGENCY_SAVE_TIME) and os.clock()-(save.DiveStartedAt or os.clock())>=math.clamp(.42+(tonumber(save.MissDelay)or .35)*.25,.42,.72) then
 		self:_miss(save)
 		return
 	end
-	local ballDistance=(self.Ball.Position-keeperRoot.Position).Magnitude
-	local endpointDistance=(keeperRoot.Position-rootTarget).Magnitude
-	if save.WillSave~=false and save.Launched and (ballDistance<=CATCH_RADIUS*catchScale or endpointDistance<=3.5*catchScale or (save.Progress or 0)>=.985 or time<=EMERGENCY_SAVE_TIME) then
+	if save.WillSave~=false and save.Launched and liveReachHitboxTouched(self,save,save.LockedTarget or target) then
 		self:_finish(save)
+		return
+	end
+	if save.WillSave~=false and save.Launched and ((save.Progress or 0)>=.995 or time<=EMERGENCY_SAVE_TIME) then
+		self:_miss(save)
 	end
 end
 
@@ -1047,6 +1746,8 @@ function Service:Reset()
 		self.ActiveSave.Keeper:SetAttribute("VTRShotOutcomeSource", nil)
 		local resetRoot=root(self.ActiveSave.Keeper);if resetRoot then resetRoot.Anchored=false end
 		if self.ActiveSave.DiveAlign then self.ActiveSave.DiveAlign:Destroy()end;if self.ActiveSave.DiveVelocity then self.ActiveSave.DiveVelocity:Destroy()end;if self.ActiveSave.DiveAttachment then self.ActiveSave.DiveAttachment:Destroy()end
+		clearKeeperDivePose(self.ActiveSave.Keeper)
+		self.ActiveSave.Keeper:SetAttribute("VTRKeeperDiveAnimationLocked",nil)
 		local resetFacing=self.LineFacing[self.ActiveSave.Keeper];if resetFacing then resetFacing.Align.Enabled=true end
 		local resetHumanoid=self.ActiveSave.Keeper:FindFirstChildOfClass("Humanoid");if resetHumanoid then resetHumanoid.PlatformStand=false;resetHumanoid.AutoRotate=true end
 	end

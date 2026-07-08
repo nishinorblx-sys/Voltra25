@@ -7,7 +7,7 @@ local Service = {}
 Service.__index = Service
 
 local MOVEMENT = {Idle=true,Walk=true,Jog=true,Sprint=true,Dribble=true,Jockey=true,GoalkeeperIdle=true,GoalkeeperMove=true,Turn=true}
-local ACTION = {ReceiveBall=true,Receive=true,Pass=true,Shoot=true,Tackle=true,SlideTackle=true,DribbleMove1=true,DribbleMove4=true,Header=true,GoalkeeperDive=true,Celebrate=true,GoalCelebration=true}
+local ACTION = {ReceiveBall=true,Receive=true,Pass=true,Shoot=true,ShootRight=true,ShootLeft=true,Tackle=true,SlideTackle=true,DribbleMove1=true,DribbleMove4=true,Header=true,GoalkeeperDive=true,GoalkeeperDiveLow=true,GoalkeeperDiveLowRight=true,GoalkeeperDiveLowLeft=true,Celebrate=true,GoalCelebration=true}
 
 local function loadModel(model: Model): any
 	local humanoid = model:FindFirstChildOfClass("Humanoid")
@@ -21,8 +21,8 @@ local function loadModel(model: Model): any
 		local ok,result=pcall(function()return animator:LoadAnimation(animation)end)
 		if ok and result then
 			local track:AnimationTrack=result
-			track.Looped=MOVEMENT[name]==true
-			track.Priority=(name=="Shoot"or name=="Pass"or name=="Tackle"or name=="GoalkeeperDive"or name=="SlideTackle")and Enum.AnimationPriority.Action4 or ACTION[name]and Enum.AnimationPriority.Action or(name=="Idle"or name=="GoalkeeperIdle")and Enum.AnimationPriority.Idle or Enum.AnimationPriority.Movement
+			track.Looped=MOVEMENT[name]==true or name=="GoalkeeperDive" or name=="GoalkeeperDiveLow" or name=="GoalkeeperDiveLowRight" or name=="GoalkeeperDiveLowLeft"
+			track.Priority=(name=="Shoot"or name=="ShootRight"or name=="ShootLeft"or name=="Pass"or name=="Tackle"or name=="GoalkeeperDive"or name=="GoalkeeperDiveLow"or name=="GoalkeeperDiveLowRight"or name=="GoalkeeperDiveLowLeft"or name=="SlideTackle")and Enum.AnimationPriority.Action4 or ACTION[name]and Enum.AnimationPriority.Action or(name=="Idle"or name=="GoalkeeperIdle")and Enum.AnimationPriority.Idle or Enum.AnimationPriority.Movement
 			state.Tracks[name]=track
 		else warn(string.format("[VTR ANIMATION] %s failed on %s: %s",name,model.Name,tostring(result)))end
 	end
@@ -57,10 +57,37 @@ end
 
 function Service:PlayAction(model:Model,name:string)
 	local state=self.States[model];if not state then return end
-	local track=state.Tracks[name];if not track then return end
+	if model:GetAttribute("VTRCelebrating")==true then return end
+	local track=state.Tracks[name]
+	if not track and name=="GoalkeeperDiveLowLeft" then name="GoalkeeperDiveLow";track=state.Tracks[name] end
+	if not track and name=="GoalkeeperDiveLowRight" then name="GoalkeeperDiveLow";track=state.Tracks[name] end
+	if not track and name=="GoalkeeperDiveLow" then name="GoalkeeperDive";track=state.Tracks[name] end
+	if not track then return end
+	if state.Action and (state.Action.Name=="VTR_SlideTackle" or model:GetAttribute("VTRAnimationAction")=="SlideTackle") and state.Action.IsPlaying and name~="SlideTackle" and (tonumber(model:GetAttribute("VTRSlideTackleLockUntil"))or 0)>os.clock() then return end
 	if state.Action and state.Action~=track and state.Action.IsPlaying then state.Action:Stop(.06)end
-	state.Action=track;if track.IsPlaying then track:Stop(.025)end;track:Play(.04);track:AdjustSpeed(name=="Shoot"and.78 or name=="Tackle"and 2 or 1)
+	state.Action=track;if track.IsPlaying then track:Stop(.025)end;track:Play(.04);track:AdjustSpeed((name=="Shoot"or name=="ShootRight"or name=="ShootLeft")and.78 or name=="Tackle"and 2 or 1)
 	model:SetAttribute("VTRAnimationAction",name)
+end
+
+function Service:PlayActionWithMarker(model:Model,name:string,markerName:string,timeout:number,callback:()->())
+	local state=self.States[model]
+	local track=state and state.Tracks[name]
+	if not track then callback();return end
+	local fired=false
+	local connection:RBXScriptConnection?=nil
+	local function finish()
+		if fired then return end
+		fired=true
+		if connection then connection:Disconnect();connection=nil end
+		callback()
+	end
+	connection=track:GetMarkerReachedSignal(markerName):Connect(function()
+		finish()
+	end)
+	self:PlayAction(model,name)
+	local fallback=math.max(.05,timeout)
+	if track.Length>0 then fallback=math.max(fallback,math.min(track.Length/.78+.08,1.6))end
+	task.delay(fallback,finish)
 end
 
 function Service:PlayActionTimed(model:Model,name:string,duration:number)
@@ -83,11 +110,16 @@ end
 
 function Service:StopAction(model:Model,fade:number?)
 	local state=self.States[model];if not state or not state.Action then return end
+	if model:GetAttribute("VTRKeeperDiveAnimationLocked")==true and (state.Action.Name=="VTR_GoalkeeperDive" or state.Action.Name=="VTR_GoalkeeperDiveLow" or state.Action.Name=="VTR_GoalkeeperDiveLowRight" or state.Action.Name=="VTR_GoalkeeperDiveLowLeft") then return end
+	if (state.Action.Name=="VTR_SlideTackle" or model:GetAttribute("VTRAnimationAction")=="SlideTackle") and state.Action.IsPlaying and (tonumber(model:GetAttribute("VTRSlideTackleLockUntil"))or 0)>os.clock() then return end
 	state.Action:AdjustSpeed(1);state.Action:Stop(fade or .1);state.Action=nil
 end
 
 function Service:ForceIdle(model:Model)
 	local state=self.States[model];if not state then return end
+	if model:GetAttribute("VTRCelebrating")==true then return end
+	if model:GetAttribute("VTRKeeperDiveAnimationLocked")==true and state.Action and (state.Action.Name=="VTR_GoalkeeperDive" or state.Action.Name=="VTR_GoalkeeperDiveLow" or state.Action.Name=="VTR_GoalkeeperDiveLowRight" or state.Action.Name=="VTR_GoalkeeperDiveLowLeft") then return end
+	if state.Action and (state.Action.Name=="VTR_SlideTackle" or model:GetAttribute("VTRAnimationAction")=="SlideTackle") and state.Action.IsPlaying and (tonumber(model:GetAttribute("VTRSlideTackleLockUntil"))or 0)>os.clock() then return end
 	if state.Action and state.Action.IsPlaying then state.Action:Stop(.05)end
 	state.Action=nil
 	if state.Movement and state.Movement.IsPlaying then state.Movement:Stop(.05)end
@@ -101,6 +133,14 @@ function Service:Step(owner:Model?)
 	for model,_ in self.States do
 		if not model.Parent then continue end
 		local root=model:FindFirstChild("HumanoidRootPart")::BasePart?;if not root then continue end
+		if model:GetAttribute("VTRCelebrating")==true then
+			local state=self.States[model]
+			if state.Action and state.Action.IsPlaying then state.Action:Stop(.08)end
+			if state.Movement and state.Movement.IsPlaying then state.Movement:Stop(.08)end
+			state.Action=nil
+			state.Movement=nil
+			continue
+		end
 		if model:GetAttribute("VTRForceIdle")==true then self:_movement(model,model:GetAttribute("position")=="GK"and"GoalkeeperIdle"or"Idle",1);continue end
 		local speed=Vector3.new(root.AssemblyLinearVelocity.X,0,root.AssemblyLinearVelocity.Z).Magnitude
 		local goalkeeper=model:GetAttribute("position")=="GK"

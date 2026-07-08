@@ -25,11 +25,31 @@ local function matchFoundKey(data:any):string
 	return tostring(id).."|"..tostring(side)
 end
 
+local function assetImage(value:any):string?
+	local textValue=tostring(value or"")
+	if textValue==""then return nil end
+	if string.match(textValue,"^rbxassetid://")then return textValue end
+	if tonumber(textValue)then return"rbxassetid://"..textValue end
+	return nil
+end
+
 local function renderBadge(container:GuiObject,summary:any,strokeLimit:number?)
 	if container:IsA("TextLabel")or container:IsA("TextButton")then container.Text=""end
 	container.BackgroundTransparency=1
 	container.ClipsDescendants=true
-	for _,child in container:GetChildren()do if child.Name=="GeneratedBadge"then child:Destroy()end end
+	for _,child in container:GetChildren()do if child.Name=="GeneratedBadge"or child.Name=="RankedBadgeImage"then child:Destroy()end end
+	local image=type(summary)=="table"and assetImage(summary.FlagImage or summary.flagImage or summary.BadgeImage or summary.badgeImage or summary.LogoImage or summary.logoImage or summary.logo)or nil
+	if image then
+		local badgeImage=Instance.new("ImageLabel")
+		badgeImage.Name="RankedBadgeImage"
+		badgeImage.BackgroundTransparency=1
+		badgeImage.Image=image
+		badgeImage.ScaleType=Enum.ScaleType.Fit
+		badgeImage.Size=UDim2.fromScale(1,1)
+		badgeImage.ZIndex=container.ZIndex+1
+		badgeImage.Parent=container
+		return
+	end
 	local identity=type(summary)=="table"and(summary.BadgeIdentity or summary.badgeIdentity)or nil
 	local colors=type(summary)=="table"and summary.colors or nil
 	identity=type(identity)=="table"and identity or{
@@ -77,22 +97,35 @@ function Presentation.StartSearching(root:Instance)
 end
 
 local function teamPanel(overlay:CanvasGroup,summary:any,side:string,controlledSide:string):Frame
-	local panel=Instance.new("Frame");panel.Name=side.."Team";panel.BackgroundColor3=Theme.Colors.Graphite;panel.BackgroundTransparency=.06;panel.BorderSizePixel=0;panel.Size=UDim2.fromScale(.34,.46);panel.Position=side=="Home"and UDim2.fromScale(-.38,.29)or UDim2.fromScale(1.04,.29);panel.ZIndex=246;panel.Parent=overlay
+	local panel=Instance.new("Frame");panel.Name=side.."Team";panel.BackgroundColor3=Theme.Colors.Graphite;panel.BackgroundTransparency=.06;panel.BorderSizePixel=0;panel.Size=UDim2.fromScale(.34,.46);panel.Position=side=="Home"and UDim2.fromScale(.1,.29)or UDim2.fromScale(.56,.29);panel.ZIndex=246;panel.Parent=overlay
 	local stroke=Instance.new("UIStroke");stroke.Color=side=="Home"and Theme.Colors.Electric or Color3.fromHex("D9D9D9");stroke.Transparency=.35;stroke.Thickness=1;stroke.Parent=panel
 	text(panel,side==controlledSide and"YOUR TEAM"or"OPPONENT",UDim2.fromScale(.08,.015),UDim2.fromScale(.84,.05),Theme.Fonts.Strong,8,side==controlledSide and Theme.Colors.White or Theme.Colors.Muted,247)
 	local badge=Instance.new("TextLabel");badge.AnchorPoint=Vector2.new(.5,0);badge.BackgroundColor3=side=="Home"and Theme.Colors.White or Theme.Colors.Silver;badge.BorderSizePixel=0;badge.Position=UDim2.fromScale(.5,.08);badge.Size=UDim2.fromOffset(74,74);badge.Text=summary.logo or"V";badge.TextColor3=Theme.Colors.Black;badge.TextSize=25;badge.Font=Theme.Fonts.Display;badge.ZIndex=247;badge.Parent=panel;local corner=Instance.new("UICorner");corner.CornerRadius=UDim.new(1,0);corner.Parent=badge
 	renderBadge(badge,summary,2)
 	text(panel,string.upper(summary.teamName or side),UDim2.fromScale(.06,.34),UDim2.fromScale(.88,.1),Theme.Fonts.Display,20,Theme.Colors.White,247)
 	text(panel,(summary.country or"VTR").."  /  "..(summary.league or"RANKED"),UDim2.fromScale(.06,.45),UDim2.fromScale(.88,.06),Theme.Fonts.Strong,8,Theme.Colors.Muted,247)
-	text(panel,tostring(summary.overall or 0),UDim2.fromScale(.34,.55),UDim2.fromScale(.32,.17),Theme.Fonts.Display,42,Theme.Colors.Electric,247)
-	text(panel,"TEAM OVERALL",UDim2.fromScale(.25,.7),UDim2.fromScale(.5,.05),Theme.Fonts.Strong,8,Theme.Colors.Muted,247)
-	text(panel,string.format("ATT %d     MID %d     DEF %d",summary.attack or 0,summary.midfield or 0,summary.defense or 0),UDim2.fromScale(.08,.8),UDim2.fromScale(.84,.07),Theme.Fonts.Strong,10,Theme.Colors.Silver,247)
+	local overall=text(panel,tostring(summary.overall or 0),UDim2.fromScale(.32,.54),UDim2.fromScale(.36,.16),Theme.Fonts.Display,42,Theme.Colors.Electric,247)
+	overall.TextXAlignment=Enum.TextXAlignment.Center
+	overall:SetAttribute("VTRKeepLineupNumberStack", true)
+	text(panel,"TEAM OVERALL",UDim2.fromScale(.25,.695),UDim2.fromScale(.5,.05),Theme.Fonts.Strong,8,Theme.Colors.Muted,247)
+	local function stat(label:string,value:any,x:number)
+		local statFrame=Instance.new("Frame");statFrame.BackgroundTransparency=1;statFrame.Position=UDim2.fromScale(x,.79);statFrame.Size=UDim2.fromScale(.22,.09);statFrame.ZIndex=247;statFrame.Parent=panel
+		text(statFrame,label,UDim2.fromScale(0,0),UDim2.fromScale(1,.42),Theme.Fonts.Strong,8,Theme.Colors.Muted,248)
+		local valueLabel=text(statFrame,tostring(value or 0),UDim2.fromScale(0,.36),UDim2.fromScale(1,.58),Theme.Fonts.Display,18,Theme.Colors.Silver,248)
+		valueLabel:SetAttribute("VTRKeepLineupNumberStack", true)
+	end
+	stat("ATT",summary.attack,.11);stat("MID",summary.midfield,.39);stat("DEF",summary.defense,.67)
 	return panel
 end
 
 function Presentation.ShowMatchFound(root:Instance,data:any,onComplete:()->())
 	local key=matchFoundKey(data)
 	local existing=root:FindFirstChild(OVERLAY_NAME)
+	if existing and existing:IsA("CanvasGroup")and existing:GetAttribute("VTRMatchFoundActive")==true then
+		local completeAt=tonumber(existing:GetAttribute("VTRMatchFoundCompleteAt"))or(os.clock()+.2)
+		task.delay(math.max(.05,completeAt-os.clock()),function()if onComplete then onComplete()end end)
+		return
+	end
 	if existing and existing:IsA("CanvasGroup")and existing:GetAttribute("VTRMatchFoundKey")==key then
 		local completeAt=tonumber(existing:GetAttribute("VTRMatchFoundCompleteAt"))or(os.clock()+.2)
 		task.delay(math.max(.05,completeAt-os.clock()),function()if onComplete then onComplete()end end)
@@ -100,6 +133,7 @@ function Presentation.ShowMatchFound(root:Instance,data:any,onComplete:()->())
 	end
 	local overlay=existing and existing:IsA("CanvasGroup")and existing or base(root)
 	overlay:SetAttribute("VTRMatchFoundKey",key)
+	overlay:SetAttribute("VTRMatchFoundActive",true)
 	overlay:SetAttribute("VTRMatchFoundCompleteAt",os.clock()+3.95)
 	for _,child in overlay:GetChildren()do if child:IsA("GuiObject")then child:Destroy()end end
 	overlay.GroupTransparency=0;overlay.BackgroundColor3=Theme.Colors.Black
@@ -107,9 +141,9 @@ function Presentation.ShowMatchFound(root:Instance,data:any,onComplete:()->())
 	text(overlay,"RANKED WATCH VS WATCH  /  SYNCHRONIZING MATCH",UDim2.fromScale(.2,.15),UDim2.fromScale(.6,.035),Theme.Fonts.Strong,9,Theme.Colors.Muted,246)
 	local controlled=data.ControlledSide or"Home";local home=teamPanel(overlay,data.HomeSummary or{teamName=data.Home,logo=data.HomeLogo},"Home",controlled);local away=teamPanel(overlay,data.AwaySummary or{teamName=data.Away,logo=data.AwayLogo},"Away",controlled)
 	local vs=text(overlay,"VS",UDim2.fromScale(.44,.42),UDim2.fromScale(.12,.12),Theme.Fonts.Display,31,Theme.Colors.Electric,248);vs.TextTransparency=1
-	TweenService:Create(home,TweenInfo.new(.65,Enum.EasingStyle.Quart,Enum.EasingDirection.Out),{Position=UDim2.fromScale(.1,.29)}):Play();TweenService:Create(away,TweenInfo.new(.65,Enum.EasingStyle.Quart,Enum.EasingDirection.Out),{Position=UDim2.fromScale(.56,.29)}):Play();task.delay(.42,function()if vs.Parent then TweenService:Create(vs,TweenInfo.new(.25),{TextTransparency=0}):Play()end end)
+	task.delay(.18,function()if vs.Parent then TweenService:Create(vs,TweenInfo.new(.25),{TextTransparency=0}):Play()end end)
 	local opponent=text(overlay,"OPPONENT  /  "..string.upper(data.Opponent or"CHALLENGER"),UDim2.fromScale(.25,.82),UDim2.fromScale(.5,.05),Theme.Fonts.Strong,10,Theme.Colors.White,247);opponent.TextTransparency=1;task.delay(.75,function()if opponent.Parent then TweenService:Create(opponent,TweenInfo.new(.3),{TextTransparency=0}):Play()end end)
-	task.delay(3.4,function()if not overlay.Parent then return end;local fade=TweenService:Create(overlay,TweenInfo.new(.45),{GroupTransparency=1});fade.Completed:Once(function()if overlay.Parent then overlay:Destroy()end;onComplete()end);fade:Play()end)
+	task.delay(3.4,function()if not overlay.Parent then return end;overlay:SetAttribute("VTRMatchFoundActive",false);local fade=TweenService:Create(overlay,TweenInfo.new(.45),{GroupTransparency=1});fade.Completed:Once(function()if overlay.Parent then overlay:Destroy()end;onComplete()end);fade:Play()end)
 end
 
 return Presentation

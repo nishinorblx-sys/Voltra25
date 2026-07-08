@@ -56,7 +56,7 @@ function ProgressionService:GetClientData(player: Player): any?
 		ProClubsPlayer=copy(profile.ProClubsPlayer),
 		CareerSaveSlots = copy(profile.CareerSaveSlots),
 		StoreOwnership = copy(profile.StoreOwnership),
-		StoreCatalog = { Packs = copy(Catalog.Packs), CoinBundles = copy(Catalog.CoinBundles), Kits = copy(Catalog.Kits), Stadiums = copy(Catalog.Stadiums), Cosmetics = copy(Catalog.Cosmetics),Consumables=copy(Catalog.Consumables) },
+		StoreCatalog = { Packs = copy(Catalog.Packs), CoinBundles = copy(Catalog.CoinBundles), VoltraPointBundles = copy(Catalog.VoltraPointBundles), GamePasses = copy(Catalog.GamePasses), DeveloperProducts = copy(Catalog.DeveloperProducts), Kits = copy(Catalog.Kits), Stadiums = copy(Catalog.Stadiums), Cosmetics = copy(Catalog.Cosmetics),Consumables=copy(Catalog.Consumables) },
 		Onboarding = copy(profile.Onboarding),
 		DeveloperAccess=DeveloperAccessService.IsAuthorized(player),
 		DeveloperStudioAccess=DeveloperAccessService.IsStudio(),
@@ -144,8 +144,9 @@ function ProgressionService:GrantMatchRewards(player: Player, payload: any): any
 	if not profile then return nil end
 	payload = type(payload) == "table" and payload or {}
 	local title = tostring(payload.Title or "MATCH COMPLETE")
-	local coins = tonumber(payload.Coins) or 0
-	local xp = tonumber(payload.XP) or 0
+	local vip = profile.StoreOwnership and type(profile.StoreOwnership.GamePasses)=="table" and table.find(profile.StoreOwnership.GamePasses,"vip_pass") ~= nil
+	local coins = (tonumber(payload.Coins) or 0) * (vip and 2 or 1)
+	local xp = (tonumber(payload.XP) or 0) * (vip and 2 or 1)
 	local grantedCoins = self:_addCoins(profile, coins)
 	local grantedXP, level, leveledUp = self:_addXP(profile, xp)
 	self:_publishAll(player, profile)
@@ -155,6 +156,7 @@ function ProgressionService:GrantMatchRewards(player: Player, payload: any): any
 		XP = grantedXP,
 		Level = level,
 		LeveledUp = leveledUp,
+		Vip2x = vip == true,
 	}
 end
 
@@ -162,7 +164,7 @@ function ProgressionService:_publishAll(player: Player, profile: any)
 	if self.Profiles.Save then self.Profiles:Save(player) end
 	self.Publish(player, "Progression", self:GetClientData(player))
 	self.Publish(player, "SeasonProgress", { Name = profile.Season.Name, Level = profile.Season.Level, XP = profile.Season.XP, RequiredXP = profile.Season.RequiredXP })
-	self.Publish(player, "Currency", { Coins = profile.Currency.Coins, Bolts = profile.Currency.Bolts })
+	self.Publish(player, "Currency", { Coins = profile.Currency.Coins, Bolts = profile.Currency.Bolts, VoltraPoints = profile.Currency.VoltraPoints or 0 })
 	self.Publish(player, "PlayerProfile", {
 		Username = player.Name, DisplayName = player.DisplayName, Level = profile.Profile.Level, XP = profile.Profile.XP,
 		SelectedClub = profile.Profile.SelectedClub,

@@ -11,6 +11,13 @@ function Service.CanTackle(context: any, defender: any, carrier: any, style: any
 	if not defender.Root or not carrier.Root then
 		return false, false
 	end
+	local now = context.Now or os.clock()
+	if defender.Model and (tonumber(defender.Model:GetAttribute("VTRStunnedUntil")) or 0) > now then
+		return false, false
+	end
+	if defender.Model and (tonumber(defender.Model:GetAttribute("VTRCannotRecoverBallUntil")) or 0) > now then
+		return false, false
+	end
 	local distance = PitchConfig.GetDistanceStuds(defender.World, carrier.World)
 	if distance > 11.25 then
 		return false, false

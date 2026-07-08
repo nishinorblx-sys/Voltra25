@@ -6,7 +6,7 @@ local ServerScriptService = game:GetService("ServerScriptService")
 local sharedFolder = ReplicatedStorage:FindFirstChild("VTR") and ReplicatedStorage.VTR:FindFirstChild("Shared") or ReplicatedStorage:FindFirstChild("Shared") or ReplicatedStorage
 local Config = require(sharedFolder:WaitForChild("SevenWinLoginRewardConfig"))
 
-local store = DataStoreService:GetDataStore(Config.ClaimKey .. "_Path_v8")
+local store = DataStoreService:GetDataStore(Config.ClaimKey .. "_Path_v10")
 local pendingByUserId = {}
 local started = false
 
@@ -245,7 +245,7 @@ local function tryGrantThroughServices(player, packName)
 	return false
 end
 
-local inventoryStore = DataStoreService:GetDataStore("PlayerPackInventory_v2")
+local inventoryStore = DataStoreService:GetDataStore("PlayerPackInventory_v4")
 
 local function grantFallback(player, packName)
 	local key = tostring(player.UserId)

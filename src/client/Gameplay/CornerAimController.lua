@@ -1,6 +1,7 @@
 --!strict
 local Players=game:GetService("Players")
 local UserInputService=game:GetService("UserInputService")
+local CornerTrajectoryPreview=require(script.Parent.CornerTrajectoryPreview)
 local Controller={};Controller.__index=Controller
 
 local function root(model:Model):BasePart?
@@ -12,7 +13,7 @@ local function isKeeper(model:Model):boolean
 end
 
 function Controller.new(data:any,remote:RemoteEvent,hud:any)
-	local self=setmetatable({Data=data,Remote=remote,HUD=hud,Connections={},Labels={},Active=true,Candidates={}},Controller)
+	local self=setmetatable({Data=data,Remote=remote,HUD=hud,Connections={},Labels={},Active=true,Candidates={},Preview=CornerTrajectoryPreview.new()},Controller)
 	local teamModels=data.TeamModels and data.TeamModels[data.Team] or {}
 	for _,model in teamModels do
 		local modelRoot=root(model)
@@ -98,12 +99,15 @@ function Controller:_release()
 	local receiverRoot=root(receiver)
 	if not receiverRoot then return end
 	self.Active=false
-	self.Remote:FireServer({Type="CornerKick",Delivery="Cross",Power=.66,Target=receiverRoot.Position,Receiver=receiver})
+	self.Remote:FireServer({Type="CornerKick",Delivery="Lob",Power=.66,Target=receiverRoot.Position,Receiver=receiver})
 end
 
 function Controller:Update()
 	if not self.Active then return end
 	if self.HUD then self.HUD:SetCharge(0,"")end
+	if self.Preview then
+		self.Preview:Update(self.Data.Ball.Position,self:GetTarget(),"Lob",.66,self.Data.PitchCFrame.UpVector)
+	end
 end
 
 function Controller:GetTarget():Vector3
@@ -117,6 +121,7 @@ function Controller:Destroy()
 	for _,connection in self.Connections do connection:Disconnect()end
 	for _,gui in self.Labels do if gui.Parent then gui:Destroy()end end
 	if self.Trainer then self.Trainer:Destroy()end
+	if self.Preview then self.Preview:Destroy();self.Preview=nil end
 	if self.HUD then self.HUD:SetCharge(0,"")end
 end
 

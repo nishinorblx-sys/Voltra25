@@ -40,25 +40,26 @@ local function circle(parent: Instance, name: string, size: number, pos: UDim2, 
 	button.Position = pos
 	button.Size = UDim2.fromOffset(size, size)
 	button.BackgroundColor3 = BLACK
-	button.BackgroundTransparency = 0.1
+	button.BackgroundTransparency = 0.38
 	button.BorderSizePixel = 0
 	button.AutoButtonColor = false
 	button.Text = text
 	button.TextColor3 = WHITE
 	button.TextSize = textSize
 	button.TextWrapped = true
+	button.TextStrokeTransparency = 1
 	button.Font = Enum.Font.GothamBlack
 	button.ZIndex = 210
 	button.Parent = parent
 	corner(button, size)
-	stroke(button, color or GREEN, 0.04, 2)
+	stroke(button, color or GREEN, 0.42, 1.4)
 	local glow = Instance.new("Frame")
 	glow.Name = "Glow"
 	glow.AnchorPoint = Vector2.new(0.5, 0.5)
 	glow.Position = UDim2.fromScale(0.5, 0.5)
 	glow.Size = UDim2.fromScale(0.58, 0.58)
 	glow.BackgroundColor3 = color or GREEN
-	glow.BackgroundTransparency = 0.72
+	glow.BackgroundTransparency = 0.86
 	glow.BorderSizePixel = 0
 	glow.ZIndex = 209
 	glow.Parent = button
@@ -67,13 +68,13 @@ local function circle(parent: Instance, name: string, size: number, pos: UDim2, 
 end
 
 local function pressed(button: TextButton, state: boolean)
-	button.BackgroundTransparency = state and 0.01 or 0.1
+	button.BackgroundTransparency = state and 0.18 or 0.38
 	local glow = button:FindFirstChild("Glow")
 	if glow and glow:IsA("Frame") then
-		glow.BackgroundTransparency = state and 0.26 or 0.72
+		glow.BackgroundTransparency = state and 0.48 or 0.86
 	end
 	local line = button:FindFirstChildOfClass("UIStroke")
-	if line then line.Thickness = state and 3 or 2 end
+	if line then line.Thickness = state and 2 or 1.4;line.Transparency = state and .24 or .42 end
 end
 
 function Controls.new(controller: any)
@@ -107,13 +108,13 @@ function Controls.new(controller: any)
 	base.Position = UDim2.new(0, px(126), 1, -px(136))
 	base.Size = UDim2.fromOffset(px(164), px(164))
 	base.BackgroundColor3 = BLACK
-	base.BackgroundTransparency = 0.32
+	base.BackgroundTransparency = 0.48
 	base.BorderSizePixel = 0
 	base.Active = true
 	base.ZIndex = 205
 	base.Parent = root
 	corner(base, px(164))
-	stroke(base, GREEN, 0.32, 1)
+	stroke(base, GREEN, 0.52, 1)
 
 	local arrows = Instance.new("TextLabel")
 	arrows.BackgroundTransparency = 1
@@ -121,6 +122,7 @@ function Controls.new(controller: any)
 	arrows.Text = "^\n<     >\nv"
 	arrows.TextColor3 = GREEN
 	arrows.TextTransparency = 0.16
+	arrows.TextStrokeTransparency = 1
 	arrows.TextSize = px(24)
 	arrows.Font = Enum.Font.GothamBlack
 	arrows.ZIndex = 206
@@ -132,12 +134,12 @@ function Controls.new(controller: any)
 	knob.Position = UDim2.fromScale(0.5, 0.5)
 	knob.Size = UDim2.fromOffset(px(70), px(70))
 	knob.BackgroundColor3 = GREEN
-	knob.BackgroundTransparency = 0.03
+	knob.BackgroundTransparency = 0.22
 	knob.BorderSizePixel = 0
 	knob.ZIndex = 207
 	knob.Parent = base
 	corner(knob, px(70))
-	stroke(knob, WHITE, 0.62, 1)
+	stroke(knob, WHITE, 0.78, 1)
 
 	self.Joystick = base
 	self.Knob = knob

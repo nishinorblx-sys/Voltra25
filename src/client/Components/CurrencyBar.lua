@@ -20,17 +20,40 @@ function CurrencyBar.new(currencies: { any }): Frame
 	layout.Parent = frame
 
 	for _, currency in currencies do
+		local holder = Instance.new("Frame")
+		holder.AutomaticSize = Enum.AutomaticSize.X
+		holder.BackgroundTransparency = 1
+		holder.Size = UDim2.fromOffset(0, 44)
+		holder.Parent = frame
+
+		local row = Instance.new("UIListLayout")
+		row.FillDirection = Enum.FillDirection.Horizontal
+		row.VerticalAlignment = Enum.VerticalAlignment.Center
+		row.Padding = UDim.new(0, 6)
+		row.Parent = holder
+
+		local prefix = tostring(currency.Icon or "")
+		if currency.IconImage then
+			local icon = Instance.new("ImageLabel")
+			icon.BackgroundTransparency = 1
+			icon.Image = tostring(currency.IconImage)
+			icon.ScaleType = Enum.ScaleType.Fit
+			icon.Size = UDim2.fromOffset(22, 22)
+			icon.Parent = holder
+			prefix = ""
+		end
+
 		local label = Instance.new("TextLabel")
 		label.AutomaticSize = Enum.AutomaticSize.X
 		label.BackgroundTransparency = 1
 		label.Size = UDim2.fromOffset(0, 44)
-		label.Text = currency.Icon .. "  " .. tostring(currency.Value)
+		label.Text = prefix ~= "" and (prefix .. "  " .. tostring(currency.Value)) or tostring(currency.Value)
 		label.TextColor3 = currency.Color or Theme.Colors.Silver
 		label.TextSize = 11
 		label.Font = Theme.Fonts.Strong
-		label.Parent = frame
+		label.Parent = holder
 		if type(currency.Value) == "number" then
-			task.defer(function() if label.Parent then AnimatedNumber.play(label, currency.Value, { Prefix = currency.Icon .. "  " }) end end)
+			task.defer(function() if label.Parent then AnimatedNumber.play(label, currency.Value, { Prefix = prefix ~= "" and (prefix .. "  ") or "" }) end end)
 		end
 	end
 

@@ -5,15 +5,26 @@ local GoalModelResolver = require(ReplicatedStorage.VTR.Shared.GoalModelResolver
 local Service = {}
 Service.__index = Service
 
+local function isNetPart(instance: Instance): boolean
+	local current: Instance? = instance
+	while current do
+		if string.find(string.lower(current.Name), "net", 1, true) then
+			return true
+		end
+		current = current.Parent
+	end
+	return false
+end
+
 local function disableGoalCollision(instance: Instance?)
 	if not instance then return end
-	if instance:IsA("BasePart") then
+	if instance:IsA("BasePart") and not isNetPart(instance) then
 		instance.CanCollide = false
 		instance.CanTouch = false
 		instance.CanQuery = true
 	end
 	for _,descendant in instance:GetDescendants() do
-		if descendant:IsA("BasePart") then
+		if descendant:IsA("BasePart") and not isNetPart(descendant) then
 			descendant.CanCollide = false
 			descendant.CanTouch = false
 			descendant.CanQuery = true
@@ -38,6 +49,28 @@ local function createVolume(parent: Instance, team: string, rectangle: any): Bas
 	return volume
 end
 
+local function createNetBackstop(parent: Instance, team: string, rectangle: any): BasePart
+	local width = math.max(1, rectangle.RightBound - rectangle.Left)
+	local height = math.max(1, rectangle.Top - rectangle.Bottom)
+	local center = rectangle.PlanePoint
+		+ rectangle.Right * (rectangle.Left + width * 0.5)
+		+ rectangle.Up * (rectangle.Bottom + height * 0.5)
+		+ rectangle.Normal * 5.5
+	local backstop = Instance.new("Part")
+	backstop.Name = team .. "GoalNetBackstop"
+	backstop.Size = Vector3.new(width + 5, height + 4, 8)
+	backstop.CFrame = CFrame.fromMatrix(center, rectangle.Right, rectangle.Up, rectangle.Normal)
+	backstop.Anchored = true
+	backstop.CanCollide = true
+	backstop.CanTouch = true
+	backstop.CanQuery = true
+	backstop.Transparency = 1
+	backstop.CollisionGroup = "GoalNet"
+	backstop.CustomPhysicalProperties = PhysicalProperties.new(0.7, 0.78, 0.18, 1, 1)
+	backstop.Parent = parent
+	return backstop
+end
+
 function Service.new(ball: BasePart, pitchCFrame: CFrame, width: number, length: number, onGoal: (string) -> ())
 	disableGoalCollision(workspace:FindFirstChild("HomeGoal", true))
 	disableGoalCollision(workspace:FindFirstChild("AwayGoal", true))
@@ -49,7 +82,11 @@ function Service.new(ball: BasePart, pitchCFrame: CFrame, width: number, length:
 		disableGoalCollision(goal.Hitbox)
 	end
 	local volumeParent = ball:FindFirstAncestorWhichIsA("Folder") or ball.Parent
-	for _, goal in goals do goal.Volume = createVolume(volumeParent, goal.Team, goal.Rectangle);goal.WasInside=false end
+	for _, goal in goals do
+		goal.Volume = createVolume(volumeParent, goal.Team, goal.Rectangle)
+		goal.NetBackstop = createNetBackstop(volumeParent, goal.Team, goal.Rectangle)
+		goal.WasInside=false
+	end
 	return setmetatable({Ball = ball, OnGoal = onGoal, Locked = false, Goals = goals, PreviousBallPosition = ball.Position, PreviousStepClock = os.clock(), PreviousBallVelocity = ball.AssemblyLinearVelocity}, Service)
 end
 
@@ -86,16 +123,23 @@ function Service:_denyNonShotGoal(goal: any, current: Vector3): boolean
 	return false
 end
 
-function Service:_recordGoalEntry(team: string, previous: Vector3, current: Vector3, now: number)
+function Service:_recordGoalEntry(goal: any, previous: Vector3, current: Vector3, now: number)
 	local entryVelocity = self:_entryVelocity(previous, current, now)
+	local rectangle = goal.Rectangle
+	local offset = current - rectangle.PlanePoint
+	local horizontal = math.clamp(offset:Dot(rectangle.Right), rectangle.Left, rectangle.RightBound)
+	local vertical = math.clamp(offset:Dot(rectangle.Up), rectangle.Bottom, rectangle.Top)
+	local netEntryPosition = rectangle.PlanePoint + rectangle.Right * horizontal + rectangle.Up * vertical + rectangle.Normal * 1.2
 	self.Ball:SetAttribute("VTRGoalEntryVelocity", entryVelocity)
 	self.Ball:SetAttribute("VTRGoalEntryAngularVelocity", self.Ball.AssemblyAngularVelocity)
+	self.Ball:SetAttribute("VTRGoalEntryPosition", netEntryPosition)
+	self.Ball:SetAttribute("VTRGoalEntryNormal", rectangle.Normal)
 	self.Ball.Anchored = false
 	self.Locked = true
 	self.PreviousBallPosition = current
 	self.PreviousStepClock = now
 	self.PreviousBallVelocity = self.Ball.AssemblyLinearVelocity
-	self.OnGoal(team)
+	self.OnGoal(goal.Team)
 end
 
 function Service:Step()
@@ -115,7 +159,7 @@ function Service:Step()
 		if goal.Hitbox and goal.Hitbox.Parent then
 			local localBall=goal.Hitbox.CFrame:PointToObjectSpace(current);local half=goal.Hitbox.Size*.5
 			local inside=math.abs(localBall.X)<=math.max(.1,half.X-radius*.55)and math.abs(localBall.Y)<=math.max(.1,half.Y-radius*.55)and math.abs(localBall.Z)<=half.Z+radius
-			if inside and not goal.WasInside then goal.WasInside=true;if self:_denyNonShotGoal(goal,current) then return end;self:_recordGoalEntry(goal.Team, previous, current, now);return end
+			if inside and not goal.WasInside then goal.WasInside=true;if self:_denyNonShotGoal(goal,current) then return end;self:_recordGoalEntry(goal, previous, current, now);return end
 			goal.WasInside=inside
 			continue
 		end
@@ -132,7 +176,7 @@ function Service:Step()
 			local fullyInside = horizontal >= rectangle.Left + radius and horizontal <= rectangle.RightBound - radius and vertical >= rectangle.Bottom + radius * 0.72 and vertical <= rectangle.Top - radius
 			if fullyInside then
 				if self:_denyNonShotGoal(goal,crossing) then return end
-				self:_recordGoalEntry(goal.Team, previous, current, now)
+				self:_recordGoalEntry(goal, previous, current, now)
 				return
 			end
 		end
@@ -150,6 +194,8 @@ function Service:Unlock()
 	self.PreviousBallVelocity = self.Ball.AssemblyLinearVelocity
 	self.Ball:SetAttribute("VTRGoalEntryVelocity", nil)
 	self.Ball:SetAttribute("VTRGoalEntryAngularVelocity", nil)
+	self.Ball:SetAttribute("VTRGoalEntryPosition", nil)
+	self.Ball:SetAttribute("VTRGoalEntryNormal", nil)
 end
 
 return Service

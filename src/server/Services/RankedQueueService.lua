@@ -122,17 +122,41 @@ end
 
 function Service:_summaryForRoster(roster: any): any
 	local team=roster and roster.Team or{}
+	local function normalizePosition(value:any):string
+		local text=string.upper(tostring(value or ""))
+		local aliases={["LEFT WING"]="LW",["RIGHT WING"]="RW",["STRIKER"]="ST",["CENTRE FORWARD"]="CF",["CENTER FORWARD"]="CF",["LEFT MIDFIELD"]="LM",["RIGHT MIDFIELD"]="RM",["CENTRE MIDFIELD"]="CM",["CENTER MIDFIELD"]="CM",["DEFENSIVE MIDFIELD"]="CDM",["ATTACKING MIDFIELD"]="CAM",["LEFT BACK"]="LB",["RIGHT BACK"]="RB",["CENTRE BACK"]="CB",["CENTER BACK"]="CB",["GOALKEEPER"]="GK"}
+		return aliases[text] or text
+	end
+	local function rosterAverage(group:any?):number
+		local total,count=0,0
+		for _,player in roster and roster.StartingXI or{}do
+			local position=normalizePosition(player.PositionSlot or player.SquadSlot or player.ExpectedPosition or player.bestPosition or player.Position)
+			if not group or group[position]==true then total+=tonumber(player.overall or player.Rating)or 0;count+=1 end
+		end
+		return count>0 and math.floor(total/count+.5)or 0
+	end
+	local attack=tonumber(team.attack or team.Attack)or rosterAverage({LW=true,RW=true,ST=true,CF=true,LM=true,RM=true})
+	local midfield=tonumber(team.midfield or team.Midfield)or rosterAverage({CM=true,CDM=true,CAM=true,LM=true,RM=true})
+	local defense=tonumber(team.defense or team.Defense)or rosterAverage({GK=true,LB=true,RB=true,CB=true,LWB=true,RWB=true})
+	local overall=tonumber(team.overall or team.Overall)or rosterAverage(nil)
+	if attack<=0 then attack=rosterAverage({LW=true,RW=true,ST=true,CF=true,LM=true,RM=true})end
+	if midfield<=0 then midfield=rosterAverage({CM=true,CDM=true,CAM=true,LM=true,RM=true})end
+	if defense<=0 then defense=rosterAverage({GK=true,LB=true,RB=true,CB=true,LWB=true,RWB=true})end
+	if overall<=0 then overall=rosterAverage(nil)end
 	return {
 		teamName=team.teamName or team.Name or "VOLTRA FC",
 		logo=team.logo or team.Logo,
 		country=team.country or team.Country or "VTR",
 		league=team.league or team.League or "RANKED",
-		overall=team.overall or team.Overall or 0,
-		attack=team.attack or team.Attack or 0,
-		midfield=team.midfield or team.Midfield or 0,
-		defense=team.defense or team.Defense or 0,
+		overall=overall,
+		attack=attack,
+		midfield=midfield,
+		defense=defense,
 		BadgeIdentity=team.BadgeIdentity or team.badgeIdentity,
 		colors=team.colors or team.Colors,
+		kits=team.kits or team.Kits,
+		HomeKitData=team.kits and team.kits.Home or team.Kits and team.Kits.Home,
+		AwayKitData=team.kits and team.kits.Away or team.Kits and team.Kits.Away,
 	}
 end
 
@@ -692,6 +716,7 @@ end
 
 function Service:_ticketFor(player: Player, profile: any, roster: any, device: string): any
 	local crossplay = not profile.UIState or not profile.UIState.Settings or profile.UIState.Settings.Crossplay ~= false
+	local summary=self:_summaryForRoster(roster)
 	return {
 		UserId = player.UserId,
 		Name = player.Name,
@@ -701,10 +726,15 @@ function Service:_ticketFor(player: Player, profile: any, roster: any, device: s
 		DeviceType = device,
 		Crossplay = crossplay,
 		CreatedAt = os.time(),
-		TeamName = roster.Team.teamName,
-		TeamLogo = roster.Team.logo,
-		TeamOverall = roster.Team.overall,
+		TeamName = summary.teamName,
+		TeamLogo = summary.logo,
+		TeamOverall = summary.overall,
+		TeamAttack = summary.attack,
+		TeamMidfield = summary.midfield,
+		TeamDefense = summary.defense,
 		TeamBadgeIdentity = roster.Team.BadgeIdentity or roster.Team.badgeIdentity,
+		TeamFlagImage = roster.Team.FlagImage or roster.Team.flagImage,
+		TeamBadgeImage = roster.Team.BadgeImage or roster.Team.badgeImage or roster.Team.LogoImage or roster.Team.logoImage,
 	}
 end
 
@@ -733,10 +763,20 @@ function Service:_makeAssignment(matchId: string, accessCode: string, privateSer
 		AwayTeamName = awayTicket.TeamName,
 		HomeLogo = homeTicket.TeamLogo,
 		AwayLogo = awayTicket.TeamLogo,
+		HomeFlagImage = homeTicket.TeamFlagImage,
+		AwayFlagImage = awayTicket.TeamFlagImage,
+		HomeBadgeImage = homeTicket.TeamBadgeImage,
+		AwayBadgeImage = awayTicket.TeamBadgeImage,
 		HomeBadgeIdentity = homeTicket.TeamBadgeIdentity,
 		AwayBadgeIdentity = awayTicket.TeamBadgeIdentity,
 		HomeOverall = homeTicket.TeamOverall,
 		AwayOverall = awayTicket.TeamOverall,
+		HomeAttack = homeTicket.TeamAttack,
+		AwayAttack = awayTicket.TeamAttack,
+		HomeMidfield = homeTicket.TeamMidfield,
+		AwayMidfield = awayTicket.TeamMidfield,
+		HomeDefense = homeTicket.TeamDefense,
+		AwayDefense = awayTicket.TeamDefense,
 		Role = role,
 		CreatedAt = os.time(),
 	}
@@ -784,6 +824,12 @@ function Service:_teleportToAssignment(player: Player, assignment: any)
 		AwayBadgeIdentity = assignment.AwayBadgeIdentity,
 		HomeOverall = assignment.HomeOverall,
 		AwayOverall = assignment.AwayOverall,
+		HomeAttack = assignment.HomeAttack,
+		AwayAttack = assignment.AwayAttack,
+		HomeMidfield = assignment.HomeMidfield,
+		AwayMidfield = assignment.AwayMidfield,
+		HomeDefense = assignment.HomeDefense,
+		AwayDefense = assignment.AwayDefense,
 		Role = assignment.Role,
 		MatchId = assignment.MatchId,
 	})

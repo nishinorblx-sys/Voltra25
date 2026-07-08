@@ -14,6 +14,69 @@ local ProfileService={};ProfileService.__index=ProfileService
 
 local function copy(value:any):any if type(value)~="table" then return value end;local result={};for key,child in value do result[key]=copy(child) end;return result end
 
+local function ensureList(parent:any,key:string)
+	parent[key]=type(parent[key])=="table" and parent[key] or {}
+	return parent[key]
+end
+
+local removedDefaultKits={starter_black_green=true,starter_silver_green=true,starter_graphite_white=true}
+
+local function normalizeDefaultKits(profile:any)
+	local kits=ensureList(profile.StoreOwnership,"Kits")
+	local normalized={}
+	local hasHome=false
+	for _,kitId in kits do
+		if kitId=="home_kit" then
+			hasHome=true
+			table.insert(normalized,kitId)
+		elseif not removedDefaultKits[kitId] then
+			table.insert(normalized,kitId)
+		end
+	end
+	if not hasHome then table.insert(normalized,1,"home_kit") end
+	profile.StoreOwnership.Kits=normalized
+	local equipped=profile.UIState and profile.UIState.EquippedCosmetics
+	if type(equipped)=="table" and (not equipped.ActiveKit or equipped.ActiveKit=="" or removedDefaultKits[equipped.ActiveKit]) then
+		equipped.ActiveKit="home_kit"
+	end
+end
+
+local function ensureMonetizationFields(profile:any)
+	profile.Currency=type(profile.Currency)=="table" and profile.Currency or {}
+	profile.Currency.Coins=tonumber(profile.Currency.Coins) or EconomyConfig.StarterCoins
+	profile.Currency.Bolts=tonumber(profile.Currency.Bolts) or EconomyConfig.StarterBolts
+	profile.Currency.VoltraPoints=tonumber(profile.Currency.VoltraPoints) or EconomyConfig.StarterVoltraPoints or 0
+	profile.StoreOwnership=type(profile.StoreOwnership)=="table" and profile.StoreOwnership or {}
+	ensureList(profile.StoreOwnership,"Kits")
+	ensureList(profile.StoreOwnership,"Stadiums")
+	ensureList(profile.StoreOwnership,"Cosmetics")
+	ensureList(profile.StoreOwnership,"GamePasses")
+	profile.ActiveBoosts=type(profile.ActiveBoosts)=="table" and profile.ActiveBoosts or {}
+	profile.ActiveBoosts.Coins2xUntil=tonumber(profile.ActiveBoosts.Coins2xUntil) or 0
+	profile.PurchaseHistory=type(profile.PurchaseHistory)=="table" and profile.PurchaseHistory or {}
+	profile.StarCard=type(profile.StarCard)=="table" and profile.StarCard or {Offer=nil,RerollsToday=0,RerollDay=0}
+	profile.UIState=type(profile.UIState)=="table" and profile.UIState or copy(DefaultProfile.UIState)
+	profile.UIState.EquippedCosmetics=type(profile.UIState.EquippedCosmetics)=="table" and profile.UIState.EquippedCosmetics or {}
+	local equipped=profile.UIState.EquippedCosmetics
+	for key,value in {ActiveKit="home_kit",StadiumTheme="academy_ground",BootStyle="",GoalEffect="",GoalMusic="",CustomGoalMusicId="",CustomGoalMusicStart=0,Walkout="",Celebration="",ProfileFrame="",ClubBanner="",Nameplate=""} do
+		if equipped[key]==nil then equipped[key]=value end
+	end
+	normalizeDefaultKits(profile)
+	if table.find(profile.StoreOwnership.GamePasses,"vip_pass") and not table.find(profile.StoreOwnership.Kits,"vip_voltra_kit") then
+		table.insert(profile.StoreOwnership.Kits,"vip_voltra_kit")
+	end
+	profile.OwnedCosmetics=type(profile.OwnedCosmetics)=="table" and profile.OwnedCosmetics or {}
+	for key,value in equipped do
+		if profile.OwnedCosmetics[key]==nil then profile.OwnedCosmetics[key]=value end
+	end
+	if equipped.ActiveKit==nil or equipped.ActiveKit=="" or removedDefaultKits[equipped.ActiveKit] then
+		equipped.ActiveKit="home_kit"
+	end
+	if profile.OwnedCosmetics.ActiveKit==nil or profile.OwnedCosmetics.ActiveKit=="" or removedDefaultKits[profile.OwnedCosmetics.ActiveKit] then
+		profile.OwnedCosmetics.ActiveKit=equipped.ActiveKit
+	end
+end
+
 local migrations={
 	[1]=function(p:any) p.StoreOwnership=p.StoreOwnership or {Kits={},Stadiums={},Cosmetics={}};p.Onboarding=p.Onboarding or {Complete=false,Step=1};return 2 end,
 	[2]=function(p:any) if type(p.CreatedAt)~="number" or p.CreatedAt<=0 then p.CreatedAt=os.time() end;p.LastLogin=os.time();p.OnboardingCompleted=p.Onboarding and p.Onboarding.Complete or false;if not p.Squad or next(p.Squad)==nil then p.Squad=table.clone(p.UIState and p.UIState.SelectedSquad or {}) end;if not p.Settings or next(p.Settings)==nil then p.Settings=table.clone(p.UIState and p.UIState.Settings or {}) end;if not p.OwnedCosmetics or next(p.OwnedCosmetics)==nil then p.OwnedCosmetics=table.clone(p.UIState and p.UIState.EquippedCosmetics or {}) end;p.Version=3;p.SchemaVersion=3;return 3 end,
@@ -25,6 +88,8 @@ local migrations={
 	[8]=function(p:any) p.MatchSetup=p.MatchSetup or {MatchLength=6,Difficulty="Professional",MatchType="Objective Match",HomeTeamId="",AwayTeamId="",HomeKit="Home",AwayKit="Away",StadiumId="voltra_arena",Weather="Clear",Time="Evening",Completed=false,SavedAt=0,KitConflict=false};p.Version=9;p.SchemaVersion=9;return 9 end,
 	[9]=function(p:any)local club=p.ClubMembership or{};local onboarding=p.Onboarding or{};onboarding.IdentityConfigured=onboarding.IdentityConfigured==true or(onboarding.PrimaryColor and onboarding.PrimaryColor~=""and onboarding.KitStyle and onboarding.KitStyle~="")or onboarding.Complete==true;for key,value in ClubIdentityConfig.Default do if club[key]==nil or club[key]==""then club[key]=value end;if onboarding[key]==nil or onboarding[key]==""then onboarding[key]=value end end;club.KitStyle=ClubIdentityConfig.ResolveStyle(club.KitStyle);onboarding.KitStyle=ClubIdentityConfig.ResolveStyle(onboarding.KitStyle);p.ClubMembership=club;p.Onboarding=onboarding;p.Version=10;p.SchemaVersion=10;return 10 end,
 	[10]=function(p:any) p.Version=11;p.SchemaVersion=11;return 11 end,
+	[11]=function(p:any) p.Version=12;p.SchemaVersion=12;return 12 end,
+	[12]=function(p:any) ensureMonetizationFields(p);p.Version=13;p.SchemaVersion=13;return 13 end,
 }
 
 local function normalizePackInstances(profile:any)
@@ -119,7 +184,10 @@ function ProfileService:_migrate(profile:any):any
 	if (profile.ClubMembership.Abbreviation==nil or profile.ClubMembership.Abbreviation=="") and type(profile.ClubMembership.Tag)=="string" and profile.ClubMembership.Tag~="" then profile.ClubMembership.Abbreviation=string.upper(profile.ClubMembership.Tag)end;if (profile.ClubMembership.Tag==nil or profile.ClubMembership.Tag=="") and type(profile.ClubMembership.Abbreviation)=="string" and profile.ClubMembership.Abbreviation~="" then profile.ClubMembership.Tag=string.upper(profile.ClubMembership.Abbreviation)end
 	for key,value in ClubIdentityConfig.Default do if profile.ClubMembership[key]==nil or profile.ClubMembership[key]==""then profile.ClubMembership[key]=value end;if profile.Onboarding[key]==nil or profile.Onboarding[key]==""then profile.Onboarding[key]=value end end
 	profile.ClubMembership.KitStyle=ClubIdentityConfig.ResolveStyle(profile.ClubMembership.KitStyle);profile.Onboarding.KitStyle=ClubIdentityConfig.ResolveStyle(profile.Onboarding.KitStyle)
-	profile.UIState=profile.UIState or copy(DefaultProfile.UIState);profile.UIState.Settings=profile.UIState.Settings or {};local matchDefaults={TimedFinishing=true,MenuMusic=true,MotionEffects=true,PerformanceMode=false,InvertY=false,HighContrast=false,ReducedMotion=false,Crossplay=true,MasterVolume=0.8,CameraPreset="WideBroadcast",CameraZoomMode="Wide",PlayerNames="Active Only",Trainer="Basic",PassReceiverAutoSwitch="Assisted",ReceiverAssist="Light",Minimap="Medium",MinimapOrientation="Broadcast",BroadcastHeight="178",BroadcastZoom="50",CameraSpeed="1",CameraSide="Near",PauseKey="M",SkipKey="Space"};profile.Settings=profile.Settings or {};for key,value in matchDefaults do if profile.UIState.Settings[key]==nil then profile.UIState.Settings[key]=value end;if profile.Settings[key]==nil then profile.Settings[key]=profile.UIState.Settings[key]end end;for _,target in{profile.UIState.Settings,profile.Settings}do local preset=tostring(target.CameraPreset or"");if preset=="Broadcast"or preset=="Wide Broadcast"then target.CameraPreset="WideBroadcast"elseif preset=="Close Broadcast"then target.CameraPreset="CloseBroadcast"end end;for _,key in{"Commentary","CommentaryLanguage","CommentaryVolume"}do profile.UIState.Settings[key]=nil;profile.Settings[key]=nil end
+	profile.UIState=profile.UIState or copy(DefaultProfile.UIState);profile.UIState.Settings=profile.UIState.Settings or {};local matchDefaults={TimedFinishing=true,MenuMusic=true,MotionEffects=true,PerformanceMode=false,InvertY=false,HighContrast=false,ReducedMotion=false,Crossplay=true,MasterVolume=0.8,CameraPreset="Tactical",CameraZoomMode="Wide",PlayerNames="Active Only",Trainer="Basic",PassReceiverAutoSwitch="Assisted",ReceiverAssist="Light",Minimap="Medium",MinimapOrientation="Broadcast",BroadcastHeight="178",BroadcastZoom="50",CameraSpeed="1",CameraSide="Near",PauseKey="M",SkipKey="Space",TutorialComplete=false,TutorialStep=1,TutorialDevice=""};profile.Settings=profile.Settings or {};for key,value in matchDefaults do if profile.UIState.Settings[key]==nil then profile.UIState.Settings[key]=value end;if profile.Settings[key]==nil then profile.Settings[key]=profile.UIState.Settings[key]end end;for _,target in{profile.UIState.Settings,profile.Settings}do local preset=tostring(target.CameraPreset or"");if preset=="Broadcast"or preset=="WideBroadcast"or preset=="Wide Broadcast"or preset=="CloseBroadcast"or preset=="Close Broadcast"or preset=="End to End"then target.CameraPreset="Tactical"end end;for _,key in{"Commentary","CommentaryLanguage","CommentaryVolume"}do profile.UIState.Settings[key]=nil;profile.Settings[key]=nil end;ensureMonetizationFields(profile)
+	if profile.Settings.TutorialComplete ~= nil then profile.UIState.Settings.TutorialComplete = profile.Settings.TutorialComplete == true end
+	if tonumber(profile.Settings.TutorialStep) then profile.UIState.Settings.TutorialStep = math.clamp(math.floor(tonumber(profile.Settings.TutorialStep) or 1), 1, 20) end
+	if profile.Settings.TutorialDevice ~= nil then profile.UIState.Settings.TutorialDevice = tostring(profile.Settings.TutorialDevice or ""):sub(1, 32) end
 	if DeveloperConfig.InfiniteCoinsEveryone then profile.Currency.Coins=EconomyConfig.MaximumCoins end
 	return profile
 end
@@ -142,6 +210,15 @@ function ProfileService:Start()
 		end
 		local profile=profileOrError
 		profile.Profile.Avatar.UserId=player.UserId
+		local equipped=profile.UIState and profile.UIState.EquippedCosmetics or {}
+		player:SetAttribute("VTRGoalMusic",equipped.GoalMusic or "")
+		player:SetAttribute("VTRCustomGoalMusicId",equipped.CustomGoalMusicId or "")
+		player:SetAttribute("VTRCustomGoalMusicStart",tonumber(equipped.CustomGoalMusicStart) or 0)
+		player:SetAttribute("VTRGoalEffect",equipped.GoalEffect or "")
+		player:SetAttribute("VTRCelebration",equipped.Celebration or "")
+		player:SetAttribute("VTRWalkout",equipped.Walkout or "")
+		player:SetAttribute("VTRBootStyle",equipped.BootStyle or "")
+		player:SetAttribute("VTRVIP",profile.StoreOwnership and type(profile.StoreOwnership.GamePasses)=="table" and table.find(profile.StoreOwnership.GamePasses,"vip_pass")~=nil)
 		player:SetAttribute("VTRNewProfile",isNew)
 		player:SetAttribute("VTRProfileReady",true)
 	end

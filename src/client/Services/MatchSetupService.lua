@@ -69,9 +69,21 @@ function Service:WatchMatch():any
 end
 function Service:StartShootingPractice():any
 	return VoltraMatchTeleport.Run("Shooting Practice",function()
-		return request("StartShootingPractice",{PracticeMode="Shooting"})
+		return request("StartShootingPractice",{AIMatchTeleport=true})
 	end)
 end
+function Service:GetWorldCup():any return request("GetWorldCup")end
+function Service:BeginWorldCup(country:string):any return request("BeginWorldCup",{Country=country})end
+function Service:ResetWorldCup():any return request("ResetWorldCup")end
+function Service:EndWorldCup():any return request("EndWorldCup")end
+function Service:ClaimWorldCupRewards():any return request("ClaimWorldCupRewards")end
+function Service:StartWorldCupMatch():any
+	return VoltraMatchTeleport.Run("World Cup Match",function()
+		return request("StartWorldCupMatch",{AIMatchTeleport=true})
+	end)
+end
+function Service:SimulateWorldCupMatch():any return request("SimulateWorldCupMatch")end
+function Service:SimulateRestOfWorldCup():any return request("SimulateRestOfWorldCup")end
 local function deviceType():string
 	if UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled then return"Touch"end
 	if UserInputService.GamepadEnabled and not UserInputService.KeyboardEnabled then return"Gamepad"end

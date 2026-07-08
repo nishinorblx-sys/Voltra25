@@ -56,17 +56,25 @@ function Service:Step()
 	end
 	if hit then
 		local height = (self.Ball.Position - hit.Position):Dot(up)
-		if height < self.Radius - 0.28 then
+		if height < self.Radius - 0.18 then
 			local v=self.Ball.AssemblyLinearVelocity
-			local correction=self.Radius-height+0.03
-			self.Ball.CFrame += up * math.clamp(correction,0,math.max(.18,math.abs(v:Dot(up))*.025))
+			local correction=self.Radius-height+0.025
+			self.Ball.CFrame += up * math.max(correction,0)
 			local vertical=v:Dot(up)
-			local correctedVertical=vertical<0 and math.min(math.abs(vertical)*0.42,32) or vertical
+			local correctedVertical=vertical
+			if vertical<0 then
+				correctedVertical=0
+			elseif vertical<3 then
+				correctedVertical=0
+			end
 			local horizontal=v-up*vertical
 			self.Ball.AssemblyLinearVelocity=horizontal+up*correctedVertical
 		end
-		if height > 4.5 and self.Ball.AssemblyLinearVelocity.Magnitude < 2.25 then
-			self.Ball.CFrame += up * math.clamp(self.Radius - height, -1.5, 1.5)
+		if height > self.Radius + 0.45 and self.Ball.AssemblyLinearVelocity.Magnitude < 2.25 then
+			self.Ball.CFrame += up * math.clamp(self.Radius - height, -0.35, 0)
+			local v=self.Ball.AssemblyLinearVelocity
+			local vertical=v:Dot(up)
+			if math.abs(vertical)<2.5 then self.Ball.AssemblyLinearVelocity=v-up*vertical end
 		end
 	else
 		if localPosition.Y < self.Radius - 0.45 then self.Ball.CFrame += up * (self.Radius - localPosition.Y + 0.05) end

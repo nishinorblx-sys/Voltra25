@@ -5,11 +5,11 @@ local UIConfig = {}
 UIConfig.Navigation = {
 	{ Id = "Home", Label = "HOME", Icon = "H", Order = 1 },
 	{ Id = "UltimateTeam", Label = "SQUAD BUILDER", Icon = "XI", Order = 2 },
-	{ Id = "Shooting", Label = "SHOOTING", Icon = "9", Order = 3 },
-	{ Id = "Play", Label = "CAMPAIGN", Icon = "C", Order = 4 },
-	{ Id = "Ranked", Label = "RANKED", Icon = "R", Order = 5 },
-	{ Id = "Inventory", Label = "INVENTORY", Icon = "I", Order = 6 },
-	{ Id = "Store", Label = "STORE", Icon = "S", Order = 7 },
+	{ Id = "WorldCup", Label = "WORLD CUP", Icon = "WC", Order = 4 },
+	{ Id = "Play", Label = "CAMPAIGN", Icon = "C", Order = 5 },
+	{ Id = "Ranked", Label = "RANKED", Icon = "R", Order = 6 },
+	{ Id = "Inventory", Label = "INVENTORY", Icon = "I", Order = 7 },
+	{ Id = "Store", Label = "STORE", Icon = "S", Order = 8 },
 }
 
 UIConfig.Home = {
@@ -28,7 +28,7 @@ UIConfig.Pages = {
 	UltimateTeam = { Kicker = "VTR LITE SQUAD", Title = "SQUAD BUILDER", Subtitle = "Formation, tactics, bench, reserves and player instructions." },
 	Inventory = { Kicker = "YOUR COLLECTION", Title = "INVENTORY", Subtitle = "Packs, owned players and club items." },
 	Store = { Kicker = "VOLTRA MARKET", Title = "STORE", Subtitle = "Buy coins with Robux placeholders, then spend coins on sealed player packs." },
-	Shooting = { Kicker = "STRIKER LAB", Title = "SHOOTING", Subtitle = "Solo striker reps against an AI goalkeeper." },
+	WorldCup = { Kicker = "NATIONAL STAGE", Title = "WORLD CUP", Subtitle = "Pick a nation, draw groups, qualify, and chase the trophy." },
 	Play = { Kicker = "OFFLINE CAMPAIGN", Title = "CAMPAIGN", Subtitle = "Seven difficulty ladders. Five squads each. Win packs and unlock the next tier." },
 	Ranked = { Kicker = "7-WIN TOURNAMENT", Title = "RANKED", Subtitle = "Enter with your current squad. Seven wins earns a Mythic Pack; three losses ends the run." },
 }

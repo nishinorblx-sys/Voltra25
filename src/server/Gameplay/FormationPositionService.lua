@@ -54,44 +54,6 @@ function Service.ThrowIn(teams: any, restartTeam: string, location: Vector3, pit
 	end
 	taker = taker or teams[restartTeam][2] or teams[restartTeam][1]
 	move(taker, spot, world(pitchCFrame, 0, z))
-	local options = {}
-	for _, model in teams[restartTeam] do
-		if model ~= taker and not isKeeper(model) and root(model) then
-			table.insert(options, model)
-		end
-	end
-	table.sort(options, function(a, b) return ((root(a) :: BasePart).Position - spot).Magnitude < ((root(b) :: BasePart).Position - spot).Magnitude end)
-	for index = 1, math.min(2, #options) do
-		local option = options[index]
-		local optionPosition = world(pitchCFrame, x - touchSign * (index == 1 and 13 or 20), z + (index == 1 and 0 or -17))
-		move(option, optionPosition, spot)
-	end
-	local protected: {[Model]: boolean} = {[taker] = true}
-	for index = 1, math.min(2, #options) do
-		protected[options[index]] = true
-	end
-	for index, model in teams[restartTeam] do
-		if protected[model] or isKeeper(model) then continue end
-		local lane = ((index - 1) % 5 - 2) * width * 0.16
-		local depth = math.clamp(z + (restartTeam == "Home" and 1 or -1) * (46 + math.floor((index - 1) / 4) * 28), -length / 2 + 28, length / 2 - 28)
-		move(model, world(pitchCFrame, lane, depth), spot)
-	end
-	local defending = restartTeam == "Home" and "Away" or "Home"
-	local marker: Model? = nil
-	local markerDistance = math.huge
-	for _, model in teams[defending] do
-		local modelRoot = root(model)
-		if modelRoot and not isKeeper(model) then
-			local distance = (modelRoot.Position - spot).Magnitude
-			if distance < markerDistance then
-				markerDistance = distance
-				marker = model
-			end
-		end
-	end
-	if marker then
-		move(marker, world(pitchCFrame, x - touchSign * 25, z + 2), spot)
-	end
 	return taker
 end
 

@@ -1,4 +1,6 @@
 --!strict
+local Players = game:GetService("Players")
+
 local Controller = {}
 Controller.__index = Controller
 
@@ -60,9 +62,11 @@ end
 local function makeYellowCardMarker(): BillboardGui
 	local gui = Instance.new("BillboardGui")
 	gui.Name = "VTRYellowCardIcon"
-	gui.Size = UDim2.fromOffset(18, 24)
-	gui.StudsOffsetWorldSpace = Vector3.new(0, 5.05, 0)
+	gui.Size = UDim2.fromOffset(30, 38)
+	gui.StudsOffsetWorldSpace = Vector3.new(0, 5.85, 0)
 	gui.AlwaysOnTop = true
+	gui.LightInfluence = 0
+	gui.MaxDistance = 1000
 	gui.Enabled = false
 	local card = Instance.new("Frame")
 	card.Name = "Card"
@@ -81,7 +85,18 @@ local function makeYellowCardMarker(): BillboardGui
 	stroke.Transparency = .35
 	stroke.Thickness = 1
 	stroke.Parent = card
-	gui.Parent = workspace.CurrentCamera
+	local y = Instance.new("TextLabel")
+	y.Name = "Y"
+	y.BackgroundTransparency = 1
+	y.Size = UDim2.fromScale(1, 1)
+	y.Text = "Y"
+	y.TextColor3 = Color3.fromRGB(20, 20, 12)
+	y.TextScaled = true
+	y.TextStrokeTransparency = 1
+	y.Font = Enum.Font.GothamBlack
+	y.Parent = card
+	local playerGui = Players.LocalPlayer and Players.LocalPlayer:FindFirstChildOfClass("PlayerGui")
+	gui.Parent = playerGui or workspace.CurrentCamera
 	return gui
 end
 
@@ -169,6 +184,31 @@ function Controller:_refreshNames()
 	-- Player identity belongs in the match HUD, never over the field models.
 end
 
+function Controller:_refreshYellowCards()
+	for _, sideList in self.Teams do
+		if type(sideList) ~= "table" then continue end
+		for _, model in sideList do
+			local marker = self.YellowCards[model]
+			local hasYellow = model.Parent ~= nil and model:GetAttribute("VTRYellowCard") == true and model:GetAttribute("VTRSentOff") ~= true and model:GetAttribute("VTRRedCard") ~= true
+			if hasYellow then
+				if not marker then
+					marker = makeYellowCardMarker()
+					self.YellowCards[model] = marker
+				end
+				marker.Adornee = rootOf(model)
+				marker.Enabled = marker.Adornee ~= nil
+				local playerGui = Players.LocalPlayer and Players.LocalPlayer:FindFirstChildOfClass("PlayerGui")
+				if playerGui and marker.Parent ~= playerGui then
+					marker.Parent = playerGui
+				end
+			elseif marker then
+				marker:Destroy()
+				self.YellowCards[model] = nil
+			end
+		end
+	end
+end
+
 function Controller:_nearest(side: string, point: Vector3, exclude: Model?): Model?
 	local best: Model? = nil
 	local distance = math.huge
@@ -227,28 +267,11 @@ function Controller:Update(dt: number)
 	self.Ring.Transparency = 1
 	self.TargetRing.Transparency = 1
 	self.Clock += dt
-	if self.Clock < 0.16 or not activeRoot then
+	if self.Clock < 0.16 then
 		return
 	end
 	self.Clock = 0
-	for _, sideList in self.Teams do
-		if type(sideList) == "table" then
-			for _, model in sideList do
-				local marker = self.YellowCards[model]
-				if model:GetAttribute("VTRYellowCard") == true then
-					if not marker then
-						marker = makeYellowCardMarker()
-						self.YellowCards[model] = marker
-					end
-					marker.Adornee = rootOf(model)
-					marker.Enabled = marker.Adornee ~= nil
-				elseif marker then
-					marker:Destroy()
-					self.YellowCards[model] = nil
-				end
-			end
-		end
-	end
+	self:_refreshYellowCards()
 	self:SetNextSwitch(nil)
 	self:SetOpponentTarget(nil)
 	self:SetPassTarget(nil)

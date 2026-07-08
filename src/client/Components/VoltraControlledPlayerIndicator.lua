@@ -18,7 +18,7 @@ local function makeBillboard(): BillboardGui
 	holder.Parent = gui
 	local text = Instance.new("TextLabel")
 	text.Name = "Tag"
-	text.BackgroundTransparency = 0.1
+	text.BackgroundTransparency = 0.42
 	text.BackgroundColor3 = Color3.fromHex("060906")
 	text.BorderSizePixel = 0
 	text.AnchorPoint = Vector2.new(0.5, 0)
@@ -34,7 +34,7 @@ local function makeBillboard(): BillboardGui
 	corner.Parent = text
 	local stroke = Instance.new("UIStroke")
 	stroke.Color = Color3.fromHex("B7FF1A")
-	stroke.Transparency = 0.08
+	stroke.Transparency = 0.45
 	stroke.Thickness = 1.75
 	stroke.Parent = text
 	local point = Instance.new("TextLabel")

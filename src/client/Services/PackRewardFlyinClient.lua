@@ -32,15 +32,22 @@ local function drain()
 	running = true
 
 	while #queue > 0 do
-		while localPlayer:GetAttribute("VTRInMatch") == true do
-			task.wait(0.5)
+		while localPlayer:GetAttribute("VTRInMatch") == true or localPlayer:GetAttribute("VTRHoldPackRewardFlyin") == true do
+			task.wait(0.12)
 		end
 		local entry = table.remove(queue, 1)
-		Animation.Play(entry.pack)
+		local dropUntil = tonumber(localPlayer:GetAttribute("VTRDropPackRewardFlyinUntil")) or 0
+		if entry.pack == "starter_launch" then
+			-- The founders starter pack is opened inside onboarding, so never
+			-- show the "sent to inventory" fly-in for it.
+		elseif dropUntil <= os.clock() then
+			Animation.Play(entry.pack)
+		end
 		ackRemote:FireServer({ entry.id })
-		task.wait(0.18)
+		task.wait(0.08)
 	end
 
+	localPlayer:SetAttribute("VTRDropPackRewardFlyinUntil", nil)
 	running = false
 end
 

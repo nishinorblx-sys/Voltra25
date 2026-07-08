@@ -1,6 +1,6 @@
 --!strict
 local ReplicatedStorage=game:GetService("ReplicatedStorage")
-local Source=require(ReplicatedStorage.VTR.Data.VTRPlayers)
+local Source=require(script.Parent.Parent.RawData.VTRPlayers)
 local RarityConfig=require(ReplicatedStorage.VTR.Shared.RarityConfig)
 local AppearanceTypes=require(ReplicatedStorage.VTR.Shared.AppearanceTypes)
 local CardTypes=require(ReplicatedStorage.VTR.Shared.CardTypes)

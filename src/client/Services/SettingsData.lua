@@ -31,9 +31,7 @@ return Factory.new({
 			{Title = "PERFORMANCE MODE", Subtitle = "OFF", Meta = "Reduces decorative effects", Action = {Label = "TOGGLE", Operation = "Toggle", Key = "PerformanceMode"}},
 		}},
 		{Id = "Camera", Label = "CAMERA", Description = "View and response", Cards = {
-			{Title = "CAMERA PRESET", Subtitle = "WIDE BROADCAST", Meta = "Default 1.5x original broadcast distance", Accent = true, Action = {Label = "SELECT WIDE", Operation = "Select", Key = "CameraPreset", Item = "WideBroadcast"}},
-			{Title = "CAMERA PRESET CLOSE", Subtitle = "CLOSE BROADCAST", Meta = "2.5x closer sideline match view", Action = {Label = "SELECT CLOSE", Operation = "Select", Key = "CameraPreset", Item = "CloseBroadcast"}},
-			{Title = "CAMERA PRESET END", Subtitle = "END TO END", Meta = "Goal-to-goal tactical direction", Action = {Label = "SELECT END", Operation = "Select", Key = "CameraPreset", Item = "End to End"}},
+			{Title = "CAMERA PRESET", Subtitle = "TACTICAL", Meta = "High sideline view with full team-shape visibility", Accent = true, Action = {Label = "SELECT TACTICAL", Operation = "Select", Key = "CameraPreset", Item = "Tactical"}},
 			{Title = "CAMERA PRESET PRO", Subtitle = "PRO", Meta = "Player-follow camera", Action = {Label = "SELECT PRO", Operation = "Select", Key = "CameraPreset", Item = "Pro"}},
 			{Title = "CAMERA ZOOM", Subtitle = "WIDE", Meta = "Default expanded pitch view", Accent = true, Action = {Label = "SELECT WIDE", Operation = "Select", Key = "CameraZoomMode", Item = "Wide"}},
 			{Title = "CAMERA ZOOM CLOSE", Subtitle = "CLOSE", Meta = "More player detail", Action = {Label = "SELECT CLOSE", Operation = "Select", Key = "CameraZoomMode", Item = "Close"}},
@@ -68,12 +66,13 @@ return Factory.new({
 			{Title = "CROSS-PLAY", Subtitle = "ENABLED", Meta = "All supported platforms", Action = {Label = "TOGGLE", Operation = "Toggle", Key = "Crossplay"}},
 			{Title = "SAVE SETTINGS", Subtitle = "SERVER PROFILE", Meta = "Saved for your next session", Action = {Label = "SAVE CHANGES", Operation = "Save", Confirm = true}},
 			{Title = "RESET LAUNCH PROFILE", Subtitle = "FRESH SAVE", Meta = "Studio only", Action = {Label = "RESET PROFILE", Operation = "Developer", ServerAction = "DeveloperResetProfile", Confirm = true}},
+			{Title = "NEW PLAYER GUIDE", Subtitle = "TUTORIAL", Meta = "Replay the complete VTR controls and mode guide", Action = {Label = "OPEN GUIDE", Operation = "ShowTutorial"}},
 		}},
 	},
 }, {
 	Owned = {},
 	Equipped = {},
 	Claimed = {},
-	Selections = {CameraPreset = "WideBroadcast", CameraZoomMode = "Wide", PlayerNames = "Active Only", Trainer = "Basic", PassReceiverAutoSwitch = "Assisted", ReceiverAssist = "Light", Minimap = "Medium", MinimapOrientation = "Broadcast", BroadcastHeight = "178", BroadcastZoom = "50", CameraSpeed = "1", CameraSide = "Near"},
-	Values = {TimedFinishing = true, MenuMusic = true, MotionEffects = true, PerformanceMode = false, InvertY = false, HighContrast = false, ReducedMotion = false, Crossplay = true, CameraPreset = "WideBroadcast", PlayerNames = "Active Only", Trainer = "Basic", PassReceiverAutoSwitch = "Assisted", ReceiverAssist = "Light", Minimap = "Medium", MinimapOrientation = "Broadcast", BroadcastHeight = "178", BroadcastZoom = "50", CameraSpeed = "1", CameraSide = "Near"},
+	Selections = {CameraPreset = "Tactical", CameraZoomMode = "Wide", PlayerNames = "Active Only", Trainer = "Basic", PassReceiverAutoSwitch = "Assisted", ReceiverAssist = "Light", Minimap = "Medium", MinimapOrientation = "Broadcast", BroadcastHeight = "178", BroadcastZoom = "50", CameraSpeed = "1", CameraSide = "Near"},
+	Values = {TimedFinishing = true, MenuMusic = true, MotionEffects = true, PerformanceMode = false, InvertY = false, HighContrast = false, ReducedMotion = false, Crossplay = true, CameraPreset = "Tactical", PlayerNames = "Active Only", Trainer = "Basic", PassReceiverAutoSwitch = "Assisted", ReceiverAssist = "Light", Minimap = "Medium", MinimapOrientation = "Broadcast", BroadcastHeight = "178", BroadcastZoom = "50", CameraSpeed = "1", CameraSide = "Near", TutorialComplete = false, TutorialStep = 1, TutorialDevice = ""},
 })

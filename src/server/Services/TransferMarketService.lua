@@ -11,7 +11,7 @@ local VALID_DURATIONS={[3600]=true,[10800]=true,[21600]=true,[43200]=true,[86400
 local function findCard(profile:any,id:string):any?for _,card in profile.PlayerCardInventory or{}do if card.Id==id or card.cardInstanceId==id then return card end end;return nil end
 local function hasBudget(requestType:any):boolean local ok,budget=pcall(function()return DataStoreService:GetRequestBudgetForRequestType(requestType)end);return not ok or(tonumber(budget)or 0)>0 end
 function Service.new(profiles:any,inventory:any,squad:any)
-	return setmetatable({Profiles=profiles,Inventory=inventory,Squad=squad,Listings=DataStoreService:GetDataStore("VTR25_TransferListings_v2"),Index=DataStoreService:GetOrderedDataStore("VTR25_TransferIndex_v2"),Mail=DataStoreService:GetDataStore("VTR25_TransferMail_v2"),Local={},Token=game.JobId~=""and game.JobId or HttpService:GenerateGUID(false)},Service)
+	return setmetatable({Profiles=profiles,Inventory=inventory,Squad=squad,Listings=DataStoreService:GetDataStore("VTR25_TransferListings_v4"),Index=DataStoreService:GetOrderedDataStore("VTR25_TransferIndex_v4"),Mail=DataStoreService:GetDataStore("VTR25_TransferMail_v4"),Local={},Token=game.JobId~=""and game.JobId or HttpService:GenerateGUID(false)},Service)
 end
 function Service:_queueMail(userId:number,entry:any)
 	pcall(function()self.Mail:UpdateAsync(tostring(userId),function(current:any)local mail=type(current)=="table"and current or{};table.insert(mail,entry);return mail end)end)

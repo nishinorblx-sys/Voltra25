@@ -1,6 +1,8 @@
 --!strict
 local RunService = game:GetService("RunService")
 local SoundService = game:GetService("SoundService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local MonetizationConfig = require(ReplicatedStorage.VTR.Shared.MonetizationConfig)
 
 local Controller = {}
 Controller.__index = Controller
@@ -17,7 +19,7 @@ local GOAL_COMMENTATORS = {
 	"rbxassetid://95283998273205",
 	"rbxassetid://135072046987673",
 }
-local FINAL_WHISTLE = "rbxassetid://135741471105087"
+local FINAL_WHISTLE = "rbxassetid://116302042443605"
 local DRIBBLE_SOUND = "rbxassetid://108878640377793"
 
 local GOAL_SOUNDS = {
@@ -26,6 +28,10 @@ local GOAL_SOUNDS = {
 	"rbxassetid://106000542837895",
 	"rbxassetid://75642333208760",
 }
+local APPROVED_GOAL_MUSIC = {}
+for _, track in MonetizationConfig.ApprovedGoalMusic do
+	APPROVED_GOAL_MUSIC[track.Id] = track.SoundId
+end
 
 local function playOneShot(soundId: string, volume: number, speed: number?)
 	local sound = Instance.new("Sound")
@@ -46,6 +52,46 @@ local function playOneShot(soundId: string, volume: number, speed: number?)
 			sound:Destroy()
 		end
 	end)
+end
+
+local function normalizeSoundId(value: any): string?
+	local raw = tostring(value or "")
+	if raw == "" then return nil end
+	if string.find(raw, "rbxassetid://", 1, true) == 1 then return raw end
+	local digits = string.match(raw, "(%d+)")
+	return digits and ("rbxassetid://" .. digits) or nil
+end
+
+local function playTimedSound(soundId: string, volume: number, startSecond: number, duration: number)
+	local normalized = normalizeSoundId(soundId)
+	if not normalized then return end
+	local sound = Instance.new("Sound")
+	sound.Name = "VTRCustomGoalMusic"
+	sound.SoundId = normalized
+	sound.Volume = volume
+	sound.RollOffMode = Enum.RollOffMode.InverseTapered
+	sound.Parent = SoundService
+	local started = false
+	local function start()
+		if started or not sound.Parent then return end
+		started = true
+		pcall(function()
+			sound.TimePosition = math.max(0, startSecond)
+		end)
+		sound:Play()
+		task.delay(duration, function()
+			if sound.Parent then
+				sound:Stop()
+				sound:Destroy()
+			end
+		end)
+	end
+	if sound.IsLoaded then
+		start()
+	else
+		sound.Loaded:Once(start)
+		task.delay(3, start)
+	end
 end
 
 local function allModels(teamModels: any): {Model}
@@ -94,11 +140,19 @@ function Controller:PlayKickoff()
 	playOneShot(KICKOFF_SOUND, 0.62, 1)
 end
 
-function Controller:PlayGoal()
+function Controller:PlayGoal(customMusicId: string?, customStartSecond: number?)
 	if os.clock() - (self.LastGoalSfxAt or 0) > .75 then
 		self.LastGoalSfxAt = os.clock()
-		playOneShot(GOAL_SOUNDS[math.random(1, #GOAL_SOUNDS)], 0.7, 1)
-		playOneShot("rbxassetid://75642333208760", 0.58, 1)
+		local approved = APPROVED_GOAL_MUSIC[tostring(customMusicId or "")]
+		local normalizedCustom = not approved and normalizeSoundId(customMusicId) or nil
+		if normalizedCustom then
+			playTimedSound(normalizedCustom, 0.72, tonumber(customStartSecond) or 0, 8)
+		else
+			playOneShot(approved or GOAL_SOUNDS[math.random(1, #GOAL_SOUNDS)], approved and 0.68 or 0.7, 1)
+		end
+		if not approved and not normalizedCustom then
+			playOneShot("rbxassetid://75642333208760", 0.58, 1)
+		end
 	end
 	task.delay(0.12, function()
 		playOneShot(GOAL_COMMENTATORS[math.random(1, #GOAL_COMMENTATORS)], 0.76, 1)

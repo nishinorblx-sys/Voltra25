@@ -48,6 +48,79 @@ function PackService.new(profiles: any, inventory: any)
 	return setmetatable({ Profiles = profiles, Inventory = inventory, LastOpen = {}, RankedProfiles = nil }, PackService)
 end
 
+local function hasVip(profile:any):boolean
+	local passes=profile and profile.StoreOwnership and profile.StoreOwnership.GamePasses
+	return type(passes)=="table" and table.find(passes,"vip_pass")~=nil
+end
+
+local function boostedOdds(odds:any, vip:boolean):any
+	local result=table.clone(odds or {})
+	if not vip then return result end
+	local total=0
+	for _,rarity in rarityOrder do
+		local value=tonumber(result[rarity])or 0
+		if (rarityRank[rarity]or 0)>=(rarityRank.Rare or 6) then value*=1.1 end
+		result[rarity]=value
+		total+=value
+	end
+	if total>0 then
+		for _,rarity in rarityOrder do result[rarity]=(tonumber(result[rarity])or 0)/total*100 end
+	end
+	return result
+end
+
+local function lowerRarity(rarity:string):string
+	local rank=rarityRank[rarity]or rarityRank.Bronze
+	return rarityOrder[math.max(1,rank-1)]or"Starter"
+end
+
+local function lowTierOdds(definition:any):any
+	local odds=definition.Odds or{Starter=100}
+	local minimum=definition.GuaranteedMinRarity
+	if not minimum then
+		local bestRank=1
+		for rarity,value in odds do
+			if (tonumber(value)or 0)>0 then bestRank=math.max(bestRank,rarityRank[rarity]or 1)end
+		end
+		minimum=rarityOrder[math.max(1,bestRank-1)]or"Bronze"
+	end
+	local maxRank=math.max(1,(rarityRank[minimum]or 2)-1)
+	local result={}
+	local total=0
+	local minRank=math.max(1,maxRank-1)
+	for _,rarity in rarityOrder do
+		local rank=rarityRank[rarity]or 1
+		if rank>=minRank and rank<=maxRank then
+			local value=tonumber(odds[rarity])or 0
+			if value<=0 then value=(rank==maxRank and 75 or 25)end
+			result[rarity]=value
+			total+=value
+		end
+	end
+	if total<=0 then result[lowerRarity(minimum)]=100 end
+	return result
+end
+
+local function rollPackRarities(definition:any,odds:any):{string}
+	local count=math.max(1,math.floor(tonumber(definition.CardCount)or 1))
+	local goodSlots=math.min(count,math.random()<.34 and 2 or 1)
+	if count<=3 then goodSlots=1 end
+	local minimum=definition.GuaranteedMinRarity
+	local lowOdds=lowTierOdds(definition)
+	local rolled={}
+	for index=1,count do rolled[index]=rollRarity(lowOdds)end
+	local usedSlots={}
+	for _=1,goodSlots do
+		local slot
+		repeat slot=math.random(1,count)until not usedSlots[slot]
+		usedSlots[slot]=true
+		local rarity=rollRarity(odds)
+		if minimum and (rarityRank[rarity]or 0)<(rarityRank[minimum]or 0)then rarity=minimum end
+		rolled[slot]=rarity
+	end
+	return rolled
+end
+
 function PackService:SetRankedProfiles(rankedProfiles:any)
 	self.RankedProfiles=rankedProfiles
 end
@@ -103,12 +176,12 @@ function PackService:Open(player: Player, packInstanceId: string): (boolean, { a
 	owned.status = "opening";owned.Status = "opening"
 	local profile = self.Profiles:GetProfile(player)
 	if not profile then owned.status="unopened";owned.Status="unopened";return false,"Profile unavailable." end
+	local vipBoost=hasVip(profile)
+	local odds=boostedOdds(definition.Odds or { Starter = 100 },vipBoost)
 	local previousCardCount = #profile.PlayerCardInventory
 	local reveals = {}
 	local success = pcall(function()
-		local rolled = {};local guaranteeMet = definition.GuaranteedMinRarity == nil
-		for index = 1, definition.CardCount do local rarity = rollRarity(definition.Odds or { Starter = 100 });rolled[index] = rarity;if definition.GuaranteedMinRarity and (rarityRank[rarity] or 0) >= (rarityRank[definition.GuaranteedMinRarity] or 0) then guaranteeMet = true end end
-		if not guaranteeMet then rolled[#rolled] = definition.GuaranteedMinRarity end
+		local rolled = rollPackRarities(definition,odds)
 		for index, rarity in rolled do
 			local pool = poolFor(rarity)
 			local playerDefinition = pool[math.random(1, #pool)]
@@ -124,8 +197,10 @@ function PackService:Open(player: Player, packInstanceId: string): (boolean, { a
 				for key, value in instance do if details[key] == nil then details[key] = value end end
 				details.cardType=instance.cardType
 				details.CardType=instance.CardType
+				details.VTRVipPackBoost=vipBoost
 				table.insert(reveals, details)
 			else
+				instance.VTRVipPackBoost=vipBoost
 				table.insert(reveals, instance)
 			end
 		end

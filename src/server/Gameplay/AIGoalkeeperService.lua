@@ -6,12 +6,20 @@ local Service = {}
 
 function Service.PositionTarget(context: any, keeper: any): Vector3
 	local ballPitch = context.BallTeam[keeper.Side]
-	local ownBox = PitchConfig.InZone(ballPitch, "OwnBox")
-	local ballWide = ballPitch.X < 100 or ballPitch.X > 324
-	local xShift = (ballPitch.X - PitchConfig.HALF_WIDTH) * (ballWide and 0.3 or 0.18)
-	local z = ownBox and math.clamp(ballPitch.Z * 0.45, 12, 42) or ballWide and 18 or 26
-	z = math.clamp(z, 10, 58)
-	local targetPitch = Vector3.new(math.clamp(PitchConfig.HALF_WIDTH + xShift, 158, 266), 3, z)
+	local owner = context.Owner
+	local ownPossession = owner ~= nil and owner:GetAttribute("VTRTeam") == keeper.Side
+	local halfLength = PitchConfig.PITCH_LENGTH * 0.5
+	local frontEdge = PitchConfig.Zones.OwnBox.ZMax - 8
+	local lineDepth = 14
+	local z = lineDepth
+	if ownPossession and ballPitch.Z > halfLength then
+		local advance = math.clamp((ballPitch.Z - halfLength) / halfLength, 0, 1)
+		z = lineDepth + (frontEdge - lineDepth) * advance
+	end
+	local ballToCenter = ballPitch.X - PitchConfig.HALF_WIDTH
+	local coverScale = ownPossession and 0.34 or 0.72
+	local x = PitchConfig.HALF_WIDTH + ballToCenter * coverScale
+	local targetPitch = Vector3.new(math.clamp(x, 146, 278), 3, math.clamp(z, lineDepth, frontEdge))
 	return PitchConfig.TeamPitchPositionToWorld(targetPitch, keeper.Side, context.Options)
 end
 

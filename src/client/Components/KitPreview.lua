@@ -1,4 +1,5 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local TweenService = game:GetService("TweenService")
 
 local VTR = ReplicatedStorage:WaitForChild("VTR", 15)
 local Shared = VTR:WaitForChild("Shared")
@@ -75,6 +76,34 @@ local function addRotatedBand(parent, color, position, size, rotation, zIndex)
 	return band
 end
 
+local function addKitText(parent, name, textValue, position, size, color, textSize, zIndex)
+	local label = Instance.new("TextLabel")
+	label.Name = name
+	label.AnchorPoint = Vector2.new(0.5, 0.5)
+	label.BackgroundTransparency = 1
+	label.Position = position
+	label.Size = size
+	label.Text = textValue
+	label.TextColor3 = color
+	label.TextScaled = true
+	label.Font = Enum.Font.GothamBlack
+	label.ZIndex = zIndex or 8
+	label.Parent = parent
+	local constraint = Instance.new("UITextSizeConstraint")
+	constraint.MaxTextSize = textSize
+	constraint.MinTextSize = 4
+	constraint.Parent = label
+	return label
+end
+
+local function addVoltraMarks(torso, accent, showWordmark)
+	addKitText(torso, "VoltraBolt", "V", UDim2.fromScale(0.79, 0.18), UDim2.fromScale(0.14, 0.14), accent, 22, 8)
+	addKitText(torso, "VoltraSpark", "Z", UDim2.fromScale(0.21, 0.20), UDim2.fromScale(0.10, 0.10), accent, 14, 8)
+	if showWordmark then
+		addKitText(torso, "VoltraWordmark", "VOLTRA", UDim2.fromScale(0.5, 0.37), UDim2.fromScale(0.52, 0.11), accent, 16, 8)
+	end
+end
+
 local function addTorsoPattern(torso, style, primary, secondary, accent)
 	-- Every pattern object is deliberately parented to this clipped torso mask.
 	if style == "Vertical Stripes" then
@@ -124,22 +153,126 @@ local function addTorsoPattern(torso, style, primary, secondary, accent)
 		frame(torso, "HalfPanel", UDim2.fromScale(0.25, 0.5), UDim2.fromScale(0.5, 1.08), secondary, 3)
 		addRotatedBand(torso, accent, UDim2.fromScale(0.5, 0.5), UDim2.fromScale(0.032, 0.96), -18, 4)
 		addRotatedBand(torso, accent, UDim2.fromScale(0.58, 0.45), UDim2.fromScale(0.035, 0.52), 35, 4)
+	elseif style == "Voltra Founder" then
+		addRotatedBand(torso, Color3.fromRGB(18, 18, 18), UDim2.fromScale(0.34, 0.36), UDim2.fromScale(0.055, 0.72), -48, 3)
+		addRotatedBand(torso, Color3.fromRGB(18, 18, 18), UDim2.fromScale(0.66, 0.36), UDim2.fromScale(0.055, 0.72), 48, 3)
+		addRotatedBand(torso, Color3.fromRGB(35, 35, 35), UDim2.fromScale(0.37, 0.48), UDim2.fromScale(0.045, 0.66), -48, 4)
+		addRotatedBand(torso, Color3.fromRGB(35, 35, 35), UDim2.fromScale(0.63, 0.48), UDim2.fromScale(0.045, 0.66), 48, 4)
+		addRotatedBand(torso, accent, UDim2.fromScale(0.18, 0.56), UDim2.fromScale(0.025, 0.72), 0, 5)
+		addRotatedBand(torso, accent, UDim2.fromScale(0.82, 0.56), UDim2.fromScale(0.025, 0.72), 0, 5)
+		frame(torso, "FounderLowerTrim", UDim2.fromScale(0.5, 0.92), UDim2.fromScale(1.05, 0.055), accent, 5)
+		addVoltraMarks(torso, accent, true)
+	elseif style == "Voltra Limited" then
+		addRotatedBand(torso, Color3.fromRGB(15, 15, 15), UDim2.fromScale(0.47, 0.58), UDim2.fromScale(0.028, 0.98), -26, 3)
+		addRotatedBand(torso, Color3.fromRGB(20, 20, 20), UDim2.fromScale(0.57, 0.54), UDim2.fromScale(0.022, 0.9), -26, 3)
+		addRotatedBand(torso, accent, UDim2.fromScale(0.16, 0.56), UDim2.fromScale(0.022, 0.72), 0, 5)
+		addRotatedBand(torso, accent, UDim2.fromScale(0.84, 0.56), UDim2.fromScale(0.022, 0.72), 0, 5)
+		frame(torso, "LimitedBottomTrim", UDim2.fromScale(0.5, 0.93), UDim2.fromScale(1.05, 0.045), accent, 5)
+		addVoltraMarks(torso, accent, false)
+	elseif style == "Voltra Lightning" then
+		for index = 0, 4 do
+			local y = 0.18 + index * 0.17
+			addRotatedBand(torso, Color3.fromRGB(22, 22, 22), UDim2.fromScale(0.5, y), UDim2.fromScale(0.028, 1.18), -64, 3)
+			addRotatedBand(torso, accent, UDim2.fromScale(0.32 + (index % 2) * 0.22, y + 0.04), UDim2.fromScale(0.026, 0.72), -42 + index * 8, 5)
+		end
+		addRotatedBand(torso, accent, UDim2.fromScale(0.48, 0.55), UDim2.fromScale(0.055, 1.24), -36, 6)
+		addRotatedBand(torso, Color3.fromRGB(230, 255, 120), UDim2.fromScale(0.48, 0.55), UDim2.fromScale(0.018, 1.20), -36, 7)
+		addVoltraMarks(torso, accent, false)
+	elseif style == "Voltra Gradient" then
+		torso.BackgroundColor3 = Color3.fromRGB(5, 5, 5)
+		local gradient = Instance.new("UIGradient")
+		gradient.Color = ColorSequence.new({
+			ColorSequenceKeypoint.new(0, Color3.fromRGB(3, 3, 3)),
+			ColorSequenceKeypoint.new(0.42, Color3.fromRGB(10, 12, 8)),
+			ColorSequenceKeypoint.new(0.72, Color3.fromRGB(45, 64, 18)),
+			ColorSequenceKeypoint.new(1, accent),
+		})
+		gradient.Rotation = 90
+		gradient.Parent = torso
+		local lowerBloom = frame(torso, "GradientLowerBloom", UDim2.fromScale(0.5, 0.78), UDim2.fromScale(1.15, 0.42), accent, 3)
+		lowerBloom.BackgroundTransparency = 0.34
+		local bloomGradient = Instance.new("UIGradient")
+		bloomGradient.Transparency = NumberSequence.new({
+			NumberSequenceKeypoint.new(0, 1),
+			NumberSequenceKeypoint.new(0.5, 0.55),
+			NumberSequenceKeypoint.new(1, 0),
+		})
+		bloomGradient.Rotation = 90
+		bloomGradient.Parent = lowerBloom
+		for index = 1, 6 do
+			addRotatedBand(torso, Color3.fromRGB(30, 38, 22), UDim2.fromScale(index / 7, 0.62), UDim2.fromScale(0.012, 0.95), -18, 4).BackgroundTransparency = 0.35
+		end
+		addRotatedBand(torso, accent, UDim2.fromScale(0.16, 0.58), UDim2.fromScale(0.022, 0.74), 0, 5)
+		addRotatedBand(torso, accent, UDim2.fromScale(0.84, 0.58), UDim2.fromScale(0.022, 0.74), 0, 5)
+		local hem = frame(torso, "GradientBottomGlow", UDim2.fromScale(0.5, 0.92), UDim2.fromScale(1.1, 0.08), accent, 5)
+		hem.BackgroundTransparency = 0.08
+		addVoltraMarks(torso, accent, false)
 	end
 end
 
 local function addSleeve(parent, name, position, rotation, primary, secondary, accent, style)
-	local sleeve = frame(parent, name, position, UDim2.fromScale(0.25, 0.23), primary, 2)
+	local sleeve = frame(parent, name, position, UDim2.fromScale(0.25, 0.23), style == "Voltra Gradient" and secondary or primary, 2)
 	sleeve.Rotation = rotation
 	sleeve.ClipsDescendants = true
 	rounded(sleeve, 5)
 
 	-- Sleeve trim is separate from chest artwork and follows the sleeve container.
-	if style == "Lightning Trim" or style == "Volt Pattern" or style == "Volt Halves" then
+	if style == "Lightning Trim" or style == "Volt Pattern" or style == "Volt Halves" or string.sub(style, 1, 6) == "Voltra" then
 		frame(sleeve, "SleeveTrim", UDim2.fromScale(0.5, 0.82), UDim2.fromScale(1.1, 0.16), accent, 3)
 	elseif style == "Vertical Stripes" or style == "Hoops" or style == "Horizontal Stripes" or style == "Racing Stripe" or style == "Chevron" then
 		frame(sleeve, "SleeveTrim", UDim2.fromScale(0.5, 0.82), UDim2.fromScale(1.1, 0.13), secondary, 3)
 	end
 	return sleeve
+end
+
+local function addAnimatedLightningOverlay(parent, accent)
+	local overlay = Instance.new("Frame")
+	overlay.Name = "AnimatedLightningOverlay"
+	overlay.AnchorPoint = Vector2.new(0.5, 0)
+	overlay.BackgroundTransparency = 1
+	overlay.ClipsDescendants = false
+	overlay.Position = UDim2.fromScale(0.5, 0.03)
+	overlay.Size = UDim2.fromScale(0.72, 0.48)
+	overlay.ZIndex = 18
+	overlay.Parent = parent
+
+	local function bolt(name, position, size, rotation, transparency)
+		local part = frame(overlay, name, position, size, accent, 19)
+		part.BackgroundTransparency = transparency or 0.05
+		part.Rotation = rotation
+		return part
+	end
+
+	local bolts = {
+		bolt("BoltMainGlow", UDim2.fromScale(0.50, 0.55), UDim2.fromScale(0.075, 1.34), -35, 0.18),
+		bolt("BoltMainCore", UDim2.fromScale(0.50, 0.55), UDim2.fromScale(0.024, 1.28), -35, 0),
+		bolt("BoltTopFork", UDim2.fromScale(0.31, 0.28), UDim2.fromScale(0.032, 0.62), -64, 0.04),
+		bolt("BoltLowerFork", UDim2.fromScale(0.68, 0.76), UDim2.fromScale(0.032, 0.62), -66, 0.04),
+	}
+
+	task.spawn(function()
+		local index = 0
+		while overlay.Parent do
+			index += 1
+			for order, boltPart in bolts do
+				boltPart.BackgroundTransparency = order == 1 and 0.36 or 0.18
+				local xOffset = (index % 2 == 0 and 0.02 or -0.02) + order * 0.003
+				local target = {
+					Position = boltPart.Position + UDim2.fromScale(xOffset, 0),
+					BackgroundTransparency = order == 1 and 0.08 or 0,
+				}
+				TweenService:Create(boltPart, TweenInfo.new(0.34, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), target):Play()
+			end
+			task.wait(0.38)
+			for order, boltPart in bolts do
+				TweenService:Create(boltPart, TweenInfo.new(0.42, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {
+					Position = order <= 2 and UDim2.fromScale(0.50, 0.55) or order == 3 and UDim2.fromScale(0.31, 0.28) or UDim2.fromScale(0.68, 0.76),
+					BackgroundTransparency = order == 1 and 0.22 or 0.08,
+				}):Play()
+			end
+			task.wait(0.5)
+		end
+	end)
 end
 
 function KitPreview.new(parent, identity, size)
@@ -172,6 +305,9 @@ function KitPreview.new(parent, identity, size)
 	torso.ClipsDescendants = true
 	rounded(torso, 7)
 	addTorsoPattern(torso, style, primary, secondary, accent)
+	if style == "Voltra Lightning" then
+		addAnimatedLightningOverlay(kit, accent)
+	end
 
 	local collar = frame(kit, "Collar", UDim2.fromScale(0.5, 0.095), UDim2.fromScale(0.17, 0.055), secondary, 6)
 	rounded(collar, 10)

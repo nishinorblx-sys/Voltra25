@@ -55,6 +55,7 @@ function Service.new(teams: any, formations: any, pitchCFrame: CFrame, width: nu
 			PrimaryOwner = {Home = nil, Away = nil},
 			Shadow = {},
 		},
+		ManualTackleSides = {},
 	}, Service)
 end
 
@@ -87,6 +88,10 @@ end
 
 function Service:SetExternalPhase(phase: string?)
 	self.ExternalPhase = phase
+end
+
+function Service:SetManualTackleSides(sides: {[string]: boolean}?)
+	self.ManualTackleSides = sides or {}
 end
 
 function Service:UpdateTactics(side: string, tactics: any)
@@ -192,6 +197,7 @@ function Service:Step(dt: number)
 	self.WasLive = true
 
 	local context = self:_context()
+	context.ManualTackleSides = self.ManualTackleSides
 	self:_updatePressState(context)
 	self.LastContext = context
 	if context.Owner ~= self.LastDebugOwner then

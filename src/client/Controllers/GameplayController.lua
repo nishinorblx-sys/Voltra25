@@ -224,8 +224,17 @@ function GameplayController:_createHUD()
 	charge.Visible = false
 	charge.Parent = gui
 	local chargeFill = charge:FindFirstChildOfClass("Frame") :: Frame
-	chargeFill.BackgroundColor3 = Color3.fromHex("F5F7F2")
+	chargeFill.BackgroundColor3 = Color3.new(1, 1, 1)
 	chargeFill.Size = UDim2.fromScale(0, 1)
+	local chargeGradient = Instance.new("UIGradient")
+	chargeGradient.Color = ColorSequence.new({
+		ColorSequenceKeypoint.new(0, Color3.fromHex("00D8FF")),
+		ColorSequenceKeypoint.new(0.34, Color3.fromHex("10F030")),
+		ColorSequenceKeypoint.new(0.64, Color3.fromHex("F5F000")),
+		ColorSequenceKeypoint.new(0.82, Color3.fromHex("FF8718")),
+		ColorSequenceKeypoint.new(1, Color3.fromHex("FF1010")),
+	})
+	chargeGradient.Parent = chargeFill
 	self.Charge = charge
 	self.ChargeFill = chargeFill
 	local help = Instance.new("TextLabel")
@@ -507,7 +516,6 @@ function GameplayController:_updateHUD()
 	local charge = self.InputController:GetCharge()
 	self.Charge.Visible = charge > 0
 	self.ChargeFill.Size = UDim2.fromScale(charge, 1)
-	self.ChargeFill.BackgroundColor3 = Color3.fromHSV(0.25 - charge * 0.18, 0.9, 1)
 end
 
 return GameplayController

@@ -7,6 +7,7 @@ local remoteList = {
 	AckPackRewardAnimation = "RemoteEvent",
 	CameraAction = "RemoteEvent",
 	ConfirmSevenWinLoginReward = "RemoteFunction",
+	ClaimDailyLoginReward = "RemoteFunction",
 	DataUpdated = "RemoteEvent",
 	GameplayAction = "RemoteEvent",
 	InventoryAction = "RemoteFunction",
@@ -15,6 +16,7 @@ local remoteList = {
 	MatchSetupAction = "RemoteFunction",
 	PackAction = "RemoteFunction",
 	PendingSevenWinLoginReward = "RemoteEvent",
+	PendingDailyLoginReward = "RemoteEvent",
 	PenaltyAction = "RemoteEvent",
 	RankedMatchFound = "RemoteEvent",
 	RequestData = "RemoteFunction",
@@ -33,6 +35,10 @@ local folderGroups = {
 	SevenWinLoginRewardRemotes = {
 		ConfirmSevenWinLoginReward = "RemoteFunction",
 		PendingSevenWinLoginReward = "RemoteEvent",
+	},
+	DailyLoginRewardRemotes = {
+		ClaimDailyLoginReward = "RemoteFunction",
+		PendingDailyLoginReward = "RemoteEvent",
 	},
 }
 

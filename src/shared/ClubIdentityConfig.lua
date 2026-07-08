@@ -17,8 +17,8 @@ Config.Colors = {
 	{ Id="bronze", Name="BRONZE", Hex="B66A3C" }, { Id="gold", Name="CHAMPION GOLD", Hex="E8B84A" },
 }
 Config.KitStyles = { "Solid", "Vertical Stripes", "Horizontal Stripes", "Diagonal Sash", "Split", "Hoops", "Lightning Trim", "Volt Pattern", "Checker Accent", "Chevron", "Racing Stripe", "Volt Halves" }
-Config.BadgePresets = { "Classic", "Modern", "Electric", "Heritage", "Elite", "Minimal" }
-Config.BadgeShapes = { "Shield", "Circle", "Hex", "Diamond", "Crest", "V Badge" }
+Config.BadgePresets = { "Classic", "Modern", "Electric", "Heritage", "Elite", "Minimal", "Premium Chrome", "Royal Glow", "Neon Glass", "Carbon Edge" }
+Config.BadgeShapes = { "Shield", "Circle", "Hex", "Diamond", "Crest", "V Badge", "Crowned Shield", "Split Crest", "Sharp Hex", "Winged Badge" }
 Config.BadgeSymbols = {
 	"Lightning Bolt", "Football", "Crown", "Star", "Wings", "Flame", "Wolf Head", "Dragon Head", "Falcon", "Lion Head",
 	"Shark", "Tiger", "Phoenix", "Shield Sword", "Mountain", "Tornado", "Viper", "Eagle", "Panther", "Meteor",

@@ -202,12 +202,12 @@ function PackRewardFlyinAnimation.Play(packName)
 	detail.Parent = card
 
 	card.Size = UDim2.fromOffset(340, 198)
-	TweenService:Create(card, TweenInfo.new(0.22, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+	TweenService:Create(card, TweenInfo.new(0.14, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
 		Size = UDim2.fromOffset(430, 250),
 	}):Play()
-	TweenService:Create(pack, TweenInfo.new(0.45, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Rotation = 0}):Play()
+	TweenService:Create(pack, TweenInfo.new(0.24, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Rotation = 0}):Play()
 
-	task.wait(1.05)
+	task.wait(0.42)
 
 	local target = findInventoryTarget()
 	local endPosition = UDim2.fromScale(0.91, 0.91)
@@ -219,7 +219,7 @@ function PackRewardFlyinAnimation.Play(packName)
 		endSize = UDim2.fromOffset(math.max(42, target.AbsoluteSize.X * 0.35), math.max(32, target.AbsoluteSize.Y * 0.35))
 	end
 
-	local fly = TweenService:Create(card, TweenInfo.new(0.48, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut), {
+	local fly = TweenService:Create(card, TweenInfo.new(0.28, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut), {
 		Position = endPosition,
 		Size = endSize,
 		BackgroundTransparency = 0.62,
@@ -228,7 +228,7 @@ function PackRewardFlyinAnimation.Play(packName)
 	fly:Play()
 	fly.Completed:Wait()
 
-	local fade = TweenService:Create(card, TweenInfo.new(0.14, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+	local fade = TweenService:Create(card, TweenInfo.new(0.08, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
 		BackgroundTransparency = 1,
 	})
 	fade:Play()

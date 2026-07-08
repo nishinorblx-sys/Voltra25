@@ -23,7 +23,7 @@ end
 
 local function showMatchLoadSyncCover()
 	local data = TeleportService:GetLocalPlayerTeleportData()
-	local matchTeleport = type(data) == "table" and (data.MatchMode == "Ranked1v1" or data.MatchMode == "AICampaignSolo")
+	local matchTeleport = type(data) == "table" and (data.MatchMode == "Ranked1v1" or data.MatchMode == "AICampaignSolo" or data.MatchMode == "WorldCupSolo" or data.WorldCup == true)
 	if not matchTeleport then return nil end
 	local playerGui = Players.LocalPlayer:WaitForChild("PlayerGui")
 	local old = playerGui:FindFirstChild("VTRMatchLoadSyncCover")
@@ -45,7 +45,13 @@ local function showMatchLoadSyncCover()
 	title.Position = UDim2.fromScale(.5, .44)
 	title.Size = UDim2.fromScale(.78, .08)
 	title.Font = Theme.Fonts.Display
-	title.Text = data.MatchMode == "Ranked1v1" and "SYNCING MATCH" or "LOADING AI MATCH"
+	if data.MatchMode == "Ranked1v1" then
+		title.Text = "SYNCING MATCH"
+	elseif data.MatchMode == "WorldCupSolo" or data.WorldCup == true then
+		title.Text = "LOADING WORLD CUP MATCH"
+	else
+		title.Text = "LOADING AI MATCH"
+	end
 	title.TextColor3 = Theme.Colors.Electric
 	title.TextSize = 36
 	title.Parent = bg
@@ -94,8 +100,8 @@ local function showRankedMatchFoundTeleport(data:any)
 			data.Home=data.Home or data.HomeTeamName or data.HomeName
 			data.Away=data.Away or data.AwayTeamName or data.AwayName
 			data.ControlledSide=data.ControlledSide or data.Role or "Home"
-			data.HomeSummary=data.HomeSummary or{teamName=data.HomeTeamName or data.HomeName or data.Home,logo=data.HomeLogo,overall=data.HomeOverall,BadgeIdentity=data.HomeBadgeIdentity}
-			data.AwaySummary=data.AwaySummary or{teamName=data.AwayTeamName or data.AwayName or data.Away,logo=data.AwayLogo,overall=data.AwayOverall,BadgeIdentity=data.AwayBadgeIdentity}
+			data.HomeSummary=data.HomeSummary or{teamName=data.HomeTeamName or data.HomeName or data.Home,logo=data.HomeLogo,overall=data.HomeOverall,attack=data.HomeAttack,midfield=data.HomeMidfield,defense=data.HomeDefense,BadgeIdentity=data.HomeBadgeIdentity,FlagImage=data.HomeFlagImage,BadgeImage=data.HomeBadgeImage}
+			data.AwaySummary=data.AwaySummary or{teamName=data.AwayTeamName or data.AwayName or data.Away,logo=data.AwayLogo,overall=data.AwayOverall,attack=data.AwayAttack,midfield=data.AwayMidfield,defense=data.AwayDefense,BadgeIdentity=data.AwayBadgeIdentity,FlagImage=data.AwayFlagImage,BadgeImage=data.AwayBadgeImage}
 		end
 		RankedQueuePresentation.ShowMatchFound(root,data,function()end)
 		return
@@ -191,7 +197,7 @@ task.defer(function()
 end)
 
 local teleportData = TeleportService:GetLocalPlayerTeleportData()
-local reservedRankedBoot = type(teleportData) == "table" and (teleportData.MatchMode == "Ranked1v1" or teleportData.MatchMode == "AICampaignSolo")
+local reservedRankedBoot = type(teleportData) == "table" and (teleportData.MatchMode == "Ranked1v1" or teleportData.MatchMode == "AICampaignSolo" or teleportData.MatchMode == "WorldCupSolo" or teleportData.WorldCup == true)
 
 local function showReservedRankedBoot()
 	local playerGui = Players.LocalPlayer:WaitForChild("PlayerGui")
@@ -225,7 +231,13 @@ local function showReservedRankedBoot()
 	title.Position = UDim2.fromScale(0.5, 0.43)
 	title.Size = UDim2.fromScale(0.78, 0.08)
 	title.Font = Theme.Fonts.Display
-	title.Text = teleportData.MatchMode == "AICampaignSolo" and "AI CAMPAIGN MATCH" or "RANKED 1V1 SERVER"
+	if teleportData.MatchMode == "AICampaignSolo" then
+		title.Text = "AI CAMPAIGN MATCH"
+	elseif teleportData.MatchMode == "WorldCupSolo" or teleportData.WorldCup == true then
+		title.Text = "WORLD CUP MATCH"
+	else
+		title.Text = "RANKED 1V1 SERVER"
+	end
 	title.TextColor3 = Theme.Colors.Electric
 	title.TextSize = 32
 	title.Parent = bg
@@ -235,7 +247,13 @@ local function showReservedRankedBoot()
 	sub.Position = UDim2.fromScale(0.5, 0.51)
 	sub.Size = UDim2.fromScale(0.78, 0.05)
 	sub.Font = Theme.Fonts.Strong
-	sub.Text = teleportData.MatchMode == "AICampaignSolo" and "LOADING DIRECTLY INTO THE INTRO" or "SYNCING BOTH TEAMS  /  LOADING RESERVED MATCH"
+	if teleportData.MatchMode == "AICampaignSolo" then
+		sub.Text = "LOADING DIRECTLY INTO THE INTRO"
+	elseif teleportData.MatchMode == "WorldCupSolo" or teleportData.WorldCup == true then
+		sub.Text = "PREPARING GROUP STAGE BROADCAST  /  LOADING DIRECTLY INTO THE INTRO"
+	else
+		sub.Text = "SYNCING BOTH TEAMS  /  LOADING RESERVED MATCH"
+	end
 	sub.TextColor3 = Theme.Colors.Silver
 	sub.TextSize = 10
 	sub.Parent = bg

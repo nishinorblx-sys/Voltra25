@@ -3,7 +3,7 @@ local DataStoreService = game:GetService("DataStoreService")
 
 local RankedDivisionPathService = {}
 
-local store = DataStoreService:GetDataStore("RankedDivisionPath_v2")
+local store = DataStoreService:GetDataStore("RankedDivisionPath_v4")
 local stateByUserId = {}
 local started = false
 local MIN_DIVISION = 1

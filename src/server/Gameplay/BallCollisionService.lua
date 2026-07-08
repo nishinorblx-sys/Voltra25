@@ -20,6 +20,7 @@ function Service.Configure()
 	PhysicsService:CollisionGroupSetCollidable("ScoredBall", "Goal", false)
 	PhysicsService:CollisionGroupSetCollidable("ScoredBall", "GoalNet", true)
 	PhysicsService:CollisionGroupSetCollidable("ScoredBall", "Stadium", true)
+	PhysicsService:CollisionGroupSetCollidable("Players", "Players", false)
 	PhysicsService:CollisionGroupSetCollidable("Players", "Pitch", true)
 	PhysicsService:CollisionGroupSetCollidable("Players", "Stadium", true)
 end

@@ -13,6 +13,7 @@ local PlayerPortraitService = require(script.Parent.Parent.Services.PlayerPortra
 local UISoundService = require(script.Parent.Parent.Services.UISoundService)
 local Remotes = require(ReplicatedStorage.VTR.Shared.Remotes)
 local FormationConfig = require(ReplicatedStorage.VTR.Shared.FormationConfig)
+local CardVisualConfig = require(ReplicatedStorage.VTR.Shared.CardVisualConfig)
 
 local Presentation = {}
 local TOTAL_DURATION = 66.0
@@ -111,6 +112,27 @@ local function teamBadgeIdentity(data: any, side: string): any
 	}
 end
 
+local function assetImage(value: any): string?
+	local textValue = tostring(value or "")
+	if textValue == "" then return nil end
+	if string.match(textValue, "^rbxassetid://") then return textValue end
+	if tonumber(textValue) then return "rbxassetid://" .. textValue end
+	return nil
+end
+
+local function teamBadgeImage(data: any, side: string): string?
+	local direct = side == "Home" and data.HomeFlagImage or data.AwayFlagImage
+	local image = assetImage(direct)
+	if image then return image end
+	local summary = side == "Home" and data.HomeSummary or data.AwaySummary
+	if type(summary) == "table" then
+		image = assetImage(summary.FlagImage or summary.flagImage or summary.BadgeImage or summary.badgeImage or summary.LogoImage or summary.logoImage)
+		if image then return image end
+	end
+	local logo = side == "Home" and data.HomeLogo or data.AwayLogo
+	return assetImage(logo)
+end
+
 local function syncBadgeZ(root: Instance, zIndex: number, strokeLimit: number?)
 	for _, descendant in root:GetDescendants() do
 		if descendant:IsA("GuiObject") then
@@ -121,12 +143,23 @@ local function syncBadgeZ(root: Instance, zIndex: number, strokeLimit: number?)
 	end
 end
 
-local function applyPresentationBadge(target: TextLabel, primary: Color3, logoText: string?, identity: any?, strokeLimit: number?)
+local function applyPresentationBadge(target: TextLabel, primary: Color3, logoText: string?, identity: any?, strokeLimit: number?, imageId: string?)
 	target.Text = ""
 	target.BackgroundTransparency = 1
 	target.ClipsDescendants = true
 	for _, child in target:GetChildren() do
-		if child.Name == "VTRPresentationBadgeArt" or child.Name == "BadgeArt" or child.Name == "GeneratedBadge" then child:Destroy() end
+		if child.Name == "VTRPresentationBadgeArt" or child.Name == "VTRPresentationBadgeImage" or child.Name == "BadgeArt" or child.Name == "GeneratedBadge" then child:Destroy() end
+	end
+	if imageId and imageId ~= "" then
+		local image = Instance.new("ImageLabel")
+		image.Name = "VTRPresentationBadgeImage"
+		image.BackgroundTransparency = 1
+		image.Image = imageId
+		image.ScaleType = Enum.ScaleType.Fit
+		image.Size = UDim2.fromScale(1, 1)
+		image.ZIndex = target.ZIndex + 1
+		image.Parent = target
+		return
 	end
 	if type(identity) == "table" then
 		local badge = BadgePreview.new(target, identity, UDim2.fromScale(1, 1))
@@ -454,6 +487,70 @@ local function playerNameKey(player: any): string
 	return string.lower(tostring(player.DisplayName or player.displayName or player.Name or player.name or player.playerName or player.shortName or ""))
 end
 
+local function modelPlayerIdKey(model: Model?): string
+	if not model then return "" end
+	return string.lower(tostring(model:GetAttribute("playerId") or model:GetAttribute("cardInstanceId") or ""))
+end
+
+local function playerIdKey(player: any): string
+	if type(player) ~= "table" then return "" end
+	return string.lower(tostring(player.playerId or player.PlayerId or player.cardInstanceId or player.CardInstanceId or player.Id or ""))
+end
+
+local function playerNumberFromEntry(player: any, fallback: number): any
+	if type(player) ~= "table" then return fallback end
+	return player.shirtNumber or player.number or player.ShirtNumber or player.Number or fallback
+end
+
+local function playerFromModel(model: Model?, fallbackIndex: number, side: string): any
+	if not model then
+		return {displayName = "PLAYER", shortName = "PLAYER", overall = 0, bestPosition = "CM", shirtNumber = fallbackIndex, Side = side}
+	end
+	return {
+		playerId = model:GetAttribute("playerId"),
+		cardInstanceId = model:GetAttribute("cardInstanceId"),
+		displayName = model:GetAttribute("DisplayName") or model.Name,
+		shortName = model:GetAttribute("DisplayName") or model.Name,
+		overall = model:GetAttribute("overall"),
+		bestPosition = model:GetAttribute("position") or model:GetAttribute("bestPosition") or model:GetAttribute("Role") or model:GetAttribute("VTRRole"),
+		Position = model:GetAttribute("position") or model:GetAttribute("bestPosition") or model:GetAttribute("Role") or model:GetAttribute("VTRRole"),
+		shirtNumber = model:GetAttribute("ShirtNumber") or fallbackIndex,
+		number = model:GetAttribute("ShirtNumber") or fallbackIndex,
+		rarity = model:GetAttribute("rarity") or model:GetAttribute("Rarity") or "Common",
+		cardType = model:GetAttribute("cardType") or model:GetAttribute("CardType") or "Base",
+		Side = side,
+	}
+end
+
+local function completePlayerData(player: any, model: Model?, fallbackIndex: number, side: string): any
+	local fallback = playerFromModel(model, fallbackIndex, side)
+	if type(player) ~= "table" then
+		return fallback
+	end
+	local result = table.clone(player)
+	result.playerId = result.playerId or result.PlayerId or fallback.playerId
+	result.cardInstanceId = result.cardInstanceId or result.CardInstanceId or fallback.cardInstanceId
+	result.displayName = result.displayName or result.DisplayName or result.Name or result.name or result.playerName or fallback.displayName
+	result.shortName = result.shortName or result.ShortName or result.displayName
+	result.overall = result.overall or result.Overall or result.Rating or result.rating or fallback.overall
+	result.bestPosition = result.bestPosition or result.BestPosition or result.Position or result.position or fallback.bestPosition
+	result.Position = result.Position or result.position or result.bestPosition
+	result.shirtNumber = playerNumberFromEntry(result, fallbackIndex)
+	result.number = result.number or result.shirtNumber
+	result.rarity = result.rarity or result.Rarity or fallback.rarity
+	result.cardType = result.cardType or result.CardType or fallback.cardType
+	result.Side = result.Side or result.side or side
+	return result
+end
+
+local function entryMatchesModel(player: any, model: Model?): boolean
+	if not model or type(player) ~= "table" then return false end
+	local playerId = playerIdKey(player)
+	if playerId ~= "" and playerId == modelPlayerIdKey(model) then return true end
+	local playerKey = playerNameKey(player)
+	return playerKey ~= "" and playerKey == modelNameKey(model)
+end
+
 local function formationEntries(data: any, side: string): {any}
 	local models = sortedModels(data, side)
 	local players = side == "Home" and (data.HomeLineup or {}) or (data.AwayLineup or {})
@@ -463,10 +560,9 @@ local function formationEntries(data: any, side: string): {any}
 		local player = players[index]
 		local position = positionFromEntry(player)
 		local matched: Model? = nil
-		local playerKey = playerNameKey(player)
-		if playerKey ~= "" then
+		if type(player) == "table" then
 			for _, model in ipairs(models) do
-				if not usedModels[model] and modelNameKey(model) == playerKey then
+				if not usedModels[model] and entryMatchesModel(player, model) then
 					matched = model
 					break
 				end
@@ -478,6 +574,8 @@ local function formationEntries(data: any, side: string): {any}
 		if matched then
 			usedModels[matched] = true
 		end
+		player = completePlayerData(player, matched, index, side)
+		if position == "" then position = positionFromEntry(player) end
 		if position == "" then position = positionFromModel(matched) end
 		if position == "" then
 			local fallback = {"GK", "LB", "CB", "CB", "RB", "CDM", "CM", "CAM", "LM", "RM", "ST"}
@@ -925,6 +1023,13 @@ end
 local function addPreviewKitGeometry(clone: Model, kit: any?)
 	local torso = clone:FindFirstChild("Torso")
 	if not torso or not torso:IsA("BasePart") then return end
+	local existingPattern = torso:FindFirstChild("VTRKitPattern")
+	if existingPattern then
+		kit = nil
+	end
+	local function clampScale(value: number, minimum: number, maximum: number): number
+		return math.clamp(value, minimum, maximum)
+	end
 	local function frontPatch(name: string, pos: UDim2, size: UDim2, colorValue: Color3, rotation: number?)
 		local patch = Instance.new("Part")
 		patch.Name = "PreviewKit_" .. name
@@ -935,14 +1040,24 @@ local function addPreviewKitGeometry(clone: Model, kit: any?)
 		patch.CastShadow = false
 		patch.Material = Enum.Material.SmoothPlastic
 		patch.Color = colorValue
-		patch.Size = Vector3.new(math.max(0.035, torso.Size.X * size.X.Scale), math.max(0.035, torso.Size.Y * size.Y.Scale), 0.025)
-		local x = (pos.X.Scale - 0.5) * torso.Size.X
-		local y = (0.5 - pos.Y.Scale) * torso.Size.Y
-		patch.CFrame = torso.CFrame * CFrame.new(x, y, -torso.Size.Z * 0.5 - 0.018) * CFrame.Angles(0, 0, math.rad(rotation or 0))
+		local widthScale = clampScale(size.X.Scale, 0.02, 0.98)
+		local heightScale = clampScale(size.Y.Scale, 0.02, 0.98)
+		local xScale = clampScale(pos.X.Scale, widthScale * 0.5, 1 - widthScale * 0.5)
+		local yScale = clampScale(pos.Y.Scale, heightScale * 0.5, 1 - heightScale * 0.5)
+		patch.Size = Vector3.new(math.max(0.035, torso.Size.X * widthScale), math.max(0.035, torso.Size.Y * heightScale), 0.018)
+		local x = (xScale - 0.5) * torso.Size.X
+		local y = (0.5 - yScale) * torso.Size.Y
+		patch.CFrame = torso.CFrame * CFrame.new(x, y, -torso.Size.Z * 0.5 - 0.012) * CFrame.Angles(0, 0, math.rad(rotation or 0))
 		patch.Parent = clone
 	end
-	for _, child in clone:GetChildren() do
-		if child:IsA("BasePart") and string.sub(child.Name, 1, 11) == "PreviewKit_" then child:Destroy() end
+	for _, desc in clone:GetDescendants() do
+		if desc:IsA("BasePart") and string.sub(desc.Name, 1, 11) == "PreviewKit_" then
+			desc:Destroy()
+		elseif type(kit) == "table" and desc:IsA("SurfaceGui") and (desc.Name == "VTRKitPattern" or desc.Name == "BackPrint" or desc.Name == "ChestBadge") then
+			desc:Destroy()
+		elseif type(kit) == "table" and desc:IsA("BasePart") and desc.Name == "ChestBadgePlate" then
+			desc:Destroy()
+		end
 	end
 	if type(kit) == "table" then
 		local primary = color(kit.Primary or kit.primaryColor or kit.PrimaryColor, Color3.fromHex("B7FF1A"))
@@ -953,19 +1068,19 @@ local function addPreviewKitGeometry(clone: Model, kit: any?)
 		for _, name in {"Left Arm", "Right Arm"} do local part = clone:FindFirstChild(name); if part and part:IsA("BasePart") then part.Color = primary end end
 		for _, name in {"Left Leg", "Right Leg"} do local part = clone:FindFirstChild(name); if part and part:IsA("BasePart") then part.Color = secondary end end
 		if style == "Vertical Stripes" then
-			for index = 1, 5 do if index % 2 == 0 then frontPatch("Stripe", UDim2.fromScale((index - .5) / 5, .5), UDim2.fromScale(.2, 1.1), secondary, 0) end end
+			for index = 1, 5 do if index % 2 == 0 then frontPatch("Stripe", UDim2.fromScale((index - .5) / 5, .5), UDim2.fromScale(.18, .92), secondary, 0) end end
 		elseif style == "Horizontal Stripes" or style == "Hoops" then
-			for index = 1, 5 do frontPatch("Hoop", UDim2.fromScale(.5, index / 6), UDim2.fromScale(1.1, .09), secondary, 0) end
+			for index = 1, 5 do frontPatch("Hoop", UDim2.fromScale(.5, index / 6), UDim2.fromScale(.92, .08), secondary, 0) end
 		elseif style == "Diagonal Sash" then
-			frontPatch("Sash", UDim2.fromScale(.5, .5), UDim2.fromScale(.18, 1.55), secondary, -34)
-			frontPatch("SashAccent", UDim2.fromScale(.54, .5), UDim2.fromScale(.035, 1.45), accent, -34)
+			frontPatch("Sash", UDim2.fromScale(.5, .5), UDim2.fromScale(.16, .96), secondary, -34)
+			frontPatch("SashAccent", UDim2.fromScale(.55, .5), UDim2.fromScale(.032, .92), accent, -34)
 		elseif style == "Split" then
 			frontPatch("Split", UDim2.fromScale(.75, .5), UDim2.fromScale(.5, 1), secondary, 0)
 		elseif style == "Lightning Trim" then
 			frontPatch("Bolt1", UDim2.fromScale(.4, .3), UDim2.fromScale(.08, .55), accent, 25)
 			frontPatch("Bolt2", UDim2.fromScale(.52, .62), UDim2.fromScale(.08, .55), accent, -28)
 		elseif style == "Volt Pattern" then
-			for index = 1, 3 do frontPatch("Volt", UDim2.fromScale(.25 * index, .5), UDim2.fromScale(.05, 1.4), index == 2 and accent or secondary, index % 2 == 0 and -22 or 22) end
+			for index = 1, 3 do frontPatch("Volt", UDim2.fromScale(.25 * index, .5), UDim2.fromScale(.05, .94), index == 2 and accent or secondary, index % 2 == 0 and -22 or 22) end
 		elseif style == "Checker Accent" then
 			for y = 1, 5 do for x = 1, 4 do if (x + y) % 2 == 0 then frontPatch("Check", UDim2.fromScale((x - .5) / 4, (y - .5) / 5), UDim2.fromScale(.25, .2), secondary, 0) end end end
 		elseif style == "Chevron" then
@@ -974,12 +1089,42 @@ local function addPreviewKitGeometry(clone: Model, kit: any?)
 			frontPatch("ChevronAccentLeft", UDim2.fromScale(.39, .55), UDim2.fromScale(.024, .86), accent, -43)
 			frontPatch("ChevronAccentRight", UDim2.fromScale(.61, .55), UDim2.fromScale(.024, .86), accent, 43)
 		elseif style == "Racing Stripe" then
-			frontPatch("CenterStripe", UDim2.fromScale(.5, .5), UDim2.fromScale(.16, 1.08), secondary, 0)
-			frontPatch("LeftPin", UDim2.fromScale(.39, .5), UDim2.fromScale(.025, 1.08), accent, 0)
-			frontPatch("RightPin", UDim2.fromScale(.61, .5), UDim2.fromScale(.025, 1.08), accent, 0)
+			frontPatch("CenterStripe", UDim2.fromScale(.5, .5), UDim2.fromScale(.16, .94), secondary, 0)
+			frontPatch("LeftPin", UDim2.fromScale(.39, .5), UDim2.fromScale(.025, .94), accent, 0)
+			frontPatch("RightPin", UDim2.fromScale(.61, .5), UDim2.fromScale(.025, .94), accent, 0)
 		elseif style == "Volt Halves" then
-			frontPatch("HalfPanel", UDim2.fromScale(.25, .5), UDim2.fromScale(.5, 1.08), secondary, 0)
+			frontPatch("HalfPanel", UDim2.fromScale(.25, .5), UDim2.fromScale(.5, .96), secondary, 0)
 			frontPatch("HalfSlash", UDim2.fromScale(.5, .5), UDim2.fromScale(.032, .96), accent, -18)
+		elseif style == "Voltra Founder" then
+			frontPatch("FounderChevronLeft", UDim2.fromScale(.34, .36), UDim2.fromScale(.055, .72), Color3.fromRGB(18, 18, 18), -48)
+			frontPatch("FounderChevronRight", UDim2.fromScale(.66, .36), UDim2.fromScale(.055, .72), Color3.fromRGB(18, 18, 18), 48)
+			frontPatch("FounderCoreLeft", UDim2.fromScale(.37, .48), UDim2.fromScale(.045, .66), Color3.fromRGB(35, 35, 35), -48)
+			frontPatch("FounderCoreRight", UDim2.fromScale(.63, .48), UDim2.fromScale(.045, .66), Color3.fromRGB(35, 35, 35), 48)
+			frontPatch("FounderSideLeft", UDim2.fromScale(.18, .56), UDim2.fromScale(.025, .72), accent, 0)
+			frontPatch("FounderSideRight", UDim2.fromScale(.82, .56), UDim2.fromScale(.025, .72), accent, 0)
+			frontPatch("FounderHem", UDim2.fromScale(.5, .92), UDim2.fromScale(.94, .055), accent, 0)
+		elseif style == "Voltra Limited" then
+			frontPatch("LimitedTextureA", UDim2.fromScale(.47, .58), UDim2.fromScale(.028, .92), Color3.fromRGB(15, 15, 15), -26)
+			frontPatch("LimitedTextureB", UDim2.fromScale(.57, .54), UDim2.fromScale(.022, .86), Color3.fromRGB(20, 20, 20), -26)
+			frontPatch("LimitedSideLeft", UDim2.fromScale(.16, .56), UDim2.fromScale(.022, .72), accent, 0)
+			frontPatch("LimitedSideRight", UDim2.fromScale(.84, .56), UDim2.fromScale(.022, .72), accent, 0)
+			frontPatch("LimitedHem", UDim2.fromScale(.5, .93), UDim2.fromScale(.94, .045), accent, 0)
+		elseif style == "Voltra Lightning" then
+			for index = 0, 4 do
+				local y = .18 + index * .17
+				frontPatch("DarkCrack", UDim2.fromScale(.5, y), UDim2.fromScale(.028, .92), Color3.fromRGB(22, 22, 22), -64)
+				frontPatch("LightningCrack", UDim2.fromScale(.32 + (index % 2) * .22, y + .04), UDim2.fromScale(.026, .62), accent, -42 + index * 8)
+			end
+			frontPatch("MainLightning", UDim2.fromScale(.48, .55), UDim2.fromScale(.055, .96), accent, -36)
+			frontPatch("LightningCore", UDim2.fromScale(.48, .55), UDim2.fromScale(.018, .92), Color3.fromRGB(230, 255, 120), -36)
+		elseif style == "Voltra Gradient" then
+			for index = 1, 6 do
+				frontPatch("GradientTexture", UDim2.fromScale(index / 7, .62), UDim2.fromScale(.012, .88), Color3.fromRGB(18, 18, 18), -18)
+			end
+			frontPatch("GradientGlow", UDim2.fromScale(.5, .78), UDim2.fromScale(.9, .34), secondary, 0)
+			frontPatch("GradientSideLeft", UDim2.fromScale(.16, .58), UDim2.fromScale(.022, .74), accent, 0)
+			frontPatch("GradientSideRight", UDim2.fromScale(.84, .58), UDim2.fromScale(.022, .74), accent, 0)
+			frontPatch("GradientBottomGlow", UDim2.fromScale(.5, .91), UDim2.fromScale(.94, .08), accent, 0)
 		end
 		return
 	end
@@ -991,6 +1136,45 @@ local function addPreviewKitGeometry(clone: Model, kit: any?)
 			frontPatch(child.Name, child.Position, child.Size, child.BackgroundColor3, child.Rotation)
 		end
 	end
+end
+
+local function addPreviewFaceGeometry(clone: Model)
+	local head = clone:FindFirstChild("Head")
+	if not head or not head:IsA("BasePart") then return end
+	for _, child in clone:GetChildren() do
+		if child:IsA("BasePart") and string.sub(child.Name, 1, 12) == "PreviewFace_" then child:Destroy() end
+	end
+	local faceGui = head:FindFirstChild("VTRFace")
+	local canvas = faceGui and faceGui:FindFirstChildWhichIsA("Frame")
+	local function plate(name: string, pos: UDim2, size: UDim2, colorValue: Color3, rotation: number?, transparency: number?)
+		local part = Instance.new("Part")
+		part.Name = "PreviewFace_" .. name
+		part.Anchored = true
+		part.CanCollide = false
+		part.CanTouch = false
+		part.CanQuery = false
+		part.CastShadow = false
+		part.Material = Enum.Material.SmoothPlastic
+		part.Color = colorValue
+		part.Transparency = transparency or 0
+		part.Size = Vector3.new(math.max(0.035, head.Size.X * math.clamp(size.X.Scale, 0.015, 0.7)), math.max(0.02, head.Size.Y * math.clamp(size.Y.Scale, 0.012, 0.24)), 0.018)
+		local x = (math.clamp(pos.X.Scale, 0.08, 0.92) - 0.5) * head.Size.X
+		local y = (0.5 - math.clamp(pos.Y.Scale, 0.08, 0.92)) * head.Size.Y
+		part.CFrame = head.CFrame * CFrame.new(x, y, -head.Size.Z * 0.5 - 0.014) * CFrame.Angles(0, 0, math.rad(rotation or 0))
+		part.Parent = clone
+	end
+	if canvas then
+		for _, item in canvas:GetChildren() do
+			if item:IsA("Frame") then
+				plate(item.Name, item.Position, item.Size, item.BackgroundColor3, item.Rotation, item.BackgroundTransparency)
+			end
+		end
+		return
+	end
+	local ink = Color3.fromRGB(20, 18, 17)
+	plate("LeftEye", UDim2.fromScale(.35, .42), UDim2.fromScale(.11, .06), ink)
+	plate("RightEye", UDim2.fromScale(.65, .42), UDim2.fromScale(.11, .06), ink)
+	plate("Mouth", UDim2.fromScale(.5, .72), UDim2.fromScale(.24, .035), Color3.fromRGB(91, 39, 38))
 end
 
 local function showPlayerPreview(viewport: ViewportFrame, model: Model?, kit: any?)
@@ -1022,11 +1206,13 @@ local function showPlayerPreview(viewport: ViewportFrame, model: Model?, kit: an
 	end
 	brightenCloneForPreview(clone)
 	addPreviewKitGeometry(clone, kit)
+	addPreviewFaceGeometry(clone)
 	clone.Parent = world
 	clone:PivotTo(CFrame.new(0, 0, 0))
 	local center, size = clone:GetBoundingBox()
 	local height = math.max(size.Y, 5)
-	camera.CFrame = CFrame.lookAt(center.Position + Vector3.new(0, height * 0.03, -7.1), center.Position + Vector3.new(0, height * 0.08, 0))
+	camera.FieldOfView = 36
+	camera.CFrame = CFrame.lookAt(center.Position + Vector3.new(0, height * 0.12, -12), center.Position + Vector3.new(0, -height * 0.03, 0))
 end
 
 local function lineupData(data: any, side: string): {any}
@@ -1042,9 +1228,38 @@ local function kitForEntry(data: any, entry: any): any?
 	end
 	local entryKit = entry and (entry.KitData or entry.kitData or entry.Kit or entry.kit)
 	if type(entryKit) == "table" then return entryKit end
+	local playerSide = type(player) == "table" and (player.Side or player.side or player.TeamSide or player.teamSide or player.VTRTeam) or nil
 	local modelSide = model and (model:GetAttribute("teamSide") or model:GetAttribute("VTRTeam"))
-	local side = tostring(modelSide or (entry and entry.Side) or "Home")
-	return side == "Away" and data.AwayKitData or data.HomeKitData
+	local side = tostring((entry and entry.Side) or playerSide or modelSide or "Home")
+	local directKit = side == "Away" and data.AwayKitData or data.HomeKitData
+	if type(directKit) == "table" then return directKit end
+	local summary = side == "Away" and data.AwaySummary or data.HomeSummary
+	if type(summary) == "table" then
+		local summaryKit = side == "Away" and (summary.AwayKitData or summary.awayKitData) or (summary.HomeKitData or summary.homeKitData)
+		if type(summaryKit) == "table" then return summaryKit end
+		local kits = summary.kits or summary.Kits
+		if type(kits) == "table" then
+			local named = side == "Away" and (kits.Away or kits.away) or (kits.Home or kits.home)
+			if type(named) == "table" then return named end
+		end
+	end
+	return nil
+end
+
+local function playerOverall(playerData: any, model: Model?, fallback: number?): number
+	local value = type(playerData) == "table" and (playerData.overall or playerData.Overall or playerData.Rating or playerData.rating) or nil
+	value = value or (model and model:GetAttribute("overall")) or fallback or 0
+	return math.clamp(math.floor((tonumber(value) or 0) + 0.5), 0, 99)
+end
+
+local function playerRarityColor(playerData: any): Color3
+	if type(playerData) ~= "table" then
+		return Theme.Colors.Electric
+	end
+	local rarity = tostring(playerData.rarity or playerData.Rarity or "Common")
+	local cardType = tostring(playerData.cardType or playerData.CardType or "Base")
+	local visual = CardVisualConfig.Get(rarity, cardType)
+	return visual and (visual.trimColor or visual.primaryColor) or Theme.Colors.Electric
 end
 
 local function showPlayerGroupPreview(container: Frame, models: {Model}, players: {any}, kits: {any}, firstIndex: number, lastIndex: number)
@@ -1060,15 +1275,71 @@ local function showPlayerGroupPreview(container: Frame, models: {Model}, players
 			local playerData = players[playerIndex]
 			local kit = kits[playerIndex]
 			local slot = Instance.new("CanvasGroup")
-			slot.BackgroundTransparency = 1
+			slot.BackgroundColor3 = Color3.fromHex("070A06")
+			slot.BackgroundTransparency = 0.18
 			local targetPosition = UDim2.fromScale(startX + (slotWidth + gap) * (order - 1), 0)
 			slot.Position = UDim2.fromScale(targetPosition.X.Scale + 0.08, 0)
 			slot.Size = UDim2.fromScale(slotWidth, 1)
 			slot.GroupTransparency = 1
 			slot.ZIndex = 207
 			slot.Parent = container
+			local slotCorner = Instance.new("UICorner")
+			slotCorner.CornerRadius = UDim.new(0, 8)
+			slotCorner.Parent = slot
+			local slotStroke = Instance.new("UIStroke")
+			slotStroke.Color = playerRarityColor(playerData)
+			slotStroke.Transparency = 0.18
+			slotStroke.Thickness = count == 1 and 2 or 1.25
+			slotStroke.Parent = slot
 
 			local shirtNumber = model and tostring(model:GetAttribute("ShirtNumber") or playerIndex) or tostring(playerIndex)
+			local overallValue = playerOverall(playerData, model, 0)
+			local overallBadge = Instance.new("Frame")
+			overallBadge.Name = "LineupOverallBadge"
+			overallBadge.BackgroundColor3 = slotStroke.Color
+			overallBadge.BackgroundTransparency = 0.03
+			overallBadge.BorderSizePixel = 0
+			overallBadge.Position = UDim2.fromOffset(8, 8)
+			overallBadge.Size = count == 1 and UDim2.fromOffset(54, 34) or UDim2.fromOffset(42, 28)
+			overallBadge.ZIndex = 214
+			overallBadge.Parent = slot
+			local overallCorner = Instance.new("UICorner")
+			overallCorner.CornerRadius = UDim.new(0, 6)
+			overallCorner.Parent = overallBadge
+			local overallText = Instance.new("TextLabel")
+			overallText.Name = "OverallValue"
+			overallText.BackgroundTransparency = 1
+			overallText.AnchorPoint = Vector2.new(0, 0)
+			overallText.Position = UDim2.fromOffset(0, 1)
+			overallText.Size = UDim2.new(1, 0, 0, count == 1 and 21 or 17)
+			overallText.Text = tostring(overallValue)
+			overallText.TextColor3 = Theme.Colors.Black
+			overallText.TextSize = count == 1 and 20 or 14
+			overallText.TextWrapped = false
+			overallText.TextScaled = false
+			overallText.Font = Theme.Fonts.Display
+			overallText.TextXAlignment = Enum.TextXAlignment.Center
+			overallText.TextYAlignment = Enum.TextYAlignment.Center
+			overallText.ZIndex = 215
+			overallText:SetAttribute("VTRKeepLineupNumberStack", true)
+			overallText.Parent = overallBadge
+			local overallSub = Instance.new("TextLabel")
+			overallSub.Name = "OverallCaption"
+			overallSub.BackgroundTransparency = 1
+			overallSub.AnchorPoint = Vector2.new(0, 0)
+			overallSub.Position = UDim2.new(0, 0, 1, count == 1 and -13 or -11)
+			overallSub.Size = UDim2.new(1, 0, 0, count == 1 and 11 or 9)
+			overallSub.Text = "OVR"
+			overallSub.TextColor3 = Theme.Colors.Black
+			overallSub.TextSize = count == 1 and 8 or 6
+			overallSub.TextWrapped = false
+			overallSub.TextScaled = false
+			overallSub.Font = Theme.Fonts.Strong
+			overallSub.TextXAlignment = Enum.TextXAlignment.Center
+			overallSub.TextYAlignment = Enum.TextYAlignment.Center
+			overallSub.ZIndex = 215
+			overallSub:SetAttribute("VTRKeepLineupNumberStack", true)
+			overallSub.Parent = overallBadge
 			local watermark = label(slot, shirtNumber, UDim2.fromScale(0, -0.04), UDim2.fromScale(1, 0.55), count == 1 and 150 or 112, Theme.Colors.White, Theme.Fonts.Display)
 			watermark.Name = "LineupKitWatermark"
 			watermark:SetAttribute("VTRKeepLineupNumberStack", true)
@@ -1079,8 +1350,8 @@ local function showPlayerGroupPreview(container: Frame, models: {Model}, players
 			if model then
 				local viewport = Instance.new("ViewportFrame")
 				viewport.BackgroundTransparency = 1
-				viewport.Position = UDim2.fromScale(0, 0.04)
-				viewport.Size = UDim2.fromScale(1, 0.72)
+				viewport.Position = UDim2.fromScale(0.03, 0.07)
+				viewport.Size = UDim2.fromScale(0.94, 0.68)
 				viewport.Ambient = Color3.fromHex("D4E4BE")
 				viewport.LightColor = Color3.fromHex("F3F7EE")
 				viewport.LightDirection = Vector3.new(-0.7, -1, -0.8)
@@ -1171,14 +1442,72 @@ function Presentation.Play(data: any, onComplete: (() -> ())?)
 	gui.DisplayOrder = 92
 	gui.Parent = playerGui
 	startIntroAudio(gui)
+	local cancelled = false
+	local skipUnlockAt = os.clock() + math.max(0, tonumber(data.PrematchSkipDelay) or 5)
+	gui.Destroying:Connect(function()
+		cancelled = true
+		Presentation.StopAudio()
+	end)
+	local function schedule(delaySeconds: number, callback: () -> ())
+		task.delay(delaySeconds, function()
+			if cancelled or not gui.Parent then return end
+			callback()
+		end)
+	end
 
 	local root = Instance.new("Frame")
 	root.BackgroundTransparency = 1
 	root.Size = UDim2.fromScale(1, 1)
 	root.ZIndex = 200
 	root.Parent = gui
+	local actionRemote: RemoteEvent? = nil
+	local skipSent = false
+	local skipButtons: {TextButton} = {}
+	local function skipText(): string
+		local remaining = math.ceil(skipUnlockAt - os.clock())
+		if remaining > 0 then
+			return "SKIP IN " .. tostring(remaining)
+		end
+		return UserInputService.TouchEnabled and "SKIP" or "SPACE TO SKIP"
+	end
+	local function updateSkipButtons()
+		local text = skipSent and "SKIP 1/2" or skipText()
+		for _, button in skipButtons do
+			if button.Parent then
+				button.Text = text
+				button.AutoButtonColor = os.clock() >= skipUnlockAt and not skipSent
+				button.TextTransparency = os.clock() < skipUnlockAt and 0.18 or 0
+			end
+		end
+	end
+	local function requestSkip(button: GuiButton?)
+		if skipSent then return end
+		if os.clock() < skipUnlockAt then
+			updateSkipButtons()
+			return
+		end
+		skipSent = true
+		UISoundService.PlayTransition()
+		if not actionRemote then
+			pcall(function()
+				actionRemote = select(1, Remotes.Wait())
+			end)
+		end
+		if actionRemote then
+			actionRemote:FireServer({Type = "PrematchSkip"})
+		end
+		if button then
+			button.Text = "SKIP 1/2"
+		end
+		updateSkipButtons()
+	end
+	task.spawn(function()
+		pcall(function()
+			actionRemote = select(1, Remotes.Wait())
+		end)
+	end)
 	if not UserInputService.TouchEnabled then
-		local skipHint = Instance.new("TextLabel")
+		local skipHint = Instance.new("TextButton")
 		skipHint.Name = "KeyboardSkipIntroHint"
 		skipHint.AnchorPoint = Vector2.new(1, 0)
 		skipHint.Position = UDim2.new(1, -18, 0, 18)
@@ -1186,23 +1515,22 @@ function Presentation.Play(data: any, onComplete: (() -> ())?)
 		skipHint.BackgroundColor3 = Theme.Colors.Black
 		skipHint.BackgroundTransparency = .12
 		skipHint.BorderSizePixel = 0
+		skipHint.AutoButtonColor = false
 		skipHint.Text = "SPACE TO SKIP"
 		skipHint.TextColor3 = Theme.Colors.White
 		skipHint.TextSize = 14
 		skipHint.Font = Theme.Fonts.Body
 		skipHint.ZIndex = 260
 		skipHint.Parent = root
+		table.insert(skipButtons, skipHint)
 		local corner = Instance.new("UICorner")
 		corner.CornerRadius = UDim.new(0, 14)
 		corner.Parent = skipHint
+		skipHint.Activated:Connect(function()
+			requestSkip(skipHint)
+		end)
 	end
 	if UserInputService.TouchEnabled then
-		local actionRemote: RemoteEvent? = nil
-		task.spawn(function()
-			pcall(function()
-				actionRemote = select(1, Remotes.Wait())
-			end)
-		end)
 		local skip = Instance.new("TextButton")
 		skip.Name = "MobileSkipIntro"
 		skip.AnchorPoint = Vector2.new(1, 0)
@@ -1218,17 +1546,22 @@ function Presentation.Play(data: any, onComplete: (() -> ())?)
 		skip.Font = Theme.Fonts.Body
 		skip.ZIndex = 260
 		skip.Parent = root
+		table.insert(skipButtons, skip)
 		local corner = Instance.new("UICorner")
 		corner.CornerRadius = UDim.new(0, 14)
 		corner.Parent = skip
 		skip.Activated:Connect(function()
-			UISoundService.PlayTransition()
-			if actionRemote then
-				actionRemote:FireServer({Type = "PrematchSkip"})
-			end
-			skip.Text = "SKIP SENT"
+			requestSkip(skip)
 		end)
 	end
+	updateSkipButtons()
+	task.spawn(function()
+		while not cancelled and gui.Parent and not skipSent and os.clock()<skipUnlockAt do
+			updateSkipButtons()
+			task.wait(.25)
+		end
+		if not cancelled and gui.Parent then updateSkipButtons()end
+	end)
 
 	local home = tostring(data.Home or "HOME")
 	local away = tostring(data.Away or "AWAY")
@@ -1277,12 +1610,12 @@ function Presentation.Play(data: any, onComplete: (() -> ())?)
 	homeBadge.BackgroundColor3 = homeColor
 	homeBadge.BackgroundTransparency = 0
 	homeBadge.TextXAlignment = Enum.TextXAlignment.Center
-	applyPresentationBadge(homeBadge, homeColor, tostring(data.HomeLogo or "V"), teamBadgeIdentity(data, "Home"), 3)
+	applyPresentationBadge(homeBadge, homeColor, tostring(data.HomeLogo or "V"), teamBadgeIdentity(data, "Home"), 3, teamBadgeImage(data, "Home"))
 	local awayBadge = label(rightPanel, tostring(data.AwayLogo or shortCode(away)), UDim2.fromScale(0.29, 0.58), UDim2.fromScale(0.42, 0.23), 24, Theme.Colors.White, Theme.Fonts.Display)
 	awayBadge.BackgroundColor3 = awayColor
 	awayBadge.BackgroundTransparency = 0
 	awayBadge.TextXAlignment = Enum.TextXAlignment.Center
-	applyPresentationBadge(awayBadge, awayColor, tostring(data.AwayLogo or "V"), teamBadgeIdentity(data, "Away"), 3)
+	applyPresentationBadge(awayBadge, awayColor, tostring(data.AwayLogo or "V"), teamBadgeIdentity(data, "Away"), 3, teamBadgeImage(data, "Away"))
 	for _, spec in {
 		{UDim2.fromScale(0.47, 0.55), UDim2.fromScale(0.08, 0.01)},
 		{UDim2.fromScale(0.87, 0.55), UDim2.fromScale(0.13, 0.01)},
@@ -1366,7 +1699,7 @@ function Presentation.Play(data: any, onComplete: (() -> ())?)
 	sheetLogo.BackgroundColor3 = Theme.Colors.White
 	sheetLogo.BackgroundTransparency = 0
 	sheetLogo.TextXAlignment = Enum.TextXAlignment.Center
-	applyPresentationBadge(sheetLogo, homeColor, teamLogoText(data, "Home", "V"), teamBadgeIdentity(data, "Home"), 3)
+	applyPresentationBadge(sheetLogo, homeColor, teamLogoText(data, "Home", "V"), teamBadgeIdentity(data, "Home"), 3, teamBadgeImage(data, "Home"))
 	local sheetTeamCode = label(sheetLogoPanel, shortCode(home), UDim2.fromScale(0.12, 0.08), UDim2.fromScale(0.76, 0.12), 34, Theme.Colors.Black, Theme.Fonts.Display)
 	sheetTeamCode.TextXAlignment = Enum.TextXAlignment.Center
 	local sheetStartTitle = label(sheet, "STARTING 11", UDim2.fromScale(0.36, 0.12), UDim2.fromScale(0.25, 0.08), 25, Theme.Colors.White, Theme.Fonts.Display)
@@ -1378,7 +1711,7 @@ function Presentation.Play(data: any, onComplete: (() -> ())?)
 		local teamColor = side == "Home" and homeColor or awayColor
 		sheetLogoPanel.BackgroundColor3 = teamColor
 		sheetLogo.Text = teamLogoText(data, side, shortCode(teamName))
-		applyPresentationBadge(sheetLogo, teamColor, teamLogoText(data, side, "V"), teamBadgeIdentity(data, side), 3)
+		applyPresentationBadge(sheetLogo, teamColor, teamLogoText(data, side, "V"), teamBadgeIdentity(data, side), 3, teamBadgeImage(data, side))
 		sheetTeamCode.Text = shortCode(teamName)
 		sheetStartList.Text = teamSheetFromPlayers(lineupData(data, side), teamSheet(data, side))
 		sheetSubsList.Text = benchSheetFromPlayers(side == "Home" and (data.HomeBench or {}) or (data.AwayBench or {}), benchSheet(data, side))
@@ -1386,22 +1719,22 @@ function Presentation.Play(data: any, onComplete: (() -> ())?)
 
 	local kickoff = panel(root, "KickoffScoreboard", UDim2.fromScale(0.18, 1.04), UDim2.fromScale(0.64, 0.12))
 	local kickoffHomeBadge = label(kickoff, "", UDim2.fromScale(0.04, 0.17), UDim2.fromScale(0.08, 0.66), 12, Theme.Colors.White, Theme.Fonts.Display)
-	applyPresentationBadge(kickoffHomeBadge, homeColor, teamLogoText(data, "Home", "V"), teamBadgeIdentity(data, "Home"), 2)
+	applyPresentationBadge(kickoffHomeBadge, homeColor, teamLogoText(data, "Home", "V"), teamBadgeIdentity(data, "Home"), 2, teamBadgeImage(data, "Home"))
 	local kickoffAwayBadge = label(kickoff, "", UDim2.fromScale(0.88, 0.17), UDim2.fromScale(0.08, 0.66), 12, Theme.Colors.White, Theme.Fonts.Display)
-	applyPresentationBadge(kickoffAwayBadge, awayColor, teamLogoText(data, "Away", "V"), teamBadgeIdentity(data, "Away"), 2)
+	applyPresentationBadge(kickoffAwayBadge, awayColor, teamLogoText(data, "Away", "V"), teamBadgeIdentity(data, "Away"), 2, teamBadgeImage(data, "Away"))
 	label(kickoff, shortCode(home) .. "   0       VTR       0   " .. shortCode(away), UDim2.fromScale(0.13, 0.16), UDim2.fromScale(0.74, 0.68), 26).TextXAlignment = Enum.TextXAlignment.Center
 
-	task.delay(0.4, function()
+	schedule(0.4, function()
 		slideIn(matchup, UDim2.fromScale(0.25, 0.16), UDim2.fromScale(0.25, 1.05), 0.42)
 	end)
-	task.delay(4.8, function()
+	schedule(4.8, function()
 		slideOut(matchup, UDim2.fromScale(0.25, -0.62))
 		slideIn(commentators, UDim2.fromScale(0.06, 0.74), UDim2.fromScale(-0.36, 0.74))
 	end)
-	task.delay(15.4, function()
+	schedule(15.4, function()
 		slideOut(commentators, UDim2.fromScale(-0.36, 0.74))
 	end)
-	task.delay(16.0, function()
+	schedule(16.0, function()
 		slideIn(formation, UDim2.fromScale(0.04, 0.13), UDim2.fromScale(-0.32, 0.13))
 		slideIn(playerCard, UDim2.fromScale(0.37, 0.13), UDim2.fromScale(0.37, 0.86))
 	end)
@@ -1416,7 +1749,7 @@ function Presentation.Play(data: any, onComplete: (() -> ())?)
 		{47.7, "AWAY ATTACKERS", "Away", 9, 11, "ATT"},
 	}
 	for _, group in lineGroups do
-		task.delay(group[1], function()
+		schedule(group[1], function()
 			local side = group[3]
 			if side == "Away" and formationTitle.Text ~= shortCode(away) then
 				formationTitle.Text = shortCode(away)
@@ -1430,37 +1763,37 @@ function Presentation.Play(data: any, onComplete: (() -> ())?)
 			showEntryGroupPreview(groupPreview, data, entriesForGroup(data, side, group[6]))
 		end)
 	end
-	task.delay(31.0, function()
+	schedule(31.0, function()
 		playPresentationSound(STARTING_XI_SOUNDS[math.random(1,#STARTING_XI_SOUNDS)],.66)
 		slideOut(playerCard, UDim2.fromScale(0.37, 0.86))
 		slideOut(formation, UDim2.fromScale(-0.32, 0.13))
 		updateTeamSheet("Home")
 		slideIn(sheet, UDim2.fromScale(0.09, 0.14), UDim2.fromScale(0.09, 1.04), 0.42)
 	end)
-	task.delay(35.1, function()
+	schedule(35.1, function()
 		slideOut(sheet, UDim2.fromScale(0.09, 1.04), 0.3)
 		formationTitle.Text = shortCode(away)
 		updateFormationDots(dots, data, "Away")
 		slideIn(formation, UDim2.fromScale(0.04, 0.13), UDim2.fromScale(-0.32, 0.13))
 		slideIn(playerCard, UDim2.fromScale(0.37, 0.13), UDim2.fromScale(0.37, 0.86))
 	end)
-	task.delay(51.0, function()
+	schedule(51.0, function()
 		playPresentationSound(STARTING_XI_SOUNDS[math.random(1,#STARTING_XI_SOUNDS)],.66)
 		slideOut(playerCard, UDim2.fromScale(0.37, 0.86))
 		slideOut(formation, UDim2.fromScale(-0.32, 0.13))
 		updateTeamSheet("Away")
 		slideIn(sheet, UDim2.fromScale(0.09, 0.14), UDim2.fromScale(0.09, 1.04), 0.42)
 	end)
-	task.delay(57.0, function()
+	schedule(57.0, function()
 		slideOut(sheet, UDim2.fromScale(0.09, 1.04), 0.3)
 	end)
-	task.delay(60.0, function()
+	schedule(60.0, function()
 		slideIn(kickoff, UDim2.fromScale(0.18, 0.82), UDim2.fromScale(0.18, 1.04), 0.36)
 	end)
-	task.delay(TOTAL_DURATION - 0.35, function()
+	schedule(TOTAL_DURATION - 0.35, function()
 		slideOut(kickoff, UDim2.fromScale(0.18, 1.04), 0.28)
 	end)
-	task.delay(TOTAL_DURATION, function()
+	schedule(TOTAL_DURATION, function()
 		Presentation.StopAudio()
 		if gui.Parent then gui:Destroy() end
 		if onComplete then onComplete() end

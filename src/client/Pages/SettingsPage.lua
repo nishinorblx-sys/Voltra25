@@ -13,7 +13,7 @@ local PageBase = require(script.Parent.PageBase)
 
 local SettingsPage = {}
 local TABS = {"Controls", "Audio", "Camera", "Accessibility", "Account"}
-local CAMERA_PRESETS = {"WideBroadcast", "CloseBroadcast", "End to End", "Pro"}
+local CAMERA_PRESETS = {"Tactical", "Pro"}
 local NUMBER_NAMES = {Zero = "0", One = "1", Two = "2", Three = "3", Four = "4", Five = "5", Six = "6", Seven = "7", Eight = "8", Nine = "9"}
 local KEY_DEFAULTS = {
 	PauseKey = "M",
@@ -68,9 +68,7 @@ end
 local function normalizeOptionValue(key: string, value: any): string
 	local text = tostring(value)
 	if key == "CameraPreset" then
-		if text == "Broadcast" then return "WideBroadcast" end
-		if text == "Close Broadcast" then return "CloseBroadcast" end
-		if text == "Wide Broadcast" then return "WideBroadcast" end
+		if text == "Broadcast" or text == "WideBroadcast" or text == "Wide Broadcast" or text == "CloseBroadcast" or text == "Close Broadcast" or text == "End to End" then return "Tactical" end
 	end
 	return text
 end
@@ -261,7 +259,7 @@ local function renderTab(context: any, scroll: ScrollingFrame, active: string)
 		toggle(mix, context, "MenuMusic", "MENU MUSIC", "Turns menu soundtrack audio on or off.", 126)
 	elseif active == "Camera" then
 		local cam = panel(scroll, "Camera Options", UDim2.fromOffset(0, 154), UDim2.new(1, 0, 0, 190))
-		option(cam, context, "CameraPreset", "CAMERA PRESET", "WideBroadcast, CloseBroadcast, End to End, or Pro.", 52, CAMERA_PRESETS)
+		option(cam, context, "CameraPreset", "CAMERA PRESET", "Tactical or Pro.", 52, CAMERA_PRESETS)
 	elseif active == "Accessibility" then
 		local access = panel(scroll, "Accessibility", UDim2.fromOffset(0, 154), UDim2.new(1, 0, 0, 220))
 		toggle(access, context, "HighContrast", "HIGH CONTRAST", "Increases scene contrast and UI readability.", 52)

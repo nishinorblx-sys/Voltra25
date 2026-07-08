@@ -73,7 +73,7 @@ function Service:CallFoul(offender: Model, victim: Model, kind: string, location
 
 	local card: string? = nil
 	local secondYellow = false
-	local cardChance = math.clamp((self.Fouls[offender] or 1) * .1, 0, 1)
+	local cardChance = math.clamp((self.Fouls[offender] or 1) * .055, 0, .42)
 	if forceCard or self.Random:NextNumber() < cardChance then
 		if redChance and self.Random:NextNumber() < redChance then
 			card = "Red"

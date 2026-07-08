@@ -15,7 +15,12 @@ function Service:SetSetting(key:string,value:any)
 	end
 	remote:FireServer({Type="Setting",Key=key,Value=value})
 end
+function Service:SetTutorialProgress(step:number,device:string,complete:boolean)
+	remote:FireServer({Type="TutorialProgress",Step=step,Device=device,Complete=complete})
+end
 function Service:SetSquad(slot:string,card:string?) remote:FireServer({Type="Squad",Slot=slot,Card=card}) end
 function Service:SetCosmetic(slot:string,item:string) UISoundService.PlayColor();remote:FireServer({Type="Cosmetic",Slot=slot,Item=item}) end
+function Service:ClearCosmetic(slot:string) UISoundService.PlayColor();remote:FireServer({Type="CosmeticClear",Slot=slot}) end
+function Service:SetCustomGoalMusic(soundId:string,startSecond:number) UISoundService.PlayColor();remote:FireServer({Type="CustomGoalMusic",SoundId=soundId,StartSecond=startSecond}) end
 function Service:SelectCareerSave(slot:number) remote:FireServer({Type="CareerSave",Slot=slot}) end
 return Service

@@ -9,7 +9,7 @@ Controller.__index = Controller
 Controller.AnimationIds = AnimationConfig
 
 local MOVEMENT = {Idle = true, Walk = true, Jog = true, Sprint = true, Dribble = true, Jockey = true, GoalkeeperIdle = true, GoalkeeperMove = true, Turn = true}
-local ACTION = {ReceiveBall = true, Receive = true, Pass = true, Shoot = true, Tackle = true, SlideTackle=true,DribbleMove1=true,DribbleMove4=true, Header = true, GoalkeeperDive = true, Celebrate = true, GoalCelebration = true}
+local ACTION = {ReceiveBall = true, Receive = true, Pass = true, Shoot = true, ShootRight = true, ShootLeft = true, Tackle = true, SlideTackle=true,DribbleMove1=true,DribbleMove4=true, Header = true, GoalkeeperDive = true, GoalkeeperDiveLow = true, GoalkeeperDiveLowRight = true, GoalkeeperDiveLowLeft = true, Celebrate = true, GoalCelebration = true}
 local reportPrinted = false
 local preloadedIds = {}
 
@@ -49,7 +49,7 @@ function Controller.new(model: Model)
 			local ok, track = pcall(function() return animator:LoadAnimation(animation) end)
 			if ok and track then
 				if ACTION[name] then track.Priority = Enum.AnimationPriority.Action elseif name == "Idle" or name == "GoalkeeperIdle" then track.Priority = Enum.AnimationPriority.Idle else track.Priority = Enum.AnimationPriority.Movement end
-				track.Looped = MOVEMENT[name] == true
+				track.Looped = MOVEMENT[name] == true or name == "GoalkeeperDive" or name == "GoalkeeperDiveLow" or name == "GoalkeeperDiveLowRight" or name == "GoalkeeperDiveLowLeft"
 				self.Tracks[name] = track
 			else
 				warn(string.format("[VTR ANIMATION] Failed to load %s (%s) on %s: %s", name, id, model.Name, tostring(track)))

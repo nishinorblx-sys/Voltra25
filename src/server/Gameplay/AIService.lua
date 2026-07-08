@@ -38,6 +38,12 @@ function Service:SetExternalPhase(phase: string?)
 	self.Controller:SetExternalPhase(phase)
 end
 
+function Service:SetManualTackleSides(sides: {[string]: boolean}?)
+	if self.Controller and self.Controller.SetManualTackleSides then
+		self.Controller:SetManualTackleSides(sides)
+	end
+end
+
 function Service:SetDisabled(disabled: boolean)
 	self.Disabled = disabled == true
 	if self.Disabled then

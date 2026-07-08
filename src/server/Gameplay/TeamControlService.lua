@@ -37,13 +37,13 @@ local function debugKickoff(message: string, ...: any)
 	end
 end
 
-function Service.new(remote: RemoteEvent, teams: any, ball: BasePart, possession: any, ballService: any, pitchCFrame: CFrame, width: number, length: number)
+function Service.new(remote: RemoteEvent, teams: any, ball: BasePart, possession: any, ballService: any, pitchCFrame: CFrame, width: number, length: number, animations: any?)
 	local targeting = PassTargetingService.new(teams, pitchCFrame)
 	return setmetatable({
 		Remote = remote, Teams = teams, Ball = ball, Possession = possession, BallService = ballService,
 		Passing = PassingService.new(ballService, targeting, remote, teams),
 		Receiving = ReceiveBallService.new(ball, possession, remote), Smoothing = MovementSmoothingService.new(),
-		PitchCFrame = pitchCFrame, Width = width, Length = length, Active = {}, PlayerSides = {}, PendingReceiver = {}, PassIntent = {}, ReceiverAssist = {}, ManualReceiveOverride = {}, LastMovementAt = {}, LastPossessionOwner = nil, ManualSwitchAwayUntil = {},
+		PitchCFrame = pitchCFrame, Width = width, Length = length, Animations = animations, Active = {}, PlayerSides = {}, PendingReceiver = {}, PassIntent = {}, ReceiverAssist = {}, ManualReceiveOverride = {}, LastMovementAt = {}, LastPossessionOwner = nil, ManualSwitchAwayUntil = {}, PendingShots = {},
 	}, Service)
 end
 
@@ -74,6 +74,47 @@ function Service:SetManualReceiveOverride(player: Player, active: boolean)
 	local pending = self.PendingReceiver[player]
 	if pending and pending.Model and pending.Model.Parent then
 		pending.Model:SetAttribute("VTRManualReceiveOverride", active == true)
+	end
+end
+
+function Service:_shotAnimationName(model:Model,direction:Vector3?):string
+	local modelRoot=root(model)
+	if not modelRoot then return "ShootRight" end
+	local velocity=Vector3.new(modelRoot.AssemblyLinearVelocity.X,0,modelRoot.AssemblyLinearVelocity.Z)
+	local shot=Vector3.new((direction or Vector3.zero).X,0,(direction or Vector3.zero).Z)
+	local facing=shot.Magnitude>.08 and shot.Unit or Vector3.new(modelRoot.CFrame.LookVector.X,0,modelRoot.CFrame.LookVector.Z)
+	if facing.Magnitude<.05 then return "ShootRight" end
+	local aimReference=facing.Unit
+	local shotRight=Vector3.new(-aimReference.Z,0,aimReference.X)
+	if velocity.Magnitude>1.15 then
+		local movementSide=velocity.Unit:Dot(shotRight)
+		if math.abs(movementSide)>.12 then
+			return movementSide<0 and "ShootLeft" or "ShootRight"
+		end
+	end
+	local bodyRight=Vector3.new(modelRoot.CFrame.RightVector.X,0,modelRoot.CFrame.RightVector.Z)
+	if bodyRight.Magnitude<.05 then return "ShootRight" end
+	return aimReference:Dot(bodyRight.Unit)<-0.08 and "ShootLeft" or "ShootRight"
+end
+
+function Service:_releaseShotOnMarker(model:Model,animationName:string,release:()->())
+	if self.PendingShots[model] then return end
+	local token=os.clock()
+	self.PendingShots[model]=token
+	model:SetAttribute("VTRShotAnimationPending",true)
+	local function finish()
+		if self.PendingShots[model]~=token then return end
+		self.PendingShots[model]=nil
+		if model.Parent then
+			model:SetAttribute("VTRShotAnimationPending",nil)
+			model:SetAttribute("VTRSuppressNextShotAnimation",true)
+		end
+		release()
+	end
+	if self.Animations and self.Animations.PlayActionWithMarker then
+		self.Animations:PlayActionWithMarker(model,animationName,"Shoot",.62,finish)
+	else
+		task.delay(.18,finish)
 	end
 end
 
@@ -277,7 +318,7 @@ function Service:Handle(player: Player, payload: any)
 			local sprinting = active:GetAttribute("VTRSprinting") == true
 			local smoothed, penalty = self.Smoothing:Update(active, raw, ownsBall, sprinting)
 			if active:GetAttribute("controlledByUser")==true then
-				smoothed = magnitude > 0.05 and raw.Unit * magnitude or Vector3.zero
+				if not ownsBall then smoothed = magnitude > 0.05 and raw.Unit * magnitude or Vector3.zero end
 				penalty = 1
 			end
 			local now = os.clock()
@@ -315,12 +356,7 @@ function Service:Handle(player: Player, payload: any)
 			if activeRoot and aimPoint and offset and offset.Magnitude>1 then
 				local kicked = self.BallService:Kick(active,"Pass",offset,tonumber(payload.Charge)or 0,nil,payload.PassType=="ManualLobbed"and"Lofted"or"Manual",offset.Magnitude,aimPoint)
 				if kicked then
-					local receiver = self:_closestTeammateToPoint(player, active, aimPoint)
 					self:_switchDefenseToPassTarget(tostring(active:GetAttribute("VTRTeam") or self.PlayerSides[player] or "Home"), aimPoint)
-					if receiver then
-						self.Remote:FireClient(player, {Type = "SwitchTarget", Model = receiver, ReceivePoint = aimPoint})
-						self:_set(player, receiver, "ManualPassTarget")
-					end
 				end
 			end
 			return
@@ -330,6 +366,7 @@ function Service:Handle(player: Player, payload: any)
 		if receiver and receivePoint then
 			self:_switchDefenseToPassTarget(tostring(active:GetAttribute("VTRTeam") or self.PlayerSides[player] or "Home"), receivePoint)
 			local mode = autoSwitchMode(payload.AutoSwitch)
+			if mode == "Off" then mode = "Assisted" end
 			local assistMode = receiverAssistMode(payload.ReceiverAssist)
 			self.Receiving:Expect(player, receiver, receivePoint)
 			self.PassIntent[player] = {Model = receiver, Passer = active, Until = os.clock() + 4.2, AutoSwitch = mode}
@@ -347,13 +384,29 @@ function Service:Handle(player: Player, payload: any)
 		local practiceShotTarget=payload.PracticeShotTarget==true and typeof(payload.AimPosition)=="Vector3"
 		local aimPoint = practiceShotTarget and payload.AimPosition or self:_aimPoint(active, payload.AimPosition, payload.GoalTarget == true)
 		local activeRoot = root(active)
-		if practiceShotTarget and aimPoint and activeRoot then
-			self.BallService:Kick(active, "Shot", aimPoint - activeRoot.Position, payload.Charge,nil,nil,nil,aimPoint)
-		elseif payload.GoalTarget~=true and not self:_isShotNearGoal(active, aimPoint)then
+		local shotDirection=aimPoint and activeRoot and (aimPoint-activeRoot.Position) or payload.Direction
+		local animationName=self:_shotAnimationName(active,shotDirection)
+		local shotVariant=payload.ShotVariant=="Finesse"and"Finesse"or payload.ShotVariant=="LowDriven"and"LowDriven"or"Normal"
+		local shotFoot=animationName=="ShootLeft"and"Left"or"Right"
+		if payload.GoalTarget~=true and not practiceShotTarget and not self:_isShotNearGoal(active, aimPoint)then
 			local direction = aimPoint and activeRoot and (aimPoint - activeRoot.Position) or payload.Direction
 			self.BallService:LowClearance(active,direction,payload.Charge)
 		else
-			self.BallService:Kick(active, "Shot", aimPoint and activeRoot and (aimPoint - activeRoot.Position) or payload.Direction, payload.Charge,nil,nil,nil,payload.GoalTarget==true and aimPoint or nil)
+			self:_releaseShotOnMarker(active,animationName,function()
+				local currentRoot=root(active)
+				active:SetAttribute("VTRShotVariant",shotVariant)
+				active:SetAttribute("VTRShotFoot",shotFoot)
+				local released=false
+				if practiceShotTarget and aimPoint and currentRoot then
+					released=self.BallService:Kick(active,"Shot",aimPoint-currentRoot.Position,payload.Charge,nil,nil,nil,aimPoint)
+				else
+					released=self.BallService:Kick(active,"Shot",aimPoint and currentRoot and(aimPoint-currentRoot.Position)or payload.Direction,payload.Charge,nil,nil,nil,payload.GoalTarget==true and aimPoint or nil)
+				end
+				if not released then
+					active:SetAttribute("VTRShotVariant",nil)
+					active:SetAttribute("VTRShotFoot",nil)
+				end
+			end)
 		end
 	elseif kind=="Clearance"and validDirection(payload.Direction)then
 		local side=tostring(active:GetAttribute("VTRTeam")or"Home");local sign=side=="Home"and-1 or 1;self.BallService:Clearance(active,self.PitchCFrame:VectorToWorldSpace(Vector3.new(0,0,sign)))

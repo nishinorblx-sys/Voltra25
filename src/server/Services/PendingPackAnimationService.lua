@@ -20,7 +20,7 @@ if not ackRemote then
 	ackRemote.Parent = folder
 end
 
-local store = DataStoreService:GetDataStore("PendingPackRewardAnimations_v3")
+local store = DataStoreService:GetDataStore("PendingPackRewardAnimations_v5")
 local pending = {}
 local started = false
 

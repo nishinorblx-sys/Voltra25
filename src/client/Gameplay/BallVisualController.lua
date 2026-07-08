@@ -53,7 +53,7 @@ function Controller.new(ball: BasePart, model: Model)
 	}, Controller)
 	self:_createVisual()
 	local shadow=Instance.new("Part");shadow.Name="VTRBallShadow";shadow.Shape=Enum.PartType.Cylinder;shadow.Size=Vector3.new(.035,2.1,2.1);shadow.Anchored=true;shadow.CanCollide=false;shadow.CanTouch=false;shadow.CanQuery=false;shadow.CastShadow=false;shadow.Material=Enum.Material.SmoothPlastic;shadow.Color=Color3.new(0,0,0);shadow.Transparency=.62;shadow.Parent=workspace;self.Shadow=shadow
-	local raycast=RaycastParams.new();raycast.FilterType=Enum.RaycastFilterType.Exclude;local excluded={ball};if ball.Parent and ball.Parent:IsA("Model")then table.insert(excluded,ball.Parent)end;if self.VisualModel then table.insert(excluded,self.VisualModel)elseif self.Visual then table.insert(excluded,self.Visual)end;raycast.FilterDescendantsInstances=excluded;self.Raycast=raycast
+	local raycast=RaycastParams.new();raycast.FilterType=Enum.RaycastFilterType.Exclude;local excluded={ball,model};if ball.Parent and ball.Parent:IsA("Model")then table.insert(excluded,ball.Parent)end;if self.VisualModel then table.insert(excluded,self.VisualModel)elseif self.Visual then table.insert(excluded,self.Visual)end;raycast.FilterDescendantsInstances=excluded;self.Raycast=raycast
 	return self
 end
 
@@ -133,7 +133,8 @@ function Controller:ClearLock()
 end
 
 function Controller:Update(dt: number, move: Vector3, sprinting: boolean)
-	local owns = self.Ball:GetAttribute("OwnerUserId") == Players.LocalPlayer.UserId
+	local ownerName = tostring(self.Ball:GetAttribute("OwnerModel") or "")
+	local owns = self.Ball:GetAttribute("OwnerUserId") == Players.LocalPlayer.UserId or ownerName == self.Model.Name
 	if not self.Visual then self:_createVisual()end
 	if not self.Visual then return end
 	hideOriginal(self.Ball, true)
@@ -147,28 +148,31 @@ function Controller:Update(dt: number, move: Vector3, sprinting: boolean)
 	local authoritativePosition=self.Ball.Position
 	local authoritativeVelocity=self.Ball.AssemblyLinearVelocity
 	local postGoalActive=(tonumber(self.Ball:GetAttribute("VTRPostGoalPhysicsUntil")) or 0)>os.clock()
+	local motionKind=tostring(self.Ball:GetAttribute("VTRMotionKind") or "")
+	local glidingMotion=motionKind=="Dribble"
 	if self.ShotTrail and self.ShotTrail.Enabled and not self.TrailHeld then
-		local motionKind=self.Ball:GetAttribute("VTRMotionKind")
 		if (motionKind=="Shot"or motionKind=="Corner")and authoritativeVelocity.Magnitude<3 then self:StopShotTrail()end
 	end
 	local predictedPosition:Vector3=self.PredictedPosition or authoritativePosition
 	local predictedVelocity:Vector3=self.PredictedVelocity or authoritativeVelocity
 	local positionError=(authoritativePosition-predictedPosition).Magnitude
-	if positionError>(postGoalActive and 28 or 7) then
+	local snapDistance = postGoalActive and 28 or glidingMotion and 18 or motionKind=="Shot" and 11 or 8
+	if positionError > snapDistance then
 		-- Set pieces and genuine corrections should snap. Ordinary replication
 		-- gaps are extrapolated below instead of freezing the visible ball.
 		predictedPosition=authoritativePosition
 		predictedVelocity=authoritativeVelocity
 	else
-		local velocityAlpha=1-math.exp(-(postGoalActive and 34 or owns and 32 or 24)*dt)
+		local velocityRate = postGoalActive and 34 or motionKind=="Dribble" and 10 or motionKind=="Pass" and 9 or owns and 18 or 15
+		local velocityAlpha=1-math.exp(-velocityRate*dt)
 		local previousFlat=Vector3.new(predictedVelocity.X,0,predictedVelocity.Z)
 		local currentFlat=Vector3.new(authoritativeVelocity.X,0,authoritativeVelocity.Z)
 		-- Pick up bounces and ricochets immediately, while smoothing small network
 		-- variations that otherwise make a decal appear to detach from the sphere.
-		if predictedVelocity.Y*authoritativeVelocity.Y<-.5 or(previousFlat.Magnitude>3 and currentFlat.Magnitude>3 and previousFlat.Unit:Dot(currentFlat.Unit)<.35)then velocityAlpha=math.max(velocityAlpha,.72)end
+		if not glidingMotion and (predictedVelocity.Y*authoritativeVelocity.Y<-.5 or(previousFlat.Magnitude>3 and currentFlat.Magnitude>3 and previousFlat.Unit:Dot(currentFlat.Unit)<.35))then velocityAlpha=math.max(velocityAlpha,.72)end
 		predictedVelocity=predictedVelocity:Lerp(authoritativeVelocity,velocityAlpha)
 		predictedPosition+=predictedVelocity*dt
-		local reconcileRate=postGoalActive and 24 or owns and 28 or(self.Ball:GetAttribute("VTRMotionKind")=="Shot"and 11 or 16)
+		local reconcileRate=postGoalActive and 24 or motionKind=="Dribble" and 6 or motionKind=="Pass" and 5.5 or owns and 12 or(motionKind=="Shot"and 10 or 12)
 		predictedPosition=predictedPosition:Lerp(authoritativePosition,1-math.exp(-reconcileRate*dt))
 	end
 	self.PredictedPosition=predictedPosition
@@ -182,8 +186,46 @@ function Controller:Update(dt: number, move: Vector3, sprinting: boolean)
 		local lead=rootVelocity.Magnitude>6 and rootVelocity.Unit:Dot(direction)>.35 and math.clamp(rootVelocity.Magnitude*.045,0,sprinting and 1.25 or .75)or 0
 		local distance=Config.Ball.DribbleDistance+(sprinting and 2.15 or .45)+lead
 		local control=root.Position+direction*distance-Vector3.new(0,Config.Ball.DribbleVerticalOffset,0)
-		local alpha=sprinting and .72 or .58
-		target=Vector3.new(target.X+(control.X-target.X)*alpha,predictedPosition.Y,target.Z+(control.Z-target.Z)*alpha)
+		local radius=math.max(self.Radius,Config.Ball.Radius or .1)
+		local rootFlat=Vector3.new(root.Position.X,0,root.Position.Z)
+		local controlFlat=Vector3.new(control.X,0,control.Z)
+		local minSeparation=math.max(radius*1.65,2.15)
+		if (controlFlat-rootFlat).Magnitude<minSeparation then
+			controlFlat=rootFlat+direction*minSeparation
+		end
+		control=Vector3.new(controlFlat.X,math.min(control.Y,root.Position.Y-.35),controlFlat.Z)
+		local alpha=sprinting and .86 or .78
+		local ownedY=math.min(predictedPosition.Y+(control.Y-predictedPosition.Y)*alpha,root.Position.Y-.35)
+		target=Vector3.new(target.X+(control.X-target.X)*alpha,ownedY,target.Z+(control.Z-target.Z)*alpha)
+		if (Vector3.new(authoritativePosition.X,0,authoritativePosition.Z)-Vector3.new(control.X,0,control.Z)).Magnitude < 9 then
+			self.PredictedPosition=target
+		end
+	end
+	local groundHit=workspace:Raycast(target+Vector3.new(0,2,0),Vector3.new(0,-8,0),self.Raycast)
+	if groundHit and groundHit.Normal.Y > 0.55 then
+		local height=(target-groundHit.Position):Dot(groundHit.Normal)
+		local desiredGroundHeight = self.Radius + 0.035
+		if glidingMotion and height < self.Radius + 1.15 then
+			local groundTarget = groundHit.Position + groundHit.Normal * desiredGroundHeight
+			local alpha = 1 - math.exp(-dt / (motionKind == "Dribble" and 0.035 or 0.06))
+			target = Vector3.new(target.X, target.Y + (groundTarget.Y - target.Y) * alpha, target.Z)
+			local vertical = predictedVelocity:Dot(groundHit.Normal)
+			if math.abs(vertical) < 8 then
+				predictedVelocity -= groundHit.Normal * vertical
+				self.PredictedVelocity = predictedVelocity
+			end
+			self.PredictedPosition = target
+			height = (target-groundHit.Position):Dot(groundHit.Normal)
+		end
+		if height<self.Radius-.04 then
+			target+=groundHit.Normal*(self.Radius-height+.02)
+			local vertical=predictedVelocity:Dot(groundHit.Normal)
+			if vertical<0 then
+				predictedVelocity-=groundHit.Normal*vertical
+				self.PredictedVelocity=predictedVelocity
+			end
+			self.PredictedPosition=target
+		end
 	end
 	local travel = Vector3.new(target.X - self.LastVisualPosition.X, 0, target.Z - self.LastVisualPosition.Z)
 	self.LastVisualPosition = target

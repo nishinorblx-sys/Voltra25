@@ -5,13 +5,18 @@ local Workspace = game:GetService("Workspace")
 local Service = {}
 local BASE = Vector2.new(1920, 1080)
 
+local function crispScale(value: number): number
+	local step = 0.125
+	return math.max(0.42, math.floor(value / step + 1e-6) * step)
+end
+
 function Service.GetScale(): number
 	local camera = Workspace.CurrentCamera
 	local viewport = camera and camera.ViewportSize or BASE
 	local topLeft = GuiService:GetGuiInset()
 	local usable = Vector2.new(math.max(1, viewport.X), math.max(1, viewport.Y - topLeft.Y))
 	local scale = math.min(usable.X / BASE.X, usable.Y / BASE.Y)
-	return math.clamp(scale, 0.42, 1)
+	return crispScale(math.clamp(scale, 0.42, 1))
 end
 
 function Service.Apply(root: Instance, name: string?): UIScale

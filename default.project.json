@@ -5,9 +5,6 @@
     "ReplicatedStorage": {
       "VTR": {
         "$className": "Folder",
-        "Data": {
-          "$path": "src/data"
-        },
         "Shared": {
           "$path": "src/shared"
         }
@@ -15,7 +12,10 @@
     },
     "ServerScriptService": {
       "VTRServer": {
-        "$path": "src/server"
+        "$path": "src/server",
+        "RawData": {
+          "$path": "src/data"
+        }
       }
     },
     "StarterPlayer": {

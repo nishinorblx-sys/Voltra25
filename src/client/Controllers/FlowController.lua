@@ -1,4 +1,5 @@
 local Players = game:GetService("Players")
+local MarketplaceService = game:GetService("MarketplaceService")
 
 local function vtrClientRoot()
 	local current = script
@@ -22,6 +23,7 @@ local PackRouletteAlignmentService = require(vtrClientRoot():WaitForChild("Servi
 local TweenService=game:GetService("TweenService")
 local ReplicatedStorage=game:GetService("ReplicatedStorage")
 local Theme=require(ReplicatedStorage.VTR.Shared.Theme)
+local Catalog=require(ReplicatedStorage.VTR.Shared.Catalog)
 local Modal=require(script.Parent.Parent.Components.Modal)
 local LoadingScreen=require(script.Parent.Parent.Components.LoadingScreen)
 local RankedQueuePresentation=require(script.Parent.Parent.Components.RankedQueuePresentation)
@@ -34,7 +36,25 @@ local PackOpeningSequence=require(script.Parent.Parent.Components.PackOpeningSeq
 local PackService=require(script.Parent.Parent.Services.PackService)
 local FlowController={};FlowController.__index=FlowController
 
-function FlowController.new(root:Frame,toast:(any)->()) return setmetatable({Root=root,Toast=toast,Busy=false},FlowController) end
+local function cosmeticName(id:string):string
+	for _,cosmetic in Catalog.Cosmetics do
+		if cosmetic.Id==id then return tostring(cosmetic.Name or id)end
+	end
+	return string.upper((id:gsub("_"," ")))
+end
+
+function FlowController.new(root:Frame,toast:(any)->())
+	local self=setmetatable({Root=root,Toast=toast,Busy=false,ProductPurchaseLocks={}},FlowController)
+	task.spawn(function()
+		local vtr=ReplicatedStorage:WaitForChild("VTR",10)
+		local remotes=vtr and vtr:WaitForChild("Remotes",10)
+		local remote=remotes and remotes:WaitForChild("CelebrationPackReveal",10)
+		if remote and remote:IsA("RemoteEvent")then
+			remote.OnClientEvent:Connect(function(payload)self:CelebrationPackReveal(payload)end)
+		end
+	end)
+	return self
+end
 function FlowController:SetPlayerDetailsHandler(handler:(string)->()) self.PlayerDetailsHandler=handler end
 function FlowController:SetNavigator(handler:(string)->()) self.Navigator=handler end
 function FlowController:SetInventoryNavigator(handler:()->()) self.InventoryNavigator=handler end
@@ -60,6 +80,10 @@ end
 function FlowController:_safe(action:any,perform:()->any,refresh:()->()):any
 	local ok,result=pcall(perform)
 	if not ok then self:Error("ACTION FAILED","The mock service rejected this action. Please try again.");return end
+	if type(result)=="table"and result.Success==false then
+		self.Toast({Title=action.Item or"VTR 25",Message=result.Message or result.Error or"Action blocked by server.",Kind="Error"})
+		return result
+	end
 	local message=type(result)=="table" and (result.Message or "Action completed.") or tostring(result)
 	self.Toast({Title=action.Item or "VTR 25",Message=message,Kind=(action.Operation=="Purchase" or action.Operation=="Claim") and "Reward" or "Info"});refresh();return result
 end
@@ -111,7 +135,19 @@ function FlowController:PackOpening(title:string,complete:()->(),reveals:any?)
 end
 function FlowController:OfferPackDelivery(delivered:any,onComplete:(()->())?,beforeOpen:(()->())?)
 	local quantity=tonumber(delivered.quantity)or 1
-	Modal.open(self.Root,{Kicker="PACK DELIVERED",Title=delivered.name,Meta=quantity>1 and(quantity.." PACKS ADDED TO INVENTORY")or"PACK ADDED TO INVENTORY",Description=quantity>1 and("Open one now or go to Inventory to see all "..quantity.." unopened packs.")or"Open this pack now or go directly to your Inventory hub.",CancelLabel="GO TO INVENTORY",OnCancel=function()if self.InventoryNavigator then self.InventoryNavigator()elseif self.Navigator then self.Navigator("Inventory")end end,ConfirmLabel="OPEN NOW",OnConfirm=function()
+	local localPlayer=Players.LocalPlayer
+	if localPlayer then localPlayer:SetAttribute("VTRHoldPackRewardFlyin",true)end
+	local function releaseFlyin()
+		if localPlayer then localPlayer:SetAttribute("VTRHoldPackRewardFlyin",false)end
+	end
+	local function dropFlyin()
+		if localPlayer then
+			localPlayer:SetAttribute("VTRDropPackRewardFlyinUntil",os.clock()+8)
+			localPlayer:SetAttribute("VTRHoldPackRewardFlyin",false)
+		end
+	end
+	Modal.open(self.Root,{Kicker="PACK DELIVERED",Title=delivered.name,Meta=quantity>1 and(quantity.." PACKS READY")or"PACK READY",Description=quantity>1 and("Open one now or close this panel to send the sealed packs into your Inventory.")or"Open this pack now or close this panel to send it into your Inventory.",CancelLabel="CLOSE",OnCancel=function()releaseFlyin()end,ConfirmLabel="OPEN PACK",OnConfirm=function()
+		dropFlyin()
 		local opened=PackService:Open(delivered.packInstanceId);if not opened.Success then self:Error("PACK OPENING FAILED",opened.Message or "The pack could not be opened.");return end;if beforeOpen then beforeOpen()end
 		self:PackOpening(delivered.name,onComplete or function()self.Toast({Title="PACK CONTENTS",Message="Pack contents secured in your Club.",Kind="Reward"})end,opened.Data)
 	end})
@@ -123,18 +159,93 @@ function FlowController:CareerSetup(callback:()->()) Modal.open(self.Root,{Kicke
 function FlowController:ComingSoon(title:string,message:string,callback:(()->())?) Modal.open(self.Root,{Kicker="COMING SOON",Title=title,Meta="FRAMEWORK READY",Description=message,ConfirmLabel="UNDERSTOOD",OnConfirm=callback}) end
 function FlowController:Error(title:string,message:string) Modal.open(self.Root,{Kicker="ERROR",Title=title,Meta="PLEASE TRY AGAIN",Description=message,ConfirmLabel="CLOSE"}) end
 
+function FlowController:PromptDeveloperProduct(card:any,action:any)
+	local productId=tonumber(action.ProductId)
+	if not productId or productId<=0 then self:Error("PRODUCT UNAVAILABLE","This developer product is missing its Roblox product id.");return end
+	local player=Players.LocalPlayer
+	local grantItemId=tostring(action.GrantItemId or action.Item or "")
+	if (action.ProductKind=="Kit" or action.ProductKind=="Cosmetic") and grantItemId~="" then
+		local ownedAttribute=action.ProductKind=="Kit" and ("VTROwnedKit_"..grantItemId) or ("VTROwnedCosmetic_"..grantItemId)
+		local itemType=action.ProductKind=="Kit" and "kit" or "item"
+		if player and player:GetAttribute(ownedAttribute)==true then
+			self.Toast({Title="STORE",Message="You already own this "..itemType..". Equip it from Customize.",Kind="Info"})
+			return
+		end
+		if self.ProductPurchaseLocks[grantItemId]==true then
+			self.Toast({Title="STORE",Message="This purchase is already being processed.",Kind="Info"})
+			return
+		end
+		self.ProductPurchaseLocks[grantItemId]=true
+		task.delay(8,function()
+			if not player or player:GetAttribute(ownedAttribute)~=true then
+				self.ProductPurchaseLocks[grantItemId]=nil
+			end
+		end)
+	end
+	if player then MarketplaceService:PromptProductPurchase(player,productId)end
+	self.Toast({Title="STORE",Message="Roblox purchase prompt opened.",Kind="Info"})
+end
+
+function FlowController:PromptGamePass(card:any,action:any)
+	local gamePassId=tonumber(action.GamePassId)
+	if not gamePassId or gamePassId<=0 then self:Error("PASS UNAVAILABLE","This gamepass is missing its Roblox pass id.");return end
+	local player=Players.LocalPlayer
+	if player then MarketplaceService:PromptGamePassPurchase(player,gamePassId)end
+	self.Toast({Title="STORE",Message="Roblox gamepass prompt opened.",Kind="Info"})
+end
+
+function FlowController:CelebrationPackReveal(payload:any)
+	if type(payload)~="table"then return end
+	local pool=type(payload.Pool)=="table"and payload.Pool or{}
+	local awarded=tostring(payload.Awarded or pool[1] or"")
+	if awarded==""then return end
+	local old=self.Root:FindFirstChild("CelebrationPackRevealOverlay")
+	if old then old:Destroy()end
+	local overlay=Instance.new("TextButton");overlay.Name="CelebrationPackRevealOverlay";overlay.BackgroundColor3=Theme.Colors.Black;overlay.BackgroundTransparency=.12;overlay.BorderSizePixel=0;overlay.Size=UDim2.fromScale(1,1);overlay.AutoButtonColor=false;overlay.Text="";overlay.Modal=true;overlay.ZIndex=210;overlay.Parent=self.Root
+	local panel=Panel.new({Name="CelebrationRevealPanel",Size=UDim2.fromOffset(560,330),ClipsDescendants=true});panel.AnchorPoint=Vector2.new(.5,.5);panel.Position=UDim2.fromScale(.5,.5);panel.ZIndex=211;panel.Parent=overlay
+	local scale=Instance.new("UIScale");scale.Scale=.82;scale.Parent=panel
+	local stroke=Instance.new("UIStroke");stroke.Color=Theme.Colors.Electric;stroke.Thickness=2;stroke.Transparency=.05;stroke.Parent=panel
+	local glow=Instance.new("Frame");glow.BackgroundColor3=Theme.Colors.Electric;glow.BackgroundTransparency=.86;glow.BorderSizePixel=0;glow.AnchorPoint=Vector2.new(.5,.5);glow.Position=UDim2.fromScale(.5,.5);glow.Size=UDim2.fromScale(1.35,.24);glow.Rotation=-12;glow.ZIndex=212;glow.Parent=panel
+	local title=Instance.new("TextLabel");title.BackgroundTransparency=1;title.Position=UDim2.fromOffset(28,26);title.Size=UDim2.new(1,-56,0,34);title.Text="CELEBRATION PACK";title.TextColor3=Theme.Colors.White;title.TextSize=24;title.Font=Theme.Fonts.Display;title.TextXAlignment=Enum.TextXAlignment.Left;title.ZIndex=213;title.Parent=panel
+	local sub=Instance.new("TextLabel");sub.BackgroundTransparency=1;sub.Position=UDim2.fromOffset(30,62);sub.Size=UDim2.new(1,-60,0,18);sub.Text=string.upper(tostring(payload.PackName or"UNLOCKED CELEBRATION"));sub.TextColor3=Theme.Colors.Electric;sub.TextSize=9;sub.Font=Theme.Fonts.Strong;sub.TextXAlignment=Enum.TextXAlignment.Left;sub.ZIndex=213;sub.Parent=panel
+	local reel=Instance.new("Frame");reel.BackgroundColor3=Color3.fromHex("050805");reel.BackgroundTransparency=.06;reel.BorderSizePixel=0;reel.Position=UDim2.fromOffset(28,104);reel.Size=UDim2.new(1,-56,0,104);reel.ZIndex=213;reel.Parent=panel;local reelCorner=Instance.new("UICorner");reelCorner.CornerRadius=UDim.new(0,10);reelCorner.Parent=reel;local reelStroke=Instance.new("UIStroke");reelStroke.Color=Theme.Colors.Electric;reelStroke.Transparency=.38;reelStroke.Thickness=1;reelStroke.Parent=reel
+	local name=Instance.new("TextLabel");name.BackgroundTransparency=1;name.AnchorPoint=Vector2.new(.5,.5);name.Position=UDim2.fromScale(.5,.5);name.Size=UDim2.new(1,-36,0,52);name.Text="SPINNING...";name.TextColor3=Theme.Colors.White;name.TextSize=24;name.Font=Theme.Fonts.Display;name.TextXAlignment=Enum.TextXAlignment.Center;name.ZIndex=214;name.Parent=reel
+	local result=Instance.new("TextLabel");result.BackgroundTransparency=1;result.Position=UDim2.fromOffset(28,226);result.Size=UDim2.new(1,-56,0,34);result.Text="";result.TextColor3=Theme.Colors.Electric;result.TextSize=18;result.Font=Theme.Fonts.Display;result.TextXAlignment=Enum.TextXAlignment.Center;result.ZIndex=214;result.Parent=panel
+	local close=Button.new({Text="EQUIP IN CUSTOMIZE",Variant="Primary",Size=UDim2.fromOffset(210,42),OnActivated=function()overlay:Destroy()end});close.AnchorPoint=Vector2.new(.5,1);close.Position=UDim2.new(.5,0,1,-24);close.ZIndex=215;close.Parent=panel
+	TweenService:Create(scale,TweenInfo.new(.22,Enum.EasingStyle.Back,Enum.EasingDirection.Out),{Scale=1}):Play()
+	task.spawn(function()
+		local cycles=math.max(18,#pool*5)
+		for index=1,cycles do
+			if not overlay.Parent then return end
+			local id=tostring(pool[((index-1)%math.max(1,#pool))+1] or awarded)
+			name.Text=cosmeticName(id);name.TextColor3=index>cycles-4 and Theme.Colors.Electric or Theme.Colors.White
+			task.wait(math.clamp(.035+index*.006,.035,.12))
+		end
+		name.Text=cosmeticName(awarded);result.Text="UNLOCKED"
+		TweenService:Create(glow,TweenInfo.new(.28,Enum.EasingStyle.Quart,Enum.EasingDirection.Out),{BackgroundTransparency=.35,Size=UDim2.fromScale(1.5,.42)}):Play()
+		TweenService:Create(stroke,TweenInfo.new(.28),{Thickness=4}):Play()
+		task.delay(.35,function()if glow.Parent then TweenService:Create(glow,TweenInfo.new(.55),{BackgroundTransparency=.82,Size=UDim2.fromScale(1.35,.24)}):Play()end end)
+	end)
+end
+
 function FlowController:Handle(card:any,action:any,perform:()->any,refresh:()->(),navigateTab:(string)->())
 	local run=function() return self:_safe(action,perform,refresh) end
 	if action.TargetTab then
 		if action.Operation=="CareerSetup" then self:CareerSetup(function() navigateTab(action.TargetTab) end) else self:ModeTransition(action.TargetTab,function() navigateTab(action.TargetTab) end,true) end
+	elseif action.Operation=="DeveloperProduct" then self:PromptDeveloperProduct(card,action)
+	elseif action.Operation=="GamePass" then self:PromptGamePass(card,action)
 	elseif action.Operation=="EquipToggle" then self:PlayerCardDetail(card,action,run)
 	elseif action.Operation=="Purchase" and action.ItemType=="Pack" then Modal.open(self.Root,{Kicker="PACK PURCHASE",Title="BUY "..string.upper(card.Title),Meta=card.Meta,Description="Choose how many sealed packs to buy. The server validates currency and grants each pack as its own unopened inventory item.",Fields={{Key="Quantity",Placeholder="1 - 25",Default="1"}},ConfirmLabel="BUY PACKS",OnConfirm=function(values:any)
 		local quantity=math.clamp(math.floor(tonumber(values.Quantity)or 1),1,25)
 		action.Quantity=quantity
+		local localPlayer=Players.LocalPlayer
+		if localPlayer then localPlayer:SetAttribute("VTRHoldPackRewardFlyin",true)end
 		local result=run();local delivered=type(result)=="table" and result.Success and result.Data and result.Data.Pack
 		if delivered then
 			delivered.quantity=quantity
 			self:OfferPackDelivery(delivered)
+		elseif localPlayer then
+			localPlayer:SetAttribute("VTRHoldPackRewardFlyin",false)
 		end
 		action.Quantity=nil
 	end})
@@ -145,8 +256,7 @@ function FlowController:Handle(card:any,action:any,perform:()->any,refresh:()->(
 		end
 	end)
 	elseif action.Operation=="Claim" then self:RewardClaim(card,action,function() local result=run();local reward=type(result)=="table" and result.Data or nil;if self.PlayerDetailsHandler and type(reward)=="table" and (reward.cardInstanceId or reward.Id and string.sub(reward.Id,1,5)=="card_") then self.PlayerDetailsHandler(reward.cardInstanceId or reward.Id) end end)
-	elseif action.Operation=="Create" and action.Key=="ClubCreated" then self:CreateClubForm(function(values:any) action.FormValues=values;run() end)
-	elseif action.Operation=="StartShootingPractice" then local result=run();if type(result)=="table"and result.Success then self.Toast({Title="SHOOTING",Message=result.Message or"Shooting practice loading.",Kind="Info"})end
+	elseif action.Operation=="Create" and action.Key=="ClubCreated" then self:CreateClubForm(function(values:any) action.FormValues=values;local result=run();action.FormValues=nil;return result end)
 	elseif action.Label=="OPEN PACK" then self:PackPreview(card,action,function() local result=run();if type(result)=="table" and result.Success and result.Data then self:PackOpening(card.Title,function() end,result.Data) end end)
 	elseif action.Label=="FIND MATCH" then local result=run();if type(result)=="table"and result.Success then if type(result.Data)=="table"and result.Data.Status=="Matched"then RankedQueuePresentation.ShowMatchFound(self.Root,result.Data,function()end)else RankedQueuePresentation.StartSearching(self.Root)end;self.Toast({Title="RANKED QUEUE",Message=result.Message or"Searching for opponent…",Kind="Info"})end
 	elseif action.Label=="CANCEL QUEUE"then self:Confirmation("LEAVE RANKED QUEUE","Stop searching for another player?","LEAVE QUEUE",function()local result=run();if type(result)=="table"and result.Success then RankedQueuePresentation.Cancel(self.Root);self.Toast({Title="RANKED QUEUE",Message=result.Message or"Search cancelled.",Kind="Info"})end end)

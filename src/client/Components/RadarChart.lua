@@ -145,7 +145,7 @@ function RadarChart.new(parent: Instance, stats: any, size: any): Frame
 	local viewport = Instance.new("ViewportFrame")
 	viewport.Name = "HexagonViewport"
 	viewport.BackgroundColor3 = Color3.fromHex("101210")
-	viewport.BackgroundTransparency = 0.08
+	viewport.BackgroundTransparency = 0
 	viewport.BorderSizePixel = 0
 	viewport.Size = UDim2.fromScale(1, 1)
 	viewport.Ambient = Color3.new(1, 1, 1)

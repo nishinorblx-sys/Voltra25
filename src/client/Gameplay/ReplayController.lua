@@ -12,11 +12,10 @@ local Theme = require(ReplicatedStorage.VTR.Shared.Theme)
 local Controller = {}
 Controller.__index = Controller
 
-local REPLAY_SECONDS = 10
-local BUFFER_SECONDS = 12
-local POST_GOAL_RECORD_SECONDS = 1
+local REPLAY_SECONDS = 8
+local BUFFER_SECONDS = 10
+local POST_GOAL_RECORD_SECONDS = 0
 local GOAL_REPLAY_COOLDOWN = 1.25
-local SET_PIECE_REPLAY_GRACE = 0.25
 local SHOT_PRE_ROLL = 2.25
 local SHOT_POST_ROLL = 3.75
 local SHOT_SLOW_WINDOW = 1
@@ -128,6 +127,13 @@ function Controller:MarkShot(actor: Model?)
 	if not replay or not replay.Recording then return end
 	self.LastShotReplayTime = replay.ReplayTime
 	self.LastShotActor = actor
+end
+
+function Controller:SealGoalClip()
+	local replay = self.Replay
+	if not replay or not replay.Recording or replay.ReplayFrameCount < 2 then return end
+	replay:StopRecording()
+	self.GoalClipSealed = true
 end
 
 local function rootPart(model: Model?): BasePart?
@@ -367,7 +373,7 @@ end
 
 function Controller:PlayGoalReplay(onFinished: (() -> ())?)
 	local replay = self.Replay
-	if not replay or replay.Playing or not replay.Recording or replay.ReplayFrameCount < 2 then
+	if not replay or replay.Playing or (not replay.Recording and not self.GoalClipSealed) or replay.ReplayFrameCount < 2 then
 		if onFinished then onFinished() end
 		return false
 	end
@@ -379,20 +385,19 @@ function Controller:PlayGoalReplay(onFinished: (() -> ())?)
 	self.LastGoalReplayAt = now
 
 	task.delay(POST_GOAL_RECORD_SECONDS, function()
-		if self.Destroyed or self.Replay ~= replay or not replay.Recording then
+		if self.Destroyed or self.Replay ~= replay or (not replay.Recording and not self.GoalClipSealed) then
 			if onFinished then onFinished() end
 			return
 		end
-		replay:StopRecording()
+		if replay.Recording then
+			replay:StopRecording()
+			self.GoalClipSealed = true
+		end
 		local finalTime = replay.Frames[replay.ReplayFrameCount].Time
 		local shotTime = tonumber(self.LastShotReplayTime)
-		local hasShotCinematic = shotTime ~= nil and shotTime >= replay.Frames[1].Time and shotTime <= finalTime and finalTime - (shotTime :: number) <= SHOT_PRE_ROLL + SHOT_POST_ROLL + 1.25
-		local startTime = hasShotCinematic and math.max(replay.Frames[1].Time, (shotTime :: number) - SHOT_PRE_ROLL) or math.max(replay.Frames[1].Time, finalTime - REPLAY_SECONDS)
-		local endTime = hasShotCinematic and math.min(finalTime, (shotTime :: number) + SHOT_POST_ROLL) or finalTime
-		local setPieceStart = tonumber(self.LastSetPieceReplayTime)
-		if setPieceStart and finalTime - setPieceStart <= REPLAY_SECONDS + POST_GOAL_RECORD_SECONDS + SET_PIECE_REPLAY_GRACE then
-			startTime = math.max(replay.Frames[1].Time, math.min(startTime, setPieceStart))
-		end
+		local hasShotCinematic = shotTime ~= nil and shotTime >= replay.Frames[1].Time and shotTime <= finalTime
+		local startTime = hasShotCinematic and math.max(replay.Frames[1].Time, (shotTime :: number) - REPLAY_SECONDS) or math.max(replay.Frames[1].Time, finalTime - REPLAY_SECONDS)
+		local endTime = finalTime
 		local gui = self:_makeOverlay()
 		replay:CreateViewport(gui)
 		replay:ShowReplay(true)
@@ -421,6 +426,7 @@ function Controller:PlayGoalReplay(onFinished: (() -> ())?)
 			end
 			if not self.Destroyed then
 				self:_startRecording()
+				self.GoalClipSealed = false
 			end
 			if onFinished then
 				if skipped and not self.Destroyed then

@@ -29,11 +29,16 @@ function ModeHub.new(context: any, service: any): CanvasGroup
 	tabs.BackgroundTransparency = 1
 	tabs.BorderSizePixel = 0
 	tabs.Position = UDim2.fromOffset(0, 102)
-	tabs.Size = UDim2.new(1, -150, 0, 46)
+	tabs.Size = UDim2.new(1, -244, 0, 46)
+	tabs.Active = true
 	tabs.AutomaticCanvasSize = Enum.AutomaticSize.X
 	tabs.CanvasSize = UDim2.new()
+	tabs.ClipsDescendants = true
 	tabs.ScrollingDirection = Enum.ScrollingDirection.X
-	tabs.ScrollBarThickness = 0
+	tabs.ScrollingEnabled = true
+	tabs.ScrollBarImageColor3 = Theme.Colors.Electric
+	tabs.ScrollBarImageTransparency = 0.15
+	tabs.ScrollBarThickness = 4
 	tabs.Parent = scroll
 	local tabsLayout = Instance.new("UIListLayout")
 	tabsLayout.FillDirection = Enum.FillDirection.Horizontal
@@ -43,11 +48,61 @@ function ModeHub.new(context: any, service: any): CanvasGroup
 	local render: () -> ()
 	local setTab: (string) -> ()
 
+	local function getMaxTabScroll(): number
+		return math.max(0, tabs.AbsoluteCanvasSize.X - tabs.AbsoluteSize.X)
+	end
+
+	local function scrollTabs(delta: number)
+		local maxX = getMaxTabScroll()
+		if maxX <= 0 then return end
+		tabs.CanvasPosition = Vector2.new(math.clamp(tabs.CanvasPosition.X + delta, 0, maxX), 0)
+	end
+
+	local function revealActiveTab()
+		local button = tabButtons[activeTab.Id]
+		if not button then return end
+		task.defer(function()
+			if not button.Parent or not tabs.Parent then return end
+			local maxX = getMaxTabScroll()
+			if maxX <= 0 then
+				tabs.CanvasPosition = Vector2.zero
+				return
+			end
+			local tabLeft = button.AbsolutePosition.X - tabs.AbsolutePosition.X + tabs.CanvasPosition.X
+			local tabRight = tabLeft + button.AbsoluteSize.X
+			local viewLeft = tabs.CanvasPosition.X
+			local viewRight = viewLeft + tabs.AbsoluteSize.X
+			if tabLeft < viewLeft then
+				tabs.CanvasPosition = Vector2.new(math.clamp(tabLeft - 8, 0, maxX), 0)
+			elseif tabRight > viewRight then
+				tabs.CanvasPosition = Vector2.new(math.clamp(tabRight - tabs.AbsoluteSize.X + 8, 0, maxX), 0)
+			end
+		end)
+	end
+
+	tabs.InputChanged:Connect(function(input: InputObject)
+		if input.UserInputType ~= Enum.UserInputType.MouseWheel then return end
+		scrollTabs(-input.Position.Z * 96)
+	end)
+
+	local tabLeft = Button.new({ Text = "<", Variant = "Secondary", Size = UDim2.fromOffset(40, 40), OnActivated = function()
+		scrollTabs(-180)
+	end })
+	tabLeft.Position = UDim2.new(1, -236, 0, 102)
+	tabLeft.Parent = scroll
+
+	local tabRight = Button.new({ Text = ">", Variant = "Secondary", Size = UDim2.fromOffset(40, 40), OnActivated = function()
+		scrollTabs(180)
+	end })
+	tabRight.Position = UDim2.new(1, -188, 0, 102)
+	tabRight.Parent = scroll
+
 	setTab = function(tabId: string)
 		for _, tab in spec.Tabs do if tab.Id == tabId then activeTab = tab; break end end
 		state.SelectedTab = activeTab.Id
 		context.StateService:SetTab(spec.Id, activeTab.Id)
 		render()
+		revealActiveTab()
 	end
 
 	render = function()
@@ -62,6 +117,7 @@ function ModeHub.new(context: any, service: any): CanvasGroup
 		for id, button in tabButtons do
 			Button.setPrimary(button, id == activeTab.Id)
 		end
+		revealActiveTab()
 		PageBase.text(body, service:GetSummary(), UDim2.fromOffset(0, 0), UDim2.new(1, 0, 0, 18), 8, Theme.Colors.Electric, Theme.Fonts.Strong)
 		PageBase.text(body, activeTab.Description, UDim2.fromOffset(0, 20), UDim2.new(1, 0, 0, 28), 11, Theme.Colors.Silver, Theme.Fonts.Strong)
 		local gridY = 54
@@ -114,12 +170,53 @@ function ModeHub.new(context: any, service: any): CanvasGroup
 				if cardData.PlayerData then
 					local portrait = AvatarPortraitGenerator.new(card, cardData.PlayerData, UDim2.fromOffset(58, 68), false)
 					portrait.Position = UDim2.new(1, -76, 0, 12)
+				elseif cardData.Icon then
+					local icon = Instance.new("ImageLabel")
+					icon.Name = "ItemIcon"
+					icon.BackgroundColor3 = Theme.Colors.Black
+					icon.BackgroundTransparency = 0.08
+					icon.BorderSizePixel = 0
+					icon.Image = tostring(cardData.Icon)
+					icon.Position = UDim2.new(1, -82, 0, 16)
+					icon.ScaleType = Enum.ScaleType.Fit
+					icon.Size = UDim2.fromOffset(58, 58)
+					icon.ZIndex = 3
+					icon.Parent = card
+					local iconCorner = Instance.new("UICorner")
+					iconCorner.CornerRadius = UDim.new(0, 8)
+					iconCorner.Parent = icon
+					local iconStroke = Instance.new("UIStroke")
+					iconStroke.Color = cardData.Accent and Theme.Colors.Electric or Theme.Colors.Muted
+					iconStroke.Transparency = cardData.Accent and 0.1 or 0.55
+					iconStroke.Thickness = 1
+					iconStroke.Parent = icon
 				end
-				local textInset = cardData.PlayerData and -104 or -36
+				local textInset = (cardData.PlayerData or cardData.Icon) and -104 or -36
 				PageBase.text(card, cardData.Accent and "FEATURED" or activeTab.Label, UDim2.fromOffset(18, 14), UDim2.new(1, textInset, 0, 18), 8, cardData.Accent and Theme.Colors.Electric or Theme.Colors.Muted, Theme.Fonts.Strong)
-				PageBase.text(card, cardData.Title, UDim2.fromOffset(18, 39), UDim2.new(1, textInset, 0, 30), 17, Theme.Colors.White, Theme.Fonts.Display)
-				PageBase.text(card, cardData.Subtitle, UDim2.fromOffset(18, 72), UDim2.new(1, textInset, 0, 25), 10, Theme.Colors.Silver, Theme.Fonts.Strong)
-				PageBase.text(card, cardData.Meta, UDim2.fromOffset(18, 100), UDim2.new(1, -36, 0, 22), 8, Theme.Colors.Muted, Theme.Fonts.Body)
+				local titleLabel = PageBase.text(card, cardData.Title, UDim2.fromOffset(18, 39), UDim2.new(1, textInset, 0, 30), 17, Theme.Colors.White, Theme.Fonts.Display)
+				local subtitleLabel = PageBase.text(card, cardData.Subtitle, UDim2.fromOffset(18, 72), UDim2.new(1, textInset, 0, 25), 10, Theme.Colors.Silver, Theme.Fonts.Strong)
+				local metaLabel = PageBase.text(card, cardData.Meta, UDim2.fromOffset(18, 100), UDim2.new(1, -36, 0, 22), 8, Theme.Colors.Muted, Theme.Fonts.Body)
+				if spec.Id == "Store" then
+					titleLabel.TextScaled = true
+					titleLabel.TextWrapped = true
+					local titleLimit = Instance.new("UITextSizeConstraint")
+					titleLimit.MinTextSize = 10
+					titleLimit.MaxTextSize = 17
+					titleLimit.Parent = titleLabel
+					subtitleLabel.TextScaled = true
+					local subLimit = Instance.new("UITextSizeConstraint")
+					subLimit.MinTextSize = 8
+					subLimit.MaxTextSize = 10
+					subLimit.Parent = subtitleLabel
+					metaLabel.Size = UDim2.new(1, -36, 0, 42)
+					metaLabel.TextWrapped = true
+					metaLabel.TextScaled = true
+					metaLabel.TextYAlignment = Enum.TextYAlignment.Top
+					local metaLimit = Instance.new("UITextSizeConstraint")
+					metaLimit.MinTextSize = 7
+					metaLimit.MaxTextSize = 9
+					metaLimit.Parent = metaLabel
+				end
 			end
 			local action = table.clone(cardData.Action)
 			action.Detail = cardData.Detail

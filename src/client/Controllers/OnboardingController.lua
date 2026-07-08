@@ -20,6 +20,7 @@ end
 --!strict
 local PackRouletteAlignmentService = require(vtrClientRoot():WaitForChild("Services"):WaitForChild("PackRouletteAlignmentService"))
 local ReplicatedStorage=game:GetService("ReplicatedStorage")
+local TweenService=game:GetService("TweenService")
 local Theme=require(ReplicatedStorage.VTR.Shared.Theme)
 local Panel=require(script.Parent.Parent.Components.Panel)
 local Button=require(script.Parent.Parent.Components.Button)
@@ -31,13 +32,32 @@ local Controller={};Controller.__index=Controller
 
 local function label(parent:Instance,value:string,y:number,size:number,color:Color3,font:Enum.Font,height:number?):TextLabel local result=Instance.new("TextLabel");result.BackgroundTransparency=1;result.Position=UDim2.fromOffset(34,y);result.Size=UDim2.new(1,-68,0,height or 34);result.Text=value;result.TextColor3=color;result.TextSize=size;result.Font=font;result.TextWrapped=true;result.TextXAlignment=Enum.TextXAlignment.Left;result.Parent=parent;return result end
 local function input(parent:Instance,placeholder:string,value:string,y:number):TextBox local box=Instance.new("TextBox");box.BackgroundColor3=Theme.Colors.Gunmetal;box.BorderSizePixel=0;box.Position=UDim2.fromOffset(34,y);box.Size=UDim2.new(1,-68,0,52);box.PlaceholderText=placeholder;box.Text=value;box.TextColor3=Theme.Colors.White;box.PlaceholderColor3=Theme.Colors.Muted;box.TextSize=14;box.Font=Theme.Fonts.Strong;box.ClearTextOnFocus=false;box.Parent=parent;local corner=Instance.new("UICorner");corner.CornerRadius=UDim.new(0,Theme.Radius.Medium);corner.Parent=box;return box end
+local function rejectInput(box:TextBox,message:string)
+	local originalPosition=box.Position
+	box.TextColor3=Theme.Colors.Danger
+	box.PlaceholderText=string.upper(message)
+	local stroke=box:FindFirstChild("ValidationStroke")or Instance.new("UIStroke")
+	stroke.Name="ValidationStroke";stroke.Color=Theme.Colors.Danger;stroke.Thickness=2;stroke.Transparency=0;stroke.Parent=box
+	local shifts={-10,10,-7,7,0}
+	for index,shift in ipairs(shifts)do
+		task.delay((index-1)*.045,function()
+			if box.Parent then TweenService:Create(box,TweenInfo.new(.04),{Position=originalPosition+UDim2.fromOffset(shift,0),BackgroundColor3=Color3.fromHex("3A1016")}):Play()end
+		end)
+	end
+	task.delay(.45,function()
+		if not box.Parent then return end
+		TweenService:Create(box,TweenInfo.new(.18),{Position=originalPosition,BackgroundColor3=Theme.Colors.Gunmetal}):Play()
+		TweenService:Create(stroke,TweenInfo.new(.22),{Transparency=1}):Play()
+		box.TextColor3=Theme.Colors.White
+	end)
+end
 
 function Controller.new(root:Frame,flow:any,progression:any)
 	local saved=progression.Onboarding or{};local stage=1
 	if saved.StarterPackOpened then stage=8 elseif saved.StarterPackClaimed then stage=7 elseif saved.IdentityConfigured then stage=6 elseif saved.Abbreviation and saved.Abbreviation~=""then stage=4 elseif saved.ClubName and saved.ClubName~=""then stage=3 end
 	return setmetatable({Root=root,Flow=flow,Progression=progression,Stage=stage,ClubName=saved.ClubName or"",Abbreviation=saved.Abbreviation or"",Identity=saved,Reveals={}},Controller)
 end
-function Controller:_request(action:string,payload:any?):any local response=LaunchService:Request(action,payload);if not response.Success then self.Flow:Error("SETUP INTERRUPTED",response.Message);return nil end;return response end
+function Controller:_request(action:string,payload:any?,field:TextBox?,fieldMessage:string?):any local response=LaunchService:Request(action,payload);if not response.Success then if field then rejectInput(field,fieldMessage or response.Message or"Not allowed")else self.Flow:Error("SETUP INTERRUPTED",response.Message)end;return nil end;return response end
 function Controller:Start(onComplete:()->())self.OnComplete=onComplete;self.Overlay=Instance.new("Frame");self.Overlay.Name="FirstTimeFlow";self.Overlay.BackgroundColor3=Theme.Colors.Black;self.Overlay.BorderSizePixel=0;self.Overlay.Size=UDim2.fromScale(1,1);self.Overlay.ZIndex=70;self.Overlay.Parent=self.Root;self:_render()end
 function Controller:_clear()for _,child in self.Overlay:GetChildren()do child:Destroy()end end
 function Controller:_base(kicker:string,titleText:string,description:string):Frame
@@ -51,8 +71,8 @@ function Controller:_next(panel:Frame,value:string,callback:()->())self:_button(
 
 function Controller:_render()
 	if self.Stage==1 then local p=self:_base("WELCOME","WELCOME TO VTR 25","Create a unique fictional club identity, unlock your starter squad and activate your launch objectives.");label(p,"LEVEL 1  /  0 XP  /  2,500 COINS  /  100 BOLTS",220,13,Theme.Colors.Silver,Theme.Fonts.Strong);self:_next(p,"START",function()self.Stage=2;self:_render()end)
-	elseif self.Stage==2 then local p=self:_base("CLUB NAME","NAME YOUR CLUB","Use 3-20 letters, numbers, spaces or hyphens. The server validates every identity.");local box=input(p,"CLUB NAME",self.ClubName,215);self:_back(p);self:_next(p,"CONTINUE",function()self.ClubName=box.Text;if self:_request("SetClubName",{Name=self.ClubName})then self.ClubName=string.upper(self.ClubName);self.Stage=3;self:_render()end end)
-	elseif self.Stage==3 then local p=self:_base("ABBREVIATION","CHOOSE YOUR CLUB TAG","Enter 2-4 uppercase letters for scoreboards, cards and club navigation.");local box=input(p,"VTR",self.Abbreviation,215);box.MaxVisibleGraphemes=4;self:_back(p);self:_next(p,"CONTINUE",function()self.Abbreviation=string.upper(box.Text);if self:_request("SetAbbreviation",{Value=self.Abbreviation})then self.Stage=4;self:_render()end end)
+	elseif self.Stage==2 then local p=self:_base("CLUB NAME","NAME YOUR CLUB","Use 3-20 letters, numbers, spaces or hyphens. The server validates every identity.");local box=input(p,"CLUB NAME",self.ClubName,215);self:_back(p);self:_next(p,"CONTINUE",function()self.ClubName=box.Text;local response=self:_request("SetClubName",{Name=self.ClubName},box,"Name not allowed");if response then self.ClubName=response.Data and response.Data.Name or string.upper(self.ClubName);self.Stage=3;self:_render()end end)
+	elseif self.Stage==3 then local p=self:_base("ABBREVIATION","CHOOSE YOUR CLUB TAG","Enter 2-4 uppercase letters for scoreboards, cards and club navigation.");local box=input(p,"VTR",self.Abbreviation,215);box.MaxVisibleGraphemes=4;self:_back(p);self:_next(p,"CONTINUE",function()self.Abbreviation=string.upper(box.Text);local response=self:_request("SetAbbreviation",{Value=self.Abbreviation},box,"Tag not allowed");if response then self.Abbreviation=response.Data and response.Data.Tag or self.Abbreviation;self.Stage=4;self:_render()end end)
 	elseif self.Stage==4 then local p=self:_base("IDENTITY STUDIO","DESIGN YOUR CLUB","Choose three colors, a kit construction, badge shape, symbol and automatic recoloring behavior.");self:_button(p,"OPEN IDENTITY STUDIO",34,225,function()
 		self.Identity.Name=self.ClubName;self.Identity.Abbreviation=self.Abbreviation;ClubIdentityEditor.open(self.Overlay,self.Identity,{SaveLabel="CONFIRM CLUB DESIGN",OnSave=function(state:any)local response=self:_request("SetIdentityDesign",state);if not response then return false end;self.Identity=state;self.Stage=6;self:_render();return true end})
 	end,true,300);self:_back(p)

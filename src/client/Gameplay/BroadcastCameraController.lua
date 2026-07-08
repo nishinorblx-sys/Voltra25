@@ -10,42 +10,36 @@ local BROADCAST_SIDE_OFFSET = 222 * BROADCAST_ZOOM_MULTIPLIER
 local BROADCAST_FOV = 34
 -- Tune this while testing with the Workspace attribute
 -- VTRBallDistanceZoomMultiplier. Higher values react more strongly.
-local BALL_DISTANCE_ZOOM_MULTIPLIER = 0.12
-local BALL_LOOK_SMOOTHING = 0.07
-local BALL_LOOK_MAX_SPEED = 1200
-local BALL_LOOK_MAX_LAG = 5.5
-local BALL_TRACKING_SMOOTHING = 0.08
+local BALL_DISTANCE_ZOOM_MULTIPLIER = 0.05
+local BALL_LOOK_SMOOTHING = 0.072
+local BALL_LOOK_MAX_SPEED = 1500
+local BALL_LOOK_MAX_LAG = 8.5
+local BALL_TRACKING_SMOOTHING = 0.088
 local BALL_FOCUS_MAX_SPEED = 215
 local BALL_FOCUS_HELD_MAX_SPEED = 82
-local GOAL_LOOK_START_FRACTION = 0.42
-local GOAL_LOOK_FULL_FRACTION = 0.18
-local GOAL_LOOK_MAX_BLEND = 0.44
-local CLOSE_BROADCAST_DISTANCE_SCALE = 1 / 2.5
-local WIDE_BROADCAST_DISTANCE_SCALE = 1.5
-
 local PRESETS = {
-	CloseBroadcast = {Height = 108, Side = 136, Fov = 34, Smooth = 0.10, DistanceScale = CLOSE_BROADCAST_DISTANCE_SCALE},
-	Broadcast = {Height = 108, Side = 136, Fov = BROADCAST_FOV, Smooth = 0.12, DistanceScale = WIDE_BROADCAST_DISTANCE_SCALE},
-	["Close Broadcast"] = {Height = 108, Side = 136, Fov = 34, Smooth = 0.10, DistanceScale = CLOSE_BROADCAST_DISTANCE_SCALE},
-	WideBroadcast = {Height = 108, Side = 136, Fov = BROADCAST_FOV, Smooth = 0.12, DistanceScale = WIDE_BROADCAST_DISTANCE_SCALE},
-	["Wide Broadcast"] = {Height = 108, Side = 136, Fov = BROADCAST_FOV, Smooth = 0.12, DistanceScale = WIDE_BROADCAST_DISTANCE_SCALE},
-	["End to End"] = {Height = 148, Side = 0, Fov = 39, Smooth = 0.11},
-	["Co-op"] = {Height = BROADCAST_HEIGHT, Side = BROADCAST_SIDE_OFFSET, Fov = BROADCAST_FOV, Smooth = 0.12},
-	Tactical = {Height = 208, Side = 252, Fov = 53, Smooth = 0.14},
+	Broadcast = {Height = 112, Side = 250, Fov = 43, Smooth = 0.18},
+	WideBroadcast = {Height = 112, Side = 250, Fov = 43, Smooth = 0.18},
+	["Wide Broadcast"] = {Height = 112, Side = 250, Fov = 43, Smooth = 0.18},
+	Tactical = {Height = 112, Side = 250, Fov = 43, Smooth = 0.18},
 	Pro = {Height = 16, Side = 34, Fov = 55, Smooth = 0.075},
 }
 
 local CAMERA_ALIASES = {
-	["Broadcast"] = "WideBroadcast",
-	["Close Broadcast"] = "CloseBroadcast",
-	["Wide Broadcast"] = "WideBroadcast",
+	["Broadcast"] = "Tactical",
+	["WideBroadcast"] = "Tactical",
+	["Wide Broadcast"] = "Tactical",
+	["CloseBroadcast"] = "Tactical",
+	["Close Broadcast"] = "Tactical",
+	["End to End"] = "Tactical",
+	["Co-op"] = "Tactical",
 }
 
 local ZOOM_MODES = {
-	Close = {Height = -18, Side = -18, Fov = -2},
-	Default = {Height = -8, Side = -8, Fov = 0},
+	Close = {Height = -10, Side = -12, Fov = -2},
+	Default = {Height = -4, Side = -5, Fov = 0},
 	Wide = {Height = 0, Side = 0, Fov = 0},
-	["Tactical Wide"] = {Height = 16, Side = 20, Fov = 3},
+	["Tactical Wide"] = {Height = 18, Side = 18, Fov = 4},
 }
 
 local function activeRoot(model: Model?): BasePart?
@@ -63,6 +57,16 @@ local function modelRootByName(name: string): BasePart?
 	return nil
 end
 
+local function modelByName(name: string): Model?
+	if name == "" then return nil end
+	for _, inst in workspace:GetDescendants() do
+		if inst:IsA("Model") and inst.Name == name then
+			return inst
+		end
+	end
+	return nil
+end
+
 local function ballFocusPosition(ball: BasePart, active: Model?): Vector3
 	if ball:GetAttribute("VTRGoalkeeperHeld") == true then
 		local ownerName = tostring(ball:GetAttribute("OwnerModel") or "")
@@ -71,7 +75,54 @@ local function ballFocusPosition(ball: BasePart, active: Model?): Vector3
 			return root.Position + Vector3.new(0, 2.8, 0)
 		end
 	end
+	local ownerName = tostring(ball:GetAttribute("OwnerModel") or "")
+	if ownerName ~= "" then
+		local root = active and active.Name == ownerName and activeRoot(active) or modelRootByName(ownerName)
+		if root then
+			local movement = root.Parent and root.Parent:GetAttribute("VTRMoveDirection")
+			local direction = typeof(movement) == "Vector3" and movement.Magnitude > 0.1 and Vector3.new(movement.X, 0, movement.Z) or Vector3.new(root.CFrame.LookVector.X, 0, root.CFrame.LookVector.Z)
+			if direction.Magnitude < 0.05 then
+				direction = Vector3.zAxis
+			else
+				direction = direction.Unit
+			end
+			local speed = Vector3.new(root.AssemblyLinearVelocity.X, 0, root.AssemblyLinearVelocity.Z).Magnitude
+			local lead = math.clamp(speed * 0.028, 0, 1.15)
+			return root.Position + direction * (5.25 + lead) + Vector3.new(0, -1.2, 0)
+		end
+	end
 	return ball.Position
+end
+
+local function predictedBallPosition(ball: BasePart): Vector3?
+	if ball:GetAttribute("VTRGoalkeeperHeld") == true then return nil end
+	local visual = workspace:FindFirstChild("VTRPredictedBall")
+	if not visual then return nil end
+	if visual:IsA("BasePart") then
+		return visual.Position
+	end
+	if visual:IsA("Model") then
+		local ballPart = visual:FindFirstChild(ball.Name, true)
+		if ballPart and ballPart:IsA("BasePart") then
+			return ballPart.Position
+		end
+		local primary = visual.PrimaryPart or visual:FindFirstChildWhichIsA("BasePart", true)
+		return primary and primary.Position or visual:GetPivot().Position
+	end
+	return nil
+end
+
+local function cameraBallFocusPosition(ball: BasePart, active: Model?): Vector3
+	local predicted = predictedBallPosition(ball)
+	if predicted then
+		return predicted
+	end
+	return ballFocusPosition(ball, active)
+end
+
+local function vectorAttribute(part: BasePart, name: string): Vector3?
+	local value = part:GetAttribute(name)
+	return typeof(value) == "Vector3" and value or nil
 end
 
 local function markerCFrame(name: string): CFrame?
@@ -99,9 +150,17 @@ local function presentationGroupCenter(states: {[string]: boolean}): Vector3?
 	return count > 0 and total / count or nil
 end
 
-local function smoothStep(alpha: number): number
-	alpha = math.clamp(alpha, 0, 1)
-	return alpha * alpha * (3 - 2 * alpha)
+local function softLimit(value: number, limit: number, softness: number): number
+	limit = math.max(0.01, math.abs(limit))
+	softness = math.clamp(math.abs(softness), 0.01, limit * 0.85)
+	local sign = value < 0 and -1 or 1
+	local absolute = math.abs(value)
+	local inner = limit - softness
+	if absolute <= inner then
+		return value
+	end
+	local over = absolute - inner
+	return sign * (inner + softness * (1 - math.exp(-over / softness)))
 end
 
 local function scaleCameraDistance(pitchCFrame: CFrame, cameraWorld: Vector3, targetWorld: Vector3, distanceScale: number?): Vector3
@@ -191,11 +250,13 @@ function Controller.new(pitchCFrame: CFrame, width: number, length: number, ball
 		Length = length,
 		Ball = ball,
 		Active = active,
-		Mode = "WideBroadcast",
+		Mode = "Tactical",
 		SideSign = 1,
 		HeightOffset = 0,
 		ZoomOffset = 0,
 		SideOffset = 0,
+		WheelZoom = 0,
+		InputConnections = {},
 		SpeedScale = 1,
 		LastMove = pitchCFrame:VectorToWorldSpace(Vector3.new(0, 0, -1)),
 		SmoothedTarget = Vector3.zero,
@@ -206,6 +267,9 @@ function Controller.new(pitchCFrame: CFrame, width: number, length: number, ball
 		BallDistanceZoomMultiplier = BALL_DISTANCE_ZOOM_MULTIPLIER,
 		ReferenceBallDistance = nil,
 		SafeBallPosition = ball.Position,
+		ClientCameraBall = nil,
+		ClientBallVelocity = Vector3.zero,
+		LastClientBallPosition = ball.Position,
 		TacticalView = false,
 		TacticalCFrame = nil,
 		TacticalFocusLocal = Vector3.zero,
@@ -221,6 +285,20 @@ end
 function Controller:Start()
 	self.Camera.CameraType = Enum.CameraType.Scriptable
 	self.Camera.FieldOfView = PRESETS[self.Mode].Fov
+	table.insert(self.InputConnections, UserInputService.InputChanged:Connect(function(input, processed)
+		if UserInputService:GetFocusedTextBox() then return end
+		if input.UserInputType ~= Enum.UserInputType.MouseWheel then return end
+		self.WheelZoom = math.clamp((self.WheelZoom or 0) - input.Position.Z, -5, 7)
+	end))
+	table.insert(self.InputConnections, UserInputService.InputBegan:Connect(function(input, processed)
+		if UserInputService:GetFocusedTextBox() then return end
+		if input.UserInputType == Enum.UserInputType.MouseButton3 then
+			self.WheelZoom = 0
+			self.ReferenceBallDistance = nil
+			local preset = PRESETS[self.Mode] or PRESETS.Tactical or PRESETS.Broadcast
+			self.Camera.FieldOfView = preset.Fov + self.ZoomOffset
+		end
+	end))
 	local root = activeRoot(self.Active)
 	local presentationCenter = presentationGroupCenter({WalkForward = true, LineupIdle = true, KickoffReady = true})
 	local initial = presentationCenter or self.PitchCFrame:PointToWorldSpace(Vector3.new(0, 8, 0))
@@ -240,24 +318,83 @@ function Controller:Start()
 	end
 end
 
+function Controller:_ensureClientCameraBall(): BasePart?
+	if self.ClientCameraBall and self.ClientCameraBall.Parent then
+		return self.ClientCameraBall
+	end
+	if not self.Ball or not self.Ball.Parent then
+		return nil
+	end
+	local proxy = Instance.new("Part")
+	proxy.Name = "VTRClientCameraBall"
+	proxy.Shape = Enum.PartType.Ball
+	proxy.Size = self.Ball.Size * 1.04
+	proxy.Anchored = true
+	proxy.CanCollide = false
+	proxy.CanTouch = false
+	proxy.CanQuery = false
+	proxy.CastShadow = false
+	proxy.Massless = true
+	proxy.Material = Enum.Material.SmoothPlastic
+	proxy.Color = Color3.fromRGB(90, 205, 255)
+	proxy.Transparency = workspace:GetAttribute("VTRShowClientCameraBall") == true and 0.35 or 1
+	proxy.CFrame = CFrame.new(self.SafeBallPosition or self.Ball.Position)
+	proxy.Parent = workspace
+	self.ClientCameraBall = proxy
+	self.LastClientBallPosition = proxy.Position
+	return proxy
+end
+
+function Controller:_updateClientCameraBall(position: Vector3, dt: number)
+	local proxy = self:_ensureClientCameraBall()
+	if not proxy then return end
+	local previous = self.LastClientBallPosition or proxy.Position
+	proxy.Transparency = workspace:GetAttribute("VTRShowClientCameraBall") == true and 0.35 or 1
+	proxy.Size = self.Ball and self.Ball.Parent and self.Ball.Size * 1.04 or proxy.Size
+	proxy.CFrame = CFrame.new(position)
+	self.ClientBallVelocity = dt > 0 and (position - previous) / dt or Vector3.zero
+	self.LastClientBallPosition = position
+end
+
 function Controller:_safeBallFocusPosition(rawPosition: Vector3, dt: number, goalkeeperTransition: boolean): Vector3
 	local fallback = self.SafeBallPosition or rawPosition
 	if rawPosition.X ~= rawPosition.X or rawPosition.Y ~= rawPosition.Y or rawPosition.Z ~= rawPosition.Z then
+		self:_updateClientCameraBall(fallback, dt)
 		return fallback
 	end
 	if not self.SafeBallPosition then
 		self.SafeBallPosition = rawPosition
+		self:_updateClientCameraBall(rawPosition, dt)
 		return rawPosition
 	end
-	local maxSpeed = goalkeeperTransition and BALL_FOCUS_HELD_MAX_SPEED or BALL_FOCUS_MAX_SPEED
+	local rawLocal = self.PitchCFrame:PointToObjectSpace(rawPosition)
+	local floorFocusY = math.max((self.Ball and self.Ball.Size.Y * 0.5 or 1) + 2.05, 3.2)
+	if rawLocal.Y < floorFocusY + 0.45 then
+		rawPosition = self.PitchCFrame:PointToWorldSpace(Vector3.new(rawLocal.X, floorFocusY, rawLocal.Z))
+	else
+		rawPosition = self.PitchCFrame:PointToWorldSpace(Vector3.new(rawLocal.X, math.clamp(rawLocal.Y, floorFocusY, 18), rawLocal.Z))
+	end
+	local cameraProxySmooth = math.clamp(tonumber(workspace:GetAttribute("VTRClientCameraBallSmoothing")) or 0.105, 0.055, 0.32)
+	local cameraProxyLag = math.clamp(tonumber(workspace:GetAttribute("VTRClientCameraBallMaxLag")) or 8.5, 2, 24)
+	local maxSpeed = goalkeeperTransition and BALL_FOCUS_HELD_MAX_SPEED or (tonumber(workspace:GetAttribute("VTRClientCameraBallMaxSpeed")) or 175)
 	local maxStep = math.max(4, maxSpeed * math.max(dt, 1 / 120))
 	local delta = rawPosition - self.SafeBallPosition
 	local target = rawPosition
 	if delta.Magnitude > maxStep then
 		target = self.SafeBallPosition + delta.Unit * maxStep
 	end
-	local smooth = goalkeeperTransition and 0.12 or 0.055
+	if delta.Magnitude > cameraProxyLag then
+		self.SafeBallPosition = rawPosition - delta.Unit * cameraProxyLag
+		delta = rawPosition - self.SafeBallPosition
+	end
+	local safeLocal = self.PitchCFrame:PointToObjectSpace(self.SafeBallPosition)
+	local targetLocal = self.PitchCFrame:PointToObjectSpace(target)
+	local verticalTarget = targetLocal.Y
+	local verticalAlpha = 1 - math.exp(-dt / (goalkeeperTransition and 0.58 or 0.52))
+	target = self.PitchCFrame:PointToWorldSpace(Vector3.new(targetLocal.X, safeLocal.Y + (verticalTarget - safeLocal.Y) * verticalAlpha, targetLocal.Z))
+	local smooth = goalkeeperTransition and math.max(cameraProxySmooth, 0.22) or cameraProxySmooth
 	self.SafeBallPosition = self.SafeBallPosition:Lerp(target, 1 - math.exp(-dt / smooth))
+	self:_updateClientCameraBall(self.SafeBallPosition, dt)
 	return self.SafeBallPosition
 end
 
@@ -339,13 +476,14 @@ function Controller:_updateTactical(dt: number)
 		)
 	end
 	local focusLocal = self.TacticalFocusLocal or Vector3.zero
-	local orbit = CFrame.Angles(0, yaw, 0):VectorToWorldSpace(Vector3.new(self.Width * 0.10, 0, self.TacticalDistance or math.max(self.Width * 0.28, 110)))
-	local positionLocal = focusLocal + Vector3.new(orbit.X, self.TacticalHeight, orbit.Z)
+	local wheelZoom = math.clamp(tonumber(self.WheelZoom) or 0, -5, 7)
+	local orbit = CFrame.Angles(0, yaw, 0):VectorToWorldSpace(Vector3.new(self.Width * 0.10, 0, (self.TacticalDistance or math.max(self.Width * 0.28, 110)) + wheelZoom * 12))
+	local positionLocal = focusLocal + Vector3.new(orbit.X, math.clamp(self.TacticalHeight + wheelZoom * 7, math.max(90, self.Length * 0.18), math.max(240, self.Length)), orbit.Z)
 	local focus = self.PitchCFrame:PointToWorldSpace(focusLocal + Vector3.new(0, 4, 0))
 	local position = self.PitchCFrame:PointToWorldSpace(positionLocal)
 	self.TacticalCFrame = CFrame.lookAt(position, focus, self.PitchCFrame.UpVector)
 	self.Camera.CFrame = self.Camera.CFrame:Lerp(self.TacticalCFrame, 1 - math.exp(-10 * dt))
-	self.Camera.FieldOfView += (58 - self.Camera.FieldOfView) * (1 - math.exp(-7 * dt))
+	self.Camera.FieldOfView += (math.clamp(58 + wheelZoom * 0.9, 46, 66) - self.Camera.FieldOfView) * (1 - math.exp(-7 * dt))
 end
 
 function Controller:_updatePro(dt: number, root: BasePart)
@@ -373,7 +511,7 @@ function Controller:_updatePro(dt: number, root: BasePart)
 	local forwardSpeed = velocity:Dot(attackDirection)
 	local backRun = math.clamp(-forwardSpeed, 0, 40)
 	local goalkeeperTransition = self.Ball:GetAttribute("VTRGoalkeeperHeld") == true
-	local ballPosition = self:_safeBallFocusPosition(ballFocusPosition(self.Ball, self.Active), dt, goalkeeperTransition)
+	local ballPosition = self:_safeBallFocusPosition(cameraBallFocusPosition(self.Ball, self.Active), dt, goalkeeperTransition)
 
 	local ballOffset = Vector3.new(ballPosition.X - root.Position.X, 0, ballPosition.Z - root.Position.Z)
 	local ballForward = ballOffset:Dot(attackDirection)
@@ -489,7 +627,7 @@ function Controller:_updateShootingFocus(dt: number, root: BasePart)
 	local side = tostring(self.Active and self.Active:GetAttribute("VTRTeam") or "Home")
 	local defendingSide = side == "Home" and "Away" or "Home"
 	local keeperRoot = goalkeeperRootForSide(defendingSide)
-	local rawBallPosition = ballFocusPosition(self.Ball, self.Active)
+	local rawBallPosition = cameraBallFocusPosition(self.Ball, self.Active)
 	local goalkeeperTransition = self.Ball:GetAttribute("VTRGoalkeeperHeld") == true
 	local ballPosition = self:_safeBallFocusPosition(rawBallPosition, dt, goalkeeperTransition)
 	local goalCenter = self.PitchCFrame:PointToWorldSpace(Vector3.new(0, 5.4, attackSign * self.Length * .5))
@@ -510,7 +648,7 @@ function Controller:_updateShootingFocus(dt: number, root: BasePart)
 end
 
 function Controller:CycleMode(): string
-	local order = {"CloseBroadcast", "WideBroadcast", "Tactical", "Pro"}
+	local order = {"Tactical", "Pro"}
 	self.Mode = order[(table.find(order, self.Mode) or 1) % #order + 1]
 	return self.Mode
 end
@@ -588,7 +726,22 @@ function Controller:BeginHalfTimeWide(duration: number?)
 	self.CutsceneUntil = os.clock() + math.clamp(duration or 30, 6, 35)
 end
 
-function Controller:EndCutscene()
+function Controller:BeginGoalCelebration(location: Vector3, lookAt: Vector3?, duration: number?)
+	self.CutsceneStartCFrame = self.Camera.CFrame
+	self.CutsceneStartFOV = self.Camera.FieldOfView
+	self.CutsceneKind = "GoalCelebration"
+	self.CutsceneLocation = location
+	self.CutsceneGoalPosition = lookAt
+	self.CutsceneStartedAt = os.clock()
+	self.CutsceneUntil = os.clock() + math.clamp(duration or 3, 1.2, 8)
+	self.CutsceneHardLock = true
+	self.ShootingFocus = false
+end
+
+function Controller:EndCutscene(force: boolean?)
+	if self.CutsceneHardLock and force ~= true then
+		return
+	end
 	self.CutsceneUntil = nil
 	self.CutsceneKind = nil
 	self.CutsceneLocation = nil
@@ -596,12 +749,32 @@ function Controller:EndCutscene()
 	self.CutsceneStartedAt = nil
 	self.CutsceneStartCFrame = nil
 	self.CutsceneStartFOV = nil
+	self.CutsceneHardLock = nil
+end
+
+function Controller:ReturnToLive()
+	if self.CutsceneHardLock then
+		return
+	end
+	self:EndCutscene(true)
+	self.SmoothedPresentationTarget = nil
+	local focus = self.Ball and self.Ball.Parent and cameraBallFocusPosition(self.Ball, self.Active) or self.PitchCFrame.Position
+	self.SafeBallPosition = focus
+	self.SmoothedTarget = self.PitchCFrame:PointToObjectSpace(focus)
+	self.SmoothedLookTarget = focus
+	self:_updateClientCameraBall(focus, 1 / 60)
+	local preset = PRESETS[self.Mode] or PRESETS.Tactical or PRESETS.Broadcast
+	local frame = self:_desiredFrame(preset, focus, 0, 0)
+	self.Camera.CameraType = Enum.CameraType.Scriptable
+	self.Camera.CFrame = frame
+	self.Camera.FieldOfView = preset.Fov
 end
 
 function Controller:_desiredFrame(preset: any, targetWorld: Vector3, dynamicZoom: number, longitudinalVelocity: number): CFrame
 	if self.Mode == "Pro" then
 		local root = activeRoot(self.Active)
 		if root then
+			local wheelZoom = math.clamp(tonumber(self.WheelZoom) or 0, -5, 7)
 			local side = tostring(self.Active:GetAttribute("VTRTeam") or "Home")
 			local goalZ = side == "Home" and -self.Length * 0.5 or self.Length * 0.5
 			local localRoot = self.PitchCFrame:PointToObjectSpace(root.Position)
@@ -609,22 +782,24 @@ function Controller:_desiredFrame(preset: any, targetWorld: Vector3, dynamicZoom
 			local forward = self.PitchCFrame:VectorToObjectSpace(root.CFrame.LookVector)
 			local flatForward = Vector3.new(forward.X, 0, forward.Z)
 			if flatForward.Magnitude < .1 then flatForward = Vector3.new(0, 0, side == "Home" and -1 or 1) end
-			local cameraLocal = localRoot - flatForward.Unit * 28 + Vector3.new(0, 38, 0)
+			local cameraLocal = localRoot - flatForward.Unit * (28 + wheelZoom * 4.2) + Vector3.new(0, 38 + wheelZoom * 2.8, 0)
 			local cameraWorld = self.PitchCFrame:PointToWorldSpace(cameraLocal)
 			local lookWorld = self.PitchCFrame:PointToWorldSpace(lookLocal)
 			return CFrame.lookAt(cameraWorld, lookWorld, self.PitchCFrame.UpVector)
 		end
 	end
-	if self.Mode == "End to End" then
-		local half = tonumber(workspace:GetAttribute("VTRMatchHalf")) or 1
-		local lookSign = half >= 2 and 1 or -1
+	if self.Mode == "Tactical" or self.Mode == "WideBroadcast" or self.Mode == "Broadcast" then
+		local wheelZoom = math.clamp(tonumber(self.WheelZoom) or 0, -5, 7)
 		local ballLocal = self.PitchCFrame:PointToObjectSpace(targetWorld)
-		local railZ = -lookSign * self.Length * 0.58
-		local cameraX = math.clamp(self.SmoothedTarget.X * 0.34, -self.Width * 0.28, self.Width * 0.28)
-		local cameraLocal = Vector3.new(cameraX, 198 + math.clamp(dynamicZoom * .35, 0, 18), railZ)
-		local goalLocal = Vector3.new(math.clamp(ballLocal.X * 0.22, -self.Width * 0.14, self.Width * 0.14), 7.5, lookSign * self.Length * 0.5)
-		local ballFocusLocal = Vector3.new(math.clamp(ballLocal.X, -self.Width * 0.42, self.Width * 0.42), 6, math.clamp(ballLocal.Z, -self.Length * 0.48, self.Length * 0.48))
-		local focusLocal = ballFocusLocal:Lerp(goalLocal, 0.26)
+		local side = (preset.Side + self.SideOffset + wheelZoom * 8) * self.SideSign
+		local cameraX = side + math.clamp(self.SmoothedTarget.X * 0.06, -self.Width * 0.035, self.Width * 0.035)
+		local cameraZ = softLimit(self.SmoothedTarget.Z * 0.86 - longitudinalVelocity * 0.035, self.Length * 0.48, self.Length * 0.075)
+		local cameraLocal = Vector3.new(cameraX, math.clamp(preset.Height + self.HeightOffset + wheelZoom * 4.5 + dynamicZoom * 0.1, 82, 164), cameraZ)
+		local focusLocal = Vector3.new(
+			softLimit(ballLocal.X * 0.18, self.Width * 0.12, self.Width * 0.03),
+			5.8,
+			softLimit(ballLocal.Z, self.Length * 0.48, self.Length * 0.075)
+		)
 		local cameraWorld = self.PitchCFrame:PointToWorldSpace(cameraLocal)
 		local focusWorld = self.PitchCFrame:PointToWorldSpace(focusLocal)
 		return CFrame.lookAt(cameraWorld, focusWorld, self.PitchCFrame.UpVector)
@@ -638,8 +813,9 @@ function Controller:_desiredFrame(preset: any, targetWorld: Vector3, dynamicZoom
 		local cameraWorld=self.PitchCFrame:PointToWorldSpace(Vector3.new(anchorLocal.X,anchorLocal.Y,cameraZ))
 		return CFrame.lookAt(scaleCameraDistance(self.PitchCFrame,cameraWorld,targetWorld,preset.DistanceScale),targetWorld)
 	end
-	local height = math.clamp(preset.Height + self.HeightOffset + dynamicZoom * 0.45, 108, 220)
-	local side = math.clamp(preset.Side + self.SideOffset + dynamicZoom * 1.2, 132, 260) * self.SideSign
+	local wheelZoom = math.clamp(tonumber(self.WheelZoom) or 0, -5, 7)
+	local height = math.clamp(preset.Height + self.HeightOffset + wheelZoom * 8 + dynamicZoom * 0.45, 72, 240)
+	local side = math.clamp(preset.Side + self.SideOffset + wheelZoom * 14 + dynamicZoom * 1.2, 92, 295) * self.SideSign
 	local cameraX = side + self.SmoothedTarget.X * 0.38
 	local cameraZ = self.SmoothedTarget.Z * 0.92 - longitudinalVelocity * 0.05
 	local cameraLocal = Vector3.new(cameraX, height, math.clamp(cameraZ, -self.Length * 0.43, self.Length * 0.43))
@@ -647,14 +823,144 @@ function Controller:_desiredFrame(preset: any, targetWorld: Vector3, dynamicZoom
 	return CFrame.lookAt(scaleCameraDistance(self.PitchCFrame,cameraWorld,targetWorld,preset.DistanceScale), targetWorld)
 end
 
+function Controller:_nearbyTacticalShapeLocal(ballLocal: Vector3, attackSign: number, team: string): Vector3?
+	local total = Vector3.zero
+	local weight = 0
+	for _, inst in workspace:GetDescendants() do
+		if not inst:IsA("Model") then continue end
+		local root = activeRoot(inst)
+		if not root then continue end
+		local localPosition = self.PitchCFrame:PointToObjectSpace(root.Position)
+		local dx = math.abs(localPosition.X - ballLocal.X)
+		local dz = math.abs(localPosition.Z - ballLocal.Z)
+		if dx > self.Width * 0.52 or dz > self.Length * 0.38 then continue end
+		local sameTeam = tostring(inst:GetAttribute("VTRTeam") or "") == team
+		local ahead = (localPosition.Z - ballLocal.Z) * attackSign
+		local laneWeight = 0
+		if sameTeam and ahead > -12 then
+			laneWeight = math.clamp(1 - math.abs(ahead - 28) / 70, 0.12, 0.72)
+		elseif not sameTeam and ahead > -8 and ahead < 70 then
+			laneWeight = math.clamp(1 - math.abs(ahead - 24) / 62, 0.08, 0.42)
+		end
+		if laneWeight > 0 then
+			total += localPosition * laneWeight
+			weight += laneWeight
+		end
+	end
+	return weight > 0 and total / weight or nil
+end
+
+function Controller:_updateTacticalLive(dt: number, root: BasePart, preset: any)
+	local goalkeeperHeld = self.Ball:GetAttribute("VTRGoalkeeperHeld") == true
+	local goalkeeperReleaseUntil = tonumber(self.Ball:GetAttribute("VTRGoalkeeperReleaseCameraUntil")) or 0
+	if goalkeeperHeld then
+		self.WasGoalkeeperHeld = true
+	elseif self.WasGoalkeeperHeld then
+		self.WasGoalkeeperHeld = false
+		self.GoalkeeperReleaseCameraUntil = os.clock() + 0.75
+	end
+	local goalkeeperTransition = goalkeeperHeld or goalkeeperReleaseUntil > os.clock() or (tonumber(self.GoalkeeperReleaseCameraUntil) or 0) > os.clock()
+	local ballPosition = self:_safeBallFocusPosition(cameraBallFocusPosition(self.Ball, self.Active), dt, goalkeeperTransition)
+	local ballLocal = self.PitchCFrame:PointToObjectSpace(ballPosition)
+	local ownerName = tostring(self.Ball:GetAttribute("OwnerModel") or "")
+	local ownerModel = ownerName ~= "" and modelByName(ownerName) or nil
+	local phaseModel = ownerModel or self.Active
+	local team = tostring(phaseModel and phaseModel:GetAttribute("VTRTeam") or self.Active:GetAttribute("VTRTeam") or "Home")
+	local half = tonumber(workspace:GetAttribute("VTRMatchHalf")) or 1
+	local attackSign = attackingGoalSign(phaseModel or self.Active, half)
+	local rawBallVelocity = (self.ClientBallVelocity and self.ClientBallVelocity.Magnitude > 0.01) and self.ClientBallVelocity or self.Ball.AssemblyLinearVelocity
+	local safeBallVelocity = rawBallVelocity.Magnitude > 230 and rawBallVelocity.Unit * 230 or rawBallVelocity
+	local velocityLocal = self.PitchCFrame:VectorToObjectSpace(safeBallVelocity)
+	local speed = Vector3.new(safeBallVelocity.X, 0, safeBallVelocity.Z).Magnitude
+	local motionKind = tostring(self.Ball:GetAttribute("VTRMotionKind") or "")
+	local passTarget = self.Ball:GetAttribute("VTRLobPassActive") == true and vectorAttribute(self.Ball, "VTRLobTarget") or vectorAttribute(self.Ball, "VTRPassTarget")
+	local shotTarget = vectorAttribute(self.Ball, "VTRShotTarget")
+	local targetAttr = (motionKind == "Shot" and shotTarget) or passTarget
+	local targetLocal = targetAttr and self.PitchCFrame:PointToObjectSpace(targetAttr) or nil
+	local progress = math.clamp((ballLocal.Z * attackSign + self.Length * 0.5) / math.max(self.Length, 1), 0, 1)
+	local finalThird = math.clamp((progress - 0.62) / 0.28, 0, 1)
+	local midfield = 1 - math.clamp(math.abs(progress - 0.5) / 0.24, 0, 1)
+	local wide = math.clamp((math.abs(ballLocal.X) - self.Width * 0.26) / math.max(self.Width * 0.19, 1), 0, 1)
+	local sideRelative = math.clamp((ballLocal.X * self.SideSign) / math.max(self.Width * 0.5, 1), -1, 1)
+	local nearWide = wide * math.clamp(sideRelative, 0, 1)
+	local farWide = wide * math.clamp(-sideRelative, 0, 1)
+	local velocityLook = Vector3.new(
+		math.clamp(velocityLocal.X * 0.16, -18, 18),
+		0,
+		math.clamp(velocityLocal.Z * 0.18, -26, 26)
+	)
+	local attackBias = Vector3.new(0, 0, attackSign * (24 + midfield * 10 - finalThird * 7))
+	local desiredLocal = ballLocal + attackBias + velocityLook
+	if targetLocal then
+		local passBias = motionKind == "Shot" and 0.46 or self.Ball:GetAttribute("VTRLobPassActive") == true and 0.58 or 0.52
+		desiredLocal = desiredLocal:Lerp(targetLocal + Vector3.new(0, 0, attackSign * 8), passBias)
+	end
+	local shapeLocal = self:_nearbyTacticalShapeLocal(ballLocal, attackSign, team)
+	if shapeLocal then
+		desiredLocal = desiredLocal:Lerp(shapeLocal + Vector3.new(0, 0, attackSign * 12), 0.18)
+	end
+	if wide > 0 then
+		local centralBoxX = math.clamp(ballLocal.X * 0.18, -self.Width * 0.12, self.Width * 0.12)
+		desiredLocal = Vector3.new(
+			desiredLocal.X + (centralBoxX - desiredLocal.X) * (0.56 * wide),
+			desiredLocal.Y,
+			desiredLocal.Z + attackSign * 10 * wide
+		)
+	end
+	desiredLocal = Vector3.new(
+		softLimit(desiredLocal.X, self.Width * 0.36, self.Width * 0.09),
+		5.6,
+		softLimit(desiredLocal.Z, self.Length * 0.45, self.Length * 0.08)
+	)
+	local trackingSmooth = math.clamp(tonumber(workspace:GetAttribute("VTRTacticalTrackingSmoothing")) or (0.25 / self.SpeedScale), 0.11, 0.55)
+	if targetLocal or speed > 55 then trackingSmooth *= 0.78 end
+	if wide > 0 then trackingSmooth = math.max(trackingSmooth, 0.23 + wide * 0.1) end
+	if goalkeeperTransition then trackingSmooth = math.max(trackingSmooth, 0.2) end
+	local alpha = 1 - math.exp(-dt / trackingSmooth)
+	self.SmoothedTarget = self.SmoothedTarget and self.SmoothedTarget:Lerp(desiredLocal, alpha) or desiredLocal
+	local focusLocal = Vector3.new(self.SmoothedTarget.X, 5.8, self.SmoothedTarget.Z)
+	local wheelZoom = math.clamp(tonumber(self.WheelZoom) or 0, -5, 7)
+	local userHeight = self.HeightOffset
+	local userSide = self.SideOffset
+	local baseHeight = preset.Height + userHeight + wheelZoom * 6
+	local baseSide = (preset.Side + userSide + wheelZoom * 10) * self.SideSign
+	local slightZoomIn = finalThird * 9
+	local transitionZoomOut = ((targetLocal and 1 or 0) * 9) + math.clamp(speed / 70, 0, 1) * 7 + midfield * 7
+	local wideZoomOut = nearWide * 42 + farWide * 8
+	local height = math.clamp(baseHeight + transitionZoomOut * 0.45 + nearWide * 7 + farWide * 1.5 - slightZoomIn * 0.45, 86, 168)
+	local side = math.clamp(math.abs(baseSide) + transitionZoomOut * 0.5 + wideZoomOut - slightZoomIn * 0.18, 220, 360) * (baseSide < 0 and -1 or 1)
+	local diagonalX = self.SmoothedTarget.X * 0.025
+	local cameraZ = softLimit(self.SmoothedTarget.Z - velocityLocal.Z * 0.025, self.Length * 0.47, self.Length * 0.08)
+	local cameraLocal = Vector3.new(side + diagonalX, height, cameraZ)
+	local focusWorld = self.PitchCFrame:PointToWorldSpace(focusLocal)
+	local cameraWorld = self.PitchCFrame:PointToWorldSpace(cameraLocal)
+	cameraWorld = focusWorld + (cameraWorld - focusWorld) * (1.0 + nearWide * 0.2 - farWide * 0.08)
+	local desiredCFrame = CFrame.lookAt(cameraWorld, focusWorld, self.PitchCFrame.UpVector)
+	local cameraSmooth = math.clamp(tonumber(workspace:GetAttribute("VTRTacticalCameraSmoothing")) or (0.24 / self.SpeedScale), 0.12, 0.48)
+	if targetLocal or speed > 60 then cameraSmooth *= 0.84 end
+	if wide > 0 then cameraSmooth = math.max(cameraSmooth, 0.24 + wide * 0.08) end
+	if goalkeeperTransition then cameraSmooth = math.max(cameraSmooth, 0.2) end
+	local cameraAlpha = 1 - math.exp(-dt / cameraSmooth)
+	local cameraPosition = self.Camera.CFrame.Position:Lerp(desiredCFrame.Position, cameraAlpha)
+	cameraPosition = clearCameraObstruction(self.Active, self.Ball, focusWorld, cameraPosition)
+	self.Camera.CFrame = CFrame.lookAt(cameraPosition, focusWorld, self.PitchCFrame.UpVector)
+	local fovBase = tonumber(workspace:GetAttribute("VTRTacticalFOV")) or preset.Fov
+	local fov = math.clamp(fovBase + self.ZoomOffset + wheelZoom * 0.65 + transitionZoomOut * 0.045 + nearWide * 0.9 - farWide * 1.8 - finalThird * 0.7, 38, 56)
+	self.Camera.FieldOfView += (fov - self.Camera.FieldOfView) * (1 - math.exp(-dt / 0.22))
+end
+
 function Controller:_updateCutscene(dt: number): boolean
-	if not self.CutsceneUntil or os.clock() >= self.CutsceneUntil then
+	local expired = self.CutsceneUntil and os.clock() >= self.CutsceneUntil
+	if not self.CutsceneUntil or (expired and not self.CutsceneHardLock) then
 		self.CutsceneUntil = nil
 		self.CutsceneKind = nil
 		self.CutsceneLocation = nil
 		self.CutsceneGoalPosition = nil
 		self.CutsceneStartCFrame = nil
 		self.CutsceneStartFOV = nil
+		self.CutsceneHardLock = nil
+		self.SmoothedLookTarget = self.Ball and self.Ball.Parent and self.Ball.Position or self.PitchCFrame.Position
+		self.SafeBallPosition = self.SmoothedLookTarget
 		return false
 	end
 	local focus = self.CutsceneLocation or self.Ball.Position
@@ -764,13 +1070,22 @@ function Controller:_updateCutscene(dt: number): boolean
 		local total = math.max(0.1, (self.CutsceneUntil or os.clock()) - started)
 		local alpha = math.clamp((os.clock() - started) / total, 0, 1)
 		local side = self.SideSign
-		local sweep = math.sin(alpha * math.pi * .72) * self.Width * .08
-		local cameraLocal = Vector3.new(self.Width * (.92 * side) + sweep, 245, -self.Length * .42 + self.Length * .18 * alpha)
-		local targetLocal = Vector3.new(0, 12, -self.Length * .04 + self.Length * .08 * alpha)
+		local sweep = math.sin(alpha * math.pi * .72) * self.Width * .06
+		local cameraLocal = Vector3.new(self.Width * (.74 * side) + sweep, 132, -self.Length * .28 + self.Length * .12 * alpha)
+		local targetLocal = Vector3.new(0, 4.5, -self.Length * .02 + self.Length * .04 * alpha)
 		local desired = self.PitchCFrame:PointToWorldSpace(cameraLocal)
 		local target = self.PitchCFrame:PointToWorldSpace(targetLocal)
 		self.Camera.CFrame = self.Camera.CFrame:Lerp(CFrame.lookAt(desired, target), 1 - math.exp(-dt / 0.18))
 		self.Camera.FieldOfView += (50 - self.Camera.FieldOfView) * (1 - math.exp(-dt / 0.22))
+		return true
+	end
+	if kind == "GoalCelebration" then
+		local xSide = localFocus.X >= 0 and 1 or -1
+		local zSide = localFocus.Z >= 0 and 1 or -1
+		local target = self.CutsceneGoalPosition or (focus + self.PitchCFrame.UpVector * 3.2)
+		local desired = focus + self.PitchCFrame.RightVector * (xSide * 20) - self.PitchCFrame.LookVector * (zSide * 26) + self.PitchCFrame.UpVector * 7.5
+		self.Camera.CFrame = self.Camera.CFrame:Lerp(CFrame.lookAt(desired, target, self.PitchCFrame.UpVector), 1 - math.exp(-dt / 0.1))
+		self.Camera.FieldOfView += (39 - self.Camera.FieldOfView) * (1 - math.exp(-dt / 0.16))
 		return true
 	end
 	if kind == "FreeKick" or kind == "Penalty" then
@@ -809,12 +1124,15 @@ function Controller:_updateCutscene(dt: number): boolean
 end
 
 function Controller:Update(dt: number)
+	if self:_updateCutscene(dt) then
+		return
+	end
 	if self.TacticalView then
 		self:_updateTactical(dt)
 		return
 	end
 	local root = activeRoot(self.Active)
-	if not root or not self.Ball.Parent or self:_updateCutscene(dt) then
+	if not root or not self.Ball.Parent then
 		return
 	end
 	if self.ShootingFocus then
@@ -826,19 +1144,24 @@ function Controller:Update(dt: number)
 		return
 	end
 	local preset = PRESETS[self.Mode]
+	if self.Mode == "Tactical" or self.Mode == "WideBroadcast" or self.Mode == "Broadcast" then
+		self:_updateTacticalLive(dt, root, preset)
+		return
+	end
 	local goalkeeperHeld = self.Ball:GetAttribute("VTRGoalkeeperHeld") == true
+	local goalkeeperReleaseUntil = tonumber(self.Ball:GetAttribute("VTRGoalkeeperReleaseCameraUntil")) or 0
 	if goalkeeperHeld then
 		self.WasGoalkeeperHeld = true
 	elseif self.WasGoalkeeperHeld then
 		self.WasGoalkeeperHeld = false
 		self.GoalkeeperReleaseCameraUntil = os.clock() + 0.75
 	end
-	local goalkeeperTransition = goalkeeperHeld or (tonumber(self.GoalkeeperReleaseCameraUntil) or 0) > os.clock()
-	local ballPosition = self:_safeBallFocusPosition(ballFocusPosition(self.Ball, self.Active), dt, goalkeeperTransition)
+	local goalkeeperTransition = goalkeeperHeld or goalkeeperReleaseUntil > os.clock() or (tonumber(self.GoalkeeperReleaseCameraUntil) or 0) > os.clock()
+	local ballPosition = self:_safeBallFocusPosition(cameraBallFocusPosition(self.Ball, self.Active), dt, goalkeeperTransition)
 	if not self.SmoothedLookTarget then
 		self.SmoothedLookTarget = ballPosition
 	end
-	local lookSmoothing = math.clamp(tonumber(workspace:GetAttribute("VTRCameraLookSmoothing")) or BALL_LOOK_SMOOTHING, 0.02, 0.8)
+	local lookSmoothing = math.clamp(tonumber(workspace:GetAttribute("VTRCameraLookSmoothing")) or BALL_LOOK_SMOOTHING, 0.018, 0.8)
 	local maxLookSpeed = math.clamp(tonumber(workspace:GetAttribute("VTRCameraMaxLookSpeed")) or BALL_LOOK_MAX_SPEED, 120, 2400)
 	local maxLookLag = math.clamp(tonumber(workspace:GetAttribute("VTRCameraMaxLookLag")) or BALL_LOOK_MAX_LAG, 0.5, 35)
 	if goalkeeperTransition then
@@ -865,33 +1188,30 @@ function Controller:Update(dt: number)
 	-- the ball. This keeps the ball centered instead of allowing the old
 	-- player/goal weighting to pull play toward one side of the screen.
 	local desiredLocal = self.PitchCFrame:PointToObjectSpace(ballPosition)
-	desiredLocal = Vector3.new(math.clamp(desiredLocal.X, -self.Width * 0.44, self.Width * 0.44), 2, math.clamp(desiredLocal.Z, -self.Length * 0.46, self.Length * 0.46))
-	local trackingSmooth = math.clamp(tonumber(workspace:GetAttribute("VTRCameraTrackingSmoothing")) or BALL_TRACKING_SMOOTHING, 0.035, 0.5)
-	local targetSmooth = math.max(0.045, trackingSmooth / self.SpeedScale)
+	desiredLocal = Vector3.new(
+		softLimit(desiredLocal.X, self.Width * 0.44, self.Width * 0.075),
+		2,
+		softLimit(desiredLocal.Z, self.Length * 0.46, self.Length * 0.075)
+	)
+	local trackingSmooth = math.clamp(tonumber(workspace:GetAttribute("VTRCameraTrackingSmoothing")) or BALL_TRACKING_SMOOTHING, 0.04, 0.5)
+	local targetSmooth = math.max(0.048, trackingSmooth / self.SpeedScale)
 	if goalkeeperTransition then
 		targetSmooth = math.max(targetSmooth, 0.16)
 	end
-	local targetAlpha = 1 - math.exp(-dt / targetSmooth)
+	local targetAlphaX = 1 - math.exp(-dt / math.max(targetSmooth, 0.075))
+	local targetAlphaZ = 1 - math.exp(-dt / targetSmooth)
+	local edgeX = math.clamp((math.abs(desiredLocal.X) / math.max(self.Width * 0.44, 1) - 0.78) / 0.22, 0, 1)
+	local edgeZ = math.clamp((math.abs(desiredLocal.Z) / math.max(self.Length * 0.46, 1) - 0.78) / 0.22, 0, 1)
+	targetAlphaX *= 1 - edgeX * 0.28
+	targetAlphaZ *= 1 - edgeZ * 0.34
 	self.SmoothedTarget = Vector3.new(
-		self.SmoothedTarget.X + (desiredLocal.X - self.SmoothedTarget.X) * targetAlpha,
+		self.SmoothedTarget.X + (desiredLocal.X - self.SmoothedTarget.X) * targetAlphaX,
 		2,
-		self.SmoothedTarget.Z + (desiredLocal.Z - self.SmoothedTarget.Z) * targetAlpha
+		self.SmoothedTarget.Z + (desiredLocal.Z - self.SmoothedTarget.Z) * targetAlphaZ
 	)
-	local side = tostring(self.Active:GetAttribute("VTRTeam") or "Home")
-	local attackingGoalZ = side == "Home" and -self.Length * 0.5 or self.Length * 0.5
-	local distanceToGoal = math.abs(attackingGoalZ - ballLocal.Z)
-	local goalLookStart = self.Length * math.clamp(tonumber(workspace:GetAttribute("VTRGoalLookStartFraction")) or GOAL_LOOK_START_FRACTION, 0.22, 0.55)
-	local goalLookFull = self.Length * math.clamp(tonumber(workspace:GetAttribute("VTRGoalLookFullFraction")) or GOAL_LOOK_FULL_FRACTION, 0.08, 0.32)
-	local goalBlendMax = math.clamp(tonumber(workspace:GetAttribute("VTRGoalLookMaxBlend")) or GOAL_LOOK_MAX_BLEND, 0, 0.68)
-	local goalBias = 0
-	if goalLookStart > goalLookFull then
-		goalBias = smoothStep((goalLookStart - distanceToGoal) / (goalLookStart - goalLookFull)) * goalBlendMax
-	end
-	local smoothedBallLocal = self.PitchCFrame:PointToObjectSpace(self.SmoothedLookTarget)
-	local goalLookLocal = Vector3.new(math.clamp(smoothedBallLocal.X * 0.42, -self.Width * 0.18, self.Width * 0.18), 2.5, attackingGoalZ)
-	local targetWorld = goalBias > 0 and self.PitchCFrame:PointToWorldSpace(smoothedBallLocal:Lerp(goalLookLocal, goalBias)) or self.SmoothedLookTarget
+	local targetWorld = self.SmoothedLookTarget
 	local separation = (activePosition - ballPosition).Magnitude
-	local rawBallVelocity = self.Ball.AssemblyLinearVelocity
+	local rawBallVelocity = (self.ClientBallVelocity and self.ClientBallVelocity.Magnitude > 0.01) and self.ClientBallVelocity or self.Ball.AssemblyLinearVelocity
 	local safeBallVelocity = rawBallVelocity.Magnitude > 215 and rawBallVelocity.Unit * 215 or rawBallVelocity
 	local ballSpeed = safeBallVelocity.Magnitude
 	local counterAttack = math.abs(ballLocal.Z) > self.Length * 0.26 and ballSpeed > 35
@@ -906,7 +1226,7 @@ function Controller:Update(dt: number)
 	end
 	local velocityLocal = self.PitchCFrame:VectorToObjectSpace(safeBallVelocity)
 	local desiredFrame = self:_desiredFrame(preset, targetWorld, dynamicZoom, velocityLocal.Z)
-	local cameraPositionSmooth = math.clamp(tonumber(workspace:GetAttribute("VTRCameraPositionSmoothing")) or math.max(0.055, preset.Smooth * 0.62 / self.SpeedScale), 0.035, 0.45)
+	local cameraPositionSmooth = math.clamp(tonumber(workspace:GetAttribute("VTRCameraPositionSmoothing")) or math.max(0.058, preset.Smooth * 0.5 / self.SpeedScale), 0.045, 0.45)
 	if goalkeeperTransition then
 		cameraPositionSmooth = math.max(cameraPositionSmooth, 0.14)
 	end
@@ -917,12 +1237,10 @@ function Controller:Update(dt: number)
 	local screenPoint,onScreen = self.Camera:WorldToViewportPoint(ballPosition)
 	local viewport = self.Camera.ViewportSize
 	local offCenter = onScreen and viewport.X > 0 and viewport.Y > 0 and math.max(math.abs(screenPoint.X / viewport.X - 0.5), math.abs(screenPoint.Y / viewport.Y - 0.5)) or 1
-	local allowedOffCenter = 0.34 + goalBias * 0.18
+	local allowedOffCenter = 0.34
 	if not onScreen or screenPoint.Z <= 0 or offCenter > allowedOffCenter then
 		self.SmoothedLookTarget = self.SmoothedLookTarget:Lerp(ballPosition, 0.72)
-		smoothedBallLocal = self.PitchCFrame:PointToObjectSpace(self.SmoothedLookTarget)
-		goalLookLocal = Vector3.new(math.clamp(smoothedBallLocal.X * 0.42, -self.Width * 0.18, self.Width * 0.18), 2.5, attackingGoalZ)
-		targetWorld = goalBias > 0 and self.PitchCFrame:PointToWorldSpace(smoothedBallLocal:Lerp(goalLookLocal, goalBias * 0.55)) or self.SmoothedLookTarget
+		targetWorld = self.SmoothedLookTarget
 		self.Camera.CFrame = CFrame.lookAt(cameraPosition, targetWorld, self.PitchCFrame.UpVector)
 	end
 	local penaltyBox = math.abs(ballLocal.Z) > self.Length * 0.35
@@ -931,7 +1249,8 @@ function Controller:Update(dt: number)
 	local runtimeMultiplier=tonumber(workspace:GetAttribute("VTRBallDistanceZoomMultiplier"))or self.BallDistanceZoomMultiplier
 	local distanceZoom=-(ballCameraDistance-self.ReferenceBallDistance)*math.clamp(runtimeMultiplier,0,.3)
 	local baseFov=tonumber(workspace:GetAttribute("VTRBroadcastFOV"))or preset.Fov
-	local fov = math.clamp(baseFov + self.ZoomOffset + dynamicZoom * 0.08 + distanceZoom - (penaltyBox and 1.2 or 0), 28, 52)
+	local wheelZoom = math.clamp(tonumber(self.WheelZoom) or 0, -5, 7)
+	local fov = math.clamp(baseFov + self.ZoomOffset + wheelZoom * 0.75 + dynamicZoom * 0.08 + distanceZoom - (penaltyBox and 1.2 or 0), 26, 58)
 	self.Camera.FieldOfView += (fov - self.Camera.FieldOfView) * (1 - math.exp(-dt / 0.18))
 end
 
@@ -941,6 +1260,14 @@ end
 
 function Controller:Destroy()
 	CameraRelativeMovement.ClearDebug()
+	for _, connection in self.InputConnections or {} do
+		connection:Disconnect()
+	end
+	table.clear(self.InputConnections)
+	if self.ClientCameraBall then
+		self.ClientCameraBall:Destroy()
+		self.ClientCameraBall = nil
+	end
 	self.Camera.CameraType = Enum.CameraType.Custom
 	self.Camera.FieldOfView = 70
 end

@@ -1,10 +1,11 @@
 --!strict
 local DataStoreService=game:GetService("DataStoreService")
+local Players=game:GetService("Players")
 local ReplicatedStorage=game:GetService("ReplicatedStorage")
 local RunService=game:GetService("RunService")
 local Catalog=require(ReplicatedStorage.VTR.Shared.Catalog)
 local Service={};Service.__index=Service
-local LEADERBOARD_VERSION="VTR25_RankedLeaderboards_v2"
+local LEADERBOARD_VERSION="VTR25_RankedLeaderboards_v4"
 local LEADERBOARD_ORDER={"Wins","Losses","Goals","WinRatio","Flawless","CleanSheets","BestStreak","PackRating"}
 local MIN_DIVISION=1
 local MAX_DIVISION=10
@@ -138,6 +139,31 @@ local function leaderboardValues(ranked:any):{[string]:number}
 		BestStreak=math.max(0,math.floor(tonumber(ranked.BestWinStreak)or 0)),
 		PackRating=math.max(0,math.floor(tonumber(ranked.BestPackRating)or 0)),
 	}
+end
+local function resolveLeaderboardName(userId:number, key:any):{Name:string,Username:string}
+	local cacheKey=tostring(key or userId)
+	local cached=LeaderboardNameCache[cacheKey]
+	if cached and tostring(cached.Name or"")~="" and not string.match(tostring(cached.Name),"^USER%s+%d+$")then
+		return cached
+	end
+	local online=userId>0 and Players:GetPlayerByUserId(userId)or nil
+	if online then
+		local value={Name=online.DisplayName~=""and online.DisplayName or online.Name,Username=online.Name}
+		LeaderboardNameCache[cacheKey]=value
+		return value
+	end
+	local username=nil
+	if userId>0 then
+		local ok,result=pcall(function()
+			return Players:GetNameFromUserIdAsync(userId)
+		end)
+		if ok and type(result)=="string"and result~=""then
+			username=result
+		end
+	end
+	local value={Name=username or("PLAYER "..cacheKey),Username=username or""}
+	LeaderboardNameCache[cacheKey]=value
+	return value
 end
 local PATH_PACKS={[1]="bronze_pack",[2]="silver_pack",[3]="gold_pack",[4]="rare_pack",[5]="elite_pack",[6]="legendary_pack",[7]="mythic_pack"}
 local function pathRewardPacks(wins:number):{string}
@@ -310,8 +336,8 @@ function Service:GetLeaderboards():any
 		if ok and pages then
 			for rank,entry in pages:GetCurrentPage() do
 				local userId=tonumber(entry.key)or 0
-				local cached=LeaderboardNameCache[tostring(entry.key)]
-				table.insert(rows,{Rank=rank,UserId=userId,Name=cached and cached.Name or("USER "..tostring(entry.key)),Username=cached and cached.Username or"",Value=tonumber(entry.value)or 0})
+				local resolved=resolveLeaderboardName(userId,entry.key)
+				table.insert(rows,{Rank=rank,UserId=userId,Name=resolved.Name,Username=resolved.Username,Value=tonumber(entry.value)or 0})
 			end
 		else
 			hadError=true

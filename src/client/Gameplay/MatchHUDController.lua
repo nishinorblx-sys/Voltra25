@@ -10,6 +10,8 @@ local Theme = require(ReplicatedStorage.VTR.Shared.Theme)
 local BadgePreview = require(script.Parent.Parent.Components.BadgePreview)
 local MatchSetupService = require(script.Parent.Parent.Services.MatchSetupService)
 local AvatarPortraitGenerator = require(script.Parent.Parent.Services.PlayerPortraitService)
+local UIStateService = require(script.Parent.Parent.Services.UIStateService)
+local SettingsRuntimeService = require(script.Parent.Parent.Services.SettingsRuntimeService)
 
 local Controller = {}
 Controller.__index = Controller
@@ -97,6 +99,17 @@ local function teamBadgeIdentity(data: any, side: string): any
 	return identity
 end
 
+local function teamFlagImage(data: any, side: string): string?
+	local direct = side == "Home" and data.HomeFlagImage or data.AwayFlagImage
+	if type(direct) == "string" and direct ~= "" then return direct end
+	local summary = side == "Home" and data.HomeSummary or data.AwaySummary
+	if type(summary) == "table" then
+		local flag = summary.FlagImage or summary.flagImage
+		if type(flag) == "string" and flag ~= "" then return flag end
+	end
+	return nil
+end
+
 local function renderTeamBadge(container: GuiObject, data: any, side: string, strokeLimit: number?)
 	container.ClipsDescendants = true
 	if container:IsA("TextLabel") or container:IsA("TextButton") then
@@ -104,7 +117,45 @@ local function renderTeamBadge(container: GuiObject, data: any, side: string, st
 	end
 	container.BackgroundTransparency = 1
 	for _, child in container:GetChildren() do
-		if child.Name == "GeneratedBadge" or child.Name == "BadgeArt" or child.Name == "VTRPresentationBadgeArt" then child:Destroy() end
+		if child.Name == "GeneratedBadge" or child.Name == "BadgeArt" or child.Name == "VTRPresentationBadgeArt" or child.Name == "FlagBadge" or child.Name == "FlagBadgeFrame" then child:Destroy() end
+	end
+	local flagImage = teamFlagImage(data, side)
+	if flagImage then
+		local frame = Instance.new("Frame")
+		frame.Name = "FlagBadgeFrame"
+		frame.AnchorPoint = Vector2.new(.5, .5)
+		frame.BackgroundColor3 = Color3.fromHex("135DFF")
+		frame.BackgroundTransparency = .02
+		frame.BorderSizePixel = 0
+		frame.ClipsDescendants = true
+		frame.Position = UDim2.fromScale(.5, .5)
+		frame.Size = UDim2.fromScale(1, 1)
+		frame.ZIndex = container.ZIndex + 1
+		frame.Parent = container
+		local rounded = Instance.new("UICorner")
+		rounded.CornerRadius = UDim.new(0, 7)
+		rounded.Parent = frame
+		local outline = Instance.new("UIStroke")
+		outline.Color = side == "Home" and Color3.fromHex("D02035") or Theme.Colors.Electric
+		outline.Thickness = math.max(1, tonumber(strokeLimit) or 1)
+		outline.Transparency = .04
+		outline.Parent = frame
+		local flag = Instance.new("ImageLabel")
+		flag.Name = "FlagBadge"
+		flag.BackgroundTransparency = 1
+		flag.BorderSizePixel = 0
+		flag.Image = flagImage
+		flag.ScaleType = Enum.ScaleType.Fit
+		flag.AnchorPoint = Vector2.new(.5, .5)
+		flag.Position = UDim2.fromScale(.5, .5)
+		flag.Size = UDim2.fromScale(.78, .68)
+		flag.ZIndex = frame.ZIndex + 1
+		flag.Parent = frame
+		local aspect = Instance.new("UIAspectRatioConstraint")
+		aspect.AspectRatio = 1.45
+		aspect.DominantAxis = Enum.DominantAxis.Height
+		aspect.Parent = flag
+		return frame
 	end
 	local badge = BadgePreview.new(container, teamBadgeIdentity(data, side), UDim2.fromScale(1, 1))
 	badge.AnchorPoint = Vector2.new(.5, .5)
@@ -293,6 +344,32 @@ function Controller.new(data: any)
 	local possession = label(board, "", UDim2.fromOffset(84, 78), UDim2.new(1, -96, 0, 20), 12)
 	possession.TextColor3 = Theme.Colors.Silver
 	possession.Visible = false
+	local shotModePanel=panel(gui,UDim2.fromOffset(18,math.max(166,topInset.Y+146)),UDim2.fromOffset(172,104))
+	shotModePanel.Name="ShotModePanel"
+	shotModePanel.BackgroundTransparency=.16
+	shotModePanel.Visible=data.WatchMode~=true
+	local shotModeTitle=label(shotModePanel,"SHOT TYPE",UDim2.fromOffset(12,8),UDim2.new(1,-24,0,16),8)
+	shotModeTitle.TextColor3=Theme.Colors.Muted
+	shotModeTitle.Font=Theme.Fonts.Strong
+	local shotModeRows:any={}
+	for index,spec in ipairs({{"Normal","Z - NORMAL"},{"Finesse","X - FINESSE"},{"LowDriven","C - LOW DRIVEN"}})do
+		local row=Instance.new("TextLabel")
+		row.Name="ShotMode_"..spec[1]
+		row.BackgroundColor3=Theme.Colors.Black
+		row.BackgroundTransparency=.35
+		row.BorderSizePixel=0
+		row.Position=UDim2.fromOffset(10,26+(index-1)*23)
+		row.Size=UDim2.new(1,-20,0,19)
+		row.Text=spec[2]
+		row.TextColor3=Theme.Colors.Silver
+		row.TextSize=9
+		row.Font=Theme.Fonts.Strong
+		row.TextXAlignment=Enum.TextXAlignment.Left
+		row.ZIndex=shotModePanel.ZIndex+1
+		row.Parent=shotModePanel
+		corner(row,4)
+		shotModeRows[spec[1]]=row
+	end
 	local scorerPanel = Instance.new("CanvasGroup")
 	scorerPanel.Name = "KickoffScorerPanel"
 	scorerPanel.BackgroundColor3 = Color3.fromHex("8E00D6")
@@ -400,6 +477,15 @@ function Controller.new(data: any)
 	chargeFill.Parent = charge
 	chargeFill.ZIndex = 20
 	corner(chargeFill, 4)
+	local chargeGradient = Instance.new("UIGradient")
+	chargeGradient.Color = ColorSequence.new({
+		ColorSequenceKeypoint.new(0, Color3.fromHex("00D8FF")),
+		ColorSequenceKeypoint.new(0.42, Color3.fromHex("17E644")),
+		ColorSequenceKeypoint.new(0.68, Color3.fromHex("FFE600")),
+		ColorSequenceKeypoint.new(0.84, Color3.fromHex("FF8A12")),
+		ColorSequenceKeypoint.new(1, Color3.fromHex("FF1717")),
+	})
+	chargeGradient.Parent = chargeFill
 
 	local help = label(gui, "WASD MOVE   SHIFT SPRINT   LMB SHOOT   RMB PASS   ALT MANUAL LOB   CTRL MANUAL PASS   E TACKLE   F SLIDE   R BLOCK   C DRIBBLE   Q SWITCH", UDim2.new(0.5, -520, 1, -31), UDim2.fromOffset(1040, 18), 9)
 	help.TextXAlignment = Enum.TextXAlignment.Center
@@ -460,6 +546,8 @@ function Controller.new(data: any)
 		BoardPossession = possession,
 		Phase = phase,
 		PhasePanel = phasePanel,
+		ShotModePanel=shotModePanel,
+		ShotModeRows=shotModeRows,
 		Banner = banner,
 		Charge = charge,
 		ChargeFill = chargeFill,
@@ -482,6 +570,8 @@ function Controller.new(data: any)
 		AwayColor = data.AwayColor,
 		HomeLogo = data.HomeLogo,
 		AwayLogo = data.AwayLogo,
+		HomeFlagImage = data.HomeFlagImage,
+		AwayFlagImage = data.AwayFlagImage,
 		HomeSummary = data.HomeSummary,
 		AwaySummary = data.AwaySummary,
 		HomeBadgeIdentity = data.HomeBadgeIdentity or (data.HomeSummary and (data.HomeSummary.BadgeIdentity or data.HomeSummary.badgeIdentity)),
@@ -504,6 +594,58 @@ end
 function Controller:SetPauseButtonCallback(callback:()->())
 	self.PauseButtonCallback=callback
 	if self.PauseButton then self.PauseButton.Visible=true end
+end
+
+function Controller:SetSecondHalfResetCallback(callback:()->())
+	self.SecondHalfResetCallback=callback
+end
+
+function Controller:_ensureSecondHalfResetButton(): TextButton?
+	if self.SecondHalfResetButton and self.SecondHalfResetButton.Parent then
+		return self.SecondHalfResetButton
+	end
+	if not self.Gui then
+		return nil
+	end
+	local button=Instance.new("TextButton")
+	button.Name="SecondHalfResetButton"
+	button.AnchorPoint=Vector2.new(1,0)
+	button.Position=UDim2.new(1,-92,0,60)
+	button.Size=UDim2.fromOffset(136,44)
+	button.BackgroundColor3=Color3.fromHex("111511")
+	button.BackgroundTransparency=.04
+	button.BorderSizePixel=0
+	button.AutoButtonColor=true
+	button.Text="RESET HALF"
+	button.TextColor3=Theme.Colors.Electric
+	button.TextSize=12
+	button.Font=Theme.Fonts.Strong
+	button.ZIndex=42
+	button.Selectable=true
+	button.Visible=false
+	button.Parent=self.Gui
+	corner(button,9)
+	local buttonStroke=stroke(button,Color3.fromHex("FF4D5A"),.12)
+	buttonStroke.Thickness=2
+	local hint=label(button,"FIX CAMERA / BALL",UDim2.fromOffset(9,27),UDim2.new(1,-18,0,11),7)
+	hint.TextXAlignment=Enum.TextXAlignment.Center
+	hint.TextColor3=Color3.fromHex("FFD0D4")
+	hint.TextTransparency=.08
+	hint.ZIndex=43
+	button.Activated:Connect(function()
+		if self.SecondHalfResetCallback then
+			self.SecondHalfResetCallback()
+		end
+	end)
+	self.SecondHalfResetButton=button
+	return button
+end
+
+function Controller:SetSecondHalfResetVisible(visible:boolean)
+	local button=self:_ensureSecondHalfResetButton()
+	if button then
+		button.Visible=visible==true
+	end
 end
 
 function Controller:_lineupEntryForModel(model: Model?): any?
@@ -694,7 +836,17 @@ function Controller:SetCharge(value: number, kind: string?)
 	self.Charge.Visible = value > 0.01
 	self.ChargeFill.Size = UDim2.new(math.clamp(value, 0, 1), 0, 0, 4)
 	self.ChargeLabel.Text = kind == "Pass" and "PASS POWER" or "SHOT POWER"
-	self.ChargeFill.BackgroundColor3 = kind == "Pass" and Color3.fromHex("B7FF1A") or Color3.fromHex("DFFF4A")
+	self.ChargeFill.BackgroundColor3 = Color3.new(1, 1, 1)
+end
+
+function Controller:SetShotMode(mode:string?)
+	mode=mode=="Finesse"and"Finesse"or mode=="LowDriven"and"LowDriven"or"Normal"
+	for key,row in self.ShotModeRows or{}do
+		local active=key==mode
+		row.BackgroundTransparency=active and 0 or .35
+		row.BackgroundColor3=active and Theme.Colors.Electric or Theme.Colors.Black
+		row.TextColor3=active and Theme.Colors.Black or Theme.Colors.Silver
+	end
 end
 
 function Controller:SetClock(seconds: number, home: number?, away: number?, addedMinutes: number?, inAddedTime: boolean?, addedElapsed: number?)
@@ -1123,6 +1275,42 @@ function Controller:ShowHalfTime(payload: any, options: any?)
 		if density>.5 then blob(cell.X,cell.Z,spread*.32,Color3.fromRGB(255,228,25),.75-density*.28,66)end
 		if density>.72 then blob(cell.X,cell.Z,spread*.2,Color3.fromRGB(255,48,28),.72-density*.32,66)end
 	end
+	local homeStats=stats.Home or{}
+	local awayStats=stats.Away or{}
+	local function teamValue(source:any,...:string):any
+		for _,key in {...}do
+			local value=source[key]
+			if value~=nil then return value end
+		end
+		return 0
+	end
+	local function statText(value:any,percent:boolean?):string
+		local number=tonumber(value)or 0
+		if percent then return tostring(math.floor(number+.5)).."%"end
+		if math.abs(number-math.floor(number))>.001 then return string.format("%.2f",number)end
+		return tostring(number)
+	end
+	local teamBoard=panel(left,UDim2.fromScale(.58,.23),UDim2.fromScale(.34,.38));teamBoard.BackgroundColor3=Color3.fromHex("07110D");teamBoard.BackgroundTransparency=.08;teamBoard.ZIndex=62
+	local teamTitle=label(teamBoard,"TEAM STATS",UDim2.fromScale(.07,.04),UDim2.fromScale(.86,.11),15);teamTitle.TextXAlignment=Enum.TextXAlignment.Center;teamTitle.TextColor3=Theme.Colors.Electric;teamTitle.ZIndex=64
+	local homeHead=label(teamBoard,self.HomeCode,UDim2.fromScale(.06,.16),UDim2.fromScale(.22,.09),12);homeHead.TextXAlignment=Enum.TextXAlignment.Center;homeHead.TextColor3=Theme.Colors.White;homeHead.ZIndex=64
+	local awayHead=label(teamBoard,self.AwayCode,UDim2.fromScale(.72,.16),UDim2.fromScale(.22,.09),12);awayHead.TextXAlignment=Enum.TextXAlignment.Center;awayHead.TextColor3=Theme.Colors.White;awayHead.ZIndex=64
+	local halfRows={
+		{"POSS",teamValue(homeStats,"Possession"),teamValue(awayStats,"Possession"),true},
+		{"SHOTS",teamValue(homeStats,"Shots"),teamValue(awayStats,"Shots")},
+		{"ON TARGET",teamValue(homeStats,"ShotsOnTarget","OnTarget"),teamValue(awayStats,"ShotsOnTarget","OnTarget")},
+		{"XG",teamValue(homeStats,"ExpectedGoals","xG"),teamValue(awayStats,"ExpectedGoals","xG")},
+		{"PASSES",teamValue(homeStats,"PassesCompleted","CompletedPasses"),teamValue(awayStats,"PassesCompleted","CompletedPasses")},
+		{"PASS %",teamValue(homeStats,"PassAccuracy"),teamValue(awayStats,"PassAccuracy"),true},
+		{"SAVES",teamValue(homeStats,"Saves"),teamValue(awayStats,"Saves")},
+		{"FOULS",teamValue(homeStats,"Fouls"),teamValue(awayStats,"Fouls")},
+	}
+	for index,row in ipairs(halfRows)do
+		local y=.27+(index-1)*.086
+		local rowBg=Instance.new("Frame");rowBg.BackgroundColor3=index%2==0 and Theme.Colors.Gunmetal or Theme.Colors.Black;rowBg.BackgroundTransparency=.58;rowBg.BorderSizePixel=0;rowBg.Position=UDim2.fromScale(.05,y);rowBg.Size=UDim2.fromScale(.9,.07);rowBg.ZIndex=63;rowBg.Parent=teamBoard;corner(rowBg,4)
+		local homeValue=label(rowBg,statText(row[2],row[4]==true),UDim2.fromScale(.02,0),UDim2.fromScale(.24,1),12);homeValue.TextXAlignment=Enum.TextXAlignment.Center;homeValue.ZIndex=64
+		local name=label(rowBg,tostring(row[1]),UDim2.fromScale(.28,0),UDim2.fromScale(.44,1),9);name.TextXAlignment=Enum.TextXAlignment.Center;name.TextColor3=Theme.Colors.Silver;name.ZIndex=64
+		local awayValue=label(rowBg,statText(row[3],row[4]==true),UDim2.fromScale(.74,0),UDim2.fromScale(.24,1),12);awayValue.TextXAlignment=Enum.TextXAlignment.Center;awayValue.ZIndex=64
+	end
 	local defensive=(tonumber(events.TackleWon)or 0)+(tonumber(events.Interception)or 0)
 	local passes=(tonumber(events.SuccessfulPass)or 0)+(tonumber(events.BadPass)or 0)
 	local passAccuracy=passes>0 and math.floor((tonumber(events.SuccessfulPass)or 0)/passes*100+.5)or 0
@@ -1153,7 +1341,7 @@ function Controller:ShowHalfTime(payload: any, options: any?)
 	end)
 end
 
-function Controller:SetPaused(paused: boolean, _cameraController: any, onReturn: () -> (), payload: any?, onForfeit: (() -> ())?)
+function Controller:SetPaused(paused: boolean, cameraController: any, onReturn: () -> (), payload: any?, onForfeit: (() -> ())?)
 	if not paused then
 		self:ClearPause()
 		return
@@ -1349,6 +1537,83 @@ function Controller:SetPaused(paused: boolean, _cameraController: any, onReturn:
 		addRow("FIELD EVENTS REGISTERED: "..tostring(shotCount).." SHOTS  /  "..tostring(passCount).." COMPLETED PASSES",Theme.Colors.Electric)
 		addRow("TRACKED CATEGORIES: XG, SHOT LOCATION, PASS ORIGIN, PASS DESTINATION, PASS ACCURACY, TACKLES, SAVES, FOULS, CARDS",Theme.Colors.Silver)
 	end
+	local function showSettings()
+		clearBody("SETTINGS")
+		content.Size=UDim2.new(.62,0,.78,0);content.Position=UDim2.new(.34,0,.12,0)
+		local uiState=UIStateService:Get()
+		local settings=uiState and uiState.Settings or{}
+		local activeTab=self.PauseSettingsTab or"Controls"
+		local tabs={"Controls","Audio","Camera","Accessibility"}
+		local tabRow=Instance.new("Frame");tabRow.BackgroundTransparency=1;tabRow.Size=UDim2.new(1,-8,0,42);tabRow.ZIndex=108;tabRow.Parent=body
+		for index,tab in tabs do
+			local tabButton=actionButton(tabRow,tab,index,function()self.PauseSettingsTab=tab;showSettings()end)
+			tabButton.Position=UDim2.new((index-1)/#tabs,4,0,0)
+			tabButton.Size=UDim2.new(1/#tabs,-8,0,36)
+			tabButton.BackgroundColor3=tab==activeTab and Theme.Colors.Electric or Color3.fromHex("07110F")
+			tabButton.TextColor3=tab==activeTab and Theme.Colors.Black or Theme.Colors.White
+			tabButton.ZIndex=109
+		end
+		local function commitSetting(key:string,value:any)
+			settings[key]=value
+			if SettingsRuntimeService.Apply then SettingsRuntimeService.Apply(settings)end
+			if UIStateService.SetSetting then UIStateService:SetSetting(key,value)end
+			if cameraController and (key=="CameraPreset"or key=="CameraSide"or key=="CameraSpeed"or key=="BroadcastHeight"or key=="BroadcastZoom"or key=="CameraZoomMode")then
+				if cameraController.SetMode and key=="CameraPreset"then cameraController:SetMode(value)end
+				if cameraController.ApplySettings then cameraController:ApplySettings(settings)end
+			end
+		end
+		local function settingRow(title:string,subtitle:string):Frame
+			local holder=Instance.new("Frame");holder.BackgroundColor3=Theme.Colors.Black;holder.BackgroundTransparency=.78;holder.BorderSizePixel=0;holder.Size=UDim2.new(1,-8,0,64);holder.ZIndex=108;holder.Parent=body;corner(holder,Theme.Radius.Medium)
+			local titleLabel=label(holder,title,UDim2.fromOffset(14,8),UDim2.new(.52,-14,0,22),11);titleLabel.Font=Theme.Fonts.Strong
+			local subLabel=label(holder,subtitle,UDim2.fromOffset(14,31),UDim2.new(.55,-14,0,22),8);subLabel.TextColor3=Theme.Colors.Muted
+			return holder
+		end
+		local function optionRow(key:string,title:string,subtitle:string,values:{string})
+			local holder=settingRow(title,subtitle)
+			local current=tostring(settings[key]or values[1])
+			local x=0
+			for _,value in values do
+				local active=value==current
+				local width=math.clamp(72+#value*5,96,154)
+				local button=actionButton(holder,value,active and 1 or 2,function()commitSetting(key,value);showSettings()end)
+				button.AnchorPoint=Vector2.new(1,.5);button.Position=UDim2.new(1,-14-x,.5,0);button.Size=UDim2.fromOffset(width,32);button.ZIndex=110
+				x+=width+8
+			end
+		end
+		local function toggleRow(key:string,title:string,subtitle:string)
+			local current=settings[key]==true
+			local holder=settingRow(title,subtitle)
+			local button=actionButton(holder,current and"ON"or"OFF",current and 1 or 2,function()commitSetting(key,not current);showSettings()end)
+			button.AnchorPoint=Vector2.new(1,.5);button.Position=UDim2.new(1,-14,.5,0);button.Size=UDim2.fromOffset(92,34);button.ZIndex=110
+		end
+		local function sliderRow(key:string,title:string,subtitle:string,fallback:number)
+			local holder=settingRow(title,subtitle)
+			local current=math.clamp(tonumber(settings[key])or fallback,0,1)
+			local readout=label(holder,tostring(math.floor(current*100+.5)).."%",UDim2.new(1,-70,0,8),UDim2.fromOffset(56,20),12);readout.TextXAlignment=Enum.TextXAlignment.Right;readout.TextColor3=Theme.Colors.Electric;readout.Font=Theme.Fonts.Display
+			local track=Instance.new("TextButton");track.AutoButtonColor=false;track.Text="";track.BackgroundColor3=Theme.Colors.Gunmetal;track.BorderSizePixel=0;track.Position=UDim2.new(.58,0,.5,8);track.Size=UDim2.new(.32,0,0,8);track.ZIndex=110;track.Parent=holder;corner(track,999)
+			local fill=Instance.new("Frame");fill.BackgroundColor3=Theme.Colors.Electric;fill.BorderSizePixel=0;fill.Size=UDim2.fromScale(current,1);fill.ZIndex=111;fill.Parent=track;corner(fill,999)
+			local function setFromX(x:number,save:boolean?)
+				local alpha=math.clamp((x-track.AbsolutePosition.X)/math.max(1,track.AbsoluteSize.X),0,1)
+				alpha=math.floor(alpha*100+.5)/100;fill.Size=UDim2.fromScale(alpha,1);readout.Text=tostring(math.floor(alpha*100+.5)).."%";if save~=false then commitSetting(key,alpha)else settings[key]=alpha;if SettingsRuntimeService.Apply then SettingsRuntimeService.Apply(settings)end end
+			end
+			track.InputBegan:Connect(function(input)if input.UserInputType==Enum.UserInputType.MouseButton1 or input.UserInputType==Enum.UserInputType.Touch then setFromX(input.Position.X,true)end end)
+		end
+		if activeTab=="Controls"then
+			optionRow("PassReceiverAutoSwitch","PASS RECEIVER SWITCH","Choose how quickly control moves to a pass receiver.",{"Assisted","Instant","Off"})
+			optionRow("ReceiverAssist","RECEIVER ASSIST","Assisted receiving support after passes.",{"Light","Assisted","Off"})
+			addRow("KEYBINDS: PAUSE M  /  SWITCH Q  /  TACKLE E  /  SLIDE F  /  MANUAL CTRL  /  LOB ALT",Theme.Colors.Silver)
+		elseif activeTab=="Audio"then
+			sliderRow("MasterVolume","MASTER VOLUME","Controls global game audio.",.8)
+			toggleRow("MenuMusic","MENU MUSIC","Turns menu soundtrack audio on or off.")
+		elseif activeTab=="Camera"then
+			optionRow("CameraPreset","CAMERA PRESET","Tactical or Pro.",{"Tactical","Pro"})
+			optionRow("CameraSide","CAMERA SIDE","Choose near or far broadcast side.",{"Near","Far"})
+			optionRow("CameraZoomMode","ZOOM MODE","Camera zoom behavior for match play.",{"Wide","Default","Close","Tactical Wide"})
+		else
+			toggleRow("HighContrast","HIGH CONTRAST","Increases scene contrast and UI readability.")
+			toggleRow("ReducedMotion","REDUCE MOTION","Shortens UI transitions and presentation movement.")
+		end
+	end
 	local function showForfeitAnimation()
 		local shade=Instance.new("Frame");shade.Size=UDim2.fromScale(1,1);shade.BackgroundColor3=Theme.Colors.Black;shade.BackgroundTransparency=.1;shade.BorderSizePixel=0;shade.ZIndex=160;shade.Active=true;shade.Parent=overlay
 		local box=panel(shade,UDim2.new(.5,-235,.5,-86),UDim2.fromOffset(470,172));box.ZIndex=161;box.BackgroundTransparency=.04
@@ -1533,7 +1798,7 @@ function Controller:SetPaused(paused: boolean, _cameraController: any, onReturn:
 	menuButton("TEAM MANAGEMENT", 2, openTeamManagementPage)
 	menuButton("MATCH FACTS", 3, showFacts)
 	menuButton("PERFORMANCE", 4, showPerformance)
-	menuButton("SETTINGS", 5, function()clearBody("SETTINGS");addRow("Match settings are coming next. This tab is intentionally safe for now.",Theme.Colors.Silver)end)
+	menuButton("SETTINGS", 5, showSettings)
 	menuButton("LEAVE MATCH", 6, showForfeitAnimation)
 	self.PauseOverlay = overlay
 	task.defer(function()
