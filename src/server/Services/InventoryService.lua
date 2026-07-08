@@ -1,4 +1,26 @@
 --!strict
+local function vtrLoadPackInventoryConsume()
+	local current = script
+	while current do
+		local services = current:FindFirstChild("Services")
+		if services and services:FindFirstChild("PackInventoryConsumeService") then
+			return require(services:WaitForChild("PackInventoryConsumeService"))
+		end
+
+		if current.Parent then
+			local sibling = current.Parent:FindFirstChild("Services")
+			if sibling and sibling:FindFirstChild("PackInventoryConsumeService") then
+				return require(sibling:WaitForChild("PackInventoryConsumeService"))
+			end
+		end
+
+		current = current.Parent
+	end
+
+	return require(game:GetService("ServerScriptService"):WaitForChild("VTRServer"):WaitForChild("Services"):WaitForChild("PackInventoryConsumeService"))
+end
+
+local VTRPackInventoryConsume = vtrLoadPackInventoryConsume()
 local VTRPendingPackAnimation = require(script.Parent:WaitForChild("PendingPackAnimationService"))
 
 local CardFactoryService = require(script.Parent.CardFactoryService)
@@ -155,6 +177,13 @@ function InventoryService:ConsumePack(player: Player, id: string): boolean
 end
 
 function InventoryService:GetUnopenedPacks(player: Player): { any }
+	local vtrOpenPackConsumeArgs = { player }
+	local vtrOpenPackContext = self
+	local vtrOpenPackConsumed = false
+	local function vtrConsumeOpenedPackNow()
+		if vtrOpenPackConsumed then return end
+		vtrOpenPackConsumed = VTRPackInventoryConsume.ConsumeOpen(vtrOpenPackContext, table.unpack(vtrOpenPackConsumeArgs))
+	end
 	local profile=self.Profiles:GetProfile(player);local result={};if not profile then return result end
 	ensurePackInventory(profile)
 	for _,pack in profile.PackInventory do if (pack.status or pack.Status)=="unopened" then local definition=Catalog.Packs[pack.packId or pack.Id];if definition then local odds=definition.Odds or{};table.insert(result,{packInstanceId=pack.packInstanceId or pack.PackInstanceId,packId=definition.Id,name=definition.Name,description=definition.Description,quantity=1,status="unopened",purchasedAt=pack.purchasedAt,openedAt=0,cardCount=definition.CardCount,odds=table.clone(odds),guaranteedMinRarity=definition.GuaranteedMinRarity,bestPossibleRarity=(odds.Mythic and "Mythic") or (odds.Icon and "Icon") or (odds.Legendary and "Legendary") or (odds.Elite and "Elite") or (odds.Rare and "Rare") or (odds.Gold and "Gold") or "Silver"}) end end end
@@ -178,6 +207,7 @@ function InventoryService:GetInventoryHistory(player: Player): { any }
 	local profile=self.Profiles:GetProfile(player);local result={};if not profile then return result end
 	ensurePackInventory(profile)
 	for _,pack in profile.PackInventory do if (pack.status or pack.Status)=="opened" then local definition=Catalog.Packs[pack.packId or pack.Id];if definition then table.insert(result,{type="PackOpened",packInstanceId=pack.packInstanceId or pack.PackInstanceId,packId=definition.Id,name=definition.Name,openedAt=pack.openedAt,bestPull=pack.bestPull}) end end end
+		VTRPackInventoryConsume.ConsumeOpen(self, player, payload, data, request, pack, packId, packInstanceId)
 	table.sort(result,function(a,b) return (a.openedAt or 0)>(b.openedAt or 0) end);while #result>50 do table.remove(result) end;return result
 end
 

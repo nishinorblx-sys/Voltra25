@@ -1,4 +1,51 @@
 --!strict
+local function vtrLoadWorldCampaignWinProgress()
+	VTRWorldCampaignWinProgress.TryRegisterFromArgs(nil)
+	local current = script
+	while current do
+		local services = current:FindFirstChild("Services")
+		if services and services:FindFirstChild("WorldCampaignWinProgressService") then
+			VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request)
+			return require(services:WaitForChild("WorldCampaignWinProgressService"))
+		end
+
+		if current.Parent then
+			local sibling = current.Parent:FindFirstChild("Services")
+			if sibling and sibling:FindFirstChild("WorldCampaignWinProgressService") then
+				VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request)
+				return require(sibling:WaitForChild("WorldCampaignWinProgressService"))
+			end
+		end
+
+		current = current.Parent
+	end
+
+	return require(game:GetService("ServerScriptService"):WaitForChild("VTRServer"):WaitForChild("Services"):WaitForChild("WorldCampaignWinProgressService"))
+end
+
+local VTRWorldCampaignWinProgress = vtrLoadWorldCampaignWinProgress()
+local function vtrLoadPackInventoryConsume()
+	local current = script
+	while current do
+		local services = current:FindFirstChild("Services")
+		if services and services:FindFirstChild("PackInventoryConsumeService") then
+			return require(services:WaitForChild("PackInventoryConsumeService"))
+		end
+
+		if current.Parent then
+			local sibling = current.Parent:FindFirstChild("Services")
+			if sibling and sibling:FindFirstChild("PackInventoryConsumeService") then
+				return require(sibling:WaitForChild("PackInventoryConsumeService"))
+			end
+		end
+
+		current = current.Parent
+	end
+
+	return require(game:GetService("ServerScriptService"):WaitForChild("VTRServer"):WaitForChild("Services"):WaitForChild("PackInventoryConsumeService"))
+end
+
+local VTRPackInventoryConsume = vtrLoadPackInventoryConsume()
 local RankedWinPackReward=require(script.Parent.RankedWinPackReward)
 local VTRPendingPackAnimation = require(script.Parent:WaitForChild("PendingPackAnimationService"))
 local HttpService = game:GetService("HttpService")
@@ -489,6 +536,7 @@ function Service:_nextPair(): (Player?, Player?)
 end
 
 function Service:_attachResultHandlers(session: any, home: Player, away: Player)
+	VTRWorldCampaignWinProgress.TryRegisterFromArgs(self)
 	session.RankedWinRewards=session.RankedWinRewards or{}
 	session.RankedWinPackGrant=function(_,winner:Player)
 		session.RankedWinRewards=session.RankedWinRewards or{}

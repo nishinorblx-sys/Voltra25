@@ -1,4 +1,26 @@
 --!strict
+local function vtrLoadPackInventoryConsume()
+	local current = script
+	while current do
+		local services = current:FindFirstChild("Services")
+		if services and services:FindFirstChild("PackInventoryConsumeService") then
+			return require(services:WaitForChild("PackInventoryConsumeService"))
+		end
+
+		if current.Parent then
+			local sibling = current.Parent:FindFirstChild("Services")
+			if sibling and sibling:FindFirstChild("PackInventoryConsumeService") then
+				return require(sibling:WaitForChild("PackInventoryConsumeService"))
+			end
+		end
+
+		current = current.Parent
+	end
+
+	return require(game:GetService("ServerScriptService"):WaitForChild("VTRServer"):WaitForChild("Services"):WaitForChild("PackInventoryConsumeService"))
+end
+
+local VTRPackInventoryConsume = vtrLoadPackInventoryConsume()
 local VTRPendingPackAnimation = require(script.Parent:WaitForChild("PendingPackAnimationService"))
 
 local PackData = require(script.Parent.Parent.Data.Packs)
@@ -164,6 +186,13 @@ function PackService:GetClientData(player: Player): any?
 end
 
 function PackService:Open(player: Player, packInstanceId: string): (boolean, { any } | string)
+	local vtrOpenPackConsumeArgs = { player, packInstanceId }
+	local vtrOpenPackContext = self
+	local vtrOpenPackConsumed = false
+	local function vtrConsumeOpenedPackNow()
+		if vtrOpenPackConsumed then return end
+		vtrOpenPackConsumed = VTRPackInventoryConsume.ConsumeOpen(vtrOpenPackContext, table.unpack(vtrOpenPackConsumeArgs))
+	end
 	if type(packInstanceId) ~= "string" or #packInstanceId > 80 then return false, "Invalid pack instance." end
 	local owned = self.Inventory:GetPack(player, packInstanceId)
 	if not owned then return false, "Unopened pack is not owned." end
@@ -219,16 +248,25 @@ function PackService:Open(player: Player, packInstanceId: string): (boolean, { a
 		self.RankedProfiles:RecordPackRating(player,packRating)
 	end
 	if self.Profiles.Save then self.Profiles:Save(player) end
+	vtrConsumeOpenedPackNow()
 	return true, reveals
 end
 
 function PackService:OpenAll(player: Player, packId: string): (boolean, { any } | string, number)
+	local vtrOpenPackConsumeArgs = { player, packId, number }
+	local vtrOpenPackContext = self
+	local vtrOpenPackConsumed = false
+	local function vtrConsumeOpenedPackNow()
+		if vtrOpenPackConsumed then return end
+		vtrOpenPackConsumed = VTRPackInventoryConsume.ConsumeOpen(vtrOpenPackContext, table.unpack(vtrOpenPackConsumeArgs))
+	end
 	if type(packId)~="string" or not PackData[packId] then return false,"Unknown pack type.",0 end
 	local profile=self.Profiles:GetProfile(player);if not profile then return false,"Profile unavailable.",0 end
 	local instanceIds={};for _,pack in profile.PackInventory do if (pack.packId or pack.Id)==packId and (pack.status or pack.Status)=="unopened" then table.insert(instanceIds,pack.packInstanceId or pack.PackInstanceId) end end
 	if #instanceIds<2 then return false,"Open All requires at least two unopened packs of this type.",0 end
 	local reveals={};local openedCount=0
 	for _,instanceId in instanceIds do self.LastOpen[player]=0;local opened,result=self:Open(player,instanceId);if not opened then return false,result,openedCount end;openedCount+=1;for _,card in result::any do table.insert(reveals,card) end end
+	vtrConsumeOpenedPackNow()
 	return true,reveals,openedCount
 end
 

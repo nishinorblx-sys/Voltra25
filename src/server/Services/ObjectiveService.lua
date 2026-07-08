@@ -1,9 +1,35 @@
 --!strict
+local function vtrLoadWorldCampaignWinProgress()
+	VTRWorldCampaignWinProgress.TryRegisterFromArgs(nil)
+	local current = script
+	while current do
+		local services = current:FindFirstChild("Services")
+		if services and services:FindFirstChild("WorldCampaignWinProgressService") then
+			VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request)
+			return require(services:WaitForChild("WorldCampaignWinProgressService"))
+		end
+
+		if current.Parent then
+			local sibling = current.Parent:FindFirstChild("Services")
+			if sibling and sibling:FindFirstChild("WorldCampaignWinProgressService") then
+				VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request)
+				return require(sibling:WaitForChild("WorldCampaignWinProgressService"))
+			end
+		end
+
+		current = current.Parent
+	end
+
+	return require(game:GetService("ServerScriptService"):WaitForChild("VTRServer"):WaitForChild("Services"):WaitForChild("WorldCampaignWinProgressService"))
+end
+
+local VTRWorldCampaignWinProgress = vtrLoadWorldCampaignWinProgress()
 
 local ObjectiveService = {}
 ObjectiveService.__index = ObjectiveService
 
 local function clientRecord(objective: any): any
+	VTRWorldCampaignWinProgress.TryRegisterFromArgs(nil)
 	local claimed = objective.status == "claimed"
 	return {
 		objectiveId = objective.objectiveId,
@@ -30,6 +56,7 @@ local function clientRecord(objective: any): any
 end
 
 function ObjectiveService.Serialize(objectives: any): any
+	VTRWorldCampaignWinProgress.TryRegisterFromArgs(nil)
 	local result = {}
 	for _, objective in objectives do table.insert(result, clientRecord(objective)) end
 	local groupPriority = { starter_journey = 1, daily = 2, weekly = 3, milestone = 4 }
@@ -50,6 +77,7 @@ function ObjectiveService:GetClientData(player: Player): any?
 end
 
 function ObjectiveService:Increment(player: Player, objectiveId: string, amount: number): boolean
+	VTRWorldCampaignWinProgress.TryRegisterFromArgs(self)
 	if type(objectiveId) ~= "string" or #objectiveId > 64 or type(amount) ~= "number" or amount % 1 ~= 0 or amount <= 0 or amount > 100 then return false end
 	local profile = self.Profiles:GetProfile(player)
 	if not profile then return false end

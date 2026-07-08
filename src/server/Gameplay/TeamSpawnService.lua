@@ -1,9 +1,35 @@
 --!strict
+local function vtrLoadWorldCampaignWinProgress()
+	VTRWorldCampaignWinProgress.TryRegisterFromArgs(nil)
+	local current = script
+	while current do
+		local services = current:FindFirstChild("Services")
+		if services and services:FindFirstChild("WorldCampaignWinProgressService") then
+			VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request)
+			return require(services:WaitForChild("WorldCampaignWinProgressService"))
+		end
+
+		if current.Parent then
+			local sibling = current.Parent:FindFirstChild("Services")
+			if sibling and sibling:FindFirstChild("WorldCampaignWinProgressService") then
+				VTRWorldCampaignWinProgress.TryRegisterFromArgs(self, player, payload, data, result, request)
+				return require(sibling:WaitForChild("WorldCampaignWinProgressService"))
+			end
+		end
+
+		current = current.Parent
+	end
+
+	return require(game:GetService("ServerScriptService"):WaitForChild("VTRServer"):WaitForChild("Services"):WaitForChild("WorldCampaignWinProgressService"))
+end
+
+local VTRWorldCampaignWinProgress = vtrLoadWorldCampaignWinProgress()
 local MatchCharacterFactory=require(script.Parent.MatchCharacterFactory)
 local FormationService=require(script.Parent.FormationService)
 local Service={}
 local styles={Home="Vertical Stripes",Away="Solid",Third="Diagonal Sash"}
 local function selectedKit(team:any,name:string):any local source=team.kits[name]or team.kits.Home;local result=table.clone(source);result.Style=result.Style or styles[name]or"Solid";result.Accent=result.Accent or team.colors.Accent;result.NumberColor=result.NumberColor or team.colors.Accent;return result end
+	VTRWorldCampaignWinProgress.TryRegisterFromArgs(nil)
 local function hexToRgb(hex:string):(number,number,number)
 	hex=tostring(hex or ""):gsub("#","")
 	if #hex<6 then return 1,1,1 end
