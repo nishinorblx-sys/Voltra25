@@ -818,7 +818,7 @@ local function keeperReachRootTarget(rectangle: any, target: Vector3, forward: V
 	return rootTarget + forward * (keeperDepth - rootDepth)
 end
 
-local function physicalSaveDecision(service: any, keeper: Model, rectangle: any, target: Vector3, timeToGoal: number, shotPlan: any)
+local function physicalSaveDecision(service, keeper, rectangle, target, timeToGoal, shotPlan)
 	local predictedX = tonumber(keeper:GetAttribute("VTRLongShotTargetX"))
 	local predictedY = tonumber(keeper:GetAttribute("VTRLongShotTargetY"))
 	local predictedZ = tonumber(keeper:GetAttribute("VTRLongShotTargetZ"))
