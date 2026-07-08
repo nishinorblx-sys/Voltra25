@@ -1005,20 +1005,7 @@ function Service:_vtrAdjustDiveFallToTrajectory(save: any, dt: number)
 
 	keeperRoot.AssemblyLinearVelocity = Vector3.new(lateralVelocity, -downward, current.Z * 0.12)
 
-	if self.Animations and keeper:GetAttribute("VTRKeeperLowDiveSwitched") ~= true then
-		keeper:SetAttribute("VTRKeeperLowDiveSwitched", true)
-		keeper:SetAttribute("VTRKeeperDiveAnimationLocked", nil)
-
-		local animationName = "GoalkeeperDive"
-				if lateral < -0.75 then
-					animationName = "GoalkeeperDiveLowLeft"
-				elseif lateral > 0.75 then
-					animationName = "GoalkeeperDiveLowRight"
-				end
-
-		self.Animations:PlayAction(keeper, animationName)
-		keeper:SetAttribute("VTRKeeperDiveAnimationLocked", true)
-	end
+	keeper:SetAttribute("VTRKeeperLowDiveSwitched", true)
 end
 
 
@@ -1535,7 +1522,7 @@ local function vtrDiveBallDropAssist(save:any, ball:BasePart?, keeperRoot:BasePa
 	local lastAt = tonumber(save.DynamicFallAssistAt) or now
 	local deltaTime = math.clamp(now - lastAt, 1 / 240, 1 / 20)
 	local previous = tonumber(save.DynamicFallAssist) or 0
-	local blend = math.clamp(deltaTime * (11 + urgency * 18), 0.08, 0.42)
+	local blend = math.clamp(deltaTime * (5.5 + urgency * 9), 0.045, 0.22)
 	local assist = previous + (desired - previous) * blend
 
 	save.DynamicFallAssist = assist
@@ -1718,6 +1705,7 @@ function Service:_continueDiveAftermath(save:any,outcome:string,parriedSave:bool
 			local position,progress=prototypeDiveFlightPosition(save,elapsed,upAxis,forward,lateralAxis)
 			if not isFiniteVector3(position) then break end
 			local roll=save.CenteredDive and 0 or math.sin(math.pi*math.clamp(progress,0,1))*.92
+		if save.LowDive==true or save.NoJump==true then roll*=0.55 end
 			keeper:PivotTo(keeperDiveRootFrame(position,forward,upAxis,lateralAxis,roll))
 			liftKeeperAboveFloor(keeper,upAxis,self.PitchCFrame.Position:Dot(upAxis)+.58,.08)
 			if outcome=="Held" then secureHeldBall(self.Ball,keeper)end
@@ -1742,7 +1730,7 @@ function Service:_continueDiveAftermath(save:any,outcome:string,parriedSave:bool
 		end
 		if not keeper.Parent then return end
 		keeper:SetAttribute("VTRKeeperDiveAnimationLocked",nil)
-		if self.Animations then self.Animations:StopAction(keeper,.1)end
+		if self.Animations then self.Animations:StopAction(keeper,.18)end
 		save.DiveState="Recovering"
 		keeper:SetAttribute("VTRGoalkeeperState","Recovering")
 		local recoverStarted=os.clock()
@@ -1823,44 +1811,6 @@ local function liveReachHitboxTouched(service:any,save:any,target:Vector3):boole
 end
 
 
-function Service:_vtrSmoothSwitchLowDiveAnimation(save:any)
-	if not save or not save.Keeper or save.Keeper:GetAttribute("VTRFallingLowShotDive") ~= true then
-		return
-	end
-
-	local keeper = save.Keeper
-	local target = save.Target or save.SavePoint or save.DiveAim
-	local keeperRoot = root(keeper)
-	local lateral = 0
-
-	if typeof(target) == "Vector3" and keeperRoot then
-		lateral = target.X - keeperRoot.Position.X
-	end
-
-	local animationName = "GoalkeeperDive"
-	if lateral < -0.75 then
-		animationName = "GoalkeeperDiveLowLeft"
-	elseif lateral > 0.75 then
-		animationName = "GoalkeeperDiveLowRight"
-	end
-
-	if keeper:GetAttribute("VTRCurrentDiveAnimation") == animationName then
-		return
-	end
-
-	keeper:SetAttribute("VTRCurrentDiveAnimation", animationName)
-	keeper:SetAttribute("VTRKeeperDiveAnimationLocked", nil)
-
-	if self.Animations then
-		self.Animations:StopAction(keeper, 0.16)
-		task.delay(0.05, function()
-			if keeper.Parent and keeper:GetAttribute("VTRGoalkeeperSaving") == true then
-				self.Animations:PlayAction(keeper, animationName)
-				keeper:SetAttribute("VTRKeeperDiveAnimationLocked", true)
-			end
-		end)
-	end
-end
 
 
 function Service:Step(dt:number?)
@@ -2008,14 +1958,23 @@ function Service:Step(dt:number?)
 		local endVertical=(rootTarget-rectangle.PlanePoint):Dot(upAxis)
 		local control=save.StartPosition:Lerp(rootTarget,.48)
 		local controlVertical=(control-rectangle.PlanePoint):Dot(upAxis)
-		local jumpHeight=DIVE_JUMP_HEIGHT
+		local lowTargetBeforeLaunch=(target-rectangle.PlanePoint):Dot(upAxis)<=rectangle.Bottom+3.25 or save.LowDive==true or save.NoJump==true
+		if lowTargetBeforeLaunch then
+			save.LowDive=true
+			save.NoJump=true
+			save.Keeper:SetAttribute("VTRLowShotFlatDive",true)
+			save.Keeper:SetAttribute("VTRFallingLowShotDive",true)
+			save.Keeper:SetAttribute("VTRKeeperNoJumpDive",true)
+		end
+		local jumpHeight=lowTargetBeforeLaunch and 0.08 or DIVE_JUMP_HEIGHT
 		save.ApexPosition=control+upAxis*(math.max(startVertical,endVertical)+jumpHeight-controlVertical)
 		keeperRoot.Anchored=true
 		save.Keeper:SetAttribute("VTRForceIdle",nil)
 		if self.Animations then
-			self.Animations:StopAction(save.Keeper,.02)
+			local diveAnimationName=goalkeeperDiveAnimationName(save)
+			save.Keeper:SetAttribute("VTRCurrentDiveAnimation",diveAnimationName)
 			save.Keeper:SetAttribute("VTRKeeperDiveAnimationLocked",true)
-			self.Animations:PlayAction(save.Keeper,goalkeeperDiveAnimationName(save))
+			self.Animations:PlayAction(save.Keeper,diveAnimationName)
 		end
 		save.Keeper:SetAttribute("VTRDiveLateralDistance",lateralDistance)
 		save.Keeper:SetAttribute("VTRDiveLateralSpeed",math.abs(lateralDistance)/flightTime)
@@ -2035,6 +1994,7 @@ function Service:Step(dt:number?)
 		end
 		save.Progress=progress
 		local roll=save.CenteredDive and 0 or math.sin(math.pi*math.clamp(progress,0,1))*.92
+		if save.LowDive==true or save.NoJump==true then roll*=0.55 end
 		local desiredFrame=keeperDiveRootFrame(position,forward,upAxis,lateralAxis,roll)
 		save.Keeper:SetAttribute("VTRSidewaysDive",not save.CenteredDive)
 		save.Keeper:SetAttribute("VTRDiveBodyAngle",math.floor(math.deg(math.acos(math.clamp(desiredFrame.UpVector:Dot(upAxis),-1,1)))+.5))
@@ -2043,7 +2003,6 @@ function Service:Step(dt:number?)
 		posePlan.WorldTilted=true
 		save.DivePosePlan=posePlan
 		liftKeeperAboveFloor(save.Keeper,upAxis,self.PitchCFrame.Position:Dot(upAxis)+.58,.08)
-		self:_vtrSmoothSwitchLowDiveAnimation(save)
 	end
 	if save.Launched and save.WillSave==false and ((save.Progress or 0)>=.94 or time<=EMERGENCY_SAVE_TIME) and os.clock()-(save.DiveStartedAt or os.clock())>=math.clamp(.58+(tonumber(save.MissDelay)or .35)*.25,.58,.86) then
 		self:_miss(save)
