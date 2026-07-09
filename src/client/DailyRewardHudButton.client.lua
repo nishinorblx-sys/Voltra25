@@ -2,7 +2,7 @@ local Players=game:GetService("Players")
 
 local player=Players.LocalPlayer
 local playerGui=player:WaitForChild("PlayerGui")
-local ICON="rbxassetid://107242746684663"
+local ICON="rbxassetid://106068354237205"
 
 local function openDailyRewards()
 	local app=playerGui:FindFirstChild("VTRApp",true) or playerGui:FindFirstChild("App",true) or playerGui:FindFirstChild("Main",true)
