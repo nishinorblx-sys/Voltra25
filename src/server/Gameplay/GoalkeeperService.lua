@@ -27,6 +27,18 @@ local KEEPER_AGGRESSIVE_POSITION_DISTANCE = 160
 local KEEPER_LATERAL_REACT_DISTANCE = 160
 
 
+
+local function vtrKeeperGoalLineSidewaysTarget(rectangle:any, keeperRoot:BasePart, forward:Vector3, target:Vector3):Vector3
+	local targetOffset=target-rectangle.PlanePoint
+	local targetHorizontal=targetOffset:Dot(rectangle.Right)
+	local currentOffset=keeperRoot.Position-rectangle.PlanePoint
+	local currentDepth=currentOffset:Dot(forward)
+	local safeDepth=math.clamp(currentDepth,saveLineOffset(rectangle,1)+.35,saveLineOffset(rectangle,1)+VTR_KEEPER_GOAL_LINE_DEPTH)
+	local height=keeperRoot.Position.Y
+	return GoalModelResolver.Point(rectangle,targetHorizontal,height)+forward*safeDepth
+end
+
+
 local function vtrKeeperSidewaysOnlyTarget(keeperRoot:BasePart, rectangle:any, forward:Vector3, target:Vector3):Vector3
 	if not VTR_KEEPER_SIDEWAYS_ONLY then return target end
 	local currentOffset=keeperRoot.Position-rectangle.PlanePoint
@@ -1368,12 +1380,13 @@ function Service:_positionOnLine(defendingSide:string)
 	local maxDepth=lineDepth+8
 	targetDepth=math.clamp(targetDepth,minDepth,maxDepth)
 	local target=GoalModelResolver.Point(rectangle,targetHorizontal,height)+forward*targetDepth
+	target=vtrKeeperGoalLineSidewaysTarget(rectangle,keeperRoot,forward,target)
 	target=vtrKeeperSidewaysOnlyTarget(keeperRoot,rectangle,forward,target)
 	local humanoid=keeper:FindFirstChildOfClass("Humanoid")
 	if humanoid then
 		self:_faceBall(keeper,rectangle)
 		humanoid.AutoRotate=false
-		local flatTarget=keeperRoot.Position+rectangle.Right*((target-keeperRoot.Position):Dot(rectangle.Right))
+		local flatTarget=Vector3.new(target.X,keeperRoot.Position.Y,target.Z)
 		local distanceToMove=(Vector3.new(flatTarget.X,0,flatTarget.Z)-Vector3.new(keeperRoot.Position.X,0,keeperRoot.Position.Z)).Magnitude
 
 		if opposingCarrier and carrierDistance > KEEPER_LATERAL_REACT_DISTANCE then
