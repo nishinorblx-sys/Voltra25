@@ -421,7 +421,10 @@ local function revealCards(cards, status, button)
 	button.Active = true
 end
 
+
+local vtrDailyRewardLastArgs=nil
 local function flyCardsToInventory(shade, cards)
+	vtrDailyRewardLastArgs=table.pack(shade,cards)
 	local target = findInventoryTarget()
 	local shadeOrigin = shade.AbsolutePosition
 	local endCenter = Vector2.new(shade.AbsoluteSize.X - 78, shade.AbsoluteSize.Y - 78)
@@ -697,5 +700,27 @@ function SevenWinLoginRewardPanel.Show(rewards, wins, onConfirm)
 		end
 	end)
 end
+
+local function vtrOpenExistingDailyRewardPanel()
+	if vtrDailyRewardLastArgs then
+		return flyCardsToInventory(table.unpack(vtrDailyRewardLastArgs,1,vtrDailyRewardLastArgs.n))
+	end
+	return flyCardsToInventory()
+end
+
+task.defer(function()
+	local player=Players.LocalPlayer
+	if not player then return end
+	local playerGui=player:WaitForChild("PlayerGui")
+	local existing=playerGui:FindFirstChild("VTROpenExistingDailyReward")
+	if existing then existing:Destroy() end
+	local bindable=Instance.new("BindableEvent")
+	bindable.Name="VTROpenExistingDailyReward"
+	bindable.Parent=playerGui
+	bindable.Event:Connect(function()
+		vtrOpenExistingDailyRewardPanel()
+	end)
+end)
+
 
 return SevenWinLoginRewardPanel
