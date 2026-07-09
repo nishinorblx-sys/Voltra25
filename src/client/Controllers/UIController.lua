@@ -287,7 +287,7 @@ function UIController:Start()
 	settingsGear.AnchorPoint = Vector2.new(.5, .5)
 	settingsGear.BackgroundTransparency = 1
 	settingsGear.Image = "rbxassetid://83473210181192"
-	settingsGear.ImageColor3 = Theme.Colors.Electric
+	settingsGear.ImageColor3 = Theme.Colors.Silver
 	settingsGear.Position = UDim2.fromScale(.5, .5)
 	settingsGear.ScaleType = Enum.ScaleType.Fit
 	settingsGear.Size = UDim2.fromOffset(24, 24)

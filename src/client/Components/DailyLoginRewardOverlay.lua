@@ -74,7 +74,7 @@ end
 local function rewardColor(reward: any): Color3
 	local id = string.lower(tostring(reward.ItemId or reward.Label or ""))
 	if reward.Type == "Coins" then return AMBER end
-	if reward.Type == "Bolts" then return CYAN end
+	if reward.Type == "Bolts" or reward.Type == "VoltraPoints" then return CYAN end
 	if string.find(id, "voltra") then return Color3.fromRGB(34, 255, 142) end
 	if string.find(id, "elite") then return Color3.fromRGB(189, 86, 255) end
 	if string.find(id, "rare") then return Color3.fromRGB(38, 185, 255) end
@@ -87,11 +87,14 @@ end
 local function rewardGlyph(reward: any): string
 	if reward.Type == "Coins" then return "C" end
 	if reward.Type == "Bolts" then return "B" end
+	if reward.Type == "VoltraPoints" then return "VP" end
+	if reward.Type == "RandomPlayer" then return "OVR" end
+	if reward.Type == "Celebration" then return "FX" end
 	return "PACK"
 end
 
 local function rewardAmount(reward: any): string
-	if reward.Type == "Coins" or reward.Type == "Bolts" then
+	if reward.Type == "Coins" or reward.Type == "Bolts" or reward.Type == "VoltraPoints" then
 		return withCommas(reward.Amount)
 	end
 	return string.upper(tostring(reward.Short or reward.Label or "PACK"))
