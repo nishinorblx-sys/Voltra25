@@ -31,9 +31,10 @@ local KEEPER_LATERAL_REACT_DISTANCE = 160
 local function vtrKeeperGoalLineSidewaysTarget(rectangle:any, keeperRoot:BasePart, forward:Vector3, target:Vector3):Vector3
 	local targetOffset=target-rectangle.PlanePoint
 	local targetHorizontal=targetOffset:Dot(rectangle.Right)
-	local currentOffset=keeperRoot.Position-rectangle.PlanePoint
-	local currentDepth=currentOffset:Dot(forward)
-	local safeDepth=math.clamp(currentDepth,saveLineOffset(rectangle,1)+.35,saveLineOffset(rectangle,1)+VTR_KEEPER_GOAL_LINE_DEPTH)
+	local safeDepth=3.2
+	if typeof(saveLineOffset)=="function" then
+		safeDepth=saveLineOffset(rectangle,1)+3.2
+	end
 	local height=keeperRoot.Position.Y
 	return GoalModelResolver.Point(rectangle,targetHorizontal,height)+forward*safeDepth
 end
