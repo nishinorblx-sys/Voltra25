@@ -146,7 +146,9 @@ local function attach()
 			if createNearSettings(obj) then return true end
 		end
 	end
-	return false
+	
+vtrRegisterDailyRewardOpen(function()openDailyRewards()end)
+return false
 end
 
 task.spawn(function()

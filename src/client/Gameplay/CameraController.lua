@@ -1,21 +1,3 @@
-local function VTRCameraIgnoreDribbleImpulse(ball:BasePart?):boolean
-	if not ball then return false end
-	local dribblePulseAt=tonumber(ball:GetAttribute("VTRDribbleTouchImpulseAt") or ball:GetAttribute("VTRDribbleTouchPulseAt") or ball:GetAttribute("VTRDribbleVisualImpulseAt")) or 0
-	if dribblePulseAt>0 and os.clock()-dribblePulseAt<0.7 then
-		return true
-	end
-	local motion=tostring(ball:GetAttribute("VTRMotionKind") or "")
-	if motion=="Dribble" or motion=="Carried" or motion=="Carry" then
-		return true
-	end
-	local owner=ball:GetAttribute("OwnerModel") or ball:GetAttribute("OwnerUserId")
-	if owner~=nil then
-		return true
-	end
-	return false
-end
-
-
 --!strict
 local UserInputService=game:GetService("UserInputService")
 local ReplicatedStorage=game:GetService("ReplicatedStorage")

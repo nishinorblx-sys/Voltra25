@@ -42,25 +42,6 @@ local ZOOM_MODES = {
 	["Tactical Wide"] = {Height = 18, Side = 18, Fov = 4},
 }
 
-
-local function VTRCameraIgnoreDribbleImpulse(ball:BasePart?):boolean
-	if not ball then return false end
-	local dribblePulseAt=tonumber(ball:GetAttribute("VTRDribbleTouchImpulseAt") or ball:GetAttribute("VTRDribbleTouchPulseAt") or ball:GetAttribute("VTRDribbleVisualImpulseAt")) or 0
-	if dribblePulseAt>0 and os.clock()-dribblePulseAt<0.7 then
-		return true
-	end
-	local motion=tostring(ball:GetAttribute("VTRMotionKind") or "")
-	if motion=="Dribble" or motion=="Carried" or motion=="Carry" then
-		return true
-	end
-	local owner=ball:GetAttribute("OwnerModel") or ball:GetAttribute("OwnerUserId")
-	if owner~=nil then
-		return true
-	end
-	return false
-end
-
-
 local function activeRoot(model: Model?): BasePart?
 	return model and model:FindFirstChild("HumanoidRootPart") :: BasePart?
 end
@@ -888,9 +869,7 @@ function Controller:_updateTacticalLive(dt: number, root: BasePart, preset: any)
 	local half = tonumber(workspace:GetAttribute("VTRMatchHalf")) or 1
 	local attackSign = attackingGoalSign(phaseModel or self.Active, half)
 	local rawBallVelocity = (self.ClientBallVelocity and self.ClientBallVelocity.Magnitude > 0.01) and self.ClientBallVelocity or self.Ball.AssemblyLinearVelocity
-	if VTRCameraIgnoreDribbleImpulse(self and self.Ball or self and self.World and self.World.Ball or workspace:FindFirstChild(\"Ball\", true)) then return end
 	local safeBallVelocity = rawBallVelocity.Magnitude > 230 and rawBallVelocity.Unit * 230 or rawBallVelocity
-	if VTRCameraIgnoreDribbleImpulse(self and self.Ball or self and self.World and self.World.Ball or workspace:FindFirstChild(\"Ball\", true)) then return end
 	local velocityLocal = self.PitchCFrame:VectorToObjectSpace(safeBallVelocity)
 	local speed = Vector3.new(safeBallVelocity.X, 0, safeBallVelocity.Z).Magnitude
 	local motionKind = tostring(self.Ball:GetAttribute("VTRMotionKind") or "")
@@ -1233,11 +1212,8 @@ function Controller:Update(dt: number)
 	local targetWorld = self.SmoothedLookTarget
 	local separation = (activePosition - ballPosition).Magnitude
 	local rawBallVelocity = (self.ClientBallVelocity and self.ClientBallVelocity.Magnitude > 0.01) and self.ClientBallVelocity or self.Ball.AssemblyLinearVelocity
-	if VTRCameraIgnoreDribbleImpulse(self and self.Ball or self and self.World and self.World.Ball or workspace:FindFirstChild(\"Ball\", true)) then return end
 	local safeBallVelocity = rawBallVelocity.Magnitude > 215 and rawBallVelocity.Unit * 215 or rawBallVelocity
-	if VTRCameraIgnoreDribbleImpulse(self and self.Ball or self and self.World and self.World.Ball or workspace:FindFirstChild(\"Ball\", true)) then return end
 	local ballSpeed = safeBallVelocity.Magnitude
-	if VTRCameraIgnoreDribbleImpulse(self and self.Ball or self and self.World and self.World.Ball or workspace:FindFirstChild(\"Ball\", true)) then return end
 	local counterAttack = math.abs(ballLocal.Z) > self.Length * 0.26 and ballSpeed > 35
 	local dynamicZoom = math.clamp(separation * 0.08 + ballSpeed * 0.09 + (counterAttack and 8 or 0), 0, 24)
 	local closeDribble = self.Ball:GetAttribute("OwnerModel") == self.Active.Name and separation < 6

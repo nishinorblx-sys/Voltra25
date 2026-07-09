@@ -1,23 +1,4 @@
 --!strict
-
-local function VTRCameraIgnoreDribbleImpulse(ball:BasePart?):boolean
-	if not ball then return false end
-	local dribblePulseAt=tonumber(ball:GetAttribute("VTRDribbleTouchImpulseAt") or ball:GetAttribute("VTRDribbleTouchPulseAt") or ball:GetAttribute("VTRDribbleVisualImpulseAt")) or 0
-	if dribblePulseAt>0 and os.clock()-dribblePulseAt<0.7 then
-		return true
-	end
-	local motion=tostring(ball:GetAttribute("VTRMotionKind") or "")
-	if motion=="Dribble" or motion=="Carried" or motion=="Carry" then
-		return true
-	end
-	local owner=ball:GetAttribute("OwnerModel") or ball:GetAttribute("OwnerUserId")
-	if owner~=nil then
-		return true
-	end
-	return false
-end
-
-
 local function vtrLoadShotPowerModel()
 	local ReplicatedStorage = game:GetService("ReplicatedStorage")
 	local vtr = ReplicatedStorage:FindFirstChild("VTR")
@@ -441,7 +422,6 @@ function Controller:_playGoalEffect(payload:any,onComplete:(()->())?)
 		position=GoalModelResolver.Point(rectangle,(rectangle.Left+rectangle.RightBound)*.5,(rectangle.Bottom+rectangle.Top)*.5)-rectangle.Normal*.85
 	end
 	local duration=0
-	if VTRCameraIgnoreDribbleImpulse(self and self.Ball or self and self.World and self.World.Ball or workspace:FindFirstChild(\"Ball\", true)) then return end
 	if effectId=="goal_fx_stadium_shake" then
 		duration=self:_shakeGoalScreen(1.18,3.15)
 	elseif GOAL_EFFECT_ATTACHMENTS[effectId] then
@@ -1053,7 +1033,6 @@ function Controller:_updateCameraWatchdog(dt:number)
 	local ballVelocity=self.Ball.AssemblyLinearVelocity
 	local ballMoved=(ballPosition-watchdog.LastBallPosition).Magnitude
 	local ballIsMoving=ballVelocity.Magnitude>9 or ballMoved>2.5
-	if VTRCameraIgnoreDribbleImpulse(self and self.Ball or self and self.World and self.World.Ball or workspace:FindFirstChild(\"Ball\", true)) then return end
 	local cameraMoved=(cameraFrame.Position-watchdog.LastCameraPosition).Magnitude
 	local lookMoved=(cameraFrame.LookVector-watchdog.LastLookVector).Magnitude
 	local cameraFrozen=cameraMoved<0.035 and lookMoved<0.0025
