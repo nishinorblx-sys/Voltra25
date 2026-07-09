@@ -3,6 +3,7 @@ local MATCHUP_PANEL_DELAY = 0.85
 --!strict
 local ReplicatedStorage=game:GetService("ReplicatedStorage")
 local Players=game:GetService("Players")
+local MarketplaceService=game:GetService("MarketplaceService")
 local RunService=game:GetService("RunService")
 local TeleportService=game:GetService("TeleportService")
 local MatchConfig=require(ReplicatedStorage.VTR.Shared.MatchConfig)
@@ -13,6 +14,8 @@ local TeamDatabase=require(script.Parent.Parent.Data.TeamDatabase)
 local PlayerDatabase=require(script.Parent.Parent.Data.PlayerDatabase)
 local ObjectiveService=require(script.Parent.ObjectiveService)
 local Service={};Service.__index=Service
+
+
 local function contains(list:any,value:any):boolean return table.find(list,value)~=nil end
 local PACK_FALLBACKS={rare_pack="elite_pack",legendary_pack="champion_pack",icon_pack="hero_pack"}
 local function packIdFor(id:string?):string return PACK_FALLBACKS[id or""]or id or"bronze_pack"end

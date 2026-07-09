@@ -148,38 +148,57 @@ end
 function PackService:GetClientData(player: Player): any?
 	local profile = self.Profiles:GetProfile(player)
 	if not profile then return nil end
-	if self.Inventory and self.Inventory.GetUnopenedPacks then
-		self.Inventory:GetUnopenedPacks(player)
-	end
-	local inventory = {}
-	local history = {}
-	for _, owned in profile.PackInventory do
-		local definition = PackData[owned.packId or owned.Id]
-		if definition and (owned.status or owned.Status) == "unopened" then
-			local odds = definition.Odds or {}
-			table.insert(inventory, {
-				packInstanceId = owned.packInstanceId or owned.PackInstanceId,
-				packId = definition.Id,
-				name = definition.Name,
-				description = definition.Description,
-				quantity = 1,
-				status = "unopened",
-				purchasedAt = owned.purchasedAt,
-				openedAt = 0,
-				CardCount = definition.CardCount,
-				Odds = table.clone(odds),
-				GuaranteedMinRarity = definition.GuaranteedMinRarity,
-				cardCount = definition.CardCount,
-				odds = table.clone(odds),
-				guaranteedMinRarity = definition.GuaranteedMinRarity,
-				bestPossibleRarity = (odds.Mythic and "Mythic") or (odds.Icon and "Icon") or (odds.Legendary and "Legendary") or (odds.Elite and "Elite") or (odds.Rare and "Rare") or (odds.Gold and "Gold") or "Silver",
-			})
-		elseif definition and (owned.status or owned.Status) == "opened" then
-			table.insert(history,{packInstanceId=owned.packInstanceId or owned.PackInstanceId,packId=definition.Id,name=definition.Name,description=definition.Description,status="opened",purchasedAt=owned.purchasedAt,openedAt=owned.openedAt,bestPull=owned.bestPull})
+
+	if self.Inventory and self.Inventory.GetClientData then
+		local data = self.Inventory:GetClientData(player)
+		if data then
+			return {
+				Packs = data.Packs or {},
+				History = data.History or {},
+			}
 		end
 	end
-	table.sort(inventory, function(a, b) if a.purchasedAt == b.purchasedAt then return a.packInstanceId < b.packInstanceId end return a.purchasedAt < b.purchasedAt end)
-	table.sort(history,function(a,b) return (a.openedAt or 0)>(b.openedAt or 0) end);while #history>20 do table.remove(history) end
+
+	local inventory = {}
+	local history = {}
+
+	for _, owned in profile.PackInventory or {} do
+		local definition = PackData[owned.packId or owned.Id]
+		if definition then
+			if (owned.status or owned.Status) == "unopened" then
+				table.insert(inventory, {
+					packInstanceId = owned.packInstanceId or owned.PackInstanceId,
+					packId = definition.Id,
+					name = definition.Name,
+					description = definition.Description,
+					CardCount = definition.CardCount,
+					cardCount = definition.CardCount,
+					odds = table.clone(definition.Odds or {}),
+					guaranteedMinRarity = definition.GuaranteedMinRarity,
+					status = "unopened",
+					purchasedAt = owned.purchasedAt,
+					openedAt = 0,
+				})
+			elseif (owned.status or owned.Status) == "opened" then
+				table.insert(history, {
+					packInstanceId = owned.packInstanceId or owned.PackInstanceId,
+					packId = definition.Id,
+					name = definition.Name,
+					description = definition.Description,
+					status = "opened",
+					purchasedAt = owned.purchasedAt,
+					openedAt = owned.openedAt,
+					bestPull = owned.bestPull,
+				})
+			end
+		end
+	end
+
+	table.sort(inventory, function(a, b)
+		if a.purchasedAt == b.purchasedAt then return tostring(a.packInstanceId) < tostring(b.packInstanceId) end
+		return (a.purchasedAt or 0) < (b.purchasedAt or 0)
+	end)
+
 	return { Packs = inventory, History = history }
 end
 
