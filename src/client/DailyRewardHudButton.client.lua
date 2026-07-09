@@ -71,33 +71,22 @@ local function openDailyRewards()
 		return
 	end
 
-	local root=script.Parent
-	for _,module in {
-		root:FindFirstChild("DailyLoginReward.client"),
-		root:FindFirstChild("DailyReward.client"),
-		root:FindFirstChild("Services") and root.Services:FindFirstChild("DailyLoginRewardClient"),
-		root:FindFirstChild("Services") and root.Services:FindFirstChild("DailyRewardClient"),
-	} do
-		if module and module:IsA("ModuleScript") then
-			local ok,result=pcall(require,module)
-			if ok and result then
-				for _,method in {"Open","Show","Flush","Prompt","Start"} do
-					if type(result)=="table" and type(result[method])=="function" then
-						local worked=pcall(function()
-							result[method]()
-						end)
-						if worked then return end
-						worked=pcall(function()
-							result[method](playerGui)
-						end)
-						if worked then return end
-					end
+	for _,gui in playerGui:GetDescendants() do
+		if gui:IsA("GuiObject") then
+			local n=string.lower(gui.Name)
+			if n=="dailyloginrewardpanel" or n=="dailyrewardpanel" or n=="dailyloginrewardpage" or n=="dailyrewardpage" or n=="dailyrewards" or n=="sevenwinloginrewardpanel" then
+				gui.Visible=true
+				local parent=gui.Parent
+				while parent and parent~=playerGui do
+					if parent:IsA("GuiObject") then parent.Visible=true end
+					parent=parent.Parent
 				end
+				return
 			end
 		end
 	end
 
-	warn("[Daily Rewards] Existing join-popup opener was not registered.")
+	warn("[Daily Rewards] Existing daily reward page/opener was not found.")
 end
 
 local function removeExtraButtons(keep)
