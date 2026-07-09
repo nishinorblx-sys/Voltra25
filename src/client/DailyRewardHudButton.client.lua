@@ -9,7 +9,7 @@ local function isOurButton(obj)
 end
 
 local function isSettingsButton(obj)
-	if not obj:IsA("GuiObject") then return false end
+	if not typeof(obj)=="Instance" and obj:IsA("GuiObject") then return false end
 	local n=string.lower(obj.Name)
 	if string.find(n,"setting") or string.find(n,"gear") then return true end
 	if obj:IsA("TextButton") or obj:IsA("TextLabel") then
@@ -20,7 +20,7 @@ local function isSettingsButton(obj)
 end
 
 local function isExistingDailyOpener(obj)
-	if isOurButton(obj) or not obj:IsA("GuiButton") then return false end
+	if isOurButton(obj) or not typeof(obj)=="Instance" and obj:IsA("GuiButton") then return false end
 	local n=string.lower(obj.Name)
 	local t=""
 	if obj:IsA("TextButton") then t=string.lower(tostring(obj.Text or "")) end
@@ -33,14 +33,14 @@ local function isExistingDailyOpener(obj)
 end
 
 local function isExistingDailyPage(obj)
-	if not obj:IsA("GuiObject") or isOurButton(obj) then return false end
+	if not typeof(obj)=="Instance" and obj:IsA("GuiObject") or isOurButton(obj) then return false end
 	local n=string.lower(obj.Name)
 	return n=="dailyrewardpage" or n=="dailyreward" or n=="dailyrewards" or n=="dailyloginrewardpage" or n=="dailyloginrewardpanel" or n=="dailyrewardpanel"
 end
 
 local function findExistingDailyOpener()
 	local best=nil
-	for _,obj in playerGui:GetDescendants() do
+	for _,obj in ipairs(playerGui:GetDescendants()) do
 		if isExistingDailyOpener(obj) then
 			if obj.Visible then return obj end
 			best=best or obj
@@ -50,7 +50,7 @@ local function findExistingDailyOpener()
 end
 
 local function showExistingDailyPage()
-	for _,obj in playerGui:GetDescendants() do
+	for _,obj in ipairs(playerGui:GetDescendants()) do
 		if isExistingDailyPage(obj) then
 			obj.Visible=true
 			local current=obj.Parent
@@ -71,8 +71,8 @@ local function openDailyRewards()
 		return
 	end
 
-	for _,gui in playerGui:GetDescendants() do
-		if gui:IsA("GuiObject") then
+	for _,gui in ipairs(playerGui:GetDescendants()) do
+		if typeof(gui)=="Instance" and gui:IsA("GuiObject") then
 			local n=string.lower(gui.Name)
 			if n=="dailyloginrewardpanel" or n=="dailyrewardpanel" or n=="dailyloginrewardpage" or n=="dailyrewardpage" or n=="dailyrewards" or n=="sevenwinloginrewardpanel" then
 				gui.Visible=true
@@ -90,7 +90,7 @@ local function openDailyRewards()
 end
 
 local function removeExtraButtons(keep)
-	for _,obj in playerGui:GetDescendants() do
+	for _,obj in ipairs(playerGui:GetDescendants()) do
 		if obj~=keep and isOurButton(obj) then obj:Destroy() end
 	end
 end
@@ -130,14 +130,12 @@ local function createNearSettings(settingsButton)
 end
 
 local function attach()
-	for _,obj in playerGui:GetDescendants() do
-		if isSettingsButton(obj) then
+	for _,obj in ipairs(playerGui:GetDescendants()) do
+		if typeof(obj)=="Instance" and isSettingsButton(obj) then
 			if createNearSettings(obj) then return true end
 		end
 	end
-	
-vtrRegisterDailyRewardOpen(function()openDailyRewards()end)
-return false
+	return false
 end
 
 task.spawn(function()
@@ -149,6 +147,6 @@ end)
 
 playerGui.DescendantAdded:Connect(function(obj)
 	task.defer(function()
-		if isSettingsButton(obj) then createNearSettings(obj) end
+		if typeof(obj)=="Instance" and isSettingsButton(obj) then createNearSettings(obj) end
 	end)
 end)
