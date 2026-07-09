@@ -1,5 +1,32 @@
-local VTR_CLOSE_DRIBBLE_DISTANCE=0.62
+local VTR_CLOSE_DRIBBLE_DISTANCE=0.92
+local VTR_DRIBBLE_TOUCH_INTERVAL=.5
+local VTR_DRIBBLE_TOUCH_IMPULSE=2.1
 --!strict
+
+local function vtrDribbleTouchImpulse(ball:BasePart, carrier:Model?, carrierRoot:BasePart?)
+	if not ball or not carrier or not carrierRoot then return end
+	local move=tonumber(carrier:GetAttribute("VTRMoveMagnitude"))or 0
+	if move<.12 then return end
+	local now=os.clock()
+	local last=tonumber(carrier:GetAttribute("VTRLastDribbleTouchImpulse"))or 0
+	if now-last<VTR_DRIBBLE_TOUCH_INTERVAL then return end
+	carrier:SetAttribute("VTRLastDribbleTouchImpulse",now)
+	local side=tonumber(carrierRoot:GetAttribute("VTRDribbleTouchSide"))or 1
+	side=side<0 and 1 or -1
+	carrierRoot:SetAttribute("VTRDribbleTouchSide",side)
+	local forward=Vector3.new(carrierRoot.CFrame.LookVector.X,0,carrierRoot.CFrame.LookVector.Z)
+	if forward.Magnitude<.05 then forward=Vector3.zAxis end
+	forward=forward.Unit
+	local right=Vector3.new(carrierRoot.CFrame.RightVector.X,0,carrierRoot.CFrame.RightVector.Z)
+	if right.Magnitude<.05 then right=Vector3.xAxis end
+	right=right.Unit
+	local pulse=(forward*.86+right*(side*.14))
+	if pulse.Magnitude<.05 then return end
+	pulse=pulse.Unit*VTR_DRIBBLE_TOUCH_IMPULSE
+	local velocity=ball.AssemblyLinearVelocity
+	ball.AssemblyLinearVelocity=Vector3.new(velocity.X+pulse.X,velocity.Y,velocity.Z+pulse.Z)
+	ball:SetAttribute("VTRDribbleTouchImpulseAt",now)
+end
 
 
 local function vtrLoadShotPowerModel()
