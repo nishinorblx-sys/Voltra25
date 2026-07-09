@@ -65,31 +65,39 @@ local function showExistingDailyPage()
 end
 
 local function openDailyRewards()
-	local opener=findExistingDailyOpener()
-	if opener then
-		pcall(function() opener:Activate() end)
-		pcall(function() opener.Activated:Fire() end)
-		pcall(function() opener.MouseButton1Click:Fire() end)
-		task.delay(.05,function()
-			if not showExistingDailyPage() and opener and opener.Parent then
-				pcall(function() opener:Activate() end)
-			end
-		end)
+	local bindable=playerGui:FindFirstChild("VTROpenExistingDailyReward",true)
+	if bindable and bindable:IsA("BindableEvent") then
+		bindable:Fire()
 		return
 	end
 
-	if showExistingDailyPage() then return end
-
-	if _G.VTRNavigate then
-		local ok=pcall(function() _G.VTRNavigate("DailyRewards") end)
-		if ok then return end
+	local root=script.Parent
+	for _,module in {
+		root:FindFirstChild("DailyLoginReward.client"),
+		root:FindFirstChild("DailyReward.client"),
+		root:FindFirstChild("Services") and root.Services:FindFirstChild("DailyLoginRewardClient"),
+		root:FindFirstChild("Services") and root.Services:FindFirstChild("DailyRewardClient"),
+	} do
+		if module and module:IsA("ModuleScript") then
+			local ok,result=pcall(require,module)
+			if ok and result then
+				for _,method in {"Open","Show","Flush","Prompt","Start"} do
+					if type(result)=="table" and type(result[method])=="function" then
+						local worked=pcall(function()
+							result[method]()
+						end)
+						if worked then return end
+						worked=pcall(function()
+							result[method](playerGui)
+						end)
+						if worked then return end
+					end
+				end
+			end
+		end
 	end
-	if _G.VTROpenPage then
-		local ok=pcall(function() _G.VTROpenPage("DailyRewards") end)
-		if ok then return end
-	end
 
-	warn("[Daily Rewards] Existing daily rewards opener/page was not found.")
+	warn("[Daily Rewards] Existing join-popup opener was not registered.")
 end
 
 local function removeExtraButtons(keep)
@@ -138,7 +146,9 @@ local function attach()
 			if createNearSettings(obj) then return true end
 		end
 	end
-	return false
+	
+vtrRegisterDailyRewardOpen(function()openDailyRewards()end)
+return false
 end
 
 task.spawn(function()

@@ -1450,7 +1450,7 @@ function Controller:SetPaused(paused: boolean, cameraController: any, onReturn: 
 		local pitchTitle=label(pitch,"SQUAD  /  FORMATION",UDim2.fromOffset(14,10),UDim2.new(1,-28,0,18),9);pitchTitle.TextColor3=Theme.Colors.Electric
 		local details=panel(canvas,UDim2.new(.62,8,0,0),UDim2.new(.38,-8,0,380));details.ZIndex=98;details.BackgroundTransparency=.09
 		local detailsTitle=label(details,"PLAYER INFO",UDim2.fromOffset(16,12),UDim2.new(1,-32,0,20),11);detailsTitle.TextColor3=Theme.Colors.Electric
-		local detailsHolder=Instance.new("Frame");detailsHolder.BackgroundTransparency=1;detailsHolder.Position=UDim2.fromOffset(16,46);detailsHolder.Size=UDim2.new(1,-32,1,-62);detailsHolder.ZIndex=100;detailsHolder.Parent=details
+		local detailsHolder=Instance.new("Frame");detailsHolder.BackgroundTransparency=1;detailsHolder.Position=UDim2.fromOffset(16,46);detailsHolder.Size=UDim2.new(1,-32,1,-62);detailsHolder.ZIndex=1;detailsHolder.Parent=details
 		local function setDetails(entry:any?)
 			for _,child in detailsHolder:GetChildren()do child:Destroy()end
 			if not entry then

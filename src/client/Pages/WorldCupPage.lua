@@ -543,32 +543,32 @@ local function showWorldCupRewardOverlay(reward:any,granted:any,done:()->())
 	overlay.Size=UDim2.fromScale(1,1)
 	overlay.Parent=gui
 	local title=text(overlay,"WORLD CUP REWARDS",UDim2.fromScale(.08,.07),UDim2.fromScale(.84,.07),38,Theme.Colors.White,Theme.Fonts.Display)
-	title.TextXAlignment=Enum.TextXAlignment.Center;title.ZIndex=1001
+	title.TextXAlignment=Enum.TextXAlignment.Center;title.ZIndex=11
 	local reached=text(overlay,string.upper("FINISH  /  "..tostring(reward.Reached or"TOURNAMENT COMPLETE")),UDim2.fromScale(.18,.15),UDim2.fromScale(.64,.04),11,Theme.Colors.Electric,Theme.Fonts.Strong)
-	reached.TextXAlignment=Enum.TextXAlignment.Center;reached.ZIndex=1001
-	local panel=Instance.new("Frame");panel.BackgroundColor3=Theme.Colors.Black;panel.BackgroundTransparency=.08;panel.BorderSizePixel=0;panel.Position=UDim2.fromScale(.17,.23);panel.Size=UDim2.fromScale(.66,.25);panel.ZIndex=1000;panel.Parent=overlay;corner(panel,8)
+	reached.TextXAlignment=Enum.TextXAlignment.Center;reached.ZIndex=11
+	local panel=Instance.new("Frame");panel.BackgroundColor3=Theme.Colors.Black;panel.BackgroundTransparency=.08;panel.BorderSizePixel=0;panel.Position=UDim2.fromScale(.17,.23);panel.Size=UDim2.fromScale(.66,.25);panel.ZIndex=10;panel.Parent=overlay;corner(panel,8)
 	local stroke=Instance.new("UIStroke");stroke.Color=Theme.Colors.Electric;stroke.Transparency=.1;stroke.Thickness=2;stroke.Parent=panel
 	local analysis=text(panel,"",UDim2.fromScale(.06,.12),UDim2.fromScale(.88,.72),20,Theme.Colors.White,Theme.Fonts.Body)
-	analysis.TextXAlignment=Enum.TextXAlignment.Center;analysis.TextYAlignment=Enum.TextYAlignment.Center;analysis.ZIndex=1001
+	analysis.TextXAlignment=Enum.TextXAlignment.Center;analysis.TextYAlignment=Enum.TextYAlignment.Center;analysis.ZIndex=11
 	local packTitle=text(overlay,"PACKS EARNED",UDim2.fromScale(.18,.53),UDim2.fromScale(.64,.035),13,Theme.Colors.Electric,Theme.Fonts.Display)
-	packTitle.TextXAlignment=Enum.TextXAlignment.Center;packTitle.ZIndex=1001;packTitle.TextTransparency=1
-	local packRow=Instance.new("Frame");packRow.BackgroundTransparency=1;packRow.Position=UDim2.fromScale(.12,.59);packRow.Size=UDim2.fromScale(.76,.22);packRow.ZIndex=1000;packRow.Parent=overlay
+	packTitle.TextXAlignment=Enum.TextXAlignment.Center;packTitle.ZIndex=11;packTitle.TextTransparency=1
+	local packRow=Instance.new("Frame");packRow.BackgroundTransparency=1;packRow.Position=UDim2.fromScale(.12,.59);packRow.Size=UDim2.fromScale(.76,.22);packRow.ZIndex=10;packRow.Parent=overlay
 	local layout=Instance.new("UIListLayout");layout.FillDirection=Enum.FillDirection.Horizontal;layout.HorizontalAlignment=Enum.HorizontalAlignment.Center;layout.VerticalAlignment=Enum.VerticalAlignment.Center;layout.Padding=UDim.new(0,16);layout.SortOrder=Enum.SortOrder.LayoutOrder;layout.Parent=packRow
 	local revealCards={}
 	for index,pack in ipairs(packs)do
 		local packId=tostring(pack.PackId or pack.Id or"")
 		local definition=Catalog.Packs[packId]or{}
 		local count=math.max(1,tonumber(pack.Quantity or pack.Count)or 1)
-		local card=Instance.new("Frame");card.Name="RewardPack";card.BackgroundColor3=Theme.Colors.Raised;card.BackgroundTransparency=1;card.BorderSizePixel=0;card.Size=UDim2.fromOffset(170,130);card.ZIndex=1001;card.LayoutOrder=index;card.Parent=packRow;corner(card,8)
+		local card=Instance.new("Frame");card.Name="RewardPack";card.BackgroundColor3=Theme.Colors.Raised;card.BackgroundTransparency=1;card.BorderSizePixel=0;card.Size=UDim2.fromOffset(170,130);card.ZIndex=11;card.LayoutOrder=index;card.Parent=packRow;corner(card,8)
 		local cardStroke=Instance.new("UIStroke");cardStroke.Color=Theme.Colors.Electric;cardStroke.Transparency=1;cardStroke.Thickness=2;cardStroke.Parent=card
-		local top=Instance.new("Frame");top.BackgroundColor3=Theme.Colors.Electric;top.BackgroundTransparency=1;top.BorderSizePixel=0;top.Position=UDim2.fromScale(.08,.1);top.Size=UDim2.fromScale(.84,.14);top.ZIndex=1002;top.Parent=card;corner(top,99)
-		local name=text(card,string.upper(tostring(definition.Name or pack.Name or packId)),UDim2.fromScale(.08,.3),UDim2.fromScale(.84,.32),13,Theme.Colors.White,Theme.Fonts.Display);name.TextXAlignment=Enum.TextXAlignment.Center;name.ZIndex=1002;name.TextTransparency=1
-		local qty=text(card,"x"..tostring(count),UDim2.fromScale(.18,.68),UDim2.fromScale(.64,.18),18,Theme.Colors.Electric,Theme.Fonts.Display);qty.TextXAlignment=Enum.TextXAlignment.Center;qty.ZIndex=1002;qty.TextTransparency=1
+		local top=Instance.new("Frame");top.BackgroundColor3=Theme.Colors.Electric;top.BackgroundTransparency=1;top.BorderSizePixel=0;top.Position=UDim2.fromScale(.08,.1);top.Size=UDim2.fromScale(.84,.14);top.ZIndex=12;top.Parent=card;corner(top,99)
+		local name=text(card,string.upper(tostring(definition.Name or pack.Name or packId)),UDim2.fromScale(.08,.3),UDim2.fromScale(.84,.32),13,Theme.Colors.White,Theme.Fonts.Display);name.TextXAlignment=Enum.TextXAlignment.Center;name.ZIndex=12;name.TextTransparency=1
+		local qty=text(card,"x"..tostring(count),UDim2.fromScale(.18,.68),UDim2.fromScale(.64,.18),18,Theme.Colors.Electric,Theme.Fonts.Display);qty.TextXAlignment=Enum.TextXAlignment.Center;qty.ZIndex=12;qty.TextTransparency=1
 		table.insert(revealCards,{Frame=card,Stroke=cardStroke,Top=top,Name=name,Qty=qty})
 	end
 	if #revealCards==0 then
-		local card=Instance.new("Frame");card.BackgroundColor3=Theme.Colors.Raised;card.BackgroundTransparency=1;card.BorderSizePixel=0;card.Size=UDim2.fromOffset(260,98);card.ZIndex=1001;card.Parent=packRow;corner(card,8)
-		local label=text(card,"NO PACKS GRANTED",UDim2.fromScale(.08,.2),UDim2.fromScale(.84,.6),18,Theme.Colors.Muted,Theme.Fonts.Display);label.TextXAlignment=Enum.TextXAlignment.Center;label.ZIndex=1002;label.TextTransparency=1
+		local card=Instance.new("Frame");card.BackgroundColor3=Theme.Colors.Raised;card.BackgroundTransparency=1;card.BorderSizePixel=0;card.Size=UDim2.fromOffset(260,98);card.ZIndex=11;card.Parent=packRow;corner(card,8)
+		local label=text(card,"NO PACKS GRANTED",UDim2.fromScale(.08,.2),UDim2.fromScale(.84,.6),18,Theme.Colors.Muted,Theme.Fonts.Display);label.TextXAlignment=Enum.TextXAlignment.Center;label.ZIndex=12;label.TextTransparency=1
 		table.insert(revealCards,{Frame=card,Name=label})
 	end
 	local claim=Button.new({Text="CONTINUE",Variant="Primary",Size=UDim2.fromOffset(190,46),OnActivated=function()
@@ -578,7 +578,7 @@ local function showWorldCupRewardOverlay(reward:any,granted:any,done:()->())
 			done()
 		end)
 	end})
-	claim.AnchorPoint=Vector2.new(.5,.5);claim.Position=UDim2.fromScale(.5,.88);claim.ZIndex=1003;claim.Parent=overlay;claim.Visible=false
+	claim.AnchorPoint=Vector2.new(.5,.5);claim.Position=UDim2.fromScale(.5,.88);claim.ZIndex=13;claim.Parent=overlay;claim.Visible=false
 	TweenService:Create(overlay,TweenInfo.new(.25),{GroupTransparency=0}):Play()
 	local story=tostring(reward.Analysis or"Your World Cup run has been reviewed. Rewards are ready.")
 	task.spawn(function()
@@ -820,38 +820,38 @@ local function showSimulatedMatchOverlay(score:any,done:()->())
 	overlay.Size=UDim2.fromScale(1,1)
 	overlay.Parent=gui
 	local title=text(overlay,matchLabel,UDim2.fromScale(.05,.055),UDim2.fromScale(.9,.055),30,Theme.Colors.White,Theme.Fonts.Display)
-	title.TextXAlignment=Enum.TextXAlignment.Center;title.ZIndex=1000
+	title.TextXAlignment=Enum.TextXAlignment.Center;title.ZIndex=10
 	local clock=text(overlay,"00'",UDim2.fromScale(.43,.145),UDim2.fromScale(.14,.07),42,Theme.Colors.Electric,Theme.Fonts.Display)
-	clock.TextXAlignment=Enum.TextXAlignment.Center;clock.ZIndex=1000
+	clock.TextXAlignment=Enum.TextXAlignment.Center;clock.ZIndex=10
 	local scoreLabel=text(overlay,"0  -  0",UDim2.fromScale(.38,.255),UDim2.fromScale(.24,.12),58,Theme.Colors.White,Theme.Fonts.Display)
-	scoreLabel.TextXAlignment=Enum.TextXAlignment.Center;scoreLabel.ZIndex=1000
-	local homePanel=Instance.new("Frame");homePanel.BackgroundColor3=Theme.Colors.Raised;homePanel.BackgroundTransparency=.08;homePanel.BorderSizePixel=0;homePanel.Position=UDim2.fromScale(.06,.2);homePanel.Size=UDim2.fromScale(.28,.25);homePanel.ZIndex=999;homePanel.Parent=overlay;corner(homePanel,8)
-	local awayPanel=Instance.new("Frame");awayPanel.BackgroundColor3=Theme.Colors.Raised;awayPanel.BackgroundTransparency=.08;awayPanel.BorderSizePixel=0;awayPanel.Position=UDim2.fromScale(.66,.2);awayPanel.Size=UDim2.fromScale(.28,.25);awayPanel.ZIndex=999;awayPanel.Parent=overlay;corner(awayPanel,8)
-	local hf=flag(homePanel,home,UDim2.fromScale(.08,.17),UDim2.fromScale(.3,.5));hf.ZIndex=1000
-	local af=flag(awayPanel,away,UDim2.fromScale(.62,.17),UDim2.fromScale(.3,.5));af.ZIndex=1000
-	local homeName=text(homePanel,string.upper(home),UDim2.fromScale(.42,.13),UDim2.fromScale(.52,.32),18,Theme.Colors.White,Theme.Fonts.Display);homeName.ZIndex=1000
-	local awayName=text(awayPanel,string.upper(away),UDim2.fromScale(.06,.13),UDim2.fromScale(.52,.32),18,Theme.Colors.White,Theme.Fonts.Display);awayName.TextXAlignment=Enum.TextXAlignment.Right;awayName.ZIndex=1000
-	local homeStat=text(homePanel,"SIM HOME",UDim2.fromScale(.42,.5),UDim2.fromScale(.5,.18),9,Theme.Colors.Electric,Theme.Fonts.Strong);homeStat.ZIndex=1000
-	local awayStat=text(awayPanel,"SIM AWAY",UDim2.fromScale(.08,.5),UDim2.fromScale(.5,.18),9,Theme.Colors.Electric,Theme.Fonts.Strong);awayStat.TextXAlignment=Enum.TextXAlignment.Right;awayStat.ZIndex=1000
+	scoreLabel.TextXAlignment=Enum.TextXAlignment.Center;scoreLabel.ZIndex=10
+	local homePanel=Instance.new("Frame");homePanel.BackgroundColor3=Theme.Colors.Raised;homePanel.BackgroundTransparency=.08;homePanel.BorderSizePixel=0;homePanel.Position=UDim2.fromScale(.06,.2);homePanel.Size=UDim2.fromScale(.28,.25);homePanel.ZIndex=1;homePanel.Parent=overlay;corner(homePanel,8)
+	local awayPanel=Instance.new("Frame");awayPanel.BackgroundColor3=Theme.Colors.Raised;awayPanel.BackgroundTransparency=.08;awayPanel.BorderSizePixel=0;awayPanel.Position=UDim2.fromScale(.66,.2);awayPanel.Size=UDim2.fromScale(.28,.25);awayPanel.ZIndex=1;awayPanel.Parent=overlay;corner(awayPanel,8)
+	local hf=flag(homePanel,home,UDim2.fromScale(.08,.17),UDim2.fromScale(.3,.5));hf.ZIndex=10
+	local af=flag(awayPanel,away,UDim2.fromScale(.62,.17),UDim2.fromScale(.3,.5));af.ZIndex=10
+	local homeName=text(homePanel,string.upper(home),UDim2.fromScale(.42,.13),UDim2.fromScale(.52,.32),18,Theme.Colors.White,Theme.Fonts.Display);homeName.ZIndex=10
+	local awayName=text(awayPanel,string.upper(away),UDim2.fromScale(.06,.13),UDim2.fromScale(.52,.32),18,Theme.Colors.White,Theme.Fonts.Display);awayName.TextXAlignment=Enum.TextXAlignment.Right;awayName.ZIndex=10
+	local homeStat=text(homePanel,"SIM HOME",UDim2.fromScale(.42,.5),UDim2.fromScale(.5,.18),9,Theme.Colors.Electric,Theme.Fonts.Strong);homeStat.ZIndex=10
+	local awayStat=text(awayPanel,"SIM AWAY",UDim2.fromScale(.08,.5),UDim2.fromScale(.5,.18),9,Theme.Colors.Electric,Theme.Fonts.Strong);awayStat.TextXAlignment=Enum.TextXAlignment.Right;awayStat.ZIndex=10
 	local function addRedCardMarker(team:string)
 		local panel=team==home and homePanel or team==away and awayPanel or nil
 		if not panel or panel:FindFirstChild("RedCardMarker")then return end
-		local marker=Instance.new("TextLabel");marker.Name="RedCardMarker";marker.AnchorPoint=Vector2.new(.5,.5);marker.BackgroundColor3=Theme.Colors.Danger;marker.BorderSizePixel=0;marker.Position=UDim2.fromScale(.5,.08);marker.Size=UDim2.fromOffset(20,28);marker.Text="";marker.ZIndex=1003;marker.Parent=panel;corner(marker,3)
+		local marker=Instance.new("TextLabel");marker.Name="RedCardMarker";marker.AnchorPoint=Vector2.new(.5,.5);marker.BackgroundColor3=Theme.Colors.Danger;marker.BorderSizePixel=0;marker.Position=UDim2.fromScale(.5,.08);marker.Size=UDim2.fromOffset(20,28);marker.Text="";marker.ZIndex=13;marker.Parent=panel;corner(marker,3)
 	end
-	local timeline=Instance.new("Frame");timeline.BackgroundColor3=Theme.Colors.Gunmetal;timeline.BorderSizePixel=0;timeline.Position=UDim2.fromScale(.08,.68);timeline.Size=UDim2.fromScale(.84,.018);timeline.ZIndex=999;timeline.Parent=overlay;corner(timeline,99)
-	local fill=Instance.new("Frame");fill.BackgroundColor3=Theme.Colors.Electric;fill.BorderSizePixel=0;fill.Size=UDim2.fromScale(0,1);fill.ZIndex=1000;fill.Parent=timeline;corner(fill,99)
+	local timeline=Instance.new("Frame");timeline.BackgroundColor3=Theme.Colors.Gunmetal;timeline.BorderSizePixel=0;timeline.Position=UDim2.fromScale(.08,.68);timeline.Size=UDim2.fromScale(.84,.018);timeline.ZIndex=1;timeline.Parent=overlay;corner(timeline,99)
+	local fill=Instance.new("Frame");fill.BackgroundColor3=Theme.Colors.Electric;fill.BorderSizePixel=0;fill.Size=UDim2.fromScale(0,1);fill.ZIndex=10;fill.Parent=timeline;corner(fill,99)
 	if hasExtraTime then
-		local normalTimeMarker=Instance.new("Frame");normalTimeMarker.Name="NormalTimeMarker";normalTimeMarker.AnchorPoint=Vector2.new(.5,.5);normalTimeMarker.BackgroundColor3=Theme.Colors.White;normalTimeMarker.BorderSizePixel=0;normalTimeMarker.Position=UDim2.fromScale(90/maxMinute,.5);normalTimeMarker.Size=UDim2.fromOffset(4,30);normalTimeMarker.ZIndex=1002;normalTimeMarker.Parent=timeline;corner(normalTimeMarker,99)
-		local normalTimeLabel=text(overlay,"90'",UDim2.fromScale(.08+.84*(90/maxMinute)-.02,.695),UDim2.fromScale(.04,.025),8,Theme.Colors.Muted,Theme.Fonts.Strong);normalTimeLabel.TextXAlignment=Enum.TextXAlignment.Center;normalTimeLabel.ZIndex=1001
+		local normalTimeMarker=Instance.new("Frame");normalTimeMarker.Name="NormalTimeMarker";normalTimeMarker.AnchorPoint=Vector2.new(.5,.5);normalTimeMarker.BackgroundColor3=Theme.Colors.White;normalTimeMarker.BorderSizePixel=0;normalTimeMarker.Position=UDim2.fromScale(90/maxMinute,.5);normalTimeMarker.Size=UDim2.fromOffset(4,30);normalTimeMarker.ZIndex=12;normalTimeMarker.Parent=timeline;corner(normalTimeMarker,99)
+		local normalTimeLabel=text(overlay,"90'",UDim2.fromScale(.08+.84*(90/maxMinute)-.02,.695),UDim2.fromScale(.04,.025),8,Theme.Colors.Muted,Theme.Fonts.Strong);normalTimeLabel.TextXAlignment=Enum.TextXAlignment.Center;normalTimeLabel.ZIndex=11
 	end
 	local eventText=text(overlay,"",UDim2.fromScale(.18,.53),UDim2.fromScale(.64,.08),28,Theme.Colors.Silver,Theme.Fonts.Display)
-	eventText.TextXAlignment=Enum.TextXAlignment.Center;eventText.Visible=false;eventText.ZIndex=1000
+	eventText.TextXAlignment=Enum.TextXAlignment.Center;eventText.Visible=false;eventText.ZIndex=10
 	local sub=text(overlay,"WATCHING THE MATCH ENGINE PLAY OUT",UDim2.fromScale(.22,.61),UDim2.fromScale(.56,.035),10,Theme.Colors.Muted,Theme.Fonts.Strong)
-	sub.TextXAlignment=Enum.TextXAlignment.Center;sub.ZIndex=1000
+	sub.TextXAlignment=Enum.TextXAlignment.Center;sub.ZIndex=10
 	local speedMultiplier=1
-	local commentaryCallout=Instance.new("CanvasGroup");commentaryCallout.Name="LiveCommentaryCallout";commentaryCallout.AnchorPoint=Vector2.new(.5,.5);commentaryCallout.BackgroundColor3=Theme.Colors.Black;commentaryCallout.BackgroundTransparency=.18;commentaryCallout.BorderSizePixel=0;commentaryCallout.GroupTransparency=0;commentaryCallout.Position=UDim2.fromScale(.5,.585);commentaryCallout.Size=UDim2.fromScale(.60,.13);commentaryCallout.Visible=true;commentaryCallout.ZIndex=1001;commentaryCallout.Parent=overlay;corner(commentaryCallout,8)
-	local commentaryHeader=text(commentaryCallout,"LIVE COMMENTARY",UDim2.fromScale(.04,.08),UDim2.fromScale(.92,.22),11,Theme.Colors.Electric,Theme.Fonts.Strong);commentaryHeader.TextXAlignment=Enum.TextXAlignment.Center;commentaryHeader.ZIndex=1002
-	local commentaryBody=text(commentaryCallout,"The teams are walking into the rhythm of the match.",UDim2.fromScale(.06,.33),UDim2.fromScale(.88,.58),15,Theme.Colors.White,Theme.Fonts.Body);commentaryBody.TextXAlignment=Enum.TextXAlignment.Center;commentaryBody.TextYAlignment=Enum.TextYAlignment.Center;commentaryBody.TextWrapped=true;commentaryBody.ZIndex=1002
+	local commentaryCallout=Instance.new("CanvasGroup");commentaryCallout.Name="LiveCommentaryCallout";commentaryCallout.AnchorPoint=Vector2.new(.5,.5);commentaryCallout.BackgroundColor3=Theme.Colors.Black;commentaryCallout.BackgroundTransparency=.18;commentaryCallout.BorderSizePixel=0;commentaryCallout.GroupTransparency=0;commentaryCallout.Position=UDim2.fromScale(.5,.585);commentaryCallout.Size=UDim2.fromScale(.60,.13);commentaryCallout.Visible=true;commentaryCallout.ZIndex=11;commentaryCallout.Parent=overlay;corner(commentaryCallout,8)
+	local commentaryHeader=text(commentaryCallout,"LIVE COMMENTARY",UDim2.fromScale(.04,.08),UDim2.fromScale(.92,.22),11,Theme.Colors.Electric,Theme.Fonts.Strong);commentaryHeader.TextXAlignment=Enum.TextXAlignment.Center;commentaryHeader.ZIndex=12
+	local commentaryBody=text(commentaryCallout,"The teams are walking into the rhythm of the match.",UDim2.fromScale(.06,.33),UDim2.fromScale(.88,.58),15,Theme.Colors.White,Theme.Fonts.Body);commentaryBody.TextXAlignment=Enum.TextXAlignment.Center;commentaryBody.TextYAlignment=Enum.TextYAlignment.Center;commentaryBody.TextWrapped=true;commentaryBody.ZIndex=12
 	local commentarySequence=0
 	local function showCommentaryEvent(event:any)
 		commentarySequence+=1
@@ -904,46 +904,46 @@ local function showSimulatedMatchOverlay(score:any,done:()->())
 		local shootout=score and score.Shootout or{}
 		local rounds=type(shootout.Rounds)=="table"and shootout.Rounds or{}
 		if #rounds==0 then finished();return end
-		local box=Instance.new("CanvasGroup");box.Name="PenaltyShootout";box.AnchorPoint=Vector2.new(.5,.5);box.BackgroundColor3=Theme.Colors.Black;box.BackgroundTransparency=.08;box.BorderSizePixel=0;box.GroupTransparency=1;box.Position=UDim2.fromScale(.5,.47);box.Size=UDim2.fromScale(.88,.34);box.ZIndex=1005;box.Parent=overlay;corner(box,10)
+		local box=Instance.new("CanvasGroup");box.Name="PenaltyShootout";box.AnchorPoint=Vector2.new(.5,.5);box.BackgroundColor3=Theme.Colors.Black;box.BackgroundTransparency=.08;box.BorderSizePixel=0;box.GroupTransparency=1;box.Position=UDim2.fromScale(.5,.47);box.Size=UDim2.fromScale(.88,.34);box.ZIndex=15;box.Parent=overlay;corner(box,10)
 		local stroke=Instance.new("UIStroke");stroke.Color=Theme.Colors.Silver;stroke.Transparency=.35;stroke.Thickness=2;stroke.Parent=box
-		local header=text(box,"PENALTY SHOOTOUT",UDim2.fromScale(.04,.07),UDim2.fromScale(.54,.12),24,Theme.Colors.White,Theme.Fonts.Display);header.TextXAlignment=Enum.TextXAlignment.Left;header.ZIndex=1006
-		local taker=text(box,"",UDim2.fromScale(.04,.80),UDim2.fromScale(.54,.10),13,Theme.Colors.Electric,Theme.Fonts.Display);taker.TextXAlignment=Enum.TextXAlignment.Left;taker.ZIndex=1006
-		local pens=text(box,string.format("0 - 0"),UDim2.fromScale(.43,.07),UDim2.fromScale(.14,.12),25,Theme.Colors.White,Theme.Fonts.Display);pens.TextXAlignment=Enum.TextXAlignment.Center;pens.ZIndex=1006
-		local rowsFrame=Instance.new("Frame");rowsFrame.BackgroundTransparency=1;rowsFrame.Position=UDim2.fromScale(.04,.25);rowsFrame.Size=UDim2.fromScale(.53,.46);rowsFrame.ZIndex=1006;rowsFrame.Parent=box
+		local header=text(box,"PENALTY SHOOTOUT",UDim2.fromScale(.04,.07),UDim2.fromScale(.54,.12),24,Theme.Colors.White,Theme.Fonts.Display);header.TextXAlignment=Enum.TextXAlignment.Left;header.ZIndex=16
+		local taker=text(box,"",UDim2.fromScale(.04,.80),UDim2.fromScale(.54,.10),13,Theme.Colors.Electric,Theme.Fonts.Display);taker.TextXAlignment=Enum.TextXAlignment.Left;taker.ZIndex=16
+		local pens=text(box,string.format("0 - 0"),UDim2.fromScale(.43,.07),UDim2.fromScale(.14,.12),25,Theme.Colors.White,Theme.Fonts.Display);pens.TextXAlignment=Enum.TextXAlignment.Center;pens.ZIndex=16
+		local rowsFrame=Instance.new("Frame");rowsFrame.BackgroundTransparency=1;rowsFrame.Position=UDim2.fromScale(.04,.25);rowsFrame.Size=UDim2.fromScale(.53,.46);rowsFrame.ZIndex=16;rowsFrame.Parent=box
 		local maxSlots=math.max(5,#rounds)
 		local homeSlots={}
 		local awaySlots={}
 		local function makeShootoutRow(teamName:string,y:number,slots:any)
-			local teamFlag=flag(rowsFrame,teamName,UDim2.fromScale(0,y),UDim2.fromScale(.095,.32));teamFlag.ZIndex=1007
-			local code=text(rowsFrame,wcCode(teamName),UDim2.fromScale(.105,y+.08),UDim2.fromScale(.12,.16),13,Theme.Colors.White,Theme.Fonts.Display);code.ZIndex=1007
+			local teamFlag=flag(rowsFrame,teamName,UDim2.fromScale(0,y),UDim2.fromScale(.095,.32));teamFlag.ZIndex=17
+			local code=text(rowsFrame,wcCode(teamName),UDim2.fromScale(.105,y+.08),UDim2.fromScale(.12,.16),13,Theme.Colors.White,Theme.Fonts.Display);code.ZIndex=17
 			for index=1,maxSlots do
-				local marker=Instance.new("TextLabel");marker.Name="Kick"..index;marker.AnchorPoint=Vector2.new(.5,.5);marker.BackgroundColor3=Color3.fromRGB(54,54,54);marker.BackgroundTransparency=.1;marker.BorderSizePixel=0;marker.Position=UDim2.fromScale(.24+(index-1)*(.69/math.max(1,maxSlots)),y+.16);marker.Size=UDim2.fromScale(.065,.22);marker.Text="";marker.TextColor3=Theme.Colors.White;marker.TextSize=20;marker.Font=Theme.Fonts.Display;marker.ZIndex=1007;marker.Parent=rowsFrame;corner(marker,99)
+				local marker=Instance.new("TextLabel");marker.Name="Kick"..index;marker.AnchorPoint=Vector2.new(.5,.5);marker.BackgroundColor3=Color3.fromRGB(54,54,54);marker.BackgroundTransparency=.1;marker.BorderSizePixel=0;marker.Position=UDim2.fromScale(.24+(index-1)*(.69/math.max(1,maxSlots)),y+.16);marker.Size=UDim2.fromScale(.065,.22);marker.Text="";marker.TextColor3=Theme.Colors.White;marker.TextSize=20;marker.Font=Theme.Fonts.Display;marker.ZIndex=17;marker.Parent=rowsFrame;corner(marker,99)
 				slots[index]=marker
 			end
 		end
 		makeShootoutRow(home,.02,homeSlots)
 		makeShootoutRow(away,.55,awaySlots)
-		local goal=Instance.new("Frame");goal.Name="ShootoutGoal";goal.BackgroundTransparency=1;goal.Position=UDim2.fromScale(.62,.19);goal.Size=UDim2.fromScale(.32,.50);goal.ZIndex=1006;goal.Parent=box
+		local goal=Instance.new("Frame");goal.Name="ShootoutGoal";goal.BackgroundTransparency=1;goal.Position=UDim2.fromScale(.62,.19);goal.Size=UDim2.fromScale(.32,.50);goal.ZIndex=16;goal.Parent=box
 		local postColor=Theme.Colors.White
-		local leftPost=Instance.new("Frame");leftPost.BackgroundColor3=postColor;leftPost.BorderSizePixel=0;leftPost.Position=UDim2.fromScale(.02,.04);leftPost.Size=UDim2.fromScale(.025,.82);leftPost.ZIndex=1007;leftPost.Parent=goal
+		local leftPost=Instance.new("Frame");leftPost.BackgroundColor3=postColor;leftPost.BorderSizePixel=0;leftPost.Position=UDim2.fromScale(.02,.04);leftPost.Size=UDim2.fromScale(.025,.82);leftPost.ZIndex=17;leftPost.Parent=goal
 		local rightPost=leftPost:Clone();rightPost.Position=UDim2.fromScale(.955,.04);rightPost.Parent=goal
-		local crossbar=Instance.new("Frame");crossbar.BackgroundColor3=postColor;crossbar.BorderSizePixel=0;crossbar.Position=UDim2.fromScale(.02,.04);crossbar.Size=UDim2.fromScale(.96,.055);crossbar.ZIndex=1007;crossbar.Parent=goal;corner(crossbar,6)
+		local crossbar=Instance.new("Frame");crossbar.BackgroundColor3=postColor;crossbar.BorderSizePixel=0;crossbar.Position=UDim2.fromScale(.02,.04);crossbar.Size=UDim2.fromScale(.96,.055);crossbar.ZIndex=17;crossbar.Parent=goal;corner(crossbar,6)
 		for index=1,5 do
-			local line=Instance.new("Frame");line.BackgroundColor3=Color3.fromRGB(78,78,78);line.BorderSizePixel=0;line.BackgroundTransparency=.15;line.Position=UDim2.fromScale(.14+index*.14,.10);line.Size=UDim2.fromScale(.012,.76);line.ZIndex=1006;line.Parent=goal
+			local line=Instance.new("Frame");line.BackgroundColor3=Color3.fromRGB(78,78,78);line.BorderSizePixel=0;line.BackgroundTransparency=.15;line.Position=UDim2.fromScale(.14+index*.14,.10);line.Size=UDim2.fromScale(.012,.76);line.ZIndex=16;line.Parent=goal
 		end
 		for index=1,4 do
-			local line=Instance.new("Frame");line.BackgroundColor3=Color3.fromRGB(78,78,78);line.BorderSizePixel=0;line.BackgroundTransparency=.15;line.Position=UDim2.fromScale(.04,.18+index*.14);line.Size=UDim2.fromScale(.92,.012);line.ZIndex=1006;line.Parent=goal
+			local line=Instance.new("Frame");line.BackgroundColor3=Color3.fromRGB(78,78,78);line.BorderSizePixel=0;line.BackgroundTransparency=.15;line.Position=UDim2.fromScale(.04,.18+index*.14);line.Size=UDim2.fromScale(.92,.012);line.ZIndex=16;line.Parent=goal
 		end
-		local ball=Instance.new("TextLabel");ball.Name="ShootoutBall";ball.AnchorPoint=Vector2.new(.5,.5);ball.BackgroundColor3=Theme.Colors.White;ball.BorderSizePixel=0;ball.Position=UDim2.fromScale(.5,.55);ball.Size=UDim2.fromScale(.12,.18);ball.Text="";ball.TextColor3=Theme.Colors.Black;ball.TextSize=14;ball.Font=Theme.Fonts.Display;ball.ZIndex=1008;ball.Parent=goal;corner(ball,99)
-		local ballCore=Instance.new("Frame");ballCore.AnchorPoint=Vector2.new(.5,.5);ballCore.BackgroundColor3=Theme.Colors.Black;ballCore.BorderSizePixel=0;ballCore.Position=UDim2.fromScale(.5,.5);ballCore.Size=UDim2.fromScale(.32,.32);ballCore.ZIndex=1009;ballCore.Parent=ball;corner(ballCore,99)
-		local goalResult=text(box,"",UDim2.fromScale(.62,.72),UDim2.fromScale(.32,.10),18,Theme.Colors.White,Theme.Fonts.Display);goalResult.TextXAlignment=Enum.TextXAlignment.Center;goalResult.ZIndex=1007
+		local ball=Instance.new("TextLabel");ball.Name="ShootoutBall";ball.AnchorPoint=Vector2.new(.5,.5);ball.BackgroundColor3=Theme.Colors.White;ball.BorderSizePixel=0;ball.Position=UDim2.fromScale(.5,.55);ball.Size=UDim2.fromScale(.12,.18);ball.Text="";ball.TextColor3=Theme.Colors.Black;ball.TextSize=14;ball.Font=Theme.Fonts.Display;ball.ZIndex=18;ball.Parent=goal;corner(ball,99)
+		local ballCore=Instance.new("Frame");ballCore.AnchorPoint=Vector2.new(.5,.5);ballCore.BackgroundColor3=Theme.Colors.Black;ballCore.BorderSizePixel=0;ballCore.Position=UDim2.fromScale(.5,.5);ballCore.Size=UDim2.fromScale(.32,.32);ballCore.ZIndex=19;ballCore.Parent=ball;corner(ballCore,99)
+		local goalResult=text(box,"",UDim2.fromScale(.62,.72),UDim2.fromScale(.32,.10),18,Theme.Colors.White,Theme.Fonts.Display);goalResult.TextXAlignment=Enum.TextXAlignment.Center;goalResult.ZIndex=17
 		local function setKickMarker(marker:TextLabel?,scored:boolean)
 			if not marker then return end
 			marker.BackgroundColor3=scored and Theme.Colors.White or Theme.Colors.Black
 			marker.Text=scored and""or"X"
 			marker.TextColor3=Theme.Colors.Danger
 			if scored then
-				local core=Instance.new("Frame");core.AnchorPoint=Vector2.new(.5,.5);core.BackgroundColor3=Theme.Colors.Black;core.BorderSizePixel=0;core.Position=UDim2.fromScale(.5,.5);core.Size=UDim2.fromScale(.34,.34);core.ZIndex=1008;core.Parent=marker;corner(core,99)
+				local core=Instance.new("Frame");core.AnchorPoint=Vector2.new(.5,.5);core.BackgroundColor3=Theme.Colors.Black;core.BorderSizePixel=0;core.Position=UDim2.fromScale(.5,.5);core.Size=UDim2.fromScale(.34,.34);core.ZIndex=18;core.Parent=marker;corner(core,99)
 			end
 		end
 		local function showKick(teamName:string,scored:boolean,roundNumber:number,scoreHome:number,scoreAway:number)
@@ -984,13 +984,13 @@ local function showSimulatedMatchOverlay(score:any,done:()->())
 			end)
 		end)
 	end
-	local goalLog=Instance.new("Frame");goalLog.BackgroundColor3=Theme.Colors.Black;goalLog.BackgroundTransparency=.18;goalLog.BorderSizePixel=0;goalLog.Position=UDim2.fromScale(.28,.73);goalLog.Size=UDim2.fromScale(.44,.19);goalLog.ZIndex=999;goalLog.Parent=overlay;corner(goalLog,8)
-	local goalLogTitle=text(goalLog,"GOALS + ASSISTS",UDim2.fromScale(.05,.04),UDim2.fromScale(.9,.15),10,Theme.Colors.Electric,Theme.Fonts.Strong);goalLogTitle.ZIndex=1000
-	local goalList=Instance.new("ScrollingFrame");goalList.BackgroundTransparency=1;goalList.BorderSizePixel=0;goalList.Position=UDim2.fromScale(.05,.22);goalList.Size=UDim2.fromScale(.9,.72);goalList.AutomaticCanvasSize=Enum.AutomaticSize.Y;goalList.CanvasSize=UDim2.new();goalList.ScrollBarThickness=3;goalList.ScrollBarImageColor3=Theme.Colors.Electric;goalList.ZIndex=1000;goalList.Parent=goalLog
+	local goalLog=Instance.new("Frame");goalLog.BackgroundColor3=Theme.Colors.Black;goalLog.BackgroundTransparency=.18;goalLog.BorderSizePixel=0;goalLog.Position=UDim2.fromScale(.28,.73);goalLog.Size=UDim2.fromScale(.44,.19);goalLog.ZIndex=1;goalLog.Parent=overlay;corner(goalLog,8)
+	local goalLogTitle=text(goalLog,"GOALS + ASSISTS",UDim2.fromScale(.05,.04),UDim2.fromScale(.9,.15),10,Theme.Colors.Electric,Theme.Fonts.Strong);goalLogTitle.ZIndex=10
+	local goalList=Instance.new("ScrollingFrame");goalList.BackgroundTransparency=1;goalList.BorderSizePixel=0;goalList.Position=UDim2.fromScale(.05,.22);goalList.Size=UDim2.fromScale(.9,.72);goalList.AutomaticCanvasSize=Enum.AutomaticSize.Y;goalList.CanvasSize=UDim2.new();goalList.ScrollBarThickness=3;goalList.ScrollBarImageColor3=Theme.Colors.Electric;goalList.ZIndex=10;goalList.Parent=goalLog
 	local goalLayout=Instance.new("UIListLayout");goalLayout.SortOrder=Enum.SortOrder.LayoutOrder;goalLayout.Padding=UDim.new(0,5);goalLayout.Parent=goalList
-	local noGoals=text(goalList,"NO GOALS YET",UDim2.new(),UDim2.new(1,0,0,22),9,Theme.Colors.Muted,Theme.Fonts.Strong);noGoals.ZIndex=1001
+	local noGoals=text(goalList,"NO GOALS YET",UDim2.new(),UDim2.new(1,0,0,22),9,Theme.Colors.Muted,Theme.Fonts.Strong);noGoals.ZIndex=11
 	local has2xAccess=ownsWorldCupSim2x()
-	local speedButton=Instance.new("TextButton");speedButton.Name="SimulationSpeed2x";speedButton.AnchorPoint=Vector2.new(1,0);speedButton.AutoButtonColor=true;speedButton.BackgroundColor3=Theme.Colors.Raised;speedButton.BackgroundTransparency=.08;speedButton.BorderSizePixel=0;speedButton.Position=UDim2.fromScale(.95,.07);speedButton.Size=UDim2.fromOffset(164,36);speedButton.Text=has2xAccess and"2X SPEED OFF"or"UNLOCK 2X SPEED";speedButton.TextColor3=Theme.Colors.White;speedButton.TextSize=10;speedButton.Font=Theme.Fonts.Strong;speedButton.ZIndex=1002;speedButton.Parent=overlay;corner(speedButton,6)
+	local speedButton=Instance.new("TextButton");speedButton.Name="SimulationSpeed2x";speedButton.AnchorPoint=Vector2.new(1,0);speedButton.AutoButtonColor=true;speedButton.BackgroundColor3=Theme.Colors.Raised;speedButton.BackgroundTransparency=.08;speedButton.BorderSizePixel=0;speedButton.Position=UDim2.fromScale(.95,.07);speedButton.Size=UDim2.fromOffset(164,36);speedButton.Text=has2xAccess and"2X SPEED OFF"or"UNLOCK 2X SPEED";speedButton.TextColor3=Theme.Colors.White;speedButton.TextSize=10;speedButton.Font=Theme.Fonts.Strong;speedButton.ZIndex=12;speedButton.Parent=overlay;corner(speedButton,6)
 	local purchaseConnection:RBXScriptConnection?=nil
 	local function refresh2xButton()
 		local enabled=speedMultiplier>=2
@@ -1042,11 +1042,11 @@ purchaseConnection=MarketplaceService.PromptGamePassPurchaseFinished:Connect(fun
 	end
 end)
 
-local detail=Instance.new("Frame");detail.AnchorPoint=Vector2.new(.5,.5);detail.BackgroundColor3=Theme.Colors.Black;detail.BackgroundTransparency=.28;detail.BorderSizePixel=0;detail.Position=UDim2.fromScale(.5,.47);detail.Size=UDim2.fromScale(.58,.07);detail.ZIndex=1001;detail.Parent=overlay;corner(detail,8)
-	local goalIcon=Instance.new("ImageLabel");goalIcon.BackgroundTransparency=1;goalIcon.Image="rbxassetid://135771264315819";goalIcon.Position=UDim2.fromScale(.04,.2);goalIcon.Size=UDim2.fromScale(.055,.6);goalIcon.ScaleType=Enum.ScaleType.Fit;goalIcon.ZIndex=1002;goalIcon.Parent=detail
-	local scorerLabel=text(detail,"",UDim2.fromScale(.11,0),UDim2.fromScale(.34,1),14,Theme.Colors.White,Theme.Fonts.Display);scorerLabel.ZIndex=1002
-	local assistIcon=Instance.new("ImageLabel");assistIcon.BackgroundTransparency=1;assistIcon.Image="rbxassetid://93968131485797";assistIcon.Position=UDim2.fromScale(.49,.2);assistIcon.Size=UDim2.fromScale(.055,.6);assistIcon.ScaleType=Enum.ScaleType.Fit;assistIcon.ZIndex=1002;assistIcon.Parent=detail
-	local assistLabel=text(detail,"",UDim2.fromScale(.56,0),UDim2.fromScale(.38,1),13,Theme.Colors.Silver,Theme.Fonts.Strong);assistLabel.ZIndex=1002
+local detail=Instance.new("Frame");detail.AnchorPoint=Vector2.new(.5,.5);detail.BackgroundColor3=Theme.Colors.Black;detail.BackgroundTransparency=.28;detail.BorderSizePixel=0;detail.Position=UDim2.fromScale(.5,.47);detail.Size=UDim2.fromScale(.58,.07);detail.ZIndex=11;detail.Parent=overlay;corner(detail,8)
+	local goalIcon=Instance.new("ImageLabel");goalIcon.BackgroundTransparency=1;goalIcon.Image="rbxassetid://135771264315819";goalIcon.Position=UDim2.fromScale(.04,.2);goalIcon.Size=UDim2.fromScale(.055,.6);goalIcon.ScaleType=Enum.ScaleType.Fit;goalIcon.ZIndex=12;goalIcon.Parent=detail
+	local scorerLabel=text(detail,"",UDim2.fromScale(.11,0),UDim2.fromScale(.34,1),14,Theme.Colors.White,Theme.Fonts.Display);scorerLabel.ZIndex=12
+	local assistIcon=Instance.new("ImageLabel");assistIcon.BackgroundTransparency=1;assistIcon.Image="rbxassetid://93968131485797";assistIcon.Position=UDim2.fromScale(.49,.2);assistIcon.Size=UDim2.fromScale(.055,.6);assistIcon.ScaleType=Enum.ScaleType.Fit;assistIcon.ZIndex=12;assistIcon.Parent=detail
+	local assistLabel=text(detail,"",UDim2.fromScale(.56,0),UDim2.fromScale(.38,1),13,Theme.Colors.Silver,Theme.Fonts.Strong);assistLabel.ZIndex=12
 	detail.Visible=false
 	local goals={}
 	if type(score and score.Events)=="table"then
@@ -1127,18 +1127,18 @@ local detail=Instance.new("Frame");detail.AnchorPoint=Vector2.new(.5,.5);detail.
 					assistLabel.Visible=goal.Assister~=nil
 					assistLabel.Text=goal.Assister and tostring(goal.Assister)or""
 					if noGoals and noGoals.Parent then noGoals:Destroy()end
-					local goalRow=Instance.new("Frame");goalRow.BackgroundTransparency=1;goalRow.Size=UDim2.new(1,-6,0,34);goalRow.LayoutOrder=index;goalRow.ZIndex=1001;goalRow.Parent=goalList
-					local rowGoalIcon=Instance.new("ImageLabel");rowGoalIcon.BackgroundTransparency=1;rowGoalIcon.Image="rbxassetid://135771264315819";rowGoalIcon.Position=UDim2.fromOffset(0,6);rowGoalIcon.Size=UDim2.fromOffset(18,18);rowGoalIcon.ScaleType=Enum.ScaleType.Fit;rowGoalIcon.ZIndex=1002;rowGoalIcon.Parent=goalRow
+					local goalRow=Instance.new("Frame");goalRow.BackgroundTransparency=1;goalRow.Size=UDim2.new(1,-6,0,34);goalRow.LayoutOrder=index;goalRow.ZIndex=11;goalRow.Parent=goalList
+					local rowGoalIcon=Instance.new("ImageLabel");rowGoalIcon.BackgroundTransparency=1;rowGoalIcon.Image="rbxassetid://135771264315819";rowGoalIcon.Position=UDim2.fromOffset(0,6);rowGoalIcon.Size=UDim2.fromOffset(18,18);rowGoalIcon.ScaleType=Enum.ScaleType.Fit;rowGoalIcon.ZIndex=12;rowGoalIcon.Parent=goalRow
 					local rowText=string.format("%02d'  %s  /  %s",goal.Minute,tostring(goal.Scorer or"SCORER"),string.upper(tostring(goal.Team or"")))
-					local scorer=text(goalRow,rowText,UDim2.fromOffset(24,0),UDim2.new(1,-24,0,17),8,Theme.Colors.White,Theme.Fonts.Strong);scorer.ZIndex=1002;scorer.TextTruncate=Enum.TextTruncate.AtEnd
+					local scorer=text(goalRow,rowText,UDim2.fromOffset(24,0),UDim2.new(1,-24,0,17),8,Theme.Colors.White,Theme.Fonts.Strong);scorer.ZIndex=12;scorer.TextTruncate=Enum.TextTruncate.AtEnd
 					if goal.Assister then
-						local rowAssistIcon=Instance.new("ImageLabel");rowAssistIcon.BackgroundTransparency=1;rowAssistIcon.Image="rbxassetid://93968131485797";rowAssistIcon.Position=UDim2.fromOffset(24,18);rowAssistIcon.Size=UDim2.fromOffset(14,14);rowAssistIcon.ScaleType=Enum.ScaleType.Fit;rowAssistIcon.ZIndex=1002;rowAssistIcon.Parent=goalRow
-						local assist=text(goalRow,tostring(goal.Assister),UDim2.fromOffset(42,17),UDim2.new(1,-42,0,16),8,Theme.Colors.Silver,Theme.Fonts.Strong);assist.ZIndex=1002;assist.TextTruncate=Enum.TextTruncate.AtEnd
+						local rowAssistIcon=Instance.new("ImageLabel");rowAssistIcon.BackgroundTransparency=1;rowAssistIcon.Image="rbxassetid://93968131485797";rowAssistIcon.Position=UDim2.fromOffset(24,18);rowAssistIcon.Size=UDim2.fromOffset(14,14);rowAssistIcon.ScaleType=Enum.ScaleType.Fit;rowAssistIcon.ZIndex=12;rowAssistIcon.Parent=goalRow
+						local assist=text(goalRow,tostring(goal.Assister),UDim2.fromOffset(42,17),UDim2.new(1,-42,0,16),8,Theme.Colors.Silver,Theme.Fonts.Strong);assist.ZIndex=12;assist.TextTruncate=Enum.TextTruncate.AtEnd
 					end
 					goalList.CanvasPosition=Vector2.new(0,math.max(0,goalLayout.AbsoluteContentSize.Y-goalList.AbsoluteWindowSize.Y))
 					detail.Size=UDim2.fromScale(.46,.07)
 					TweenService:Create(detail,TweenInfo.new(.18,Enum.EasingStyle.Back,Enum.EasingDirection.Out),{Size=UDim2.fromScale(.58,.07)}):Play()
-					local marker=Instance.new("Frame");marker.AnchorPoint=Vector2.new(.5,.5);marker.BackgroundColor3=Theme.Colors.White;marker.BorderSizePixel=0;marker.Position=UDim2.fromScale(math.clamp(goal.Minute/maxMinute,0,1),.5);marker.Size=UDim2.fromOffset(10,28);marker.ZIndex=1002;marker.Parent=timeline;corner(marker,99)
+					local marker=Instance.new("Frame");marker.AnchorPoint=Vector2.new(.5,.5);marker.BackgroundColor3=Theme.Colors.White;marker.BorderSizePixel=0;marker.Position=UDim2.fromScale(math.clamp(goal.Minute/maxMinute,0,1),.5);marker.Size=UDim2.fromOffset(10,28);marker.ZIndex=12;marker.Parent=timeline;corner(marker,99)
 					TweenService:Create(scoreLabel,TweenInfo.new(.16,Enum.EasingStyle.Back,Enum.EasingDirection.Out),{TextSize=74}):Play()
 					task.delay(.18,function()if scoreLabel.Parent then TweenService:Create(scoreLabel,TweenInfo.new(.2),{TextSize=58}):Play()end end)
 					task.delay(2.2/math.max(1,speedMultiplier),function()
