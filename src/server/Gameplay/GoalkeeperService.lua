@@ -26,6 +26,18 @@ local AI_KEEPER_HOLD_FAILSAFE = 5.2
 local KEEPER_AGGRESSIVE_POSITION_DISTANCE = 160
 local KEEPER_LATERAL_REACT_DISTANCE = 160
 
+
+local function vtrKeeperSidewaysOnlyTarget(keeperRoot:BasePart, rectangle:any, forward:Vector3, target:Vector3):Vector3
+	if not VTR_KEEPER_SIDEWAYS_ONLY then return target end
+	local currentOffset=keeperRoot.Position-rectangle.PlanePoint
+	local targetOffset=target-rectangle.PlanePoint
+	local currentDepth=currentOffset:Dot(forward)
+	local targetHorizontal=targetOffset:Dot(rectangle.Right)
+	local height=target.Y
+	return GoalModelResolver.Point(rectangle,targetHorizontal,height)+forward*currentDepth
+end
+
+
 local function root(model: Model?): BasePart?
 	return model and model:FindFirstChild("HumanoidRootPart") :: BasePart?
 end
@@ -1356,6 +1368,7 @@ function Service:_positionOnLine(defendingSide:string)
 	local maxDepth=lineDepth+8
 	targetDepth=math.clamp(targetDepth,minDepth,maxDepth)
 	local target=GoalModelResolver.Point(rectangle,targetHorizontal,height)+forward*targetDepth
+	target=vtrKeeperSidewaysOnlyTarget(keeperRoot,rectangle,forward,target)
 	local humanoid=keeper:FindFirstChildOfClass("Humanoid")
 	if humanoid then
 		self:_faceBall(keeper,rectangle)
