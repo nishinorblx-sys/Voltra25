@@ -1,114 +1,126 @@
 local Players=game:GetService("Players")
-
 local player=Players.LocalPlayer
 local playerGui=player:WaitForChild("PlayerGui")
 local ICON="rbxassetid://106068354237205"
 
 local function openDailyRewards()
-	local app=playerGui:FindFirstChild("VTRApp",true) or playerGui:FindFirstChild("App",true) or playerGui:FindFirstChild("Main",true)
 	local opened=false
 
 	if _G.VTRNavigate then
-		local ok=pcall(function()_G.VTRNavigate("DailyRewards")end)
-		opened=opened or ok
+		opened=pcall(function()_G.VTRNavigate("DailyRewards")end) or opened
 	end
 
 	if _G.VTROpenPage then
-		local ok=pcall(function()_G.VTROpenPage("DailyRewards")end)
-		opened=opened or ok
+		opened=pcall(function()_G.VTROpenPage("DailyRewards")end) or opened
 	end
 
 	for _,gui in playerGui:GetDescendants() do
 		if gui:IsA("GuiObject") then
-			local name=string.lower(gui.Name)
-			if name=="dailyreward" or name=="dailyrewards" or name=="dailyloginreward" or name=="dailyloginrewardpage" or name=="dailyrewardpage" then
+			local n=string.lower(gui.Name)
+			if n=="dailyreward" or n=="dailyrewards" or n=="dailyrewardpage" or n=="dailyloginreward" or n=="dailyloginrewardpage" then
 				gui.Visible=true
 				opened=true
 			end
 		end
 	end
 
-	if opened then return end
-
-	local clientRoot=script.Parent
-	local candidates={
-		clientRoot:FindFirstChild("Pages") and clientRoot.Pages:FindFirstChild("DailyRewardsPage"),
-		clientRoot:FindFirstChild("Pages") and clientRoot.Pages:FindFirstChild("DailyRewardPage"),
-		clientRoot:FindFirstChild("Pages") and clientRoot.Pages:FindFirstChild("DailyLoginRewardPage"),
-		clientRoot:FindFirstChild("Components") and clientRoot.Components:FindFirstChild("DailyLoginRewardPanel"),
-		clientRoot:FindFirstChild("Components") and clientRoot.Components:FindFirstChild("DailyRewardPanel"),
+	local root=script.Parent
+	local pages=root:FindFirstChild("Pages")
+	local components=root:FindFirstChild("Components")
+	local modules={
+		pages and pages:FindFirstChild("DailyRewardsPage"),
+		pages and pages:FindFirstChild("DailyRewardPage"),
+		pages and pages:FindFirstChild("DailyLoginRewardPage"),
+		components and components:FindFirstChild("DailyLoginRewardPanel"),
+		components and components:FindFirstChild("DailyRewardPanel"),
 	}
 
-	for _,module in candidates do
+	for _,module in modules do
 		if module then
 			local ok,result=pcall(require,module)
 			if ok and result then
-				local made=false
 				for _,method in {"Open","Show","new","Create","Render"} do
 					if type(result)=="table" and type(result[method])=="function" then
 						local worked=pcall(function()
-							result[method](playerGui,{Player=player,PlayerGui=playerGui,Root=app})
+							result[method](playerGui,{Player=player,PlayerGui=playerGui})
 						end)
-						if worked then made=true end
+						if worked then return end
 					end
 				end
-				if not made and type(result)=="function" then
+				if type(result)=="function" then
 					local worked=pcall(function()
-						result(playerGui,{Player=player,PlayerGui=playerGui,Root=app})
+						result(playerGui,{Player=player,PlayerGui=playerGui})
 					end)
-					if worked then made=true end
+					if worked then return end
 				end
-				if made then return end
 			end
 		end
 	end
 
-	local existing=playerGui:FindFirstChild("VTRDailyRewardPageMissing")
-	if existing then existing:Destroy() end
-	local screen=Instance.new("ScreenGui")
-	screen.Name="VTRDailyRewardPageMissing"
-	screen.ResetOnSpawn=false
-	screen.IgnoreGuiInset=true
-	screen.Parent=playerGui
-	local close=Instance.new("TextButton")
-	close.Text="DAILY REWARDS PAGE NOT FOUND"
-	close.TextColor3=Color3.fromRGB(255,255,255)
-	close.TextSize=18
-	close.Font=Enum.Font.GothamBlack
-	close.BackgroundColor3=Color3.fromRGB(12,14,18)
-	close.Size=UDim2.fromScale(1,1)
-	close.Parent=screen
-	close.Activated:Connect(function()screen:Destroy()end)
+	if opened then return end
 end
 
-local function isOldDailyButton(obj)
-	return obj.Name=="VTRDailyRewardTopButton" or obj.Name=="VTRDailyRewardButton"
+local function isSettingsButton(obj)
+	if not obj:IsA("GuiObject") then return false end
+	local n=string.lower(obj.Name)
+	if string.find(n,"setting") or string.find(n,"gear") then return true end
+	if obj:IsA("TextButton") or obj:IsA("TextLabel") then
+		local t=string.lower(tostring(obj.Text or ""))
+		if t=="settings" or t=="setting" then return true end
+	end
+	return false
 end
 
-local function removeDuplicates(keep)
+local function removeExtraButtons(keep)
 	for _,obj in playerGui:GetDescendants() do
-		if obj~=keep and isOldDailyButton(obj) then
+		if obj~=keep and (obj.Name=="VTRDailyRewardButton" or obj.Name=="VTRDailyRewardTopButton") then
 			obj:Destroy()
 		end
 	end
 end
 
-local function isSettingsButton(obj)
-	if not obj:IsA("GuiObject") then return false end
-	local name=string.lower(obj.Name)
-	if string.find(name,"setting") or string.find(name,"gear") then return true end
-	if obj:IsA("ImageButton") or obj:IsA("ImageLabel") then
-		local image=string.lower(tostring(obj.Image or ""))
-		if string.find(image,"setting") or string.find(image,"gear") then return true end
-	end
-	if obj:IsA("TextButton") or obj:IsA("TextLabel") then
-		local text=string.lower(tostring(obj.Text or ""))
-		if text=="settings" or text=="setting" then return true end
-	end
-	return false
+local function topScreenGui()
+	local gui=playerGui:FindFirstChild("VTRDailyRewardHud")
+	if gui then return gui end
+
+	gui=Instance.new("ScreenGui")
+	gui.Name="VTRDailyRewardHud"
+	gui.ResetOnSpawn=false
+	gui.IgnoreGuiInset=true
+	gui.DisplayOrder=999999
+	gui.ZIndexBehavior=Enum.ZIndexBehavior.Sibling
+	gui.Parent=playerGui
+	return gui
 end
 
-local function createButton(settingsButton)
+local function createFallbackButton()
+	local gui=topScreenGui()
+	local button=gui:FindFirstChild("VTRDailyRewardButton")
+	if not button then
+		button=Instance.new("ImageButton")
+		button.Name="VTRDailyRewardButton"
+		button.Image=ICON
+		button.BackgroundColor3=Color3.fromRGB(12,14,18)
+		button.BackgroundTransparency=.08
+		button.BorderSizePixel=0
+		button.ScaleType=Enum.ScaleType.Fit
+		button.AutoButtonColor=true
+		button.AnchorPoint=Vector2.new(1,0)
+		button.Size=UDim2.fromOffset(42,42)
+		button.Position=UDim2.new(1,-96,0,14)
+		button.ZIndex=999999
+		button.Parent=gui
+		local corner=Instance.new("UICorner")
+		corner.CornerRadius=UDim.new(0,8)
+		corner.Parent=button
+		button.Activated:Connect(openDailyRewards)
+	end
+	button.Visible=true
+	removeExtraButtons(button)
+	return button
+end
+
+local function createNearSettings(settingsButton)
 	if not settingsButton or not settingsButton.Parent then return false end
 	local parent=settingsButton.Parent
 	local button=parent:FindFirstChild("VTRDailyRewardButton")
@@ -121,42 +133,45 @@ local function createButton(settingsButton)
 		button.BorderSizePixel=0
 		button.ScaleType=Enum.ScaleType.Fit
 		button.AutoButtonColor=true
-		button.ZIndex=math.max(settingsButton.ZIndex,50)
 		button.AnchorPoint=settingsButton.AnchorPoint
 		button.Size=settingsButton.Size
+		button.ZIndex=math.max(settingsButton.ZIndex+1,999)
 		button.Parent=parent
 		local corner=Instance.new("UICorner")
 		corner.CornerRadius=UDim.new(0,8)
 		corner.Parent=button
 		button.Activated:Connect(openDailyRewards)
 	end
+	button.Image=ICON
+	button.Visible=true
 	button.Position=settingsButton.Position-UDim2.fromOffset((settingsButton.AbsoluteSize.X>0 and settingsButton.AbsoluteSize.X or 42)+8,0)
-	removeDuplicates(button)
+	removeExtraButtons(button)
+	local fallback=playerGui:FindFirstChild("VTRDailyRewardHud")
+	if fallback then fallback:Destroy() end
 	return true
 end
 
 local function attach()
 	for _,obj in playerGui:GetDescendants() do
-		if isSettingsButton(obj) and createButton(obj) then
-			return true
+		if isSettingsButton(obj) then
+			if createNearSettings(obj) then return true end
 		end
 	end
+	createFallbackButton()
 	return false
 end
 
 task.spawn(function()
-	for _=1,120 do
-		if attach() then return end
-		task.wait(.25)
+	while true do
+		attach()
+		task.wait(1)
 	end
 end)
 
 playerGui.DescendantAdded:Connect(function(obj)
 	task.defer(function()
-		if isOldDailyButton(obj) then
-			removeDuplicates(obj)
-		elseif isSettingsButton(obj) then
-			createButton(obj)
+		if isSettingsButton(obj) then
+			createNearSettings(obj)
 		end
 	end)
 end)
