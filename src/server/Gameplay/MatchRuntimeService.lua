@@ -67,8 +67,8 @@ end
 local function rankedPackChoices():{any}
 	local choices={}
 	for id,definition in Catalog.Packs do
-		if definition then
-			table.insert(choices,{PackId=tostring(id),Name=definition.Name,Rarity=packRarity(definition)})
+		if definition.PriceCoins and definition.PriceCoins>0 and not string.find(id,"starter",1,true)and id~="voltage_standard"and id~="elite_electrum"then
+			table.insert(choices,{PackId=id,Name=definition.Name,Rarity=packRarity(definition)})
 		end
 	end
 	table.sort(choices,function(a,b)return tostring(a.PackId)<tostring(b.PackId)end)

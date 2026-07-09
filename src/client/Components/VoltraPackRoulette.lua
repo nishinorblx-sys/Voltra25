@@ -71,28 +71,27 @@ end
 local function storePacks(payload: any?): {any}
 	local result = {}
 	local seen = {}
-	local choices = payload and payload.RankedWinPack and payload.RankedWinPack.StorePacks
-
+	local choices = payload and payload.Reward and payload.Reward.PackChoices or payload and payload.RankedWinPack and payload.RankedWinPack.PackChoices or nil
 	if type(choices) == "table" then
 		for _, choice in choices do
 			local id = tostring(choice.PackId or choice.Id or "")
-			local pack = catalogPack(id)
-			if pack and not seen[pack.PackId] then
-				seen[pack.PackId] = true
+			local pack = id ~= "" and catalogPack(id) or nil
+			if not pack and choice.Name then
+				pack = decoratePack({PackId = id, Name = tostring(choice.Name), Rarity = tostring(choice.Rarity or "Common"), Weight = PACK_WEIGHTS[id] or 1})
+			end
+			if pack and not seen[pack.PackId ~= "" and pack.PackId or pack.Name] then
+				seen[pack.PackId ~= "" and pack.PackId or pack.Name] = true
 				table.insert(result, pack)
 			end
 		end
 	end
-
-	for id in Catalog.Packs do
-		local pack = catalogPack(id)
-		if pack and not seen[pack.PackId] then
-			seen[pack.PackId] = true
-			table.insert(result, pack)
+	for id, definition in Catalog.Packs do
+		if definition.PriceCoins and definition.PriceCoins > 0 and not string.find(id, "starter", 1, true) and id ~= "voltage_standard" and id ~= "elite_electrum" and not seen[id] then
+			seen[id] = true
+			table.insert(result, catalogPack(id))
 		end
 	end
-
-	table.sort(result, function(a, b) return tostring(a.PackId) < tostring(b.PackId) end)
+	table.sort(result, function(a, b) return tostring(a.PackId or a.Name) < tostring(b.PackId or b.Name) end)
 	return result
 end
 
@@ -141,14 +140,24 @@ local function stroke(parent: Instance, color: Color3, thickness: number, transp
 end
 
 local function rewardPack(payload: any): any
-	local ranked = payload and payload.RankedWinPack
-	local reward = payload and payload.Reward
-	local wantedId = tostring((ranked and ranked.PackId) or (reward and reward.PackId) or "")
-	local wanted = catalogPack(wantedId)
-	if wanted then
-		return wanted
-	end
+	local reward = payload and payload.Reward or {}
+	local ranked = payload and payload.RankedWinPack or {}
 	local packs = storePacks(payload)
+	local wantedId = tostring(reward.PackId or ranked.PackId or "")
+	if wantedId ~= "" then
+		for _, pack in packs do
+			if tostring(pack.PackId or "") == wantedId then return pack end
+		end
+		local fromCatalog = catalogPack(wantedId)
+		if fromCatalog then return fromCatalog end
+	end
+	local wanted = reward.PackName or reward.Pack or reward.packName or ranked.PackName
+	if wanted then
+		for _, pack in packs do
+			if string.upper(pack.Name) == string.upper(tostring(wanted)) then return pack end
+		end
+		return decoratePack({Name = tostring(wanted), Rarity = tostring(reward.Rarity or ranked.Rarity or "Common"), Weight = 1})
+	end
 	return weightedPack(packs)
 end
 

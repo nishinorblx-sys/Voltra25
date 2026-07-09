@@ -6,20 +6,6 @@ local PackInstanceFactory = require(script.Parent.Parent.Data.PackInstanceFactor
 
 local Service = {}
 
-local function validRewardPack(id:any): (string?, any?)
-	local key = tostring(id or "")
-	local definition = Catalog.Packs[key]
-	if not definition then
-		return nil, nil
-	end
-	return key, definition
-end
-
-local function rewardPackName(id:any): string
-	local key, definition = validRewardPack(id)
-	return definition and definition.Name or tostring(key or "")
-end
-
 local PackWeights = {
 	common_pack = 260,
 	bronze_pack = 190,
@@ -55,13 +41,12 @@ end
 local function storePacks(): {any}
 	local packs = {}
 	for id, definition in Catalog.Packs do
-		local key, valid = validRewardPack(id)
-		if key and valid then
+		if definition.PriceCoins and definition.PriceCoins > 0 and not string.find(id, "starter", 1, true) and id ~= "voltage_standard" and id ~= "elite_electrum" then
 			table.insert(packs, {
-				PackId = key,
-				Name = valid.Name,
-				Rarity = packRarity(valid),
-				Weight = PackWeights[key] or math.max(1, math.floor(100000 / math.max(tonumber(valid.PriceCoins) or 10000, 1))),
+				PackId = id,
+				Name = definition.Name,
+				Rarity = packRarity(definition),
+				Weight = PackWeights[id] or math.max(1, math.floor(100000 / math.max(tonumber(definition.PriceCoins) or 10000, 1))),
 			})
 		end
 	end
@@ -87,15 +72,15 @@ function Service.Roll(): any
 end
 
 local function directAddPack(progression: any, player: Player, packId: string): any?
-	local key, definition = validRewardPack(packId)
-	if not key or not definition then return nil end
 	local profile = progression and progression.Profiles and progression.Profiles:GetProfile(player)
 	if not profile then return nil end
 	profile.PackInventory = profile.PackInventory or {}
-	local instance = PackInstanceFactory.Create(key, "RankedWin")
+	local instance = PackInstanceFactory.Create(packId, "RankedWin")
 	if not instance then return nil end
 	table.insert(profile.PackInventory, instance)
-	VTRPendingPackAnimation.Queue(player, key)
+	if player and typeof(player) == "Instance" and player:IsA("Player") then
+		VTRPendingPackAnimation.Queue(player, packId)
+	end
 	return instance
 end
 
