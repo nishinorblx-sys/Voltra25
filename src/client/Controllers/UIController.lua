@@ -45,6 +45,8 @@ local PageModules = {
 	WorldCup = require(script.Parent.Parent.Pages.WorldCupPage),
 	Inventory = require(script.Parent.Parent.Pages.InventoryPage),
 	Play = require(script.Parent.Parent.Pages.CampaignPage),
+	MyPlayer = require(script.Parent.Parent.Pages.MyPlayerPage),
+	FiveVFive = require(script.Parent.Parent.Pages.FiveVFivePage),
 	Ranked = require(script.Parent.Parent.Pages.RankedPage),
 	Clubs = require(script.Parent.Parent.Pages.ClubsPage),
 	Career = require(script.Parent.Parent.Pages.CareerPage),
@@ -117,8 +119,8 @@ function UIController:Start()
 	notificationStack.AnchorPoint = Vector2.new(1, 0)
 	notificationStack.BackgroundTransparency = 1
 	notificationStack.Position = UDim2.new(1, -20, 0, 92)
-	notificationStack.Size = UDim2.fromOffset(310, 460)
-	notificationStack.ZIndex = 50
+	notificationStack.Size = UDim2.fromOffset(340, 460)
+	notificationStack.ZIndex = 900
 	notificationStack.Parent = root
 	local notificationLayout = Instance.new("UIListLayout")
 	notificationLayout.Padding = UDim.new(0, 10)
@@ -555,7 +557,7 @@ function UIController:_bindDataUpdates()
 	end)
 	ProgressionService:Observe(function(value)
 		self.Data.Progression = value
-		for _, id in {"Home","Inventory","Play","Ranked"} do self:_replacePage(id) end
+		for _, id in {"Home","Inventory","Play","Ranked","Store"} do self:_replacePage(id) end
 	end)
 end
 
@@ -594,14 +596,17 @@ function UIController:_createSeasonCard(seasonData: any): Frame
 end
 
 function UIController:_showNotification(payload: any)
-	local visible={};for _,child in self.NotificationStack:GetChildren()do if child:IsA("CanvasGroup")and child.Name=="Notification"then table.insert(visible,child)end end;table.sort(visible,function(a,b)return a.LayoutOrder<b.LayoutOrder end);while#visible>=3 do local oldest=table.remove(visible,1);oldest:Destroy()end
-	local toast = Instance.new("CanvasGroup")
+	local visible={};for _,child in self.NotificationStack:GetChildren()do if child:IsA("GuiObject")and child.Name=="Notification"then table.insert(visible,child)end end;table.sort(visible,function(a,b)return a.LayoutOrder<b.LayoutOrder end);while#visible>=3 do local oldest=table.remove(visible,1);oldest:Destroy()end
+	local kind = tostring(payload.Kind or "Info")
+	local accent = (kind == "Error" and Theme.Colors.Danger) or (kind == "Warning" and Theme.Colors.Warning) or Theme.Colors.Electric
+	local baseZ = 900
+	local toast = Instance.new("Frame")
 	toast.Name = "Notification"
-	toast.BackgroundColor3 = Theme.Colors.Graphite
+	toast.BackgroundColor3 = Color3.fromRGB(4, 6, 8)
+	toast.BackgroundTransparency = 0.03
 	toast.BorderSizePixel = 0
-	toast.Size = UDim2.fromOffset(310, 82)
-	toast.GroupTransparency = 1
-	toast.ZIndex = 50
+	toast.Size = UDim2.fromOffset(332, 92)
+	toast.ZIndex = baseZ
 	self.ToastSerial=(self.ToastSerial or 0)+1;toast.LayoutOrder=self.ToastSerial
 	toast.Parent = self.NotificationStack
 	local toastScale = Instance.new("UIScale")
@@ -610,28 +615,95 @@ function UIController:_showNotification(payload: any)
 	local corner = Instance.new("UICorner")
 	corner.CornerRadius = UDim.new(0, Theme.Radius.Large)
 	corner.Parent = toast
+	local gradient = Instance.new("UIGradient")
+	gradient.Color = ColorSequence.new({
+		ColorSequenceKeypoint.new(0, Color3.fromRGB(20, 26, 20)),
+		ColorSequenceKeypoint.new(0.66, Color3.fromRGB(8, 11, 12)),
+		ColorSequenceKeypoint.new(1, Color3.fromRGB(2, 3, 4)),
+	})
+	gradient.Rotation = 18
+	gradient.Parent = toast
 	local stroke = Instance.new("UIStroke")
-	stroke.Color = payload.Kind == "Error" and Theme.Colors.Danger or Theme.Colors.Electric
-	stroke.Thickness = 1
+	stroke.Color = accent
+	stroke.Transparency = 0.08
+	stroke.Thickness = 1.25
 	stroke.Parent = toast
-	local title = label(string.upper(payload.Title), 11, Theme.Colors.White, Theme.Fonts.Strong)
-	title.Position = UDim2.fromOffset(16, 10)
-	title.Size = UDim2.new(1, -32, 0, 24)
-	title.ZIndex = 51
+	local rail = Instance.new("Frame")
+	rail.Name = "AccentRail"
+	rail.BackgroundColor3 = accent
+	rail.BorderSizePixel = 0
+	rail.Position = UDim2.fromOffset(0, 0)
+	rail.Size = UDim2.new(0, 5, 1, 0)
+	rail.ZIndex = baseZ + 1
+	rail.Parent = toast
+	local railCorner = Instance.new("UICorner")
+	railCorner.CornerRadius = UDim.new(0, Theme.Radius.Large)
+	railCorner.Parent = rail
+	local icon = label(kind == "Error" and "!" or kind == "Warning" and "!" or kind == "Reward" and "+" or "i", 15, kind == "Reward" and Theme.Colors.Black or Theme.Colors.White, Theme.Fonts.Strong)
+	icon.BackgroundColor3 = accent
+	icon.BackgroundTransparency = kind == "Reward" and 0 or 0.12
+	icon.Position = UDim2.fromOffset(17, 15)
+	icon.Size = UDim2.fromOffset(28, 28)
+	icon.TextXAlignment = Enum.TextXAlignment.Center
+	icon.TextYAlignment = Enum.TextYAlignment.Center
+	icon.ZIndex = baseZ + 4
+	icon.Parent = toast
+	local iconCorner = Instance.new("UICorner")
+	iconCorner.CornerRadius = UDim.new(0, 8)
+	iconCorner.Parent = icon
+	local textPlate = Instance.new("Frame")
+	textPlate.Name = "TextPlate"
+	textPlate.BackgroundColor3 = Color3.fromHex("05070D")
+	textPlate.BackgroundTransparency = 0
+	textPlate.BorderSizePixel = 0
+	textPlate.Position = UDim2.fromOffset(52, 10)
+	textPlate.Size = UDim2.new(1, -62, 0, 66)
+	textPlate.ZIndex = baseZ + 2
+	textPlate.Parent = toast
+	local textPlateCorner = Instance.new("UICorner")
+	textPlateCorner.CornerRadius = UDim.new(0, 9)
+	textPlateCorner.Parent = textPlate
+	local title = label(string.upper(payload.Title), 13, Color3.new(1, 1, 1), Theme.Fonts.Display)
+	title.Position = UDim2.fromOffset(60, 14)
+	title.Size = UDim2.new(1, -78, 0, 24)
+	title.TextTransparency = 0
+	title.TextStrokeColor3 = Color3.new(0, 0, 0)
+	title.TextStrokeTransparency = 0
+	title.ZIndex = baseZ + 20
 	title.Parent = toast
-	local message = label(payload.Message, 9, Theme.Colors.Muted, Theme.Fonts.Body)
-	message.Position = UDim2.fromOffset(16, 36)
-	message.Size = UDim2.new(1, -32, 0, 34)
+	local message = label(payload.Message, 12, Color3.new(1, 1, 1), Theme.Fonts.Strong)
+	message.Position = UDim2.fromOffset(60, 41)
+	message.Size = UDim2.new(1, -78, 0, 30)
 	message.TextWrapped = true
-	message.ZIndex = 51
+	message.TextTransparency = 0
+	message.TextStrokeColor3 = Color3.new(0, 0, 0)
+	message.TextStrokeTransparency = 0.08
+	message.ZIndex = baseZ + 20
 	message.Parent = toast
-	TweenService:Create(toast, TweenInfo.new(Theme.Animation.Page, Theme.Animation.EasingStyle, Theme.Animation.EasingDirection), { GroupTransparency = 0 }):Play()
+	local timer = Instance.new("Frame")
+	timer.Name = "LifeBar"
+	timer.BackgroundColor3 = accent
+	timer.BorderSizePixel = 0
+	timer.Position = UDim2.new(0, 56, 1, -10)
+	timer.Size = UDim2.new(1, -74, 0, 2)
+	timer.ZIndex = baseZ + 4
+	timer.Parent = toast
 	TweenService:Create(toastScale, TweenInfo.new(Theme.Animation.Page, Theme.Animation.EasingStyle, Theme.Animation.EasingDirection), { Scale = 1 }):Play()
+	TweenService:Create(timer, TweenInfo.new(4, Enum.EasingStyle.Linear), { Size = UDim2.new(0, 0, 0, 2) }):Play()
 	task.delay(4, function()
 		if not toast.Parent then return end
-		TweenService:Create(toast, TweenInfo.new(Theme.Animation.Page), { GroupTransparency = 1 }):Play()
+		TweenService:Create(toast, TweenInfo.new(0.16), { BackgroundTransparency = 1 }):Play()
+		for _, child in toast:GetDescendants() do
+			if child:IsA("TextLabel") then
+				TweenService:Create(child, TweenInfo.new(0.16), { TextTransparency = 1, TextStrokeTransparency = 1 }):Play()
+			elseif child:IsA("Frame") then
+				TweenService:Create(child, TweenInfo.new(0.16), { BackgroundTransparency = 1 }):Play()
+			elseif child:IsA("UIStroke") then
+				TweenService:Create(child, TweenInfo.new(0.16), { Transparency = 1 }):Play()
+			end
+		end
 		TweenService:Create(toastScale, TweenInfo.new(Theme.Animation.Page), { Scale = 0.94 }):Play()
-		task.delay(Theme.Animation.Page, function() toast:Destroy() end)
+		task.delay(0.16, function() toast:Destroy() end)
 	end)
 end
 

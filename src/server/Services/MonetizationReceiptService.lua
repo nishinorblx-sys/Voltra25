@@ -8,6 +8,7 @@ local Catalog = require(ReplicatedStorage.VTR.Shared.Catalog)
 local EconomyConfig = require(ReplicatedStorage.VTR.Shared.EconomyConfig)
 local MonetizationConfig = require(ReplicatedStorage.VTR.Shared.MonetizationConfig)
 local PlayerDatabase = require(script.Parent.Parent.Data.PlayerDatabase)
+local StarCardOfferService = require(script.Parent.StarCardOfferService)
 
 local Service = {}
 Service.__index = Service
@@ -123,14 +124,13 @@ function Service:_publish(player: Player, profile: any)
 end
 
 function Service:_grantStarCard(player: Player, profile: any)
-	local pools = PlayerDatabase.Pools
-	local source = pools.Icon or pools.Legendary or pools.Elite or pools.Rare or PlayerDatabase.Players
-	if not source or #source == 0 then return end
-	local definition = source[math.random(1, #source)]
+	local offer = StarCardOfferService.GetOffer(profile, player.UserId)
+	local definition = offer and PlayerDatabase.Get(tostring(offer.PlayerId or ""))
+	if not definition then return end
 	local ok, card = self.Inventory:AddCard(player, definition)
 	if ok and card then
 		table.insert(profile.Inventory.Items, {Id = card.cardInstanceId, Kind = "PlayerCard", Quantity = 1, AcquiredAt = os.time()})
-		profile.StarCard.Offer = definition.playerId
+		profile.StarCard.PurchasedOffer = definition.playerId
 	end
 end
 
@@ -184,10 +184,7 @@ function Service:_grantProduct(player: Player, profile: any, product: any)
 	elseif product.Kind == "StarCard" then
 		self:_grantStarCard(player, profile)
 	elseif product.Kind == "StarReroll" then
-		local day = math.floor(os.time() / 86400)
-		if profile.StarCard.RerollDay ~= day then profile.StarCard.RerollDay = day; profile.StarCard.RerollsToday = 0 end
-		profile.StarCard.RerollsToday = math.min(5, (tonumber(profile.StarCard.RerollsToday) or 0) + 1)
-		self:_grantStarCard(player, profile)
+		StarCardOfferService.Reroll(profile, player.UserId)
 	end
 end
 

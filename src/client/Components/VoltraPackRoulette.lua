@@ -273,14 +273,19 @@ function Presentation.Play(gui: ScreenGui, payload: any, onComplete: () -> ())
 	local stopIndex = 28
 	local cardWidth = 138
 	local total = 38
+	local holders = {}
 	for i = 1, total do
 		local pack = i == stopIndex and chosen or packs[math.random(1, #packs)]
 		local holder = Instance.new("Frame")
+		holder.Name = "RoulettePack_" .. tostring(i)
 		holder.BackgroundTransparency = 1
 		holder.Size = UDim2.fromOffset(cardWidth, 154)
 		holder.LayoutOrder = i
 		holder.ZIndex = 523
+		holder:SetAttribute("PackId", tostring(pack.PackId or ""))
+		holder:SetAttribute("PackName", tostring(pack.Name or ""))
 		holder.Parent = strip
+		holders[i] = holder
 		makePackCard(holder, pack, UDim2.fromScale(1, 1), 524)
 	end
 	local sparkLine = Instance.new("Frame")
@@ -295,10 +300,28 @@ function Presentation.Play(gui: ScreenGui, payload: any, onComplete: () -> ())
 	TweenService:Create(sparkLine, TweenInfo.new(.18, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true), {BackgroundTransparency = .02, Size = UDim2.fromScale(.027, .30)}):Play()
 	task.wait()
 	local railWidth = rail.AbsoluteSize.X
-	local targetX = railWidth * .5 - ((stopIndex - 1) * (cardWidth + 12) + cardWidth * .5)
+	local winningHolder = holders[stopIndex]
+	local function centeredStripX(): number
+		if not winningHolder or not winningHolder.Parent then
+			return railWidth * .5 - ((stopIndex - 1) * (cardWidth + 12) + cardWidth * .5)
+		end
+		local railCenter = rail.AbsolutePosition.X + rail.AbsoluteSize.X * .5
+		local itemCenter = winningHolder.AbsolutePosition.X + winningHolder.AbsoluteSize.X * .5
+		return strip.Position.X.Offset + (railCenter - itemCenter)
+	end
 	strip.Position = UDim2.fromOffset(railWidth * .5 + 120, 8)
-	TweenService:Create(strip, TweenInfo.new(4.4, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {Position = UDim2.fromOffset(targetX, 8)}):Play()
-	task.delay(4.55, function()
+	task.wait()
+	local targetX = centeredStripX()
+	local spinTween = TweenService:Create(strip, TweenInfo.new(4.4, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {Position = UDim2.fromOffset(targetX, 8)})
+	spinTween:Play()
+	spinTween.Completed:Wait()
+	if not overlay.Parent then return end
+	strip.Position = UDim2.fromOffset(centeredStripX(), 8)
+	task.wait()
+	strip.Position = UDim2.fromOffset(centeredStripX(), 8)
+	topArrow.TextColor3 = Theme.Colors.Electric
+	bottomArrow.TextColor3 = Theme.Colors.Electric
+	do
 		if not overlay.Parent then return end
 		local reveal = Instance.new("CanvasGroup")
 		reveal.AnchorPoint = Vector2.new(.5, .5)
@@ -332,8 +355,8 @@ function Presentation.Play(gui: ScreenGui, payload: any, onComplete: () -> ())
 			task.delay(1, function() if spark.Parent then spark:Destroy() end end)
 		end
 		label(overlay, "PACK SECURED", UDim2.fromScale(.2, .80), UDim2.fromScale(.6, .05), 22, chosen.Color, 545)
-	end)
-	task.delay(7.15, function()
+	end
+	task.delay(2.6, function()
 		if not overlay.Parent then
 			onComplete()
 			return

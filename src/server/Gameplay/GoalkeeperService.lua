@@ -687,7 +687,8 @@ function Service:_beginAIGoalkeeperDistribution(keeper: Model, side: string?, du
 	if self.AI and self.AI.BeginGoalkeeperDistribution then
 		self.AI:BeginGoalkeeperDistribution(keeper, teamSide, window)
 	end
-	keeper:SetAttribute("VTRNoAutoPassUntil", now + AI_KEEPER_DISTRIBUTION_DELAY)
+	local autoPassDelay = keeper:GetAttribute("VTRFiveVFiveAIKeeper") == true and 0 or AI_KEEPER_DISTRIBUTION_DELAY
+	keeper:SetAttribute("VTRNoAutoPassUntil", now + autoPassDelay)
 	keeper:SetAttribute("VTRKeeperMustDistributeUntil", now + window)
 	keeper:SetAttribute("AIAssignment", "GoalkeeperDistribution")
 end
@@ -743,7 +744,8 @@ function Service:_keeperSafety(defendingSide: string)
 		local holdingSince = tonumber(keeper:GetAttribute("VTRGoalkeeperHoldingSince")) or now
 		local heldFor = now - holdingSince
 		local mustDistributeUntil = tonumber(keeper:GetAttribute("VTRKeeperMustDistributeUntil")) or 0
-		if heldFor >= 0.9 and (keeper:GetAttribute("AIAssignment") ~= "GoalkeeperDistribution" or mustDistributeUntil <= now) then
+		local distributionHold = keeper:GetAttribute("VTRFiveVFiveAIKeeper") == true and 0.05 or 0.9
+		if heldFor >= distributionHold and (keeper:GetAttribute("AIAssignment") ~= "GoalkeeperDistribution" or mustDistributeUntil <= now) then
 			self:_beginAIGoalkeeperDistribution(keeper, defendingSide, AI_KEEPER_DISTRIBUTION_WINDOW)
 		end
 		if heldFor >= AI_KEEPER_HOLD_FAILSAFE then

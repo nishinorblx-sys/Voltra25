@@ -16,12 +16,19 @@ local function isSettingsButton(obj)
 end
 
 local function openDailyRewards()
-	local bindable=playerGui:FindFirstChild("VTROpenExistingDailyReward",true)
+	local bindable=playerGui:FindFirstChild("VTROpenDailyLoginReward",true)
+	if not bindable then
+		local deadline=os.clock()+3
+		while not bindable and os.clock()<deadline do
+			task.wait(0.1)
+			bindable=playerGui:FindFirstChild("VTROpenDailyLoginReward",true)
+		end
+	end
 	if bindable and bindable:IsA("BindableEvent") then
 		bindable:Fire()
 		return
 	end
-	warn("[Daily Rewards] Existing join popup opener is not ready yet.")
+	warn("[Daily Rewards] Daily login reward opener is not ready yet.")
 end
 
 local function removeExtraButtons(keep)
@@ -36,6 +43,17 @@ local function connectButton(button)
 	if button:GetAttribute("VTRDailyRewardConnected")==true then return end
 	button:SetAttribute("VTRDailyRewardConnected",true)
 	button.Activated:Connect(openDailyRewards)
+end
+
+local function capButtonSize(button)
+	local constraint=button:FindFirstChild("VTRDailyRewardSizeCap")
+	if not constraint then
+		constraint=Instance.new("UISizeConstraint")
+		constraint.Name="VTRDailyRewardSizeCap"
+		constraint.Parent=button
+	end
+	constraint.MinSize=Vector2.new(32,32)
+	constraint.MaxSize=Vector2.new(46,46)
 end
 
 local function createNearSettings(settingsButton)
@@ -58,6 +76,7 @@ local function createNearSettings(settingsButton)
 	button.AutoButtonColor=true
 	button.AnchorPoint=settingsButton.AnchorPoint
 	button.Size=settingsButton.Size
+	capButtonSize(button)
 	button.Position=settingsButton.Position-UDim2.fromOffset((settingsButton.AbsoluteSize.X>0 and settingsButton.AbsoluteSize.X or 42)+8,0)
 	button.ZIndex=1
 	button.Visible=true

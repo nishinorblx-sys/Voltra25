@@ -494,7 +494,7 @@ function Controller.new(data: any)
 	local pauseButton = Instance.new("TextButton")
 	pauseButton.Name = "PauseQueueButton"
 	pauseButton.AnchorPoint = Vector2.new(1, 0)
-	pauseButton.Position = UDim2.new(1, -24, 0, 60)
+	pauseButton.Position = UDim2.new(1, -24, 0, 112)
 	pauseButton.Size = UDim2.fromOffset(54, 44)
 	pauseButton.BackgroundColor3 = Color3.fromHex("07110F")
 	pauseButton.BorderSizePixel = 0
@@ -1600,6 +1600,7 @@ function Controller:SetPaused(paused: boolean, cameraController: any, onReturn: 
 		end
 		if activeTab=="Controls"then
 			optionRow("PassReceiverAutoSwitch","PASS RECEIVER SWITCH","Choose how quickly control moves to a pass receiver.",{"Assisted","Instant","Off"})
+			optionRow("ManualPassAutoSwitch","MANUAL PASS AUTO SWITCH","Auto switch to the closest teammate near manual passes.",{"Closest","Off"})
 			optionRow("ReceiverAssist","RECEIVER ASSIST","Assisted receiving support after passes.",{"Light","Assisted","Off"})
 			addRow("KEYBINDS: PAUSE M  /  SWITCH Q  /  TACKLE E  /  SLIDE F  /  MANUAL CTRL  /  LOB ALT",Theme.Colors.Silver)
 		elseif activeTab=="Audio"then
@@ -2121,9 +2122,102 @@ function Controller:ResolveShotChance(scored:boolean)
 	end)
 end
 
+function Controller:ShowPenaltyShootout(payload:any)
+	if self.PenaltyShootoutPanel then
+		self.PenaltyShootoutPanel:Destroy()
+		self.PenaltyShootoutPanel=nil
+	end
+	local rounds=type(payload.Rounds)=="table"and payload.Rounds or{}
+	local root=Instance.new("Frame")
+	root.Name="PenaltyShootoutPanel"
+	root.AnchorPoint=Vector2.new(.5,0)
+	root.Position=UDim2.fromScale(.5,.105)
+	root.Size=UDim2.fromOffset(520,118)
+	root.BackgroundColor3=Theme.Colors.Black
+	root.BackgroundTransparency=.06
+	root.BorderSizePixel=0
+	root.ZIndex=150
+	root.Parent=self.Gui
+	corner(root,12)
+	stroke(root,Theme.Colors.Electric,.08)
+	self.PenaltyShootoutPanel=root
+	local title=label(root,"PENALTY SHOOTOUT",UDim2.fromOffset(18,9),UDim2.new(1,-36,0,22),18)
+	title.TextXAlignment=Enum.TextXAlignment.Center
+	title.TextColor3=Theme.Colors.Electric
+	title.ZIndex=151
+	local score=label(root,"0 - 0",UDim2.fromOffset(18,32),UDim2.new(1,-36,0,30),26)
+	score.TextXAlignment=Enum.TextXAlignment.Center
+	score.TextColor3=Theme.Colors.White
+	score.ZIndex=151
+	local marks=Instance.new("Frame")
+	marks.BackgroundTransparency=1
+	marks.Position=UDim2.fromOffset(22,70)
+	marks.Size=UDim2.new(1,-44,0,34)
+	marks.ZIndex=151
+	marks.Parent=root
+	local layout=Instance.new("UIListLayout")
+	layout.FillDirection=Enum.FillDirection.Horizontal
+	layout.HorizontalAlignment=Enum.HorizontalAlignment.Center
+	layout.VerticalAlignment=Enum.VerticalAlignment.Center
+	layout.Padding=UDim.new(0,8)
+	layout.Parent=marks
+	local scale=Instance.new("UIScale")
+	scale.Scale=.86
+	scale.Parent=root
+	TweenService:Create(scale,TweenInfo.new(.2,Enum.EasingStyle.Back,Enum.EasingDirection.Out),{Scale=1}):Play()
+	local homeTotal=0
+	local awayTotal=0
+	local function addMark(side:string,scored:boolean,totalHome:number,totalAway:number)
+		local chip=Instance.new("Frame")
+		chip.Size=UDim2.fromOffset(42,30)
+		chip.BackgroundColor3=scored and Theme.Colors.Electric or Color3.fromHex("35131A")
+		chip.BackgroundTransparency=scored and .06 or .02
+		chip.BorderSizePixel=0
+		chip.ZIndex=152
+		chip.Parent=marks
+		corner(chip,8)
+		stroke(chip,scored and Theme.Colors.White or Color3.fromHex("FF4056"),scored and .55 or .12)
+		local text=label(chip,scored and "GOAL" or "X",UDim2.fromOffset(0,3),UDim2.new(1,0,0,18),scored and 9 or 18)
+		text.TextXAlignment=Enum.TextXAlignment.Center
+		text.TextColor3=scored and Theme.Colors.Black or Theme.Colors.White
+		text.ZIndex=153
+		local sideLabel=label(chip,side,UDim2.fromOffset(0,19),UDim2.new(1,0,0,9),7)
+		sideLabel.TextXAlignment=Enum.TextXAlignment.Center
+		sideLabel.TextColor3=scored and Theme.Colors.Black or Theme.Colors.White
+		sideLabel.ZIndex=153
+		score.Text=tostring(totalHome).." - "..tostring(totalAway)
+		local pop=Instance.new("UIScale")
+		pop.Scale=.58
+		pop.Parent=chip
+		TweenService:Create(pop,TweenInfo.new(.2,Enum.EasingStyle.Back,Enum.EasingDirection.Out),{Scale=1}):Play()
+	end
+	for index,round in ipairs(rounds)do
+		task.delay((index-1)*.78,function()
+			if self.PenaltyShootoutPanel~=root or not root.Parent then return end
+			homeTotal=tonumber(round.HomeTotal)or homeTotal
+			addMark(self.HomeCode or"HOME",round.Home==true,homeTotal,awayTotal)
+			task.delay(.34,function()
+				if self.PenaltyShootoutPanel~=root or not root.Parent then return end
+				awayTotal=tonumber(round.AwayTotal)or awayTotal
+				addMark(self.AwayCode or"AWAY",round.Away==true,homeTotal,awayTotal)
+			end)
+		end)
+	end
+	task.delay(math.max(4.3,#rounds*.78+1.25),function()
+		if self.PenaltyShootoutPanel~=root or not root.Parent then return end
+		local winner=tostring(payload.Winner or"")
+		title.Text=(winner=="Home"and(self.HomeCode or"HOME")or winner=="Away"and(self.AwayCode or"AWAY")or"WINNER").." WINS ON PENALTIES"
+		TweenService:Create(root,TweenInfo.new(.28),{BackgroundTransparency=.02}):Play()
+	end)
+end
+
 
 function Controller:ShowResult(payload: any, onReturn: () -> ())
 	self:ClearPause()
+	if self.PenaltyShootoutPanel then
+		self.PenaltyShootoutPanel:Destroy()
+		self.PenaltyShootoutPanel=nil
+	end
 	if self.PauseButton then
 		self.PauseButton.Selectable = false
 		self.PauseButton.Visible = false
@@ -2191,6 +2285,13 @@ function Controller:ShowResult(payload: any, onReturn: () -> ())
 	end
 	local result = label(overlay, self.Home .. "   " .. payload.Home .. " - " .. payload.Away .. "   " .. self.Away, UDim2.new(0.15, 0, 0.18, 0), UDim2.new(0.7, 0, 0, 52), 23)
 	result.TextXAlignment = Enum.TextXAlignment.Center
+	if payload.PenaltyShootout then
+		local pens=payload.PenaltyShootout
+		local winner=tostring(payload.PenaltyShootoutWinner or"")
+		local shootout=label(overlay,"PENALTIES  "..tostring(pens.Home or 0).." - "..tostring(pens.Away or 0).."  /  "..(winner=="Home"and(self.HomeCode or"HOME")or winner=="Away"and(self.AwayCode or"AWAY")or"WINNER"),UDim2.new(0.2,0,0.235,0),UDim2.new(0.6,0,0,26),13)
+		shootout.TextXAlignment=Enum.TextXAlignment.Center
+		shootout.TextColor3=Theme.Colors.Electric
+	end
 	local stats = payload.Stats or {}
 	local home = stats.Home or {}
 	local away = stats.Away or {}

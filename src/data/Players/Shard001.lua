@@ -1,5 +1,5 @@
 --!strict
--- Generated from VTRPlayers_OriginalNames_FictionalClubs.csv. Do not edit by hand.
+-- Generated from VTRPlayers_With_Special_Versions.csv. Do not edit by hand.
 return {
  {"531fc632087f41e4","Rodrigo Hernandez Cascante","Cascante","Spain","Manchest Metro","Rift Championship","CDM,CM","CDM",91,91,115500000,440000,213700000,"Right",4,3,"Normal (185+)","Distance shooter","Icon","Base",1394591282,28,190,82,"","OliveLight","Long","Focused","Straight","Sharp","Serious","ShortLocs","Black","None","None","Balanced","Tall","Determined",true,"None","None","R6_VTR_1","ArmsFolded","Wave","Balanced",94,85,90,92,95,94,93,96,82,80,87,89,91,86,96,93,87,91,84,87,95,97,93,87,92,99,95,95,96,94,92,94,96,95,91,18,10,7,14,12},
  {"414842f492e9d073","Mohamed Salah Hamed Ghaly","Ghaly","Egypt","Liverford United","Rift Championship","RM,RW","RM",91,91,104000000,350000,192400000,"Left",3,4,"Unique","Dribbler,Crosser,Acrobat,Clinical finisher,Complete forward","Icon","Base",1095254772,32,175,72,"","WarmTan","Wide","Sharp","Thin","Small","Serious","MohawkFade","DarkBrown","None","None","Balanced","Short","Determined",true,"None","None","R6_VTR_1","PowerStance","PointSky","Confident",96,93,90,93,79,86,95,97,92,93,92,93,98,89,86,94,89,93,93,98,92,90,92,91,83,75,81,76,89,83,84,87,86,86,89,8,16,9,5,11},

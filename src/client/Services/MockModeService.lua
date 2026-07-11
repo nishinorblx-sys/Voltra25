@@ -108,6 +108,18 @@ function MockModeService:Hydrate(ui:any,progression:any)
 			local function productCard(product:any,subtitle:string?,accent:boolean?)
 				return{Title=product.Name,Subtitle=subtitle or"PREMIUM STORE ITEM",Meta=product.Description or subtitle or"Premium Voltra store item.",Icon=product.Icon,Accent=accent==true,Detail=product.Description,Action={Label="BUY",Operation="DeveloperProduct",ProductId=product.ProductId,ProductKind=product.Kind,GrantItemId=product.GrantItemId,Description=product.Description}}
 			end
+			local function formatSeconds(seconds:any):string
+				local remaining=math.max(0,math.floor(tonumber(seconds)or 0))
+				return string.format("%02d:%02d:%02d",math.floor(remaining/3600),math.floor((remaining%3600)/60),remaining%60)
+			end
+			local function starCard(product:any):any
+				local offer=progression.StarCard or{}
+				local player=offer.Player
+				if type(player)=="table" then
+					return{Title=product.Name,Subtitle=tostring(player.Rating or player.overall or"--").." OVR  /  "..tostring(player.Position or player.bestPosition or"STAR"),Meta="NEXT CARD IN "..formatSeconds(offer.SecondsUntilReset),CountdownUntil=offer.NextResetAt,PlayerData=player,Accent=true,Detail="Today's featured Star Card. Buying Star Reroll changes this offer before the daily reset.",Action={Label="SHOW",Operation="ShowStarCard",PlayerData=player,ProductId=product.ProductId,Description=product.Description}}
+				end
+				return productCard(product,"FEATURED DIRECT CARD",true)
+			end
 			local passesTab=tab(self.Spec,"Passes")
 			if passesTab then passesTab.Cards={};for _,id in MonetizationConfig.GamePassOrder do local pass=gamePasses[id];if pass then local owned=ownedItem(id);table.insert(passesTab.Cards,{Title=pass.Name,Subtitle=owned and"PERMANENT UNLOCKED"or"PERMANENT GAMEPASS",Meta=pass.Description or"Permanent Voltra gamepass unlock.",Icon=pass.Icon,Accent=id=="vip_pass",Detail=pass.Description,Action=owned and{Label="OWNED",Operation="ComingSoon",Message="This gamepass is already active on your account."}or{Label="BUY PASS",Operation="GamePass",GamePassId=pass.GamePassId,Description=pass.Description}})end end end
 			local coinsTab=tab(self.Spec,"Coins")
@@ -115,7 +127,7 @@ function MockModeService:Hydrate(ui:any,progression:any)
 			local vpTab=tab(self.Spec,"VoltraPoints")
 			if vpTab then vpTab.Cards={};local order={"vp_mini","vp_standard","vp_pro","vp_elite"};local vpBundles=serverCatalog.VoltraPointBundles or Catalog.VoltraPointBundles or {};for index,id in order do local bundle=vpBundles[id];if bundle then table.insert(vpTab.Cards,{Title=bundle.Name,Subtitle=tostring(bundle.VoltraPoints).." VOLTRA POINTS",Meta=bundle.Description or"Premium currency pack for cosmetics and deals.",Icon=bundle.Icon,Accent=index==#order,Detail=bundle.Description,Action={Label="BUY VP",Operation="DeveloperProduct",ProductId=bundle.ProductId,Description=bundle.Description}})end end end
 			local boostsTab=tab(self.Spec,"Boosts")
-			if boostsTab then boostsTab.Cards={};for index,id in MonetizationConfig.ProductOrder do local product=products[id];if product then table.insert(boostsTab.Cards,productCard(product,product.Kind=="CoinBoost"and"COIN EARNING BOOST"or product.Kind=="StarCard"and"FEATURED DIRECT CARD"or"PREMIUM OFFER",index==1 or id=="star_card"))end end end
+			if boostsTab then boostsTab.Cards={};for index,id in MonetizationConfig.ProductOrder do local product=products[id];if product then table.insert(boostsTab.Cards,product.Kind=="StarCard"and starCard(product)or productCard(product,product.Kind=="CoinBoost"and"COIN EARNING BOOST"or product.Kind=="StarReroll"and"REFRESH TODAY'S STAR CARD"or"PREMIUM OFFER",index==1 or id=="star_card"))end end end
 			local kitsTab=tab(self.Spec,"Kits")
 			if kitsTab then kitsTab.Cards={};for _,productId in MonetizationConfig.KitProductOrder do local product=products[productId];local item=product and findList(kits,product.GrantItemId);if product and item then local owned=ownedItem(item.Id);table.insert(kitsTab.Cards,{Title=item.Name,Subtitle=owned and(equipped.ActiveKit==item.Id and"EQUIPPED KIT"or"OWNED KIT")or(item.Animated and"ANIMATED MATCH KIT"or"PREMIUM MATCH KIT"),Meta=product.Description or"Premium Voltra match kit.",Icon=product.Icon,Accent=product.Id=="animated_kit"or equipped.ActiveKit==item.Id,Detail=product.Description,Action=owned and{Label=equipped.ActiveKit==item.Id and"EQUIPPED"or"EQUIP KIT",Operation="Select",Key="ActiveKit",Item=item.Id}or{Label="BUY KIT",Operation="DeveloperProduct",ProductId=product.ProductId,ProductKind="Kit",GrantItemId=item.Id,Description=product.Description}})end end end
 			local bootsTab=tab(self.Spec,"Boots")

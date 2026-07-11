@@ -3,13 +3,18 @@
 local Config = {}
 
 Config.CampaignDifficulties = {
-	{ Id = "street_level", Name = "Street Level", Range = {55, 62}, Reward = "Bronze Pack", PackId = "bronze_pack" },
-	{ Id = "local_league", Name = "Local League", Range = {63, 68}, Reward = "Silver Pack", PackId = "silver_pack" },
-	{ Id = "regional_pro", Name = "Regional Pro", Range = {69, 74}, Reward = "Gold Pack", PackId = "gold_pack" },
-	{ Id = "national_class", Name = "National Class", Range = {75, 80}, Reward = "Rare Pack", PackId = "rare_pack" },
-	{ Id = "continental_elite", Name = "Continental Elite", Range = {81, 85}, Reward = "Elite Pack", PackId = "elite_pack" },
-	{ Id = "world_class", Name = "World Class", Range = {86, 90}, Reward = "Legendary Pack", PackId = "legendary_pack" },
-	{ Id = "voltra_masters", Name = "Voltra Masters", Range = {91, 95}, Reward = "Icon Pack", PackId = "icon_pack" },
+	{ Id = "kickabout", Name = "Kickabout", Difficulty = "Beginner", Range = {45, 54}, Reward = "Common Pack", PackId = "common_pack", TierClearReward = "Bronze Pack", TierClearPackId = "bronze_pack" },
+	{ Id = "street_level", Name = "Street Level", Difficulty = "Amateur", Range = {55, 60}, Reward = "Bronze Pack", PackId = "bronze_pack", TierClearReward = "Starter Pack", TierClearPackId = "starter_pack" },
+	{ Id = "sunday_league", Name = "Sunday League", Difficulty = "Semi Pro", Range = {61, 65}, Reward = "Starter Pack", PackId = "starter_pack", TierClearReward = "Silver Pack", TierClearPackId = "silver_pack" },
+	{ Id = "local_league", Name = "Local League", Difficulty = "Semi Pro", Range = {66, 70}, Reward = "Silver Pack", PackId = "silver_pack", TierClearReward = "Gold Pack", TierClearPackId = "gold_pack" },
+	{ Id = "city_division", Name = "City Division", Difficulty = "Professional", Range = {71, 74}, Reward = "Gold Pack", PackId = "gold_pack", TierClearReward = "Rare Pack", TierClearPackId = "rare_pack" },
+	{ Id = "regional_pro", Name = "Regional Pro", Difficulty = "Professional", Range = {75, 78}, Reward = "Rare Pack", PackId = "rare_pack", TierClearReward = "Rising Star Pack", TierClearPackId = "rising_star_pack" },
+	{ Id = "premier_standard", Name = "Premier Standard", Difficulty = "World Class", Range = {79, 82}, Reward = "Rising Star Pack", PackId = "rising_star_pack", TierClearReward = "Elite Electrum Pack", TierClearPackId = "elite_electrum" },
+	{ Id = "national_class", Name = "National Class", Difficulty = "World Class", Range = {83, 86}, Reward = "Elite Pack", PackId = "elite_pack", TierClearReward = "Voltra Pack", TierClearPackId = "voltra_pack" },
+	{ Id = "continental_elite", Name = "Continental Elite", Difficulty = "Legendary", Range = {87, 90}, Reward = "Voltra Pack", PackId = "voltra_pack", TierClearReward = "Team of the Week Pack", TierClearPackId = "totw_pack" },
+	{ Id = "world_class", Name = "World Class", Difficulty = "Legendary", Range = {91, 93}, Reward = "Legendary Pack", PackId = "legendary_pack", TierClearReward = "Champion Pack", TierClearPackId = "champion_pack" },
+	{ Id = "voltra_masters", Name = "Voltra Masters", Difficulty = "Ultimate", Range = {94, 96}, Reward = "Icon Pack", PackId = "icon_pack", TierClearReward = "Limited Drop Pack", TierClearPackId = "limited_pack" },
+	{ Id = "ultimate", Name = "Ultimate", Difficulty = "Ultimate", Range = {97, 99}, Reward = "Mythic Storm Pack", PackId = "mythic_storm_pack", TierClearReward = "Mythic Pack", TierClearPackId = "mythic_pack" },
 }
 
 Config.RankedRewards = {

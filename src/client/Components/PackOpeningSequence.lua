@@ -7,6 +7,7 @@ local TweenService = game:GetService("TweenService")
 local Theme = require(ReplicatedStorage.VTR.Shared.Theme)
 local CardVisualConfig = require(ReplicatedStorage.VTR.Shared.CardVisualConfig)
 local WorldCupConfig = require(ReplicatedStorage.VTR.Shared.WorldCupConfig)
+local PackOpeningConfig = require(ReplicatedStorage.VTR.Shared.PackOpeningConfig)
 local CardSurface = require(script.Parent.CardSurface)
 local WidePlayerCard = require(script.Parent.WidePlayerCard)
 local Button = require(script.Parent.Button)
@@ -68,6 +69,25 @@ end
 
 local function playPlaceholder(item: Sound)
 	if item.SoundId ~= "" then item:Play() end
+end
+
+local function playDelayed(item: Sound, delaySeconds: number?)
+	local delayTime = math.max(0, tonumber(delaySeconds) or 0)
+	if delayTime <= 0 then
+		playPlaceholder(item)
+		return
+	end
+	task.delay(delayTime, function()
+		if item.Parent then
+			playPlaceholder(item)
+		end
+	end)
+end
+
+local function playAfterClickDelay(item: Sound, clickedAt: number?)
+	local configuredDelay = math.max(0, tonumber(PackOpeningConfig.PackOpenSoundDelaySeconds) or 0)
+	local elapsed = clickedAt and math.max(0, os.clock() - clickedAt) or 0
+	playDelayed(item, math.max(0, configuredDelay - elapsed))
 end
 
 local function sortedReveals(reveals: any): { any }
@@ -264,7 +284,10 @@ function PackOpeningSequence.play(parent: Instance, props: any): CanvasGroup
 	local buildSound = sound(overlay, "EnergyBuildSound")
 	local lightningSound = sound(overlay, "LightningPulseSound")
 	local burstSound = sound(overlay, "PackBurstSound")
+	burstSound.SoundId = PackOpeningConfig.PackOpenSoundId
+	burstSound.Volume = PackOpeningConfig.PackOpenSoundVolume
 	local revealSound = sound(overlay, "PlayerRevealSound")
+	playAfterClickDelay(burstSound, tonumber(props.PackOpenClickedAt))
 	label(overlay, "VTR 25  /  SEALED PACK", UDim2.fromScale(0.05, 0.055), UDim2.fromScale(0.9, 0.04), 9, Theme.Colors.Muted, Theme.Fonts.Strong, 112).TextXAlignment = Enum.TextXAlignment.Center
 	local packRatingBanner = label(overlay, "PACK RATING  --", UDim2.fromScale(0.67, 0.105), UDim2.fromScale(0.26, 0.05), 18, Theme.Colors.White, Theme.Fonts.Display, 112)
 	packRatingBanner.TextXAlignment = Enum.TextXAlignment.Right
@@ -395,7 +418,6 @@ function PackOpeningSequence.play(parent: Instance, props: any): CanvasGroup
 			tweenWait(flash, TweenInfo.new(0.1), { BackgroundTransparency = 0.18 })
 			TweenService:Create(flash, TweenInfo.new(0.3), { BackgroundTransparency = 1 }):Play()
 			task.wait(0.2)
-			playPlaceholder(burstSound)
 			status.Text = "PACK OPEN"
 			TweenService:Create(packScale, TweenInfo.new(0.28, Enum.EasingStyle.Back, Enum.EasingDirection.In), { Scale = 1.5 }):Play()
 			tweenWait(pack, TweenInfo.new(0.28), { GroupTransparency = 1, Rotation = 9 })

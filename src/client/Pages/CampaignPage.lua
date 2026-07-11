@@ -21,7 +21,7 @@ local function label(parent:Instance,value:string,pos:UDim2,size:UDim2,textSize:
 end
 
 function Page.new(context:any):CanvasGroup
-	local group,scroll=PageBase.new("Campaign",900)
+	local group,scroll=PageBase.new("Campaign",1040)
 	PageBase.heading(scroll,"OFFLINE CAMPAIGN","CAMPAIGN","Pick an AI opponent. Your saved Ultimate Team plays as the home side with your club badge, kit and tactics.")
 	local progress=context.Data.Progression.CampaignProgress or {UnlockedDifficulty=1,CompletedTeams={}}
 	local configResponse=MatchSetupService:GetConfig()
@@ -57,34 +57,34 @@ function Page.new(context:any):CanvasGroup
 	displayHome.teamId="ultimate_team_preview";displayHome.teamName=clubName;displayHome.country="VTR UNIVERSE";displayHome.league="SQUAD BUILDER";displayHome.logo=string.upper(abbreviation);displayHome.colors={Primary=primary,Secondary=secondary,Accent=accent};displayHome.BadgeIdentity={PrimaryColor=primary,SecondaryColor=secondary,AccentColor=accent,BadgePreset=identity.BadgePreset or"Modern",BadgeShape=identity.BadgeShape or"Shield",BadgeSymbol=identity.BadgeSymbol or"Lightning Bolt",BadgeColorBehavior=identity.BadgeColorBehavior or"Tri Color"};displayHome.badgeIdentity=displayHome.BadgeIdentity;displayHome.kits={Home={Name="Home",Primary=primary,Secondary=secondary,Accent=accent,Style=ClubIdentityConfig.ResolveStyle(identity.KitStyle),NumberColor=accent},Away={Name="Away",Primary=secondary,Secondary=primary,Accent=accent,Style=ClubIdentityConfig.ResolveStyle(identity.KitStyle),NumberColor=accent}};displayHome.badgePreset=identity.BadgeShape or identity.BadgePreset or"Shield"
 	local savedTactics=context.Data.Progression.TeamTactics or LiteConfig.DefaultTactics()
 	local unlocked=tonumber(progress.UnlockedDifficulty)or 1
-	local ladder=Panel.new({Name="DifficultyLadder",Position=UDim2.fromOffset(0,96),Size=UDim2.new(.25,-8,0,640)});ladder.Parent=scroll
+	local ladder=Panel.new({Name="DifficultyLadder",Position=UDim2.fromOffset(0,96),Size=UDim2.new(.25,-8,0,800)});ladder.Parent=scroll
 	label(ladder,"DIFFICULTY LADDER",UDim2.fromOffset(18,14),UDim2.new(1,-36,0,24),13,Theme.Colors.Electric,Theme.Fonts.Strong)
 	local selectedIndex=math.clamp(unlocked,1,#LiteConfig.CampaignDifficulties)
-	local body=Instance.new("Frame");body.BackgroundTransparency=1;body.Position=UDim2.new(.25,8,0,96);body.Size=UDim2.new(.75,-8,0,640);body.Parent=scroll
+	local body=Instance.new("Frame");body.BackgroundTransparency=1;body.Position=UDim2.new(.25,8,0,96);body.Size=UDim2.new(.75,-8,0,800);body.Parent=scroll
 	local function render()
 		for _,child in ladder:GetChildren()do if child:IsA("GuiObject")and child.Name=="TierButton"then child:Destroy()end end
 		for _,child in body:GetChildren()do child:Destroy()end
-		local tierStartY=58
-		local tierRowHeight=76
-		local tierButtonHeight=52
+		local tierStartY=52
+		local tierRowHeight=58
+		local tierButtonHeight=34
 		for index,tier in LiteConfig.CampaignDifficulties do
 			local locked=index>unlocked
 			local tierY=tierStartY+(index-1)*tierRowHeight
 			local button=Button.new({Text=string.upper(tier.Name),Variant=index==selectedIndex and"Primary"or"Secondary",Size=UDim2.new(1,-36,0,tierButtonHeight),OnActivated=function()if not locked then selectedIndex=index;render()end end})
 			button.Name="TierButton";button.Position=UDim2.fromOffset(18,tierY);button.Parent=ladder
 			if locked then button.Text=string.upper(tier.Name).."  LOCKED"end
-			local rewardMeta=label(ladder,tier.Range[1].."-"..tier.Range[2].." OVR  /  "..tier.Reward,UDim2.fromOffset(24,tierY+tierButtonHeight+6),UDim2.new(1,-48,0,14),8,locked and Theme.Colors.Muted or Theme.Colors.Silver,Theme.Fonts.Strong)
+			local rewardMeta=label(ladder,tier.Range[1].."-"..tier.Range[2].." OVR  /  "..tier.Reward,UDim2.fromOffset(24,tierY+tierButtonHeight+4),UDim2.new(1,-48,0,14),7,locked and Theme.Colors.Muted or Theme.Colors.Silver,Theme.Fonts.Strong)
 			rewardMeta.Name="TierButton"
 			rewardMeta.TextYAlignment=Enum.TextYAlignment.Center
 		end
 		local tier=LiteConfig.CampaignDifficulties[selectedIndex]
 		local header=Panel.new({Name="CampaignTier",Position=UDim2.fromOffset(0,0),Size=UDim2.new(1,0,0,118)});header.Parent=body
 		label(header,string.upper(tier.Name),UDim2.fromOffset(20,14),UDim2.new(.48,0,0,34),25,Theme.Colors.White,Theme.Fonts.Display)
-		label(header,"AI SQUAD OVR "..tier.Range[1].." - "..tier.Range[2].."  /  REWARD "..string.upper(tier.Reward),UDim2.fromOffset(22,55),UDim2.new(.7,0,0,20),10,Theme.Colors.Electric,Theme.Fonts.Strong)
+		label(header,"AI SQUAD OVR "..tier.Range[1].." - "..tier.Range[2].."  /  WIN "..string.upper(tier.Reward).."  /  CLEAR "..string.upper(tier.TierClearReward or"BONUS PACK"),UDim2.fromOffset(22,55),UDim2.new(.7,0,0,20),10,Theme.Colors.Electric,Theme.Fonts.Strong)
 		local completed=0;for teamId,done in progress.CompletedTeams or{}do if done and string.find(tostring(teamId),tier.Id,1,true)then completed+=1 end end
 		local bar=ProgressBar.new(completed/5);bar.Position=UDim2.new(.68,0,0,48);bar.Size=UDim2.new(.27,0,0,7);bar.Parent=header
 		label(header,completed.." / 5 SQUADS BEATEN",UDim2.new(.68,0,0,62),UDim2.new(.27,0,0,18),8,Theme.Colors.Silver,Theme.Fonts.Strong).TextXAlignment=Enum.TextXAlignment.Right
-		local squadGrid=Instance.new("Frame");squadGrid.BackgroundTransparency=1;squadGrid.Position=UDim2.fromOffset(0,132);squadGrid.Size=UDim2.new(1,0,1,-132);squadGrid.Parent=body
+		local squadGrid=Instance.new("Frame");squadGrid.BackgroundTransparency=1;squadGrid.Position=UDim2.fromOffset(0,132);squadGrid.Size=UDim2.new(1,0,0,648);squadGrid.Parent=body
 		local grid=Instance.new("UIGridLayout");grid.CellSize=UDim2.new(.5,-8,0,154);grid.CellPadding=UDim2.fromOffset(12,12);grid.Parent=squadGrid
 		for squad=1,5 do
 			local card=Panel.new({Name="AISquad"..squad});card.Parent=squadGrid
@@ -106,7 +106,7 @@ function Page.new(context:any):CanvasGroup
 			local play=Button.new({Text=beaten and"REPLAY"or"WATCH",Variant="Primary",Size=UDim2.fromOffset(118,34),OnActivated=function()
 				if not opponent or not homeTeam then context.Toast({Title="CAMPAIGN",Message="Campaign teams unavailable.",Kind="Error"});return end
 				local setup=table.clone(matchConfig.Setup)
-				setup.HomeTeamId=homeTeam.teamId;setup.AwayTeamId=opponent.teamId;setup.HomeKit="Home";setup.AwayKit=setup.HomeTeamId==setup.AwayTeamId and"Away"or"Away";setup.MatchType=setup.HomeTeamId==setup.AwayTeamId and"Friendly"or"Objective Match";setup.Difficulty=tier.Name=="Street Level"and"Amateur"or tier.Name=="Local League"and"Semi Pro"or tier.Name=="Regional Pro"and"Professional"or tier.Name=="National Class"and"World Class"or"Legendary"
+				setup.HomeTeamId=homeTeam.teamId;setup.AwayTeamId=opponent.teamId;setup.HomeKit="Home";setup.AwayKit=setup.HomeTeamId==setup.AwayTeamId and"Away"or"Away";setup.MatchType=setup.HomeTeamId==setup.AwayTeamId and"Friendly"or"Objective Match";setup.Difficulty=tier.Difficulty or"Professional"
 				setup.CampaignTeamId=teamId;setup.CampaignTier=selectedIndex;setup.CampaignReplay=beaten
 				local saved=MatchSetupService:Save(setup)
 				if not saved.Success then context.Toast({Title="CAMPAIGN",Message=saved.Message or"Could not save match setup.",Kind="Error"});return end

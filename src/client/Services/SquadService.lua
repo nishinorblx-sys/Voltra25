@@ -24,6 +24,7 @@ function SquadService:RemoveCardFromStarting(positionSlot:string):any return req
 function SquadService:LockCard(cardInstanceId:string,locked:boolean):any return request("LockCard",{CardInstanceId=cardInstanceId,Locked=locked}) end
 function SquadService:FavoriteCard(cardInstanceId:string,favorite:boolean):any return request("FavoriteCard",{CardInstanceId=cardInstanceId,Favorite=favorite}) end
 function SquadService:QuickSellCard(cardInstanceId:string):any return request("QuickSellCard",{CardInstanceId=cardInstanceId}) end
+function SquadService:BulkQuickSellCards(cardInstanceIds:any):any return request("BulkQuickSellCards",{CardInstanceIds=cardInstanceIds}) end
 function SquadService:CreateTransferListing(cardInstanceId:string,startPrice:number,duration:number):any return request("CreateTransferListing",{CardInstanceId=cardInstanceId,StartPrice=startPrice,Duration=duration})end
 function SquadService:GetTransferListings():any return request("GetTransferListings")end
 function SquadService:PlaceTransferBid(listingId:string,amount:number):any return request("PlaceTransferBid",{ListingId=listingId,Amount=amount})end

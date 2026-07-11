@@ -12,12 +12,21 @@ local function roleFor(position: string): string
 	return "ATTACKER"
 end
 
+local function basePlayerId(playerId:any):string
+	local value=tostring(playerId or "")
+	for _,suffix in{"_team_of_the_week","_rising_star","_voltra_hero","_champion","_event","_limited","_spark","_electrum","_hero","_storm","_mythic"}do
+		if string.sub(value,-#suffix)==suffix then return string.sub(value,1,#value-#suffix)end
+	end
+	return value
+end
+
 function CardInstanceFactory.Create(playerDefinition: any): any
 	local instanceId = "card_" .. HttpService:GenerateGUID(false)
 	local cardType = playerDefinition.cardType
 	return {
 		cardInstanceId = instanceId,
 		playerId = playerDefinition.playerId,
+		basePlayerId = playerDefinition.basePlayerId or basePlayerId(playerDefinition.playerId),
 		displayName = playerDefinition.displayName,
 		rarity = playerDefinition.rarity,
 		overall = playerDefinition.overall,
@@ -31,6 +40,7 @@ function CardInstanceFactory.Create(playerDefinition: any): any
 		-- Compatibility aliases for the current squad and mode UI.
 		Id = instanceId,
 		PlayerId = playerDefinition.playerId,
+		BasePlayerId = playerDefinition.basePlayerId or basePlayerId(playerDefinition.playerId),
 		Name = playerDefinition.displayName,
 		Rating = playerDefinition.overall,
 		Position = playerDefinition.bestPosition,
@@ -51,6 +61,7 @@ function CardInstanceFactory.Hydrate(instance: any): boolean
 	if not definition then return false end
 	instance.cardInstanceId = instance.cardInstanceId or instance.Id or ("card_" .. HttpService:GenerateGUID(false))
 	instance.playerId = definition.playerId
+	instance.basePlayerId = instance.basePlayerId or instance.BasePlayerId or basePlayerId(definition.playerId)
 	instance.displayName = definition.displayName
 	instance.rarity = definition.rarity
 	instance.overall = definition.overall
@@ -64,6 +75,7 @@ function CardInstanceFactory.Hydrate(instance: any): boolean
 	instance.Location = instance.location
 	instance.Id = instance.cardInstanceId
 	instance.PlayerId = definition.playerId
+	instance.BasePlayerId = instance.basePlayerId
 	instance.Name = definition.displayName
 	instance.Rating = definition.overall
 	instance.Position = definition.bestPosition
@@ -100,6 +112,8 @@ function CardInstanceFactory.GetDetails(instance: any): any?
 	details.CardType = details.cardType
 	details.Id = details.cardInstanceId
 	details.PlayerId = details.playerId
+	details.basePlayerId = instance.basePlayerId or instance.BasePlayerId or basePlayerId(details.playerId)
+	details.BasePlayerId = details.basePlayerId
 	details.Name = details.displayName
 	details.Rating = details.overall
 	details.Position = details.bestPosition

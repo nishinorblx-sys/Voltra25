@@ -11,6 +11,7 @@ local pendingRemote = remotes:WaitForChild(Config.PendingRemoteName)
 local claimRemote = remotes:WaitForChild(Config.ClaimRemoteName)
 
 local started = false
+local showing = false
 local Client = {}
 
 local function suppressDailyLogin(): boolean
@@ -22,17 +23,51 @@ end
 function Client.Start()
 	if started then return end
 	started = true
+	local playerGui = game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui")
+	local existing = playerGui:FindFirstChild("VTROpenDailyLoginReward")
+	if existing then existing:Destroy() end
+	local bindable = Instance.new("BindableEvent")
+	bindable.Name = "VTROpenDailyLoginReward"
+	bindable.Parent = playerGui
+	bindable.Event:Connect(function()
+		Client.Open()
+	end)
 	pendingRemote.OnClientEvent:Connect(function(payload)
 		if suppressDailyLogin() then return end
 		if type(payload) ~= "table" or type(payload.Rewards) ~= "table" then return end
 		if payload.Claimable ~= true then return end
-		Overlay.Show(payload, function()
-			local ok, result = pcall(function()
-				return claimRemote:InvokeServer()
-			end)
-			return ok and result or {Success = false, Message = "Claim failed."}
-		end)
+		Client.ShowPayload(payload)
 	end)
+end
+
+function Client.ShowPayload(payload: any)
+	if showing then return end
+	showing = true
+	Overlay.Show(payload, function()
+		local ok, result = pcall(function()
+			return claimRemote:InvokeServer()
+		end)
+		return ok and result or {Success = false, Message = "Claim failed."}
+	end)
+	local playerGui = game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui")
+	task.spawn(function()
+		while playerGui:FindFirstChild("VTRDailyLoginOverlay") do
+			task.wait(0.2)
+		end
+		showing = false
+	end)
+end
+
+function Client.Open()
+	if suppressDailyLogin() then return end
+	local ok, result = pcall(function()
+		return claimRemote:InvokeServer("Peek")
+	end)
+	if not ok or type(result) ~= "table" or result.Success ~= true or type(result.Data) ~= "table" then
+		warn("[Daily Rewards] Could not load daily reward status.")
+		return
+	end
+	Client.ShowPayload(result.Data)
 end
 
 Client.Start()

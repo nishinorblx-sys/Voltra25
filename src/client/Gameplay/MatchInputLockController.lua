@@ -22,15 +22,16 @@ function Controller:_setSprint(active: boolean)
 	self.Remote:FireServer({Type = "ReceiverAssistOverride", Active = active})
 end
 
-function Controller:Start()
+function Controller:Start(lockMouse: boolean?)
 	if self.Active then
 		return
 	end
 	self.Active = true
+	self.LockMouse = lockMouse == true
 	self.PreviousMouseBehavior = UserInputService.MouseBehavior
 	self.PreviousMouseIcon = UserInputService.MouseIconEnabled
-	UserInputService.MouseBehavior = Enum.MouseBehavior.Default
-	UserInputService.MouseIconEnabled = true
+	UserInputService.MouseBehavior = self.LockMouse and Enum.MouseBehavior.LockCenter or Enum.MouseBehavior.Default
+	UserInputService.MouseIconEnabled = not self.LockMouse
 	ContextActionService:BindActionAtPriority(ACTION, function(_, state)
 		if state == Enum.UserInputState.Begin and self.SprintEnabled then
 			self:_setSprint(not self.Sprinting)
@@ -39,8 +40,8 @@ function Controller:Start()
 	end, false, Enum.ContextActionPriority.High.Value + 100, Enum.KeyCode.LeftShift, Enum.KeyCode.RightShift)
 	RunService:BindToRenderStep(RENDER_STEP, Enum.RenderPriority.Input.Value + 1, function()
 		if self.Active then
-			UserInputService.MouseBehavior = Enum.MouseBehavior.Default
-			UserInputService.MouseIconEnabled = true
+			UserInputService.MouseBehavior = self.LockMouse and Enum.MouseBehavior.LockCenter or Enum.MouseBehavior.Default
+			UserInputService.MouseIconEnabled = not self.LockMouse
 		end
 	end)
 end

@@ -1,5 +1,6 @@
 --!strict
 local UserInputService = game:GetService("UserInputService")
+local Players = game:GetService("Players")
 local CameraRelativeMovement = require(script.Parent.CameraRelativeMovement)
 local Controller = {}
 Controller.__index = Controller
@@ -283,8 +284,12 @@ function Controller.new(pitchCFrame: CFrame, width: number, length: number, ball
 end
 
 function Controller:Start()
+	if self.Mode == "Roblox" then
+		self:_useRobloxCamera()
+		return
+	end
 	self.Camera.CameraType = Enum.CameraType.Scriptable
-	self.Camera.FieldOfView = PRESETS[self.Mode].Fov
+	self.Camera.FieldOfView = (PRESETS[self.Mode] and PRESETS[self.Mode].Fov) or 62
 	table.insert(self.InputConnections, UserInputService.InputChanged:Connect(function(input, processed)
 		if UserInputService:GetFocusedTextBox() then return end
 		if input.UserInputType ~= Enum.UserInputType.MouseWheel then return end
@@ -399,13 +404,35 @@ function Controller:_safeBallFocusPosition(rawPosition: Vector3, dt: number, goa
 end
 
 function Controller:SetMode(mode: string)
+	if self.ForcedMode and (self.ForcedMode == "Roblox" or self.ForcedMode == "PlayThirdPerson" or PRESETS[self.ForcedMode]) then
+		mode = self.ForcedMode
+	end
 	mode = CAMERA_ALIASES[mode] or mode
+	if mode == "Roblox" then
+		self.Mode = mode
+		self:_useRobloxCamera()
+		return
+	end
+	if mode == "PlayThirdPerson" then
+		self.Mode = mode
+		self.Camera.CameraType = Enum.CameraType.Scriptable
+		return
+	end
 	if PRESETS[mode] then
 		self.Mode = mode
 	end
 end
 
 function Controller:ApplySettings(settings: any)
+	if self.Mode == "Roblox" then
+		self:_useRobloxCamera()
+		return
+	end
+	if self.Mode == "PlayThirdPerson" then
+		self.Camera.CameraType = Enum.CameraType.Scriptable
+		self.Camera.FieldOfView = 62
+		return
+	end
 	local height = tonumber(settings.BroadcastHeight)
 	local zoom = tonumber(settings.BroadcastZoom)
 	local speed = tonumber(settings.CameraSpeed)
@@ -614,6 +641,38 @@ function Controller:_updatePro(dt: number, root: BasePart)
 	self.Camera.FieldOfView += (fov - self.Camera.FieldOfView) * (1 - math.exp(-dt / .28))
 end
 
+function Controller:_updatePlayThirdPerson(dt: number, root: BasePart)
+	local ownerName = tostring(self.Ball:GetAttribute("OwnerModel") or "")
+	local hasBall = self.Active and ownerName == self.Active.Name
+	local attackSign = attackingGoalSign(self.Active, tonumber(workspace:GetAttribute("VTRMatchHalf")) or 1)
+	local ballPosition = cameraBallFocusPosition(self.Ball, self.Active)
+	local goalTarget = self.PitchCFrame:PointToWorldSpace(Vector3.new(0, 5.5, attackSign * self.Length * .5))
+	local target = hasBall and goalTarget or (ballPosition + Vector3.new(0, 2.4, 0))
+	local flat = Vector3.new(target.X - root.Position.X, 0, target.Z - root.Position.Z)
+	if flat.Magnitude < 4 then
+		flat = Vector3.new(root.CFrame.LookVector.X, 0, root.CFrame.LookVector.Z)
+	end
+	if flat.Magnitude < .1 then
+		flat = self.PitchCFrame:VectorToWorldSpace(Vector3.new(0, 0, attackSign))
+		flat = Vector3.new(flat.X, 0, flat.Z)
+	end
+	local lookDirection = flat.Unit
+	local right = Vector3.new(self.PitchCFrame.RightVector.X, 0, self.PitchCFrame.RightVector.Z)
+	right = right.Magnitude > .1 and right.Unit or Vector3.xAxis
+	local wheelZoom = math.clamp(tonumber(self.WheelZoom) or 0, -5, 7)
+	local distance = math.clamp(34 + wheelZoom * 6, 14, 76)
+	local height = math.clamp(12 + wheelZoom * 1.4, 7, 24)
+	local focus = root.Position:Lerp(target, hasBall and .28 or .18) + Vector3.new(0, 4.2, 0)
+	local sideOffset = math.clamp(flat:Dot(right) * .06, -5, 5)
+	local desired = root.Position - lookDirection * distance + right * sideOffset + Vector3.new(0, height, 0)
+	desired = clearCameraObstruction(self.Active, self.Ball, focus, desired)
+	self.PlayCameraPosition = self.PlayCameraPosition and self.PlayCameraPosition:Lerp(desired, 1 - math.exp(-dt / .16)) or desired
+	self.PlayCameraTarget = self.PlayCameraTarget and self.PlayCameraTarget:Lerp(focus, 1 - math.exp(-dt / .12)) or focus
+	self.Camera.CameraType = Enum.CameraType.Scriptable
+	self.Camera.CFrame = CFrame.lookAt(self.PlayCameraPosition, self.PlayCameraTarget, self.PitchCFrame.UpVector)
+	self.Camera.FieldOfView += (math.clamp(66 + wheelZoom * .9, 56, 74) - self.Camera.FieldOfView) * (1 - math.exp(-dt / .18))
+end
+
 function Controller:_updateShootingFocus(dt: number, root: BasePart)
 	local half = tonumber(workspace:GetAttribute("VTRMatchHalf")) or 1
 	local attackSign = attackingGoalSign(self.Active, half)
@@ -655,6 +714,23 @@ end
 
 function Controller:SetActive(model: Model)
 	self.Active = model
+	if self.Mode == "Roblox" then
+		self:_useRobloxCamera()
+	end
+end
+
+function Controller:_useRobloxCamera()
+	local humanoid = self.Active and self.Active:FindFirstChildOfClass("Humanoid")
+	if humanoid then
+		self.Camera.CameraSubject = humanoid
+	end
+	local player = Players.LocalPlayer
+	if player then
+		player.CameraMinZoomDistance = 2
+		player.CameraMaxZoomDistance = 48
+	end
+	self.Camera.CameraType = Enum.CameraType.Custom
+	self.Camera.FieldOfView = 70
 end
 
 function Controller:Movement(input: Vector2): Vector3
@@ -757,6 +833,14 @@ function Controller:ReturnToLive()
 		return
 	end
 	self:EndCutscene(true)
+	if self.Mode == "Roblox" then
+		self:_useRobloxCamera()
+		return
+	end
+	if self.Mode == "PlayThirdPerson" then
+		self.Camera.CameraType = Enum.CameraType.Scriptable
+		return
+	end
 	self.SmoothedPresentationTarget = nil
 	local focus = self.Ball and self.Ball.Parent and cameraBallFocusPosition(self.Ball, self.Active) or self.PitchCFrame.Position
 	self.SafeBallPosition = focus
@@ -1124,6 +1208,10 @@ function Controller:_updateCutscene(dt: number): boolean
 end
 
 function Controller:Update(dt: number)
+	if self.Mode == "Roblox" then
+		self:_useRobloxCamera()
+		return
+	end
 	if self:_updateCutscene(dt) then
 		return
 	end
@@ -1137,6 +1225,10 @@ function Controller:Update(dt: number)
 	end
 	if self.ShootingFocus then
 		self:_updateShootingFocus(dt, root)
+		return
+	end
+	if self.Mode == "PlayThirdPerson" then
+		self:_updatePlayThirdPerson(dt, root)
 		return
 	end
 	if self.Mode == "Pro" then

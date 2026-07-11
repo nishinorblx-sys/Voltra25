@@ -1046,7 +1046,7 @@ function Service:Step(dt: number)
 		end
 		local sprinting = owner:GetAttribute("VTRSprinting") == true
 		local closeControl = owner:GetAttribute("VTRCloseControl") == true
-		local distance = Scaling.TouchDistance(tonumber(owner:GetAttribute("DRI")) or 60, sprinting) * (closeControl and 0.48 or 0.78)
+		local distance = Scaling.TouchDistance(tonumber(owner:GetAttribute("DRI")) or 60, sprinting) * (closeControl and 0.38 or 0.58)
 		local movement = owner:GetAttribute("VTRMoveDirection")
 		local touchDirection = typeof(movement) == "Vector3" and movement.Magnitude > 0.1 and movement.Unit or flat(ownerRoot.CFrame.LookVector)
 		local ownerVelocity = VTRShotPowerModel.ApplyToVelocity(Vector3.new(ownerRoot.AssemblyLinearVelocity.X, 0, ownerRoot.AssemblyLinearVelocity.Z), vtrRawShotPower or rawPower or shotPower or kickPower or chargePower or inputPower or power or Power)
@@ -1068,9 +1068,9 @@ function Service:Step(dt: number)
 		local boostUntil = tonumber(self.DribbleTouchBoostUntil) or 0
 		if boostUntil > now then
 			local alpha = math.clamp((boostUntil - now) / 0.16, 0, 1)
-			touchPulse = (sprinting and 2.35 or 1.75) * alpha
+			touchPulse = (sprinting and 1.35 or 0.85) * alpha
 		end
-		local lead = ownerVelocity.Magnitude > 6 and ownerVelocity.Unit:Dot(touchDirection) > 0.35 and math.clamp(ownerVelocity.Magnitude * 0.026, 0, sprinting and 0.65 or 0.36) or 0
+		local lead = ownerVelocity.Magnitude > 6 and ownerVelocity.Unit:Dot(touchDirection) > 0.35 and math.clamp(ownerVelocity.Magnitude * 0.018, 0, sprinting and 0.42 or 0.24) or 0
 		local target = ownerRoot.Position + touchDirection * (distance + lead + touchPulse) - Vector3.new(0, Config.Ball.DribbleVerticalOffset, 0)
 		if typeof(target) == "Vector3" then
 			target = VTRShotPowerModel.ApplyToTarget(self.Ball.Position, target, vtrRawShotPower or rawPower or shotPower or kickPower or chargePower or inputPower or power or Power)

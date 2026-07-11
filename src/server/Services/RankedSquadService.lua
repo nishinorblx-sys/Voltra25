@@ -24,6 +24,20 @@ local function findCard(profile:any,reference:any):any?
 	return nil
 end
 
+local function matchdayIdentity(card:any):string
+	if not card then return "" end
+	local name=string.lower(tostring(card.displayName or card.Name or card.shortName or card.ShortName or "")):gsub("%s+"," "):gsub("^%s+",""):gsub("%s+$","")
+	if name~=""then return "name:"..name end
+	local playerId=tostring(card.BasePlayerId or card.basePlayerId or card.playerId or card.PlayerId or "")
+	if playerId~=""then
+		for _,suffix in{"_team_of_the_week","_rising_star","_voltra_hero","_champion","_event","_limited","_spark","_electrum","_hero","_storm","_mythic"}do
+			if string.sub(playerId,-#suffix)==suffix then return string.sub(playerId,1,#playerId-#suffix)end
+		end
+		return playerId
+	end
+	return tostring(card.Id or card.cardInstanceId or "")
+end
+
 local function matchPlayer(card:any):any?
 	local definition=PlayerDatabase.Get(card.playerId or card.PlayerId or"");if not definition then return nil end
 	local result=table.clone(definition);result.appearance=table.clone(definition.appearance or card.appearance or{});result.mainStats=table.clone(card.mainStats or card.MainStats or definition.mainStats or{});result.cardInstanceId=card.cardInstanceId or card.Id;result.overall=tonumber(card.overall or card.Rating)or definition.overall;result.rarity=card.rarity or card.Rarity or definition.rarity;result.cardType=card.cardType or card.CardType or definition.cardType;return result
@@ -49,8 +63,8 @@ function Service:GetRoster(player:Player):(boolean,string,any?)
 	local profile=self.Profiles:GetProfile(player);if not profile then return false,"Profile unavailable.",nil end
 	local squad=profile.Squad or{};if next(squad)==nil and profile.SquadState and profile.SquadState.startingXI then squad=profile.SquadState.startingXI end;local starting={};local used:any={};local usedPlayers:any={}
 	local formationName=profile.Formation or"4-3-3";local shape=FormationConfig.Formations[formationName]or FormationConfig.Formations["4-3-3"]or{}
-	for _,slot in ORDER do local card=findCard(profile,squad[slot]);if not card then return false,"Your Ultimate Team Starting XI must have all 11 positions filled.",nil end;local instanceId=card.cardInstanceId or card.Id;local playerId=card.playerId or card.PlayerId or instanceId;local meta=profile.PlayerCardMeta and profile.PlayerCardMeta[instanceId];if meta and meta.Loan==true and(tonumber(meta.LoanMatchesRemaining)or 0)<=0 then return false,card.Name.." has no loan matches remaining.",nil end;if used[instanceId]then return false,"Your Ultimate Team lineup contains a duplicate card.",nil end;if usedPlayers[playerId]then return false,"You cannot use repeat players in the Starting XI or bench.",nil end;used[instanceId]=true;usedPlayers[playerId]=true;local playerData=matchPlayer(card);if not playerData then return false,"A player in your Starting XI could not be loaded.",nil end;local slotDefinition=shape[slot];playerData.FormationSlot=slot;playerData.PositionSlot=slot;playerData.SquadSlot=slot;if slotDefinition then playerData.FormationCoordinate={X=slotDefinition.X,Y=slotDefinition.Y};playerData.FormationLabel=slotDefinition.Label;playerData.ExpectedPosition=slotDefinition.Expected end;table.insert(starting,playerData)end
-	local bench={};for index=1,7 do local reference=profile.Bench and profile.Bench[index]or nil;if not reference and profile.SquadState and profile.SquadState.bench then reference=profile.SquadState.bench["slot"..index]end;local card=findCard(profile,reference);if card then local instanceId=card.cardInstanceId or card.Id;local playerId=card.playerId or card.PlayerId or instanceId;if usedPlayers[playerId]then return false,"You cannot use repeat players in the Starting XI or bench.",nil end;usedPlayers[playerId]=true;local playerData=matchPlayer(card);if playerData then table.insert(bench,playerData)end end end
+	for _,slot in ORDER do local card=findCard(profile,squad[slot]);if not card then return false,"Your Ultimate Team Starting XI must have all 11 positions filled.",nil end;local instanceId=card.cardInstanceId or card.Id;local playerId=matchdayIdentity(card);local meta=profile.PlayerCardMeta and profile.PlayerCardMeta[instanceId];if meta and meta.Loan==true and(tonumber(meta.LoanMatchesRemaining)or 0)<=0 then return false,card.Name.." has no loan matches remaining.",nil end;if used[instanceId]then return false,"Your Ultimate Team lineup contains a duplicate card.",nil end;if usedPlayers[playerId]then return false,"You cannot use repeat players in the Starting XI or bench.",nil end;used[instanceId]=true;usedPlayers[playerId]=true;local playerData=matchPlayer(card);if not playerData then return false,"A player in your Starting XI could not be loaded.",nil end;local slotDefinition=shape[slot];playerData.FormationSlot=slot;playerData.PositionSlot=slot;playerData.SquadSlot=slot;if slotDefinition then playerData.FormationCoordinate={X=slotDefinition.X,Y=slotDefinition.Y};playerData.FormationLabel=slotDefinition.Label;playerData.ExpectedPosition=slotDefinition.Expected end;table.insert(starting,playerData)end
+	local bench={};for index=1,7 do local reference=profile.Bench and profile.Bench[index]or nil;if not reference and profile.SquadState and profile.SquadState.bench then reference=profile.SquadState.bench["slot"..index]end;local card=findCard(profile,reference);if card then local playerId=matchdayIdentity(card);if usedPlayers[playerId]then return false,"You cannot use repeat players in the Starting XI or bench.",nil end;usedPlayers[playerId]=true;local playerData=matchPlayer(card);if playerData then table.insert(bench,playerData)end end end
 	local reserves={};for _,reference in profile.Reserves or{}do local card=findCard(profile,reference);local playerData=card and matchPlayer(card)or nil;if playerData then table.insert(reserves,playerData)end end
 	local team=identityTeam(player,profile,starting);local best={};for index=1,math.min(3,#team.starPlayers)do local star=team.starPlayers[index];table.insert(best,{playerId=star.playerId,displayName=star.displayName,shortName=star.shortName,overall=star.overall,bestPosition=star.bestPosition})end
 	return true,"Ultimate Team lineup ready.",{Team=team,StartingXI=starting,Bench=bench,Reserves=reserves,Formation=team.formation,BestPlayers=best}

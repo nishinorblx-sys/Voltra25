@@ -470,6 +470,41 @@ local function isTerminalWorldCup(state:any):boolean
 	return type(state)=="table"and(state.Stage=="Champion"or state.Stage=="Eliminated")
 end
 
+local function renderQuestPanel(parent:Instance,quests:{any},context:any,onClaimed:(any)->())
+	for _,child in parent:GetChildren()do if child:IsA("GuiObject")then child:Destroy()end end
+	text(parent,"QUESTS",UDim2.fromOffset(18,12),UDim2.new(.35,0,0,30),22,Theme.Colors.White,Theme.Fonts.Display)
+	text(parent,"World Cup achievements with pack rewards. Progress updates after played and simulated tournament matches.",UDim2.fromOffset(20,42),UDim2.new(1,-40,0,22),9,Theme.Colors.Muted,Theme.Fonts.Strong)
+	local total=#quests;local completed=0;local claimed=0
+	for _,quest in quests do if(tonumber(quest.Progress)or 0)>=(tonumber(quest.Target)or 1)then completed+=1 end;if quest.Claimed==true then claimed+=1 end end
+	local summary=text(parent,string.format("%d/%d COMPLETE  /  %d CLAIMED",completed,total,claimed),UDim2.new(1,-260,0,16),UDim2.fromOffset(240,28),11,Theme.Colors.Electric,Theme.Fonts.Strong);summary.TextXAlignment=Enum.TextXAlignment.Right
+	local list=Instance.new("ScrollingFrame");list.Name="WorldCupQuestList";list.BackgroundTransparency=1;list.BorderSizePixel=0;list.Position=UDim2.fromOffset(18,76);list.Size=UDim2.new(1,-36,1,-94);list.AutomaticCanvasSize=Enum.AutomaticSize.Y;list.CanvasSize=UDim2.new();list.ScrollBarThickness=4;list.ScrollBarImageColor3=Theme.Colors.Electric;list.Parent=parent
+	local layout=Instance.new("UIListLayout");layout.Padding=UDim.new(0,8);layout.SortOrder=Enum.SortOrder.LayoutOrder;layout.Parent=list
+	for index,quest in ipairs(quests)do
+		local progress=math.max(0,tonumber(quest.Progress)or 0);local target=math.max(1,tonumber(quest.Target)or 1);local done=progress>=target
+		local row=Instance.new("Frame");row.Name="Quest_"..tostring(quest.Id or index);row.BackgroundColor3=done and Color3.fromHex("172211")or Theme.Colors.Raised;row.BackgroundTransparency=done and .05 or .14;row.BorderSizePixel=0;row.Size=UDim2.new(1,-6,0,82);row.LayoutOrder=quest.Claimed==true and 3000+index or done and index or 1000+index;row.Parent=list;corner(row,7)
+		local stroke=Instance.new("UIStroke");stroke.Color=done and Theme.Colors.Electric or Theme.Colors.Border;stroke.Transparency=done and .22 or .45;stroke.Parent=row
+		text(row,string.upper(tostring(quest.Title or"QUEST")),UDim2.fromOffset(14,8),UDim2.new(.42,0,0,20),12,Theme.Colors.White,Theme.Fonts.Display)
+		text(row,string.upper(tostring(quest.Category or"WORLD CUP")),UDim2.new(.42,0,0,8),UDim2.new(.18,0,0,20),8,Theme.Colors.Muted,Theme.Fonts.Strong)
+		text(row,tostring(quest.Description or""),UDim2.fromOffset(14,30),UDim2.new(.58,-20,0,22),9,Theme.Colors.Silver,Theme.Fonts.Body)
+		local barBack=Instance.new("Frame");barBack.BackgroundColor3=Theme.Colors.Gunmetal;barBack.BorderSizePixel=0;barBack.Position=UDim2.fromOffset(14,60);barBack.Size=UDim2.new(.58,-20,0,8);barBack.Parent=row;corner(barBack,4)
+		local bar=Instance.new("Frame");bar.BackgroundColor3=done and Theme.Colors.Electric or Color3.fromHex("7B2DFF");bar.BorderSizePixel=0;bar.Size=UDim2.fromScale(math.clamp(progress/target,0,1),1);bar.Parent=barBack;corner(bar,4)
+		local prog=text(row,string.format("%d / %d",progress,target),UDim2.new(.58,-72,0,52),UDim2.fromOffset(70,22),9,done and Theme.Colors.Electric or Theme.Colors.Muted,Theme.Fonts.Strong);prog.TextXAlignment=Enum.TextXAlignment.Right
+		text(row,string.upper(tostring(quest.PackName or quest.PackId or"PACK")),UDim2.new(.62,0,0,14),UDim2.new(.17,0,0,22),10,Theme.Colors.Electric,Theme.Fonts.Strong)
+		local claim=Button.new({Text=quest.Claimed and"CLAIMED"or done and"CLAIM"or"LOCKED",Variant=done and quest.Claimed~=true and"Primary"or"Secondary",Size=UDim2.fromOffset(112,34),OnActivated=function()
+			if quest.Claimed==true or not done then return end
+			local result=MatchSetupService:ClaimWorldCupQuest(tostring(quest.Id or""))
+			if result and result.Success then
+				context.Toast({Title="WORLD CUP QUEST",Message=result.Message or"Quest reward claimed.",Kind="Reward"})
+				local newQuests=result.Data and result.Data.WorldCup and result.Data.WorldCup.Quests
+				if type(newQuests)=="table"then onClaimed(newQuests)end
+			else
+				context.Toast({Title="WORLD CUP QUEST",Message=result and(result.Message or result.Error)or"Quest claim failed.",Kind="Error"})
+			end
+		end})
+		claim.Position=UDim2.new(1,-126,.5,-17);claim.Parent=row;claim.Active=done and quest.Claimed~=true
+	end
+end
+
 local function showWorldCupMatchLoading(message:string?):ScreenGui
 	local playerGui=Players.LocalPlayer:WaitForChild("PlayerGui")
 	local old=playerGui:FindFirstChild("VTRWorldCupMatchLoading")
@@ -1175,18 +1210,52 @@ local detail=Instance.new("Frame");detail.AnchorPoint=Vector2.new(.5,.5);detail.
 end
 
 function Page.new(context:any):CanvasGroup
-	local group,scroll=PageBase.new("WorldCup",1800)
+	local group,scroll=PageBase.new("WorldCup",2340)
+	local cleanupEvent=Instance.new("BindableEvent")
+	cleanupEvent.Name="Cleanup"
+	cleanupEvent.Parent=group
+	local cleanupTasks:{any}={}
+	local function trackCleanup(taskObject:any)
+		table.insert(cleanupTasks,taskObject)
+		return taskObject
+	end
+	cleanupEvent.Event:Connect(function()
+		for _,taskObject in cleanupTasks do
+			if typeof(taskObject)=="RBXScriptConnection"then
+				taskObject:Disconnect()
+			elseif typeof(taskObject)=="Instance"then
+				taskObject:Destroy()
+			end
+		end
+		table.clear(cleanupTasks)
+	end)
 	PageBase.heading(scroll,"NATIONAL STAGE","WORLD CUP","Select a nation, reveal groups A-H, play your fixtures, and chase the trophy.")
 	local response=MatchSetupService:GetWorldCup()
 	local data=response and response.Data or{}
 	local state=data.State
 	local history=type(data.History)=="table"and data.History or{}
+	local quests=type(data.Quests)=="table"and data.Quests or{}
+	local titleCounts=type(data.TitleCounts)=="table"and data.TitleCounts or{}
 	local selected=state and state.SelectedCountry or WorldCupConfig.Countries[1]
 	local terminalState=isTerminalWorldCup(state)
 	local knockoutIntroSeen=state and state.Stage=="Knockout" and seenKnockoutIntroByRun[worldCupRunKey(state)]==true or false
 	local countryButtons:{[string]:TextButton}={}
+	local countryTrophyBadges:{[string]:GuiObject}={}
+	local countryTrophyCounts:{[string]:TextLabel}={}
 	local applyReturnedState:(any)->()=function(_newState:any)end
 	local applyEmptyWorldCupState:(any?)->()=function(_newHistory:any?)end
+	local refreshWorldCupFromServer:()->()=function()end
+	local function trophyCount(country:string):number
+		return math.max(0,math.floor(tonumber(titleCounts[country])or 0))
+	end
+	local function updateCountryTrophies()
+		for country,badge in countryTrophyBadges do
+			local count=trophyCount(country)
+			badge.Visible=count>0
+			local countLabel=countryTrophyCounts[country]
+			if countLabel then countLabel.Text=count>1 and tostring(count)or""end
+		end
+	end
 	local function maybeShowTournamentComplete(currentState:any)
 		if context.IsCurrentPage and not context.IsCurrentPage("WorldCup")then return end
 		if type(currentState)~="table"or not currentState.WorldCupWinner then return end
@@ -1445,7 +1514,11 @@ function Page.new(context:any):CanvasGroup
 	for index,country in ipairs(WorldCupConfig.Countries)do
 		local b=Instance.new("TextButton");b.BorderSizePixel=0;b.AutoButtonColor=not state;b.BackgroundColor3=country==selected and Theme.Colors.Electric or Theme.Colors.Raised;b.TextColor3=country==selected and Theme.Colors.Black or Theme.Colors.White;b.Text="";b.LayoutOrder=index;b.Parent=nationList;corner(b,6);countryButtons[country]=b
 		flag(b,country,UDim2.fromOffset(8,10),UDim2.fromOffset(48,34))
-		local countryLabel=text(b,string.upper(country),UDim2.fromOffset(64,0),UDim2.new(1,-72,1,0),10,country==selected and Theme.Colors.Black or Theme.Colors.White,Theme.Fonts.Strong)
+		local countryLabel=text(b,string.upper(country),UDim2.fromOffset(64,0),UDim2.new(1,-112,1,0),10,country==selected and Theme.Colors.Black or Theme.Colors.White,Theme.Fonts.Strong)
+		local trophy=Instance.new("Frame");trophy.Name="TitleTrophy";trophy.AnchorPoint=Vector2.new(1,.5);trophy.BackgroundColor3=Color3.fromHex("FFD24A");trophy.BorderSizePixel=0;trophy.Position=UDim2.new(1,-8,.5,0);trophy.Size=UDim2.fromOffset(34,28);trophy.Visible=trophyCount(country)>0;trophy.Parent=b;corner(trophy,6);countryTrophyBadges[country]=trophy
+		local trophyStroke=Instance.new("UIStroke");trophyStroke.Color=Color3.fromHex("FFF3A8");trophyStroke.Transparency=.15;trophyStroke.Parent=trophy
+		local trophyIcon=text(trophy,"🏆",UDim2.fromOffset(3,2),UDim2.fromOffset(16,22),14,Theme.Colors.Black,Theme.Fonts.Display);trophyIcon.TextXAlignment=Enum.TextXAlignment.Center
+		local trophyCountLabel=text(trophy,trophyCount(country)>1 and tostring(trophyCount(country))or"",UDim2.fromOffset(17,4),UDim2.fromOffset(13,18),12,Theme.Colors.Black,Theme.Fonts.Display);trophyCountLabel.TextXAlignment=Enum.TextXAlignment.Center;countryTrophyCounts[country]=trophyCountLabel
 		b.Activated:Connect(function()
 			if state then return end
 			selected=country;title.Text="READY FOR THE DRAW";selectedFlag.Image=WorldCupConfig.Flag(country);selectedFlag.ImageTransparency=0;selectedFlag.BackgroundColor3=Theme.Colors.Electric;updateNextFixtureDisplay(nil)
@@ -1457,6 +1530,7 @@ function Page.new(context:any):CanvasGroup
 		countryLabel.TextTruncate=Enum.TextTruncate.AtEnd
 	end
 	searchBox:GetPropertyChangedSignal("Text"):Connect(applyCountrySearch)
+	updateCountryTrophies()
 	applyCountrySearch()
 	local function setSelectorMode(activeState:any?)
 		local active=type(activeState)=="table"
@@ -1470,7 +1544,14 @@ function Page.new(context:any):CanvasGroup
 		end
 	end
 	setSelectorMode(state)
-	local groups=Instance.new("Frame");groups.Name="Groups";groups.BackgroundTransparency=1;groups.Position=UDim2.fromOffset(0,548);groups.Size=UDim2.new(1,0,0,318);groups.Parent=scroll
+	local questsPanel=Panel.new({Name="WorldCupQuests",Position=UDim2.fromOffset(0,548),Size=UDim2.new(1,0,0,500)});questsPanel.Parent=scroll
+	local rerenderQuests:any
+	rerenderQuests=function(newQuests:any?)
+		if type(newQuests)=="table"then quests=newQuests end
+		renderQuestPanel(questsPanel,quests,context,rerenderQuests)
+	end
+	rerenderQuests()
+	local groups=Instance.new("Frame");groups.Name="Groups";groups.BackgroundTransparency=1;groups.Position=UDim2.fromOffset(0,1072);groups.Size=UDim2.new(1,0,0,318);groups.Parent=scroll
 	local groupLayout=Instance.new("UIGridLayout");groupLayout.CellPadding=UDim2.fromOffset(12,12);groupLayout.CellSize=UDim2.new(.25,-9,0,146);groupLayout.SortOrder=Enum.SortOrder.LayoutOrder;groupLayout.Parent=groups
 	if state and state.Groups then
 		for _,groupName in ipairs(WorldCupConfig.GroupNames)do groupCard(groups,groupName,state.Groups[groupName],state.SelectedCountry,state.Standings)end
@@ -1479,11 +1560,11 @@ function Page.new(context:any):CanvasGroup
 		text(drawPreview,"GROUP DRAW PREVIEW",UDim2.fromOffset(18,16),UDim2.new(1,-36,0,32),22,Theme.Colors.White,Theme.Fonts.Display)
 		text(drawPreview,"Press START WORLD CUP to animate and reveal eight groups of four teams. Your nation is placed into the tournament and the road updates after every match.",UDim2.fromOffset(20,58),UDim2.new(1,-40,0,54),12,Theme.Colors.Silver,Theme.Fonts.Strong)
 	end
-	local tablePanel=Panel.new({Name="GroupTable",Position=UDim2.fromOffset(0,888),Size=UDim2.new(1,0,0,224)});tablePanel.Parent=scroll
+	local tablePanel=Panel.new({Name="GroupTable",Position=UDim2.fromOffset(0,1412),Size=UDim2.new(1,0,0,224)});tablePanel.Parent=scroll
 	renderGroupLeaderboard(tablePanel,state,state and state.SelectedCountry or selected)
-	local bracket=Panel.new({Name="Bracket",Position=UDim2.fromOffset(0,1132),Size=UDim2.new(1,0,0,430)});bracket.Parent=scroll
+	local bracket=Panel.new({Name="Bracket",Position=UDim2.fromOffset(0,1656),Size=UDim2.new(1,0,0,430)});bracket.Parent=scroll
 	renderBracket(bracket,state)
-	local historyPanel=Panel.new({Name="WorldCupHistory",Position=UDim2.fromOffset(0,1588),Size=UDim2.new(1,0,0,170)});historyPanel.Parent=scroll
+	local historyPanel=Panel.new({Name="WorldCupHistory",Position=UDim2.fromOffset(0,2112),Size=UDim2.new(1,0,0,170)});historyPanel.Parent=scroll
 	local function renderHistoryPanel()
 		for _,child in historyPanel:GetChildren()do if child:IsA("GuiObject")then child:Destroy()end end
 		text(historyPanel,"WORLD CUP HISTORY",UDim2.fromOffset(18,12),UDim2.new(1,-36,0,28),20,Theme.Colors.White,Theme.Fonts.Display)
@@ -1535,6 +1616,7 @@ function Page.new(context:any):CanvasGroup
 		renderBracket(bracket,nil)
 		historyPanel.Visible=true
 		renderHistoryPanel()
+		updateCountryTrophies()
 		for country,button in countryButtons do
 			local chosen=country==selected
 			button.AutoButtonColor=true
@@ -1576,8 +1658,44 @@ function Page.new(context:any):CanvasGroup
 			local label=button:FindFirstChildWhichIsA("TextLabel")
 			if label then label.TextColor3=chosen and Theme.Colors.Black or Theme.Colors.White end
 		end
+		local refreshed=MatchSetupService:GetWorldCup()
+		local refreshedQuests=refreshed and refreshed.Data and refreshed.Data.Quests
+		local refreshedTitleCounts=refreshed and refreshed.Data and refreshed.Data.TitleCounts
+		if type(refreshedTitleCounts)=="table"then titleCounts=refreshedTitleCounts;updateCountryTrophies()end
+		if type(refreshedQuests)=="table"and rerenderQuests then rerenderQuests(refreshedQuests)end
 		maybeShowTournamentComplete(newState)
 	end
+	refreshWorldCupFromServer=function()
+		local refreshed=MatchSetupService:GetWorldCup()
+		if not refreshed or not refreshed.Success or type(refreshed.Data)~="table"then return end
+		local refreshedState=refreshed.Data.State
+		if type(refreshed.Data.History)=="table"then history=refreshed.Data.History end
+		if type(refreshed.Data.Quests)=="table"and rerenderQuests then rerenderQuests(refreshed.Data.Quests)end
+		if type(refreshed.Data.TitleCounts)=="table"then titleCounts=refreshed.Data.TitleCounts;updateCountryTrophies()end
+		if type(refreshedState)=="table"then
+			applyReturnedState(refreshedState)
+		else
+			applyEmptyWorldCupState(history)
+		end
+	end
+	local refreshQueued=false
+	local function queueWorldCupRefresh()
+		if refreshQueued then return end
+		refreshQueued=true
+		task.delay(.25,function()
+			refreshQueued=false
+			if group.Parent and group.Visible then
+				refreshWorldCupFromServer()
+			end
+		end)
+	end
+	local localPlayer=Players.LocalPlayer
+	trackCleanup(localPlayer:GetAttributeChangedSignal("VTRWorldCupResultPending"):Connect(queueWorldCupRefresh))
+	trackCleanup(localPlayer:GetAttributeChangedSignal("VTRLastWorldCupCommittedAt"):Connect(queueWorldCupRefresh))
+	trackCleanup(group:GetPropertyChangedSignal("Visible"):Connect(function()
+		if group.Visible then queueWorldCupRefresh()end
+	end))
+	if group.Visible or localPlayer:GetAttribute("VTRWorldCupResultPending")==true then queueWorldCupRefresh()end
 	maybeShowTournamentComplete(state)
 	if state and state.Stage=="Knockout"and not knockoutIntroSeen then
 		task.defer(function()

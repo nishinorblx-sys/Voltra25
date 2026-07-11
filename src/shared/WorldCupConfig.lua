@@ -38,7 +38,7 @@ WorldCupConfig.Flags = {
 	["North Korea"]="rbxassetid://10567403397",["North Macedonia"]="rbxassetid://10903088952",["Northern Cyprus"]="rbxassetid://10926850631",["Norway"]="rbxassetid://10903093562",
 	["Oman"]="rbxassetid://10903094407",["Pakistan"]="rbxassetid://10903095296",["Palau"]="rbxassetid://10903818719",["Palestine"]="rbxassetid://10903096665",
 	["Panama"]="rbxassetid://10903097853",["Papua New Guinea"]="rbxassetid://10903324388",["Paraguay"]="rbxassetid://10903324905",["Peru"]="rbxassetid://10903325509",
-	["Philippines"]="rbxassetid://10903326165",["Poland"]="rbxassetid://10535404579",["Portugal"]="rbxassetid://10535407753",["Qatar"]="rbxassetid://10903326873",
+	["Philippines"]="rbxassetid://10903326165",["Poland"]="rbxassetid://10535404579",["Portugal"]="rbxassetid://10535407753",["Puerto Rico"]="rbxassetid://130402116565105",["Qatar"]="rbxassetid://10903326873",
 	["Republic of the Congo"]="rbxassetid://7069240143",["Romania"]="rbxassetid://10903327540",["Russia"]="rbxassetid://10903328010",["Rwanda"]="rbxassetid://10902987278",
 	["Saint Kitts and Nevis"]="rbxassetid://10903819699",["Saint Lucia"]="rbxassetid://10535197064",["Saint Vincent and the Grenadines"]="rbxassetid://10903329013",
 	["Samoa"]="rbxassetid://10903329653",["San Marino"]="rbxassetid://10903330570",["Saudi Arabia"]="rbxassetid://10903331903",["Senegal"]="rbxassetid://10903821445",
@@ -209,6 +209,7 @@ WorldCupConfig.KitColors = {
 	["Philippines"] = {Primary = Color3.fromRGB(0, 56, 168), Secondary = Color3.fromRGB(206, 17, 38)},
 	["Poland"] = {Primary = Color3.fromRGB(255, 255, 255), Secondary = Color3.fromRGB(220, 20, 60)},
 	["Portugal"] = {Primary = Color3.fromRGB(0, 102, 51), Secondary = Color3.fromRGB(170, 0, 0)},
+	["Puerto Rico"] = {Primary = Color3.fromRGB(0, 56, 168), Secondary = Color3.fromRGB(255, 255, 255)},
 	["Qatar"] = {Primary = Color3.fromRGB(140, 29, 64), Secondary = Color3.fromRGB(255, 255, 255)},
 	["Republic of the Congo"] = {Primary = Color3.fromRGB(0, 149, 67), Secondary = Color3.fromRGB(255, 222, 0)},
 	["Romania"] = {Primary = Color3.fromRGB(252, 209, 22), Secondary = Color3.fromRGB(0, 43, 127)},
@@ -487,14 +488,15 @@ WorldCupConfig.Rankings = {
 	["Bulgaria"] = 198,
 	["Chile"] = 199,
 	["Peru"] = 200,
-	["North Korea"] = 201,
-	["Abkhazia"] = 202,
-	["Artsakh"] = 203,
-	["South Ossetia"] = 204,
-	["Transnistria"] = 205,
-	["Somaliland"] = 206,
-	["Western Sahara"] = 207,
-	["SÃ£o TomÃ© and PrÃ­ncipe"] = 208
+	["Puerto Rico"] = 201,
+	["North Korea"] = 202,
+	["Abkhazia"] = 203,
+	["Artsakh"] = 204,
+	["South Ossetia"] = 205,
+	["Transnistria"] = 206,
+	["Somaliland"] = 207,
+	["Western Sahara"] = 208,
+	["SÃ£o TomÃ© and PrÃ­ncipe"] = 209
 }
 
 function WorldCupConfig.Ranking(country:string):number

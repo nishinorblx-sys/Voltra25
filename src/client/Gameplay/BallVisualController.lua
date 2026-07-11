@@ -183,19 +183,19 @@ function Controller:Update(dt: number, move: Vector3, sprinting: boolean)
 		local facing=Vector3.new(root.CFrame.LookVector.X,0,root.CFrame.LookVector.Z)
 		local direction=move.Magnitude>.1 and move.Unit or facing.Magnitude>.1 and facing.Unit or Vector3.zAxis
 		local rootVelocity=Vector3.new(root.AssemblyLinearVelocity.X,0,root.AssemblyLinearVelocity.Z)
-		local lead=rootVelocity.Magnitude>6 and rootVelocity.Unit:Dot(direction)>.35 and math.clamp(rootVelocity.Magnitude*.045,0,sprinting and 1.25 or .75)or 0
-		local distance=Config.Ball.DribbleDistance+(sprinting and 2.15 or .45)+lead
+		local lead=rootVelocity.Magnitude>6 and rootVelocity.Unit:Dot(direction)>.35 and math.clamp(rootVelocity.Magnitude*.024,0,sprinting and .55 or .32)or 0
+		local distance=Config.Ball.DribbleDistance+(sprinting and .72 or .18)+lead
 		local control=root.Position+direction*distance-Vector3.new(0,Config.Ball.DribbleVerticalOffset,0)
 		local radius=math.max(self.Radius,Config.Ball.Radius or .1)
 		local rootFlat=Vector3.new(root.Position.X,0,root.Position.Z)
 		local controlFlat=Vector3.new(control.X,0,control.Z)
-		local minSeparation=math.max(radius*1.65,2.15)
+		local minSeparation=math.max(radius*1.28,1.55)
 		if (controlFlat-rootFlat).Magnitude<minSeparation then
 			controlFlat=rootFlat+direction*minSeparation
 		end
-		control=Vector3.new(controlFlat.X,math.min(control.Y,root.Position.Y-.35),controlFlat.Z)
+		control=Vector3.new(controlFlat.X,math.min(control.Y,root.Position.Y-.72),controlFlat.Z)
 		local alpha=sprinting and .86 or .78
-		local ownedY=math.min(predictedPosition.Y+(control.Y-predictedPosition.Y)*alpha,root.Position.Y-.35)
+		local ownedY=math.min(predictedPosition.Y+(control.Y-predictedPosition.Y)*alpha,root.Position.Y-.72)
 		target=Vector3.new(target.X+(control.X-target.X)*alpha,ownedY,target.Z+(control.Z-target.Z)*alpha)
 		if (Vector3.new(authoritativePosition.X,0,authoritativePosition.Z)-Vector3.new(control.X,0,control.Z)).Magnitude < 9 then
 			self.PredictedPosition=target
@@ -205,9 +205,9 @@ function Controller:Update(dt: number, move: Vector3, sprinting: boolean)
 	if groundHit and groundHit.Normal.Y > 0.55 then
 		local height=(target-groundHit.Position):Dot(groundHit.Normal)
 		local desiredGroundHeight = self.Radius + 0.035
-		if glidingMotion and height < self.Radius + 1.15 then
+		if (glidingMotion or owns) and height < self.Radius + 1.45 then
 			local groundTarget = groundHit.Position + groundHit.Normal * desiredGroundHeight
-			local alpha = 1 - math.exp(-dt / (motionKind == "Dribble" and 0.035 or 0.06))
+			local alpha = 1 - math.exp(-dt / ((motionKind == "Dribble" or owns) and 0.025 or 0.06))
 			target = Vector3.new(target.X, target.Y + (groundTarget.Y - target.Y) * alpha, target.Z)
 			local vertical = predictedVelocity:Dot(groundHit.Normal)
 			if math.abs(vertical) < 8 then

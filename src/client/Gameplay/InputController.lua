@@ -43,6 +43,10 @@ function Controller:SetAutoSwitch(mode: string?)
 	self.AutoSwitch = mode == "Off" and "Off" or mode == "Instant" and "Instant" or "Assisted"
 end
 
+function Controller:SetManualPassAutoSwitch(mode: string?)
+	self.ManualPassAutoSwitch = mode == "Off" and "Off" or "Closest"
+end
+
 function Controller:SetReceiverAssist(mode: string?)
 	self.ReceiverAssist = mode == "Off" and "Off" or mode == "Assisted" and "Assisted" or "Light"
 end
@@ -54,6 +58,7 @@ function Controller:SetControlsSettings(settings:any)
 	self.ChangePlayerKey=keyFromSetting(settings.ChangePlayerKey or settings.SwitchPlayerKey or settings.SwitchKey,Enum.KeyCode.Q)
 	self.TackleKey=keyFromSetting(settings.TackleKey,Enum.KeyCode.E)
 	self.SlideTackleKey=keyFromSetting(settings.SlideTackleKey or settings.SlideKey,Enum.KeyCode.F)
+	self:SetManualPassAutoSwitch(settings.ManualPassAutoSwitch or "Closest")
 end
 
 function Controller:SetSuppressed(suppressed:boolean)
@@ -169,7 +174,7 @@ function Controller:_chargeEnd(kind: string)
 		local passType=forcedMode or mobileMode or manualLobbed and"ManualLobbed"or manual and"Manual"or lofted and"Lofted"or through and"Through"or"Ground"
 		local isMobile = self.MobileControls ~= nil
 		local isManual = passType == "Manual" or passType == "ManualLobbed" or manual or manualLobbed or self:MobileManualAim("Pass")
-		local autoSwitch = isMobile and "Instant" or (isManual and "Off" or self.AutoSwitch)
+		local autoSwitch = isMobile and "Instant" or (isManual and (self.ManualPassAutoSwitch or "Off") or self.AutoSwitch)
 		local receiverAssist = isMobile and "Assisted" or (isManual and "Off" or self.ReceiverAssist)
 		self:_commitAction({Type = "Pass", Direction = aim.Direction, AimPosition = aim.Position, TargetModel = isManual and nil or aim.TargetModel, Charge = charge, PassType = passType, AutoSwitch = autoSwitch, ReceiverAssist = receiverAssist})
 	end
@@ -220,7 +225,9 @@ end
 
 function Controller:_switchPlayer()
 	local aim=self:_aim("Switch")
-	self.Remote:FireServer({Type = "Switch",TargetModel=aim.TargetModel,AimPosition=aim.Position})
+	local gamepad=UserInputService:GetLastInputType().Name:find("Gamepad")~=nil
+	local closestToBall=UserInputService.TouchEnabled or gamepad
+	self.Remote:FireServer({Type = "Switch",TargetModel=closestToBall and nil or aim.TargetModel,AimPosition=aim.Position,ClosestToBall=closestToBall})
 end
 
 

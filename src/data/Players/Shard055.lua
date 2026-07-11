@@ -1,5 +1,5 @@
 --!strict
--- Generated from VTRPlayers_OriginalNames_FictionalClubs.csv. Do not edit by hand.
+-- Generated from VTRPlayers_With_Special_Versions.csv. Do not edit by hand.
 return {
  {"021abbb7684b864a","Callum Charles Johnson","Johnson","England","Bradfoon Metro","Crown League","RB","RB",62,62,375000,12000,656000,"Right",3,2,"Lean (185+)","","Silver","Base",35306423,28,188,71,"","Fair","Oval","Intense","Thin","Bridge","Focused","ShortMessy","Red","None","None","Lean","Tall","Focused",false,"None","None","R6_VTR_1","ThreeQuarterBust","PointSky","PowerWalk",66,43,58,63,62,64,69,63,46,45,40,42,39,61,63,54,62,51,49,68,58,61,61,65,58,62,60,67,64,71,63,57,69,53,62,14,13,9,9,6},
  {"0dac063bea8beccb","Silas Ostrzinski","Ostrzinski","Germany","Borussen Dortmuez Iian","Apex Division","GK","GK",62,76,850000,1000,1800000,"Right",2,1,"Lean (185+)","","Silver","Base",229377595,21,198,93,"","Porcelain","Oval","Intense","Soft","Rounded","Confident","LongStraight","Red","None","None","Lean","VeryTall","Confident",false,"None","None","R6_VTR_1","CalmPortrait","KneeSlide","QuickStep",24,15,36,32,34,59,26,23,14,14,20,15,12,44,39,39,15,39,36,14,27,33,36,60,47,22,9,48,62,60,57,55,52,39,63,65,70,58,63,71},

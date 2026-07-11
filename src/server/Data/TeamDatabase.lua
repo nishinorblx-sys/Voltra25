@@ -174,6 +174,7 @@ for _, country in countries do
 end
 
 local function playerSummaryList(source: { any }): { any }
+	source = source or {}
 	local result = {}; for _, player in source do table.insert(result, compactPlayer(player)) end; return result
 end
 

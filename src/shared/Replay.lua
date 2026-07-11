@@ -132,6 +132,34 @@ function Replay:_disconnectRecording()
 end
 
 function Replay:_snapshot(time: number)
+	local known = {}
+	for _, instance in self.ActiveParts do
+		known[instance] = true
+	end
+	for _, model in self.ActiveModels do
+		if model and model.Parent then
+			local collected = {}
+			collectRecordable(model, self.IgnoredModels, collected)
+			for _, instance in collected do
+				if not known[instance] then
+					known[instance] = true
+					table.insert(self.ActiveParts, instance)
+					instance.Archivable = true
+					local clone = instance:Clone()
+					clone.Name = instance.Name .. "_Replay"
+					ghost(clone)
+					self.ActiveClones[#self.ActiveParts] = clone
+					local currentState = stateOf(instance, self.Settings.Rounding)
+					for _, oldFrame in self.Frames do
+						oldFrame.States[#self.ActiveParts] = currentState
+					end
+					if self.ReplayVisible then
+						clone.Parent = self.Settings.ReplayLocation
+					end
+				end
+			end
+		end
+	end
 	local frame = {Time = round(time, self.Settings.Rounding), States = {}}
 	for index, instance in self.ActiveParts do
 		frame.States[index] = stateOf(instance, self.Settings.Rounding)

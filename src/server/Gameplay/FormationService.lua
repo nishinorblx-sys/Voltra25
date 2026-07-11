@@ -2,6 +2,14 @@
 local Service = {}
 
 local FORMATIONS = {
+	["5V5"] = {
+		{Name = "GK", Role = "GK", X = 0, Z = 0.86},
+		{Name = "CB", Role = "CB", X = 0, Z = 0.48},
+		{Name = "LMID", Role = "CM", X = -0.35, Z = 0.08},
+		{Name = "RMID", Role = "CM", X = 0.35, Z = 0.08},
+		{Name = "LCF", Role = "ST", X = -0.26, Z = -0.52},
+		{Name = "RCF", Role = "ST", X = 0.26, Z = -0.52},
+	},
 	["4-3-3"] = {
 		{Name = "GK", Role = "GK", X = 0, Z = 0.88},
 		{Name = "LB", Role = "Fullback", X = -0.72, Z = 0.57},

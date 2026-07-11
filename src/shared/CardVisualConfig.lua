@@ -34,9 +34,14 @@ CardVisualConfig.Types = table.freeze({
 	["Team of the Week"] = visual("050505", "1F1A04", "EACB4F", "B7FF1A", "Chevron", "Electric", 0.2, "Pulse", "BurningElectric"),
 	["Rising Star"] = visual("10243B", "22103A", "78D8FF", "B7FF1A", "Rays", "Double", 0.24, "Sweep", "Starburst"),
 	["Voltra Hero"] = visual("151006", "4B160D", "FF784F", "B7FF1A", "Lightning", "Electric", 0.3, "Pulse", "EmberVolt"),
+	Hero = visual("151006", "4B160D", "FF784F", "B7FF1A", "Lightning", "Electric", 0.3, "Pulse", "EmberVolt"),
 	Champion = visual("271B02", "070707", "FFE084", "FFCB45", "Crown", "Double", 0.36, "Sweep", "GoldFloodlight"),
 	Event = visual("071B18", "172344", "55F2D2", "B7FF1A", "Prism", "Electric", 0.3, "Pulse", "PrismSparks"),
+	Spark = visual("071B18", "172344", "55F2D2", "B7FF1A", "Prism", "Electric", 0.3, "Pulse", "PrismSparks"),
+	Electrum = visual("120E22", "061B20", "80F7FF", "E8D27A", "Circuit", "Electric", 0.34, "Sweep", "PrismSparks"),
 	Limited = visual("290B18", "090909", "FF5C91", "B7FF1A", "Facet", "Electric", 0.4, "Lightning", "MagentaLightning"),
+	Storm = visual("020403", "162503", "B7FF1A", "57FFB0", "Lightning", "Electric", 0.58, "Lightning", "BurningElectric"),
+	Mythic = visual("020302", "102405", "B7FF1A", "9FFF00", "Lightning", "Electric", 0.72, "Lightning", "MagentaLightning"),
 })
 
 function CardVisualConfig.Get(rarity: string?, cardType: string?): any

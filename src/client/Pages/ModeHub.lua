@@ -196,6 +196,15 @@ function ModeHub.new(context: any, service: any): CanvasGroup
 				local titleLabel = PageBase.text(card, cardData.Title, UDim2.fromOffset(18, 39), UDim2.new(1, textInset, 0, 30), 17, Theme.Colors.White, Theme.Fonts.Display)
 				local subtitleLabel = PageBase.text(card, cardData.Subtitle, UDim2.fromOffset(18, 72), UDim2.new(1, textInset, 0, 25), 10, Theme.Colors.Silver, Theme.Fonts.Strong)
 				local metaLabel = PageBase.text(card, cardData.Meta, UDim2.fromOffset(18, 100), UDim2.new(1, -36, 0, 22), 8, Theme.Colors.Muted, Theme.Fonts.Body)
+				if cardData.CountdownUntil then
+					task.spawn(function()
+						while metaLabel.Parent do
+							local remaining=math.max(0,math.floor((tonumber(cardData.CountdownUntil)or os.time())-os.time()))
+							metaLabel.Text=string.format("NEXT CARD IN %02d:%02d:%02d",math.floor(remaining/3600),math.floor((remaining%3600)/60),remaining%60)
+							task.wait(1)
+						end
+					end)
+				end
 				if spec.Id == "Store" then
 					titleLabel.TextScaled = true
 					titleLabel.TextWrapped = true

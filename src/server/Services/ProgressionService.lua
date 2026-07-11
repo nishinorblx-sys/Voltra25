@@ -8,6 +8,7 @@ local EconomyConfig = require(ReplicatedStorage.VTR.Shared.EconomyConfig)
 local ObjectiveService = require(script.Parent.ObjectiveService)
 local DeveloperAccessService=require(script.Parent.DeveloperAccessService)
 local PlayerDatabase=require(script.Parent.Parent.Data.PlayerDatabase)
+local StarCardOfferService=require(script.Parent.StarCardOfferService)
 
 local ProgressionService = {}
 ProgressionService.__index = ProgressionService
@@ -43,6 +44,7 @@ function ProgressionService:GetClientData(player: Player): any?
 		Objectives = ObjectiveService.Serialize(profile.Objectives),
 		Ranked = copy(profile.Ranked),
 		RankedRun = copy(profile.RankedRun),
+		MatchStats = copy(profile.MatchStats),
 		RankedRewards = copy(profile.RankedRewards),
 		RewardsInbox = copy(profile.RewardsInbox),
 		PackInventory = copy(profile.PackInventory),
@@ -56,6 +58,7 @@ function ProgressionService:GetClientData(player: Player): any?
 		ProClubsPlayer=copy(profile.ProClubsPlayer),
 		CareerSaveSlots = copy(profile.CareerSaveSlots),
 		StoreOwnership = copy(profile.StoreOwnership),
+		StarCard = copy(StarCardOfferService.GetOffer(profile, player.UserId)),
 		StoreCatalog = { Packs = copy(Catalog.Packs), CoinBundles = copy(Catalog.CoinBundles), VoltraPointBundles = copy(Catalog.VoltraPointBundles), GamePasses = copy(Catalog.GamePasses), DeveloperProducts = copy(Catalog.DeveloperProducts), Kits = copy(Catalog.Kits), Stadiums = copy(Catalog.Stadiums), Cosmetics = copy(Catalog.Cosmetics),Consumables=copy(Catalog.Consumables) },
 		Onboarding = copy(profile.Onboarding),
 		DeveloperAccess=DeveloperAccessService.IsAuthorized(player),

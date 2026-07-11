@@ -107,7 +107,7 @@ function Controller:_startRecording()
 		self.Replay:Destroy()
 	end
 	self.Replay = Replay.New({
-		FrameFrequency = 12,
+		FrameFrequency = 3,
 		Rounding = 3,
 		MaxReplayTime = BUFFER_SECONDS,
 	}, self.ActiveModels, self.StaticModels)

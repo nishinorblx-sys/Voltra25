@@ -70,8 +70,11 @@ function Service:Step()
 			local horizontal=v-up*vertical
 			self.Ball.AssemblyLinearVelocity=horizontal+up*correctedVertical
 		end
-		if height > self.Radius + 0.45 and self.Ball.AssemblyLinearVelocity.Magnitude < 2.25 then
-			self.Ball.CFrame += up * math.clamp(self.Radius - height, -0.35, 0)
+		local ownerName = tostring(self.Ball:GetAttribute("OwnerModel") or "")
+		local hoverAllowance = ownerName ~= "" and 0.18 or 0.32
+		local slowEnough = self.Ball.AssemblyLinearVelocity.Magnitude < (ownerName ~= "" and 12 or 4.5)
+		if height > self.Radius + hoverAllowance and slowEnough then
+			self.Ball.CFrame += up * math.clamp(self.Radius - height, ownerName ~= "" and -0.75 or -0.45, 0)
 			local v=self.Ball.AssemblyLinearVelocity
 			local vertical=v:Dot(up)
 			if math.abs(vertical)<2.5 then self.Ball.AssemblyLinearVelocity=v-up*vertical end

@@ -494,7 +494,7 @@ function Service:Start(player: Player, kind: string, restartTeam: string, locati
 		local goalSign=setPieceGoalSign(restartTeam)
 		if (self.Half or 1)>=2 then goalSign=-goalSign end
 		local spot=penaltySpotFromMarker(goalSign,self.World.PitchCFrame,self.World.Length)
-		taker=chooseBest(self.Teams[restartTeam],"Finishing","SHO")
+		taker=(forcedTaker and forcedTaker.Parent and forcedTaker:GetAttribute("VTRTeam")==restartTeam and not isKeeper(forcedTaker) and forcedTaker) or chooseBest(self.Teams[restartTeam],"Finishing","SHO")
 		arrangePenalty(self.Teams,restartTeam,spot,self.World.PitchCFrame,self.World.Width,self.World.Length,taker,self.Half,penaltyBoxFromMarker(goalSign))
 		location=spot
 	elseif kind=="FreeKick"then

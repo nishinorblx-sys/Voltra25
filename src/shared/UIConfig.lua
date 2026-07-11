@@ -7,9 +7,11 @@ UIConfig.Navigation = {
 	{ Id = "UltimateTeam", Label = "SQUAD BUILDER", Icon = "XI", Order = 2 },
 	{ Id = "WorldCup", Label = "WORLD CUP", Icon = "WC", Order = 4 },
 	{ Id = "Play", Label = "CAMPAIGN", Icon = "C", Order = 5 },
-	{ Id = "Ranked", Label = "RANKED", Icon = "R", Order = 6 },
-	{ Id = "Inventory", Label = "INVENTORY", Icon = "I", Order = 7 },
-	{ Id = "Store", Label = "STORE", Icon = "S", Order = 8 },
+	{ Id = "MyPlayer", Label = "MY PLAYER", Icon = "MP", Order = 5.5 },
+	{ Id = "FiveVFive", Label = "PLAY", Icon = "▶︎", Order = 6 },
+	{ Id = "Ranked", Label = "RANKED", Icon = "R", Order = 7 },
+	{ Id = "Inventory", Label = "INVENTORY", Icon = "I", Order = 8 },
+	{ Id = "Store", Label = "STORE", Icon = "S", Order = 9 },
 }
 
 UIConfig.Home = {
@@ -30,6 +32,8 @@ UIConfig.Pages = {
 	Store = { Kicker = "VOLTRA MARKET", Title = "STORE", Subtitle = "Buy coins with Robux placeholders, then spend coins on sealed player packs." },
 	WorldCup = { Kicker = "NATIONAL STAGE", Title = "WORLD CUP", Subtitle = "Pick a nation, draw groups, qualify, and chase the trophy." },
 	Play = { Kicker = "OFFLINE CAMPAIGN", Title = "CAMPAIGN", Subtitle = "Seven difficulty ladders. Five squads each. Win packs and unlock the next tier." },
+	MyPlayer = { Kicker = "PLAY MODE", Title = "MY PLAYER", Subtitle = "Build your Voltra footballer for online PLAY lobbies." },
+	FiveVFive = { Kicker = "ONLINE MODE", Title = "5V5", Subtitle = "Queue ten players, teleport together, and play assigned 70 OVR outfield slots with AI goalkeepers." },
 	Ranked = { Kicker = "7-WIN TOURNAMENT", Title = "RANKED", Subtitle = "Enter with your current squad. Seven wins earns a Mythic Pack; three losses ends the run." },
 }
 

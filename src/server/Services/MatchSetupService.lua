@@ -8,7 +8,9 @@ local RunService=game:GetService("RunService")
 local TeleportService=game:GetService("TeleportService")
 local MatchConfig=require(ReplicatedStorage.VTR.Shared.MatchConfig)
 local VTRLiteConfig=require(ReplicatedStorage.VTR.Shared.VTRLiteConfig)
+local Catalog=require(ReplicatedStorage.VTR.Shared.Catalog)
 local WorldCupConfig=require(ReplicatedStorage.VTR.Shared.WorldCupConfig)
+local WorldCupQuestConfig=require(ReplicatedStorage.VTR.Shared.WorldCupQuestConfig)
 local FormationConfig=require(ReplicatedStorage.VTR.Shared.FormationConfig)
 local TeamDatabase=require(script.Parent.Parent.Data.TeamDatabase)
 local PlayerDatabase=require(script.Parent.Parent.Data.PlayerDatabase)
@@ -17,8 +19,7 @@ local Service={};Service.__index=Service
 
 
 local function contains(list:any,value:any):boolean return table.find(list,value)~=nil end
-local PACK_FALLBACKS={rare_pack="elite_pack",legendary_pack="champion_pack",icon_pack="hero_pack"}
-local function packIdFor(id:string?):string return PACK_FALLBACKS[id or""]or id or"bronze_pack"end
+local function packIdFor(id:string?):string return Catalog.Packs[id or""] and (id :: string) or"bronze_pack"end
 local function stadium(id:string):any?for _,item in MatchConfig.Stadiums do if item.Id==id then return item end end;return nil end
 local function kit(team:any,name:string):any?return team and team.kits[name]or nil end
 local function colorDistance(first:string,second:string):number local a,b=Color3.fromHex(first),Color3.fromHex(second);return math.abs(a.R-b.R)+math.abs(a.G-b.G)+math.abs(a.B-b.B)end
@@ -28,6 +29,52 @@ local function colorToHex(color:any,fallback:string):string
 	end
 	if type(color)=="string"and color~=""then return color:gsub("#","")end
 	return fallback
+end
+local CONTINENTS={
+	Europe={["England"]=true,["France"]=true,["Spain"]=true,["Germany"]=true,["Italy"]=true,["Portugal"]=true,["Netherlands"]=true,["Belgium"]=true,["Croatia"]=true,["Switzerland"]=true,["Denmark"]=true,["Austria"]=true,["Sweden"]=true,["Turkey"]=true,["Ukraine"]=true,["Serbia"]=true,["Wales"]=true,["Poland"]=true,["Hungary"]=true,["Russia"]=true,["Norway"]=true,["Czech Republic"]=true,["Scotland"]=true,["Slovakia"]=true,["Greece"]=true,["Romania"]=true,["Slovenia"]=true,["Ireland"]=true,["Finland"]=true,["Bosnia and Herzegovina"]=true,["Albania"]=true,["North Macedonia"]=true,["Georgia"]=true,["Montenegro"]=true,["Iceland"]=true,["Luxembourg"]=true,["Armenia"]=true,["Belarus"]=true,["Kosovo"]=true,["Estonia"]=true,["Latvia"]=true,["Lithuania"]=true,["Cyprus"]=true,["Moldova"]=true,["Malta"]=true,["Andorra"]=true,["Liechtenstein"]=true,["San Marino"]=true,["Monaco"]=true,["Vatican City"]=true,["Bulgaria"]=true},
+	["South America"]={["Argentina"]=true,["Brazil"]=true,["Uruguay"]=true,["Colombia"]=true,["Ecuador"]=true,["Venezuela"]=true,["Paraguay"]=true,["Bolivia"]=true,["Chile"]=true,["Peru"]=true,["Suriname"]=true,["Guyana"]=true},
+	Africa={["Morocco"]=true,["Senegal"]=true,["Egypt"]=true,["Nigeria"]=true,["Algeria"]=true,["Tunisia"]=true,["Ivory Coast"]=true,["Cameroon"]=true,["Mali"]=true,["South Africa"]=true,["Burkina Faso"]=true,["Democratic Republic of the Congo"]=true,["Ghana"]=true,["Cabo Verde"]=true,["Uganda"]=true,["Guinea"]=true,["Equatorial Guinea"]=true,["Zambia"]=true,["Benin"]=true,["Libya"]=true,["Angola"]=true,["Kenya"]=true,["Mozambique"]=true,["Madagascar"]=true,["Mauritania"]=true,["Guinea-Bissau"]=true,["Namibia"]=true,["Comoros"]=true,["Tanzania"]=true,["Sierra Leone"]=true,["Zimbabwe"]=true,["Malawi"]=true,["Gambia"]=true,["Republic of the Congo"]=true,["Sudan"]=true,["Rwanda"]=true,["Niger"]=true,["Niamey"]=true,["Liberia"]=true,["Ethiopia"]=true,["Burundi"]=true,["Botswana"]=true,["Eswatini"]=true,["Lesotho"]=true,["South Sudan"]=true,["Central African Republic"]=true,["Chad"]=true,["Mauritius"]=true,["Seychelles"]=true,["Djibouti"]=true,["Eritrea"]=true,["Somalia"]=true,["Togo"]=true,["Gabon"]=true},
+	Asia={["Japan"]=true,["Iran"]=true,["South Korea"]=true,["Saudi Arabia"]=true,["Iraq"]=true,["Qatar"]=true,["Uzbekistan"]=true,["United Arab Emirates"]=true,["Jordan"]=true,["Bahrain"]=true,["China"]=true,["Oman"]=true,["Syria"]=true,["Palestine"]=true,["Thailand"]=true,["Kuwait"]=true,["Vietnam"]=true,["Lebanon"]=true,["Tajikistan"]=true,["Kyrgyzstan"]=true,["Kazakhstan"]=true,["India"]=true,["Indonesia"]=true,["Malaysia"]=true,["Philippines"]=true,["Singapore"]=true,["Turkmenistan"]=true,["Maldives"]=true,["Pakistan"]=true,["Myanmar"]=true,["Yemen"]=true,["Taiwan"]=true,["Cambodia"]=true,["Laos"]=true,["Nepal"]=true,["Bangladesh"]=true,["Sri Lanka"]=true,["Mongolia"]=true,["Brunei"]=true,["Timor-Leste"]=true,["Bhutan"]=true,["North Korea"]=true},
+	CONCACAF={["Mexico"]=true,["United States"]=true,["Canada"]=true,["Panama"]=true,["Costa Rica"]=true,["Jamaica"]=true,["Honduras"]=true,["El Salvador"]=true,["Haiti"]=true,["Trinidad and Tobago"]=true,["Guatemala"]=true,["Nicaragua"]=true,["Dominican Republic"]=true,["Cuba"]=true,["Bahamas"]=true,["Barbados"]=true,["Belize"]=true,["Antigua and Barbuda"]=true,["Dominica"]=true,["Grenada"]=true,["Saint Lucia"]=true,["Saint Kitts and Nevis"]=true,["Saint Vincent and the Grenadines"]=true,["Puerto Rico"]=true},
+	Oceania={["Australia"]=true,["New Zealand"]=true,["Papua New Guinea"]=true,["Fiji"]=true,["Solomon Islands"]=true,["Vanuatu"]=true,["Samoa"]=true,["Tonga"]=true,["Kiribati"]=true,["Tuvalu"]=true,["Nauru"]=true,["Micronesia"]=true,["Marshall Islands"]=true,["Palau"]=true},
+}
+local FORMER_CHAMPIONS={Argentina=true,Brazil=true,France=true,England=true,Germany=true,Italy=true,Spain=true,Uruguay=true}
+local HOST_NATION="United States"
+local DEFENDING_CHAMPION="Argentina"
+local function continentOf(country:string):string
+	for continent,set in CONTINENTS do if set[country]then return continent end end
+	return"Other"
+end
+local function questProfile(profile:any):any
+	profile.WorldCupQuests=type(profile.WorldCupQuests)=="table"and profile.WorldCupQuests or{Progress={},Claimed={}}
+	profile.WorldCupQuests.Progress=type(profile.WorldCupQuests.Progress)=="table"and profile.WorldCupQuests.Progress or{}
+	profile.WorldCupQuests.Claimed=type(profile.WorldCupQuests.Claimed)=="table"and profile.WorldCupQuests.Claimed or{}
+	profile.WorldCupQuests.Career=type(profile.WorldCupQuests.Career)=="table"and profile.WorldCupQuests.Career or{ManagedNations={},ManagedContinents={},TitleNations={},TitleContinents={},SemiContinents={},ContinentsDefeated={}}
+	for _,key in{"ManagedNations","ManagedContinents","TitleNations","TitleContinents","SemiContinents","ContinentsDefeated","NationTitles","TierTitles","SemiNationsByContinent","FinalNationsNever"}do
+		profile.WorldCupQuests.Career[key]=type(profile.WorldCupQuests.Career[key])=="table"and profile.WorldCupQuests.Career[key]or{}
+	end
+	return profile.WorldCupQuests
+end
+local COUNTRY_ALIASES={Czechia="Czech Republic",["Trinidad & Tobago"]="Trinidad and Tobago",["Curaçao"]="Curacao",Curacao="Curacao",USA="United States",US="United States"}
+local function canonicalCountry(country:any):string return COUNTRY_ALIASES[tostring(country or"")]or tostring(country or"")end
+local function listHas(list:any,value:any):boolean
+	local target=canonicalCountry(value)
+	for _,candidate in type(list)=="table"and list or{}do if canonicalCountry(candidate)==target then return true end end
+	return false
+end
+local function continentHas(list:any,value:string):boolean
+	for _,candidate in type(list)=="table"and list or{}do if tostring(candidate)==value then return true end end
+	return false
+end
+local function questContinent(title:any):string?
+	local lower=string.lower(tostring(title or""))
+	if string.find(lower,"european",1,true)then return"Europe"end
+	if string.find(lower,"south american",1,true)then return"South America"end
+	if string.find(lower,"african",1,true)then return"Africa"end
+	if string.find(lower,"asian",1,true)then return"Asia"end
+	if string.find(lower,"concacaf",1,true)or string.find(lower,"north or central american",1,true)then return"CONCACAF"end
+	if string.find(lower,"oceanian",1,true)then return"Oceania"end
+	return nil
 end
 function Service.new(profiles:any,publish:(Player,string,any)->(),progression:any,runtime:any,rankedSquads:any?)
 	local self=setmetatable({Profiles=profiles,Publish=publish,Progression=progression,Runtime=runtime,RankedSquads=rankedSquads,SoloTeleportConnections={},WorldCupTeleportLocks={},WorldCupStartLocks={}},Service)
@@ -46,28 +93,188 @@ function Service:_isCampaignMatch(setup:any):boolean
 	return type(setup)=="table" and type(setup.CampaignTeamId)=="string" and setup.CampaignTeamId~=""
 end
 
+function Service:_worldCupMatchFixtureFromEnded(state:any,ended:any):any?
+	local pending=ended and ended.WorldCupPendingMatch or state.PendingMatch
+	local snapshot=type(pending)=="table"and pending or ended and ended.WorldCupFixtureSnapshot
+	local fixture=type(snapshot)=="table"and snapshot or state.NextFixture
+	if type(fixture)~="table"then return nil end
+	if state.Stage=="Group"then
+		self:_worldCupEnsureFixtureDays(state)
+		local groupName=tostring(fixture.Group or state.UserGroup or"")
+		local matchday=tonumber(fixture.Matchday)
+		for _,candidate in ipairs(state.Fixtures and state.Fixtures[groupName]or{})do
+			if candidate.Home==fixture.Home and candidate.Away==fixture.Away and (not matchday or tonumber(candidate.Matchday)==matchday)then
+				return candidate
+			end
+		end
+	elseif state.Knockout and type(state.Knockout.Fixtures)=="table"then
+		local round=tonumber(fixture.Round)or tonumber(state.Knockout.Round)
+		for _,candidate in ipairs(state.Knockout.Fixtures)do
+			if candidate.Home==fixture.Home and candidate.Away==fixture.Away and (not round or tonumber(candidate.Round)==round)then
+				return candidate
+			end
+		end
+	end
+	return self:_worldCupCanonicalFixture(state,fixture)
+end
+
+function Service:_worldCupPendingMatchId(player:Player,state:any,fixture:any):string
+	local parts={
+		tostring(player and player.UserId or 0),
+		tostring(state and state.CreatedAt or 0),
+		tostring(fixture and fixture.Home or ""),
+		tostring(fixture and fixture.Away or ""),
+		tostring(fixture and (fixture.Group or fixture.Round or "") or ""),
+		tostring(fixture and (fixture.Matchday or "") or ""),
+		tostring(os.time()),
+	}
+	return table.concat(parts,"|")
+end
+
+function Service:_worldCupStorePendingMatch(player:Player,profile:any,state:any,fixture:any,opponent:string):any?
+	if type(profile)~="table"or type(state)~="table"or type(fixture)~="table"then return nil end
+	local pending={
+		Id=self:_worldCupPendingMatchId(player,state,fixture),
+		Home=fixture.Home,
+		Away=fixture.Away,
+		Group=fixture.Group,
+		Matchday=fixture.Matchday,
+		Round=fixture.Round,
+		Stage=state.Stage,
+		SelectedCountry=state.SelectedCountry,
+		Opponent=opponent,
+		RuntimeHomeIsSelected=true,
+		StartedAt=os.time(),
+	}
+	profile.WorldCupPendingMatch=pending
+	state.PendingMatch=pending
+	state.PendingMatchId=pending.Id
+	if self.Profiles.Save then self.Profiles:Save(player,true)end
+	player:SetAttribute("VTRWorldCupPendingId",pending.Id)
+	return pending
+end
+
+function Service:_worldCupReadEndedScore(ended:any):(number?,number?)
+	local home=tonumber(ended and ended.World and ended.World.HomeScore and ended.World.HomeScore.Value)or tonumber(ended and(ended.HomeScore or ended.homeScore or ended.HomeGoals or ended.homeGoals or ended.Home or ended.home))
+	local away=tonumber(ended and ended.World and ended.World.AwayScore and ended.World.AwayScore.Value)or tonumber(ended and(ended.AwayScore or ended.awayScore or ended.AwayGoals or ended.awayGoals or ended.Away or ended.away))
+	return home,away
+end
+
 function Service:_commitWorldCupPlayedMatch(player:Player,ended:any):boolean
+	ended=type(ended)=="table"and ended or{}
 	if ended.WorldCupResultCommitted==true then return false end
 	local current=self.Profiles:GetProfile(player);if not current or type(current.WorldCup)~="table"then return false end
-	local currentFixture=current.WorldCup.NextFixture
+	local pending=type(ended.WorldCupPendingMatch)=="table"and ended.WorldCupPendingMatch or type(current.WorldCupPendingMatch)=="table"and current.WorldCupPendingMatch or type(current.WorldCup.PendingMatch)=="table"and current.WorldCup.PendingMatch or nil
+	if pending then ended.WorldCupPendingMatch=pending end
+	local currentFixture=self:_worldCupMatchFixtureFromEnded(current.WorldCup,ended)
 	if type(currentFixture)~="table"then return false end
-	local resultKey=tostring(currentFixture.Home or"").."|"..tostring(currentFixture.Away or"").."|"..tostring(currentFixture.Matchday or current.WorldCup.Stage or"")
-	if currentFixture.UserPlayedResultKey==resultKey then return false end
-	currentFixture.UserPlayedResultKey=resultKey
-	local selectedCountry=tostring(current.WorldCup.SelectedCountry or"")
-	local homeScore=ended.World.HomeScore.Value;local awayScore=ended.World.AwayScore.Value
-	if currentFixture.Home~=selectedCountry then
-		homeScore,awayScore=awayScore,homeScore
+	local fixtureKey=tostring(currentFixture.Home or"").."|"..tostring(currentFixture.Away or"").."|"..tostring(currentFixture.Group or current.WorldCup.UserGroup or"").."|"..tostring(currentFixture.Matchday or currentFixture.Round or current.WorldCup.Stage or"")
+	local resultKey=tostring(pending and pending.Id or fixtureKey)
+	current.WorldCup.ResultLedger=type(current.WorldCup.ResultLedger)=="table"and current.WorldCup.ResultLedger or{}
+	if current.WorldCup.ResultLedger[resultKey]==true or(currentFixture.UserPlayedResultKey==resultKey and currentFixture.Played==true)or currentFixture.Played==true then
+		current.WorldCup.NextFixture=currentFixture
+		if current.WorldCup.Stage=="Group"then
+			self:_worldCupRepairGroupNextFixture(current.WorldCup)
+		else
+			self:_worldCupPrepareNextKnockout(current.WorldCup)
+		end
+		current.WorldCupPendingMatch=nil
+		current.WorldCup.PendingMatch=nil
+		current.WorldCup.PendingMatchId=nil
+		ended.WorldCupResultCommitted=true
+		player:SetAttribute("VTRWorldCupPendingId",nil)
+		if self.Profiles.Save then self.Profiles:Save(player,true)end
+		if self.Publish then self.Publish(player,"WorldCup",current.WorldCup)end
+		return false
 	end
+	local selectedCountry=tostring((pending and pending.SelectedCountry)or current.WorldCup.SelectedCountry or"")
+	local readHomeScore,readAwayScore=self:_worldCupReadEndedScore(ended)
+	if readHomeScore==nil or readAwayScore==nil then return false end
+	current.WorldCup.NextFixture=currentFixture
+	local userGoalsFor,userGoalsAgainst=readHomeScore,readAwayScore
+	local homeScore,awayScore=readHomeScore,readAwayScore
+	if pending and pending.RuntimeHomeIsSelected~=false then
+		if currentFixture.Home==selectedCountry then
+			homeScore=userGoalsFor
+			awayScore=userGoalsAgainst
+		else
+			homeScore=userGoalsAgainst
+			awayScore=userGoalsFor
+		end
+	elseif currentFixture.Home~=selectedCountry then
+		homeScore=readAwayScore
+		awayScore=readHomeScore
+	end
+	currentFixture.UserPlayedResultKey=resultKey
+	current.WorldCup.ResultLedger[resultKey]=true
 	current.WorldCup.PlayedMatches=(tonumber(current.WorldCup.PlayedMatches)or 0)+1
-	current.WorldCup.UserGoalsFor=(tonumber(current.WorldCup.UserGoalsFor)or 0)+homeScore
-	current.WorldCup.UserGoalsAgainst=(tonumber(current.WorldCup.UserGoalsAgainst)or 0)+awayScore
+	current.WorldCup.UserGoalsFor=(tonumber(current.WorldCup.UserGoalsFor)or 0)+userGoalsFor
+	current.WorldCup.UserGoalsAgainst=(tonumber(current.WorldCup.UserGoalsAgainst)or 0)+userGoalsAgainst
+	local userResult=(homeScore==awayScore and"Draw")or(currentFixture.Home==selectedCountry and(homeScore>awayScore and"Win"or"Loss")or(awayScore>homeScore and"Win"or"Loss"))
+	if self.Profiles.RecordMatchResult then
+		self.Profiles:RecordMatchResult(player,"WorldCup",resultKey,userResult,{Country=selectedCountry,Opponent=tostring(pending and pending.Opponent or""),Stage=current.WorldCup.Stage,Score=tostring(userGoalsFor).."-"..tostring(userGoalsAgainst)})
+	end
 	self:_worldCupAdvanceAfterMatch(current.WorldCup,homeScore,awayScore)
+	current.WorldCupPendingMatch=nil
+	current.WorldCup.PendingMatch=nil
+	current.WorldCup.PendingMatchId=nil
 	self:_archiveWorldCup(current)
 	if self.Profiles.Save then self.Profiles:Save(player,true)end
 	self.Publish(player,"Progression",self.Progression:GetClientData(player))
+	self.Publish(player,"WorldCup",current.WorldCup)
+	player:SetAttribute("VTRLastWorldCupCommittedAt",os.time())
+	player:SetAttribute("VTRLastWorldCupCommittedScore",tostring(readHomeScore).."-"..tostring(readAwayScore))
+	player:SetAttribute("VTRWorldCupPendingId",nil)
+	if self._clearWorldCupRuntimeResult then self:_clearWorldCupRuntimeResult(player)end
 	ended.WorldCupResultCommitted=true
 	return true
+end
+
+function Service:_grantWorldCupMatchReward(player:Player,ended:any):any?
+	if ended.WorldCupRewardGranted==true then return ended.WorldCupRewardPayload end
+	local homeScore=tonumber(ended and ended.World and ended.World.HomeScore and ended.World.HomeScore.Value)or 0
+	local awayScore=tonumber(ended and ended.World and ended.World.AwayScore and ended.World.AwayScore.Value)or 0
+	local won=homeScore>awayScore
+	local drew=homeScore==awayScore
+	local payload={
+		Title=won and"WORLD CUP WIN"or drew and"WORLD CUP DRAW"or"WORLD CUP MATCH",
+		Coins=won and 900 or drew and 550 or 400,
+		XP=won and 160 or drew and 110 or 80,
+	}
+	local reward=self.Progression and self.Progression.GrantMatchRewards and self.Progression:GrantMatchRewards(player,payload)or payload
+	ended.WorldCupRewardGranted=true
+	ended.WorldCupRewardPayload=reward
+	player:SetAttribute("VTRLastWorldCupRewardAt",os.time())
+	return reward
+end
+
+function Service:_clearWorldCupRuntimeResult(player:Player)
+	player:SetAttribute("VTRWorldCupResultPending",nil)
+	player:SetAttribute("VTRWorldCupResultHomeScore",nil)
+	player:SetAttribute("VTRWorldCupResultAwayScore",nil)
+	player:SetAttribute("VTRWorldCupResultPendingId",nil)
+	player:SetAttribute("VTRWorldCupResultAt",nil)
+end
+
+function Service:_consumeWorldCupRuntimeResult(player:Player,profile:any?):boolean
+	if player:GetAttribute("VTRWorldCupResultPending")~=true then return false end
+	local current=profile or self.Profiles:GetProfile(player)
+	if not current or type(current.WorldCup)~="table"then return false end
+	local homeScore=tonumber(player:GetAttribute("VTRWorldCupResultHomeScore"))
+	local awayScore=tonumber(player:GetAttribute("VTRWorldCupResultAwayScore"))
+	if homeScore==nil or awayScore==nil then return false end
+	local pending=type(current.WorldCupPendingMatch)=="table"and current.WorldCupPendingMatch or type(current.WorldCup.PendingMatch)=="table"and current.WorldCup.PendingMatch or nil
+	local ended={
+		HomeScore=homeScore,
+		AwayScore=awayScore,
+		WorldCupPendingMatch=pending,
+		WorldCupFixtureSnapshot=pending or current.WorldCup.NextFixture,
+	}
+	local committed=self:_commitWorldCupPlayedMatch(player,ended)
+	if committed or ended.WorldCupResultCommitted==true then
+		self:_clearWorldCupRuntimeResult(player)
+	end
+	return committed
 end
 
 function Service:_commitCampaignWin(player:Player,teamId:string,tierIndex:number,replay:boolean?):any?
@@ -89,16 +296,18 @@ function Service:_commitCampaignWin(player:Player,teamId:string,tierIndex:number
 	if cleared>=5 and math.clamp(tonumber(tierIndex)or 1,1,#VTRLiteConfig.CampaignDifficulties)>=(tonumber(progress.UnlockedDifficulty)or 1)then progress.UnlockedDifficulty=math.min(#VTRLiteConfig.CampaignDifficulties,(tonumber(tierIndex)or 1)+1)end
 	local firstTierClear=cleared>=5
 	local tierClearKey="campaign_tier_clear_"..tostring(tierId)
-	local voltraGranted=false
+	local bonusGranted=false
+	local bonusPackId=packIdFor(tier and tier.TierClearPackId or"voltra_pack")
+	local bonusPackName=tier and tier.TierClearReward or"Voltra Pack"
 	if firstTierClear and progress.RewardsClaimed[tierClearKey]~=true then
 		progress.RewardsClaimed[tierClearKey]=true
-		if self.Progression and self.Progression.Inventory and self.Progression.Inventory:AddPack(player,"voltra_pack","voltra_pack","CampaignTierClear",1)then packsGranted+=1;voltraGranted=true end
-		if player and typeof(player)=="Instance"and player:IsA("Player")then VTRPendingPackAnimation.Queue(player,"voltra_pack")end
+		if self.Progression and self.Progression.Inventory and self.Progression.Inventory:AddPack(player,bonusPackId,bonusPackName,"CampaignTierClear",1)then packsGranted+=1;bonusGranted=true end
+		if player and typeof(player)=="Instance"and player:IsA("Player")then VTRPendingPackAnimation.Queue(player,bonusPackId)end
 	end
 	if self.Profiles.Save then self.Profiles:Save(player,true)end
 	self.Publish(player,"Progression",self.Progression:GetClientData(player))
 	if alreadyCompleted and packsGranted<=0 then return nil end
-	return{Title=firstTierClear and"CAMPAIGN TIER CLEAR"or"CAMPAIGN CLEAR",Coins=0,XP=0,Pack=(tier and tier.Reward or"Campaign Pack")..(voltraGranted and" + Voltra Pack"or""),BonusPack=voltraGranted and"VOLTRA PACK"or nil,VoltraPack=voltraGranted,LeagueClear=voltraGranted,PackId=packId,Packs=packsGranted}
+	return{Title=firstTierClear and"CAMPAIGN TIER CLEAR"or"CAMPAIGN CLEAR",Coins=0,XP=0,Pack=(tier and tier.Reward or"Campaign Pack")..(bonusGranted and(" + "..bonusPackName)or""),BonusPack=bonusGranted and string.upper(bonusPackName)or nil,VoltraPack=bonusPackId=="voltra_pack",LeagueClear=bonusGranted,PackId=packId,BonusPackId=bonusGranted and bonusPackId or nil,Packs=packsGranted}
 end
 
 function Service:_returnedMatchIsWin(ended:any,setup:any):boolean
@@ -124,6 +333,28 @@ function Service:_returnedMatchIsWin(ended:any,setup:any):boolean
 	return false
 end
 
+function Service:_campaignResultFromScores(home:number?,away:number?,side:string?):string?
+	if home==nil or away==nil then return nil end
+	side=tostring(side or"Home")
+	if home==away then return"Draw"end
+	if side=="Away"then return away>home and"Win"or"Loss"end
+	return home>away and"Win"or"Loss"
+end
+
+function Service:_recordCampaignMatchResult(player:Player,setup:any,ended:any,result:string?):boolean
+	if not self.Profiles or not self.Profiles.RecordMatchResult or not self:_isCampaignMatch(setup)then return false end
+	local home=tonumber(ended and ended.World and ended.World.HomeScore and ended.World.HomeScore.Value)or tonumber(ended and(ended.HomeScore or ended.homeScore or ended.HomeGoals or ended.homeGoals or ended.Home or ended.home))
+	local away=tonumber(ended and ended.World and ended.World.AwayScore and ended.World.AwayScore.Value)or tonumber(ended and(ended.AwayScore or ended.awayScore or ended.AwayGoals or ended.awayGoals or ended.Away or ended.away))
+	local side=tostring(ended and(ended.PlayerSide or ended.playerSide or ended.UserSide or ended.userSide)or setup.PlayerSide or setup.UserSide or"Home")
+	result=result or self:_campaignResultFromScores(home,away,side)
+	if not result then return false end
+	local resultId=tostring(ended and(ended.ResultId or ended.MatchId)or setup.ResultId or setup.MatchId or "")
+	if resultId==""then
+		resultId=table.concat({tostring(player.UserId),tostring(setup.CampaignTeamId or""),tostring(setup.CampaignTier or 1),tostring(setup.SavedAt or 0),tostring(home or""),tostring(away or"")},"|")
+	end
+	return self.Profiles:RecordMatchResult(player,"Campaign",resultId,result,{TeamId=setup.CampaignTeamId,Tier=setup.CampaignTier,Score=tostring(home or 0).."-"..tostring(away or 0)})
+end
+
 function Service:_commitReturnedSoloMatch(player:Player,profile:any):boolean
 	if not player or not profile then
 		return false
@@ -144,8 +375,14 @@ function Service:_commitReturnedSoloMatch(player:Player,profile:any):boolean
 	local matchType=tostring(setup.MatchType or setup.MatchMode or setup.Mode or setup.Type or "")
 	local teleportMode=tostring(setup.TeleportMatchMode or setup.ReturnMatchMode or "")
 
-	if setup.WorldCup==true or matchType=="WorldCup" or matchType=="World Cup" or teleportMode=="WorldCupSolo" or matchType=="WorldCupSolo" then
+	if type(profile.WorldCupPendingMatch)=="table"then ended.WorldCupPendingMatch=ended.WorldCupPendingMatch or profile.WorldCupPendingMatch end
+	if setup.WorldCup==true or type(profile.WorldCupPendingMatch)=="table"or matchType=="WorldCup" or matchType=="World Cup" or teleportMode=="WorldCupSolo" or matchType=="WorldCupSolo" then
 		changed=self:_commitWorldCupPlayedMatch(player,ended) or changed
+	end
+
+	if self:_isCampaignMatch(setup) then
+		local resultChanged=self:_recordCampaignMatchResult(player,setup,ended,nil)
+		changed=resultChanged or changed
 	end
 
 	if self:_isCampaignMatch(setup) and self:_returnedMatchIsWin(ended,setup) then
@@ -486,13 +723,230 @@ local function buildWorldCupNationalRoster(country:string):any
 	return copyDeep(roster)
 end
 
+local function stageValue(state:any):number
+	if type(state)~="table"then return 0 end
+	if state.Stage=="Champion"then return 5 end
+	if state.Stage=="Knockout"then return math.clamp(tonumber(state.Knockout and state.Knockout.Round)or 1,1,4)end
+	if state.Stage=="Eliminated"and state.Knockout then return math.clamp(tonumber(state.Knockout.Round)or 1,1,4)end
+	return 0
+end
+
+local function userFixtureStats(state:any):any
+	local selected=tostring(state and state.SelectedCountry or"")
+	local stats={Wins=0,Losses=0,KnockoutWins=0,GoalsFor=tonumber(state and state.UserGoalsFor)or 0,GoalsAgainst=tonumber(state and state.UserGoalsAgainst)or 0,FiveGoalMatch=false,ExtraTimeWins=0,ShootoutWins=0,KnockoutCleanSheets=true,RegulationKnockout=true,OneGoalKnockout=true,ContinentsDefeated={},ContinentsDefeatedCounts={},DefeatedNations={},SameOpponentWins={},OwnContinentWins=0,FormerChampionWins=0,TopFiveKnockoutStreak=0,MaxTopFiveKnockoutStreak=0,HostWin=false,HostBigWin=false,DefendingChampionWin=false,TopSeedR32Win=false,FormerChampionR32Win=false}
+	local ownContinent=continentOf(selected)
+	local function visit(fixture:any)
+		if type(fixture)~="table"or fixture.Played~=true or(fixture.Home~=selected and fixture.Away~=selected)then return end
+		local homeGoals=tonumber(fixture.HomeGoals)or 0;local awayGoals=tonumber(fixture.AwayGoals)or 0
+		local forGoals=fixture.Home==selected and homeGoals or awayGoals;local againstGoals=fixture.Home==selected and awayGoals or homeGoals
+		local opponent=fixture.Home==selected and tostring(fixture.Away or"")or tostring(fixture.Home or"")
+		local winner=tostring(fixture.Winner or(homeGoals>awayGoals and fixture.Home or awayGoals>homeGoals and fixture.Away or""))
+		local won=winner==selected or(winner==""and forGoals>againstGoals)
+		if won then stats.Wins+=1 else stats.Losses+=1 end
+		stats.FiveGoalMatch=stats.FiveGoalMatch or forGoals>=5
+		if won then
+			local opponentContinent=continentOf(opponent)
+			stats.ContinentsDefeated[opponentContinent]=true
+			stats.ContinentsDefeatedCounts[opponentContinent]=(tonumber(stats.ContinentsDefeatedCounts[opponentContinent])or 0)+1
+			stats.DefeatedNations[opponent]=true
+			stats.SameOpponentWins[opponent]=(tonumber(stats.SameOpponentWins[opponent])or 0)+1
+			if opponentContinent==ownContinent then stats.OwnContinentWins+=1 end
+		end
+		local round=tonumber(fixture.Round)or 0
+		if round>0 then
+			if won then
+				stats.KnockoutWins+=1
+				if fixture.ExtraTime==true then stats.ExtraTimeWins+=1 end
+				if fixture.Penalties==true then stats.ShootoutWins+=1 end
+				if opponent==HOST_NATION then stats.HostWin=true;if forGoals-againstGoals>=3 then stats.HostBigWin=true end end
+				if opponent==DEFENDING_CHAMPION then stats.DefendingChampionWin=true end
+				if FORMER_CHAMPIONS[opponent]then stats.FormerChampionWins+=1 end
+				if round==1 and WorldCupConfig.Ranking(opponent)<=8 then stats.TopSeedR32Win=true end
+				if round==1 and FORMER_CHAMPIONS[opponent]then stats.FormerChampionR32Win=true end
+				if WorldCupConfig.Ranking(opponent)<=5 then stats.TopFiveKnockoutStreak+=1;stats.MaxTopFiveKnockoutStreak=math.max(stats.MaxTopFiveKnockoutStreak,stats.TopFiveKnockoutStreak)else stats.TopFiveKnockoutStreak=0 end
+			else stats.TopFiveKnockoutStreak=0 end
+			if againstGoals>0 then stats.KnockoutCleanSheets=false end
+			if fixture.ExtraTime==true or fixture.Penalties==true then stats.RegulationKnockout=false end
+			if math.abs(forGoals-againstGoals)~=1 then stats.OneGoalKnockout=false end
+		end
+	end
+	for _,fixtures in state and state.Fixtures or{}do for _,fixture in fixtures do visit(fixture)end end
+	for _,round in state and state.Knockout and state.Knockout.History or{}do for _,fixture in round.Fixtures or{}do visit(fixture)end end
+	for _,fixture in state and state.Knockout and state.Knockout.Fixtures or{}do visit(fixture)end
+	if stats.KnockoutWins<=0 then stats.KnockoutCleanSheets=false;stats.RegulationKnockout=false;stats.OneGoalKnockout=false end
+	return stats
+end
+
+function Service:_worldCupQuestValue(profile:any,definition:any):number
+	local state=type(profile.WorldCup)=="table"and profile.WorldCup or nil
+	local quests=questProfile(profile);local career=quests.Career;local metric=tostring(definition.Metric or"")
+	local stats=state and userFixtureStats(state)or userFixtureStats(nil)
+	local titleWon=state and state.Stage=="Champion"and state.WorldCupWinner==state.SelectedCountry
+	local selected=tostring(state and state.SelectedCountry or"")
+	local selectedContinent=continentOf(selected)
+	local requiredStage=tonumber(definition.StageValue)or 0
+	if metric=="bestStage"then local required=definition.Id=="quarterfinal_quality"and 2 or definition.Id=="final_four"and 3 or definition.Id=="one_match_away"and 4 or definition.Id=="world_champions"and 5 or 1;return stageValue(state)>=required and 1 or 0
+	elseif metric=="titleWithNation"then return titleWon and listHas(definition.Nations,selected) and 1 or 0
+	elseif metric=="stageWithNation"then return stageValue(state)>=requiredStage and listHas(definition.Nations,selected) and 1 or 0
+	elseif metric=="titleWithContinent"then return titleWon and(continentHas(definition.Continents,selectedContinent)or tostring(definition.Continent or"")==selectedContinent)and 1 or 0
+	elseif metric=="stageWithContinent"then return stageValue(state)>=requiredStage and(continentHas(definition.Continents,selectedContinent)or tostring(definition.Continent or"")==selectedContinent)and 1 or 0
+	elseif metric=="firstTitleWithNation"then return titleWon and listHas(definition.Nations,selected) and not FORMER_CHAMPIONS[selected]and 1 or 0
+	elseif metric=="rivalryWin"then
+		for _,pair in type(definition.Rivalries)=="table"and definition.Rivalries or{}do
+			local user=canonicalCountry(pair.User or pair[1])
+			local opponent=canonicalCountry(pair.Opponent or pair[2])
+			if selected==user and stats.DefeatedNations[opponent]==true then return 1 end
+		end
+		return 0
+	elseif metric=="defeatNationsRun"then
+		for _,country in type(definition.Nations)=="table"and definition.Nations or{}do if stats.DefeatedNations[canonicalCountry(country)]~=true then return 0 end end
+		return 1
+	elseif metric=="defeatContinentCountRun"then return tonumber(stats.ContinentsDefeatedCounts[tostring(definition.Continent or"")])or 0
+	elseif metric=="goalsForRun"then return stats.GoalsFor
+	elseif metric=="fiveGoalMatch"then return stats.FiveGoalMatch and 1 or 0
+	elseif metric=="lowConcedeRun"then return titleWon and stats.GoalsAgainst<=3 and 1 or 0
+	elseif metric=="noConcedeTitle"then return titleWon and stats.GoalsAgainst<=0 and 1 or 0
+	elseif metric=="scoreEveryMatchRun"then return titleWon and stats.GoalsFor>=(tonumber(state.PlayedMatches)or 0)+(tonumber(state.SimulatedMatches)or 0) and 1 or 0
+	elseif metric=="extraTimeWinsRun"then return stats.ExtraTimeWins
+	elseif metric=="shootoutWinsRun"then return stats.ShootoutWins
+	elseif metric=="continentsDefeatedRun"then local n=0;for _ in stats.ContinentsDefeated do n+=1 end;return n
+	elseif metric=="sameContinentEliminationsRun"or metric=="ownContinentWinsRun"then return stats.OwnContinentWins
+	elseif metric=="sameOpponentWinsRun"then local best=0;for _,count in stats.SameOpponentWins do best=math.max(best,tonumber(count)or 0)end;return best
+	elseif metric=="formerChampionWinsRun"then return stats.FormerChampionWins
+	elseif metric=="hostWin"then return stats.HostWin and 1 or 0
+	elseif metric=="hostBigWin"then return stats.HostBigWin and 1 or 0
+	elseif metric=="defendingChampionWin"then return stats.DefendingChampionWin and 1 or 0
+	elseif metric=="ultimateRouteRun"then return(stats.HostWin and 1 or 0)+(stats.DefendingChampionWin and 1 or 0)+(stats.TopSeedR32Win and 1 or 0)
+	elseif metric=="r32Wins"then return tonumber(career.R32Wins)or 0
+	elseif metric=="topSeedR32Win"then return stats.TopSeedR32Win and 1 or 0
+	elseif metric=="formerChampionR32Win"then return stats.FormerChampionR32Win and 1 or 0
+	elseif metric=="knockoutCleanSheetRun"then return titleWon and stats.KnockoutCleanSheets and 1 or 0
+	elseif metric=="regulationKnockoutRun"or metric=="regulationTitle"then return titleWon and stats.RegulationKnockout and 1 or 0
+	elseif metric=="knockoutSweepTitle"then return titleWon and stats.KnockoutWins>=4 and 1 or 0
+	elseif metric=="oneGoalKnockoutRun"then return titleWon and stats.OneGoalKnockout and 1 or 0
+	elseif metric=="topFiveKnockoutStreakRun"then return stats.MaxTopFiveKnockoutStreak
+	elseif metric=="titles"then return tonumber(career.Titles)or 0
+	elseif metric=="perfectTitle"or metric=="unbeatenTitle"then return titleWon and stats.Losses<=0 and 1 or 0
+	elseif metric=="unbeatenTitles"then return tonumber(career.UnbeatenTitles)or 0
+	elseif metric=="underdogTitle"then return titleWon and WorldCupConfig.Ranking(selected)>=120 and 1 or 0
+	elseif metric=="lowestRatedTitle"then return titleWon and WorldCupConfig.Ranking(selected)>=200 and 1 or 0
+	elseif metric=="firstTitle"or metric=="firstFinal"or metric=="firstSemi"or metric=="bestFinish"or metric=="instantImpact"then return titleWon and 1 or 0
+	elseif metric=="openingLossTitle"then return titleWon and state.OpeningLoss==true and 1 or 0
+	elseif metric=="formerChampionTitle"then return titleWon and FORMER_CHAMPIONS[selected]and 1 or 0
+	elseif metric=="nonChampionSemi"then return stageValue(state)>=3 and not FORMER_CHAMPIONS[selected]and 1 or 0
+	elseif metric=="rareContinentTitle"then return titleWon and continentOf(selected)~="Europe"and continentOf(selected)~="South America"and 1 or 0
+	elseif metric=="lowRankQuarter"then return stageValue(state)>=2 and WorldCupConfig.Ranking(selected)>=80 and 1 or 0
+	elseif metric=="sameNationTitles"then local best=0;for _,count in career.NationTitles or{}do best=math.max(best,tonumber(count)or 0)end;return best
+	elseif metric=="continentTitle"then return titleWon and questContinent(definition.Title)==continentOf(selected) and 1 or 0
+	elseif metric=="continentFinal"then return stageValue(state)>=4 and questContinent(definition.Title)==continentOf(selected) and 1 or 0
+	elseif metric=="continentSemi"then return stageValue(state)>=3 and questContinent(definition.Title)==continentOf(selected) and 1 or 0
+	elseif metric=="continentQuarter"then return stageValue(state)>=2 and questContinent(definition.Title)==continentOf(selected) and 1 or 0
+	elseif metric=="continentsDefeatedCareer"then local n=0;for _ in career.ContinentsDefeated or{}do n+=1 end;return n
+	elseif metric=="titleContinents"then local n=0;for _ in career.TitleContinents or{}do n+=1 end;return n
+	elseif metric=="semiContinents"then local n=0;for _ in career.SemiContinents or{}do n+=1 end;return n
+	elseif metric=="semiNationsByContinent"then local n=0;local bucket=career.SemiNationsByContinent and career.SemiNationsByContinent[tostring(definition.Continent or"")]or{};for _ in bucket do n+=1 end;return n
+	elseif metric=="continentSemiStreak"then return tonumber(career.SemiContinentStreaks and career.SemiContinentStreaks[tostring(definition.Continent or"")])or 0
+	elseif metric=="finalNationsNever"then local n=0;for _ in career.FinalNationsNever or{}do n+=1 end;return n
+	elseif metric=="managedNations"then local n=0;for _ in career.ManagedNations or{}do n+=1 end;return n
+	elseif metric=="managedContinents"then local n=0;for _ in career.ManagedContinents or{}do n+=1 end;return n
+	elseif metric=="titleNations"then local n=0;for _ in career.TitleNations or{}do n+=1 end;return n
+	elseif metric=="tierTitles"then local n=0;for _ in career.TierTitles or{}do n+=1 end;return n
+	elseif metric=="careerFinals"then return tonumber(career.Finals)or 0
+	elseif metric=="knockoutWins"then return tonumber(career.KnockoutWins)or 0
+	elseif metric=="careerWins"then return tonumber(career.Wins)or 0 end
+	return tonumber(quests.Progress[definition.Id])or 0
+end
+
+function Service:_refreshWorldCupQuests(profile:any)
+	local quests=questProfile(profile)
+	for _,definition in WorldCupQuestConfig.Quests do
+		local current=tonumber(quests.Progress[definition.Id])or 0
+		local value=math.clamp(math.floor(tonumber(self:_worldCupQuestValue(profile,definition))or 0),0,tonumber(definition.Target)or 1)
+		if value>current then quests.Progress[definition.Id]=value end
+	end
+end
+
+function Service:_worldCupQuestPublic(profile:any):any
+	self:_refreshWorldCupQuests(profile)
+	local quests=questProfile(profile)
+	local list={}
+	for _,definition in WorldCupQuestConfig.Quests do
+		table.insert(list,{Id=definition.Id,Category=definition.Category,Title=definition.Title,Description=definition.Description,Target=definition.Target,Progress=math.min(tonumber(quests.Progress[definition.Id])or 0,tonumber(definition.Target)or 1),Claimed=quests.Claimed[definition.Id]==true,PackId=definition.PackId,PackName=WorldCupQuestConfig.PackName(definition.PackId),Difficulty=definition.Difficulty})
+	end
+	return list
+end
+
+function Service:_worldCupTitleCounts(profile:any):any
+	local counts={}
+	local quests=questProfile(profile)
+	local career=quests.Career
+	for country,count in career.NationTitles or{}do
+		local titleCount=math.max(0,math.floor(tonumber(count)or 0))
+		if titleCount>0 then counts[tostring(country)]=titleCount end
+	end
+	for _,entry in type(profile.WorldCupHistory)=="table"and profile.WorldCupHistory or{}do
+		local country=tostring(entry.Country or"")
+		if country~=""and entry.Stage=="Champion"and entry.Winner==country and counts[country]==nil then
+			counts[country]=1
+		end
+	end
+	return counts
+end
+
+function Service:_recordWorldCupQuestCareer(profile:any,state:any)
+	local quests=questProfile(profile)
+	local career=quests.Career
+	if type(state)~="table"or state.QuestCareerRecorded==true then return end
+	local selected=tostring(state.SelectedCountry or"")
+	local stats=userFixtureStats(state)
+	career.ManagedNations[selected]=true
+	career.ManagedContinents[continentOf(selected)]=true
+	career.Wins=(tonumber(career.Wins)or 0)+stats.Wins
+	career.KnockoutWins=(tonumber(career.KnockoutWins)or 0)+stats.KnockoutWins
+	if stats.KnockoutWins>0 then career.R32Wins=(tonumber(career.R32Wins)or 0)+(stats.KnockoutWins>0 and 1 or 0)end
+	for continent in stats.ContinentsDefeated do career.ContinentsDefeated[continent]=true end
+	if stageValue(state)>=3 then
+		local continent=continentOf(selected)
+		career.SemiContinents[continent]=true
+		career.SemiNationsByContinent[continent]=type(career.SemiNationsByContinent[continent])=="table"and career.SemiNationsByContinent[continent]or{}
+		career.SemiNationsByContinent[continent][selected]=true
+		career.SemiContinentStreaks=type(career.SemiContinentStreaks)=="table"and career.SemiContinentStreaks or{}
+		local streak=(career.LastSemiContinent==continent and(tonumber(career.CurrentSemiContinentStreak)or 0)or 0)+1
+		career.LastSemiContinent=continent
+		career.CurrentSemiContinentStreak=streak
+		career.SemiContinentStreaks[continent]=math.max(tonumber(career.SemiContinentStreaks[continent])or 0,streak)
+	else
+		career.LastSemiContinent=nil
+		career.CurrentSemiContinentStreak=0
+	end
+	if stageValue(state)>=4 then
+		career.Finals=(tonumber(career.Finals)or 0)+1
+		if not FORMER_CHAMPIONS[selected]then career.FinalNationsNever[selected]=true end
+	end
+	if state.Stage=="Champion"and state.WorldCupWinner==selected then
+		career.Titles=(tonumber(career.Titles)or 0)+1
+		career.TitleNations[selected]=true
+		career.TitleContinents[continentOf(selected)]=true
+		career.NationTitles=type(career.NationTitles)=="table"and career.NationTitles or{}
+		career.NationTitles[selected]=(tonumber(career.NationTitles[selected])or 0)+1
+		local rank=WorldCupConfig.Ranking(selected)
+		local tier=rank<=16 and"Favourite"or rank<=80 and"MidTier"or"Underdog"
+		career.TierTitles=type(career.TierTitles)=="table"and career.TierTitles or{}
+		career.TierTitles[tier]=true
+		if stats.Losses<=0 then career.UnbeatenTitles=(tonumber(career.UnbeatenTitles)or 0)+1 end
+	end
+	state.QuestCareerRecorded=true
+	self:_refreshWorldCupQuests(profile)
+end
+
 function Service:_worldCupPublic(profile:any):any
 	local state=type(profile.WorldCup)=="table"and profile.WorldCup or nil
-	return{State=state and copyDeep(state)or nil,History=type(profile.WorldCupHistory)=="table"and copyDeep(profile.WorldCupHistory)or{},Countries=WorldCupConfig.Countries,Flags=WorldCupConfig.Flags}
+	return{State=state and copyDeep(state)or nil,History=type(profile.WorldCupHistory)=="table"and copyDeep(profile.WorldCupHistory)or{},Countries=WorldCupConfig.Countries,Flags=WorldCupConfig.Flags,Quests=self:_worldCupQuestPublic(profile),TitleCounts=self:_worldCupTitleCounts(profile)}
 end
 
 function Service:GetWorldCup(player:Player):(boolean,string,any?)
 	local profile=self.Profiles:GetProfile(player);if not profile then return false,"Profile unavailable.",nil end
+	self:_consumeWorldCupRuntimeResult(player,profile)
 	if type(profile.WorldCup)=="table"then self:_worldCupEnsureTeamRanks(profile.WorldCup);self:_worldCupRepairGroupNextFixture(profile.WorldCup)end
 	return true,"World Cup loaded.",self:_worldCupPublic(profile)
 end
@@ -985,6 +1439,19 @@ function Service:_worldCupRepairGroupNextFixture(state:any)
 			end
 		end
 	end
+	for _,groupFixtures in state.Fixtures or{}do
+		for _,fixture in ipairs(groupFixtures)do
+			if not fixture.Played then self:_worldCupSimFixture(state,fixture)end
+		end
+	end
+	local ranked=self:_worldCupRankGroup(state,groupName)
+	state.GroupRank=table.find(ranked,selected)or 4
+	if state.GroupRank<=2 then
+		self:_worldCupBuildKnockout(state)
+	else
+		state.Stage="Eliminated"
+		state.NextFixture=nil
+	end
 end
 
 function Service:_worldCupBuildKnockout(state:any)
@@ -1176,6 +1643,7 @@ function Service:_archiveWorldCup(profile:any)
 	if not state or state.Archived==true then return end
 	if state.Stage~="Champion"and state.Stage~="Eliminated"then return end
 	profile.WorldCupHistory=type(profile.WorldCupHistory)=="table"and profile.WorldCupHistory or{}
+	self:_recordWorldCupQuestCareer(profile,state)
 	state.Archived=true
 	state.PendingRewards=state.PendingRewards or self:_worldCupRewardForState(state)
 	table.insert(profile.WorldCupHistory,1,{Country=state.SelectedCountry,Code=state.SelectedCode,Reached=self:_worldCupStageLabel(state),Stage=state.Stage,GroupRank=state.GroupRank,Winner=state.WorldCupWinner,FinishedAt=os.time(),Rewards=state.PendingRewards})
@@ -1184,6 +1652,7 @@ end
 
 function Service:ClaimWorldCupRewards(player:Player):(boolean,string,any?)
 	local profile=self.Profiles:GetProfile(player);if not profile then return false,"Profile unavailable.",nil end
+	self:_consumeWorldCupRuntimeResult(player,profile)
 	local state=type(profile.WorldCup)=="table"and profile.WorldCup or nil
 	if not state or (state.Stage~="Champion"and state.Stage~="Eliminated")then return false,"Finish a World Cup run first.",self:_worldCupPublic(profile)end
 	local reward=state.PendingRewards or self:_worldCupRewardForState(state)
@@ -1201,6 +1670,28 @@ function Service:ClaimWorldCupRewards(player:Player):(boolean,string,any?)
 	state.RewardsClaimed=true
 	if self.Profiles.Save then self.Profiles:Save(player,true)end
 	return true,"World Cup rewards claimed.",{WorldCup=self:_worldCupPublic(profile),Reward=reward,Granted=granted}
+end
+
+function Service:ClaimWorldCupQuest(player:Player,questId:string):(boolean,string,any?)
+	local profile=self.Profiles:GetProfile(player);if not profile then return false,"Profile unavailable.",nil end
+	local definition=WorldCupQuestConfig.ById[tostring(questId or"")]
+	if not definition then return false,"Unknown World Cup quest.",self:_worldCupPublic(profile)end
+	self:_refreshWorldCupQuests(profile)
+	local quests=questProfile(profile)
+	if quests.Claimed[definition.Id]==true then return false,"Quest reward already claimed.",self:_worldCupPublic(profile)end
+	local progress=tonumber(quests.Progress[definition.Id])or 0
+	local target=tonumber(definition.Target)or 1
+	if progress<target then return false,"Quest is not complete yet.",self:_worldCupPublic(profile)end
+	local packId=tostring(definition.PackId or"bronze_pack")
+	local granted=nil
+	if self.Progression and self.Progression.Inventory then
+		local ok,instances=self.Progression.Inventory:AddPack(player,packId,WorldCupQuestConfig.PackName(packId),"WorldCupQuest",1)
+		if ok then granted={PackId=packId,Name=WorldCupQuestConfig.PackName(packId),Quantity=1,Instances=instances};VTRPendingPackAnimation.Queue(player,packId)end
+	end
+	quests.Claimed[definition.Id]=true
+	if self.Profiles.Save then self.Profiles:Save(player,true)end
+	self.Publish(player,"Progression",self.Progression:GetClientData(player))
+	return true,"World Cup quest reward claimed.",{WorldCup=self:_worldCupPublic(profile),QuestId=definition.Id,Granted=granted}
 end
 
 function Service:BeginWorldCup(player:Player,country:string):(boolean,string,any?)
@@ -1251,20 +1742,23 @@ function Service:BeginWorldCup(player:Player,country:string):(boolean,string,any
 		end
 	end
 	for groupName,group in state.Groups do if table.find(group,country)then state.UserGroup=groupName;for _,fixture in state.Fixtures[groupName]do if fixture.UserFixture then state.NextFixture=fixture;break end end end end
-	profile.WorldCup=state;if self.Profiles.Save then self.Profiles:Save(player,true)end
+	profile.WorldCup=state;profile.WorldCupPendingMatch=nil;player:SetAttribute("VTRWorldCupPendingId",nil);if self.Profiles.Save then self.Profiles:Save(player,true)end
 	return true,"World Cup groups created.",self:_worldCupPublic(profile)
 end
 
 function Service:ResetWorldCup(player:Player):(boolean,string,any?)
 	local profile=self.Profiles:GetProfile(player);if not profile then return false,"Profile unavailable.",nil end
-	profile.WorldCup=nil;if self.Profiles.Save then self.Profiles:Save(player,true)end
+	profile.WorldCup=nil;profile.WorldCupPendingMatch=nil;if self.Profiles.Save then self.Profiles:Save(player,true)end
+	player:SetAttribute("VTRWorldCupPendingId",nil)
 	return true,"World Cup reset.",self:_worldCupPublic(profile)
 end
 
 function Service:EndWorldCup(player:Player):(boolean,string,any?)
 	local profile=self.Profiles:GetProfile(player);if not profile then return false,"Profile unavailable.",nil end
+	self:_consumeWorldCupRuntimeResult(player,profile)
 	self:_archiveWorldCup(profile)
-	profile.WorldCup=nil;if self.Profiles.Save then self.Profiles:Save(player,true)end
+	profile.WorldCup=nil;profile.WorldCupPendingMatch=nil;if self.Profiles.Save then self.Profiles:Save(player,true)end
+	player:SetAttribute("VTRWorldCupPendingId",nil)
 	return true,"World Cup ended.",self:_worldCupPublic(profile)
 end
 
@@ -1385,6 +1879,8 @@ function Service:StartMatch(player:Player):(boolean,string,any?)
 			local awayScore=ended.World.AwayScore.Value
 			local homeWon=homeScore>awayScore
 			local drew=homeScore==awayScore
+			ended.MatchId=ended.MatchId or session.MatchId
+			self:_recordCampaignMatchResult(player,launchSetup,ended,homeWon and"Win"or drew and"Draw"or"Loss")
 			local coins=650+(homeWon and 650 or drew and 300 or 150)
 			local xp=110+(homeWon and 90 or drew and 45 or 20)
 			local reward=self.Progression:GrantMatchRewards(player,{Title=homeWon and"VICTORY REWARD"or drew and"DRAW REWARD"or"MATCH REWARD",Coins=coins,XP=xp})
@@ -1444,6 +1940,7 @@ end
 
 function Service:StartWorldCupMatch(player:Player):(boolean,string,any?)
 	local profile=self.Profiles:GetProfile(player);if not profile then return false,"Profile unavailable.",nil end
+	self:_consumeWorldCupRuntimeResult(player,profile)
 	local state=type(profile.WorldCup)=="table"and profile.WorldCup or nil
 	if state then self:_worldCupRepairGroupNextFixture(state)end
 	if not state or not state.NextFixture then return false,"Start a World Cup and create the groups first.",nil end
@@ -1466,8 +1963,10 @@ function Service:StartWorldCupMatch(player:Player):(boolean,string,any?)
 	local setup=table.clone(self:_ensure(profile));local fixture=state.NextFixture
 	local selected=tostring(state.SelectedCountry or"");local opponent=fixture.Home==selected and fixture.Away or fixture.Home
 	local homeRoster=buildWorldCupNationalRoster(selected);local awayRoster=buildWorldCupNationalRoster(opponent)
-	setup.HomeTeamId=homeRoster.Team.teamId;setup.HomeKit="Home";setup.AwayTeamId=awayRoster.Team.teamId;setup.AwayKit="Away";setup.MatchType="Objective Match";setup.Difficulty="Professional";setup.Completed=true;setup.CampaignTeamId="";setup.WorldCup=true;setup.WorldCupOpponent=opponent
-	local success,text,data=self.Runtime:StartMatch(player,setup,nil,nil,homeRoster,awayRoster);if not success then self.WorldCupStartLocks[player]=nil;player:SetAttribute("VTRWorldCupMatchStarting",nil);return false,text,nil end
+	setup.HomeTeamId=homeRoster.Team.teamId;setup.HomeKit="Home";setup.AwayTeamId=awayRoster.Team.teamId;setup.AwayKit="Away";setup.MatchType="Objective Match";setup.Difficulty="Professional";setup.Completed=true;setup.CampaignTeamId="";setup.WorldCup=true;setup.WorldCupOpponent=opponent;setup.WorldCupStage=state.Stage;setup.WorldCupGroup=state.Stage=="Group";setup.WorldCupKnockout=state.Stage=="Knockout"
+	local pending=self:_worldCupStorePendingMatch(player,profile,state,fixture,opponent)
+	if pending then setup.WorldCupPendingMatchId=pending.Id end
+	local success,text,data=self.Runtime:StartMatch(player,setup,nil,nil,homeRoster,awayRoster);if not success then profile.WorldCupPendingMatch=nil;if state then state.PendingMatch=nil;state.PendingMatchId=nil end;if self.Profiles.Save then self.Profiles:Save(player,true)end;self.WorldCupStartLocks[player]=nil;player:SetAttribute("VTRWorldCupPendingId",nil);player:SetAttribute("VTRWorldCupMatchStarting",nil);return false,text,nil end
 	self.WorldCupStartLocks[player]=nil
 	player:SetAttribute("VTRWorldCupMatchStarting",nil)
 	player:SetAttribute("VTRWorldCupMatchStarted",true)
@@ -1475,13 +1974,26 @@ function Service:StartWorldCupMatch(player:Player):(boolean,string,any?)
 	local session=self.Runtime:GetSession(player)
 	if session then
 		self:_tagSoloCampaignSession(player,session)
+		session.WorldCupPendingMatch=pending
+		session.WorldCupFixtureSnapshot=pending or{Home=fixture.Home,Away=fixture.Away,Group=fixture.Group,Matchday=fixture.Matchday,Round=fixture.Round,Stage=state.Stage}
+		session.OnWorldCupCompleted=function(ended:any)
+			ended.WorldCupPendingMatch=ended.WorldCupPendingMatch or session.WorldCupPendingMatch
+			ended.WorldCupFixtureSnapshot=ended.WorldCupFixtureSnapshot or session.WorldCupFixtureSnapshot
+			local committed=self:_commitWorldCupPlayedMatch(player,ended)
+			if not committed then
+				warn("[VTR WORLDCUP RESULT] result hook did not commit",player.Name,tostring(fixture.Home),tostring(fixture.Away),ended.World and ended.World.HomeScore and ended.World.HomeScore.Value,ended.World and ended.World.AwayScore and ended.World.AwayScore.Value)
+			end
+		end
 		session.OnBeforeResult=function(ended:any)
-			local homeScore=ended.World.HomeScore.Value;local awayScore=ended.World.AwayScore.Value
-			local won=homeScore>=awayScore
+			ended.WorldCupPendingMatch=ended.WorldCupPendingMatch or session.WorldCupPendingMatch
+			ended.WorldCupFixtureSnapshot=ended.WorldCupFixtureSnapshot or session.WorldCupFixtureSnapshot
 			self:_commitWorldCupPlayedMatch(player,ended)
-			return{[player.UserId]={Title=won and"WORLD CUP RESULT"or"WORLD CUP MATCH",Coins=won and 900 or 400,XP=won and 160 or 80}}
+			local reward=self:_grantWorldCupMatchReward(player,ended)
+			return reward and{[player.UserId]=reward}or{}
 		end
 		session.OnCompleted=function(ended:any)
+			ended.WorldCupPendingMatch=ended.WorldCupPendingMatch or session.WorldCupPendingMatch
+			ended.WorldCupFixtureSnapshot=ended.WorldCupFixtureSnapshot or session.WorldCupFixtureSnapshot
 			self:_commitWorldCupPlayedMatch(player,ended)
 		end
 	end
@@ -1523,6 +2035,13 @@ function Service:SimulateWorldCupMatch(player:Player):(boolean,string,any?)
 	elseif away==selected then
 		state.UserGoalsFor=(tonumber(state.UserGoalsFor)or 0)+awayGoals
 		state.UserGoalsAgainst=(tonumber(state.UserGoalsAgainst)or 0)+homeGoals
+	end
+	if self.Profiles.RecordMatchResult and (home==selected or away==selected)then
+		local userGoalsFor=home==selected and homeGoals or awayGoals
+		local userGoalsAgainst=home==selected and awayGoals or homeGoals
+		local userResult=homeGoals==awayGoals and"Draw"or(home==selected and(homeGoals>awayGoals and"Win"or"Loss")or(awayGoals>homeGoals and"Win"or"Loss"))
+		local resultId=table.concat({tostring(state.CreatedAt or 0),home,away,tostring(fixture.Group or""),tostring(fixture.Matchday or fixture.Round or""),tostring(state.SimulatedMatches or 0)},"|")
+		self.Profiles:RecordMatchResult(player,"WorldCup",resultId,userResult,{Country=selected,Opponent=home==selected and away or home,Stage=state.Stage,Score=tostring(userGoalsFor).."-"..tostring(userGoalsAgainst),Simulated=true})
 	end
 	self:_worldCupAdvanceAfterMatch(state,homeGoals,awayGoals)
 	self:_archiveWorldCup(profile)
@@ -1568,11 +2087,15 @@ function Service:WatchMatch(player:Player):(boolean,string,any?)
 		local tierIndex=math.clamp(tonumber(watchSetup.CampaignTier)or 1,1,#VTRLiteConfig.CampaignDifficulties)
 		local replay=watchSetup.CampaignReplay==true
 		session.OnBeforeResult=function(ended:any)
+			ended.MatchId=ended.MatchId or session.MatchId
+			self:_recordCampaignMatchResult(player,watchSetup,ended,ended.World.HomeScore.Value>ended.World.AwayScore.Value and"Win"or ended.World.HomeScore.Value==ended.World.AwayScore.Value and"Draw"or"Loss")
 			if ended.World.HomeScore.Value<=ended.World.AwayScore.Value or replay then return{}end
 			local reward=self:_commitCampaignWin(player,teamId,tierIndex,replay)
 			return reward and{[player.UserId]=reward}or{}
 		end
 		session.OnCompleted=function(ended:any)
+			ended.MatchId=ended.MatchId or session.MatchId
+			self:_recordCampaignMatchResult(player,watchSetup,ended,ended.World.HomeScore.Value>ended.World.AwayScore.Value and"Win"or ended.World.HomeScore.Value==ended.World.AwayScore.Value and"Draw"or"Loss")
 			if ended.World.HomeScore.Value>ended.World.AwayScore.Value then self:_commitCampaignWin(player,teamId,tierIndex,replay)end
 		end
 	end
@@ -1580,6 +2103,8 @@ function Service:WatchMatch(player:Player):(boolean,string,any?)
 	return true,"AI vs AI match loaded.",data
 end
 function Service:ReturnToMenu(player:Player):boolean
+	local profile=self.Profiles:GetProfile(player)
+	if profile then self:_consumeWorldCupRuntimeResult(player,profile)end
 	self.WorldCupTeleportLocks[player]=nil
 	self.WorldCupStartLocks[player]=nil
 	player:SetAttribute("VTRWorldCupMatchStarting",nil)

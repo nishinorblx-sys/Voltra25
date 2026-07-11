@@ -1,7 +1,7 @@
 --!strict
--- Authoritative API generated from VTRPlayers_OriginalNames_FictionalClubs.csv.
+-- Authoritative API generated from VTRPlayers_With_Special_Versions.csv.
 
-local VTRPlayers = { Count = 18205, ShardCount = 73, ChunkSize = 250, Source = "VTRPlayers_OriginalNames_FictionalClubs.csv" }
+local VTRPlayers = { Count = 18411, ShardCount = 74, ChunkSize = 250, Source = "VTRPlayers_With_Special_Versions.csv" }
 local decodedCache: { [number]: { any } } = {}
 local idCache: { [string]: any } = {}
 

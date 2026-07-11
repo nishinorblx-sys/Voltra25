@@ -43,7 +43,7 @@ function Service.new(remote: RemoteEvent, teams: any, ball: BasePart, possession
 		Remote = remote, Teams = teams, Ball = ball, Possession = possession, BallService = ballService,
 		Passing = PassingService.new(ballService, targeting, remote, teams),
 		Receiving = ReceiveBallService.new(ball, possession, remote), Smoothing = MovementSmoothingService.new(),
-		PitchCFrame = pitchCFrame, Width = width, Length = length, Animations = animations, Active = {}, PlayerSides = {}, PendingReceiver = {}, PassIntent = {}, ReceiverAssist = {}, ManualReceiveOverride = {}, LastMovementAt = {}, LastPossessionOwner = nil, ManualSwitchAwayUntil = {}, PendingShots = {},
+		PitchCFrame = pitchCFrame, Width = width, Length = length, Animations = animations, Active = {}, PlayerSides = {}, PendingReceiver = {}, PassIntent = {}, ReceiverAssist = {}, ManualReceiveOverride = {}, LastMovementAt = {}, LastPossessionOwner = nil, ManualSwitchAwayUntil = {}, PendingShots = {}, FixedActive = {},
 	}, Service)
 end
 
@@ -123,6 +123,8 @@ function Service:GetActive(player: Player): Model?
 end
 
 function Service:_set(player: Player, model: Model, reason: string)
+	local fixed = self.FixedActive[player]
+	if fixed and fixed ~= model then return end
 	if (tonumber(model:GetAttribute("VTRStunnedUntil")) or 0) > os.clock() then return end
 	local previous = self.Active[player]
 	if previous == model then return end
@@ -164,13 +166,27 @@ end
 function Service:Register(player: Player, side: string?): Model
 	side=side=="Away"and"Away"or"Home";self.PlayerSides[player]=side
 	local team=self.Teams[side]
-	local initial = team[10] or team[1]
+	local initial = team[10]
+	if not initial then
+		for _, model in team do
+			if tostring(model:GetAttribute("position") or "") ~= "GK" then
+				initial = model
+				break
+			end
+		end
+	end
+	initial = initial or team[1]
 	self:_set(player, initial, "Kickoff")
 	return initial
 end
 
 function Service:SetActive(player: Player, model: Model, reason: string)
 	self:_set(player, model, reason)
+end
+
+function Service:LockActive(player: Player, model: Model, reason: string?)
+	self.FixedActive[player] = model
+	self:_set(player, model, reason or "FixedControl")
 end
 
 function Service:_nearestUseful(player: Player): Model?
@@ -188,6 +204,28 @@ function Service:_nearestUseful(player: Player): Model?
 			if modelRoot then
 				local distance = (modelRoot.Position - targetPosition).Magnitude
 				if distance < bestDistance then best, bestDistance = model, distance end
+			end
+		end
+	end
+	return best
+end
+
+function Service:_closestToBall(player: Player): Model?
+	local current = self.Active[player]
+	local side=self.PlayerSides[player]or"Home"
+	local best: Model? = nil
+	local bestDistance = math.huge
+	for _, model in self.Teams[side] or {} do
+		if model ~= current then
+			local modelRoot = root(model)
+			local humanoid = model:FindFirstChildOfClass("Humanoid")
+			if modelRoot and humanoid and humanoid.Health > 0 and model:GetAttribute("VTRSentOff") ~= true then
+				local flat = Vector3.new(modelRoot.Position.X - self.Ball.Position.X, 0, modelRoot.Position.Z - self.Ball.Position.Z)
+				local distance = flat.Magnitude
+				if distance < bestDistance then
+					best = model
+					bestDistance = distance
+				end
 			end
 		end
 	end
@@ -318,7 +356,7 @@ function Service:Handle(player: Player, payload: any)
 			local sprinting = active:GetAttribute("VTRSprinting") == true
 			local smoothed, penalty = self.Smoothing:Update(active, raw, ownsBall, sprinting)
 			if active:GetAttribute("controlledByUser")==true then
-				if not ownsBall then smoothed = magnitude > 0.05 and raw.Unit * magnitude or Vector3.zero end
+				if not ownsBall and magnitude <= 0.05 then smoothed = Vector3.zero end
 				penalty = 1
 			end
 			local now = os.clock()
@@ -334,8 +372,12 @@ function Service:Handle(player: Player, payload: any)
 			self:_clampGoalkeeperBox(active)
 		end
 	elseif kind == "Switch" then
+		if self.FixedActive[player] then return end
 		local requested=typeof(payload.TargetModel)=="Instance"and payload.TargetModel:IsA("Model")and payload.TargetModel or nil;local target:Model?=nil
-		if requested and requested~=active and requested:GetAttribute("VTRTeam")==self.PlayerSides[player]then for _,teammate in self.Teams[self.PlayerSides[player]or"Home"]or{}do if teammate==requested then target=requested;break end end end
+		if payload.ClosestToBall==true then
+			target=self:_closestToBall(player)
+		end
+		if not target and requested and requested~=active and requested:GetAttribute("VTRTeam")==self.PlayerSides[player]then for _,teammate in self.Teams[self.PlayerSides[player]or"Home"]or{}do if teammate==requested then target=requested;break end end end
 		if not target then
 			local aimPoint=self:_aimPoint(active,payload.AimPosition,false)
 			if aimPoint then target=self:_closestTeammateToPoint(player,active,aimPoint)end
@@ -357,6 +399,15 @@ function Service:Handle(player: Player, payload: any)
 				local kicked = self.BallService:Kick(active,"Pass",offset,tonumber(payload.Charge)or 0,nil,payload.PassType=="ManualLobbed"and"Lofted"or"Manual",offset.Magnitude,aimPoint)
 				if kicked then
 					self:_switchDefenseToPassTarget(tostring(active:GetAttribute("VTRTeam") or self.PlayerSides[player] or "Home"), aimPoint)
+					if not self.FixedActive[player] and autoSwitchMode(payload.AutoSwitch) ~= "Off" then
+						local receiver = self:_closestTeammateToPoint(player, active, aimPoint)
+						local receiverRoot = root(receiver)
+						if receiver and receiverRoot and (receiverRoot.Position - aimPoint).Magnitude <= 42 then
+							self.Receiving:Expect(player, receiver, receiverRoot.Position)
+							self.PassIntent[player] = {Model = receiver, Passer = active, Until = os.clock() + 4.2, AutoSwitch = "Assisted"}
+							self.Remote:FireClient(player, {Type = "SwitchTarget", Model = receiver, ReceivePoint = receiverRoot.Position})
+						end
+					end
 				end
 			end
 			return
@@ -365,17 +416,19 @@ function Service:Handle(player: Player, payload: any)
 		local receiver, receivePoint = self.Passing:Pass(active, payload.Direction, tonumber(payload.Charge) or 0, payload.PassType, aimPoint, lockedReceiver)
 		if receiver and receivePoint then
 			self:_switchDefenseToPassTarget(tostring(active:GetAttribute("VTRTeam") or self.PlayerSides[player] or "Home"), receivePoint)
-			local mode = autoSwitchMode(payload.AutoSwitch)
-			if mode == "Off" then mode = "Assisted" end
-			local assistMode = receiverAssistMode(payload.ReceiverAssist)
-			self.Receiving:Expect(player, receiver, receivePoint)
-			self.PassIntent[player] = {Model = receiver, Passer = active, Until = os.clock() + 4.2, AutoSwitch = mode}
-			self.Remote:FireClient(player, {Type = "SwitchTarget", Model = receiver, ReceivePoint = receivePoint})
-			if mode == "Instant" then
-				self:_set(player, receiver, "PassReceiver")
-				self:_beginReceiverAssist(player, receiver, receivePoint, assistMode)
-			elseif mode == "Assisted" then
-				self.PendingReceiver[player] = {Model = receiver, Started = os.clock(), ReceivePoint = receivePoint, InitialDistance = math.max((self.Ball.Position - receivePoint).Magnitude, 1), AssistMode = assistMode}
+			if not self.FixedActive[player] then
+				local mode = autoSwitchMode(payload.AutoSwitch)
+				if mode == "Off" then mode = "Assisted" end
+				local assistMode = receiverAssistMode(payload.ReceiverAssist)
+				self.Receiving:Expect(player, receiver, receivePoint)
+				self.PassIntent[player] = {Model = receiver, Passer = active, Until = os.clock() + 4.2, AutoSwitch = mode}
+				self.Remote:FireClient(player, {Type = "SwitchTarget", Model = receiver, ReceivePoint = receivePoint})
+				if mode == "Instant" then
+					self:_set(player, receiver, "PassReceiver")
+					self:_beginReceiverAssist(player, receiver, receivePoint, assistMode)
+				elseif mode == "Assisted" then
+					self.PendingReceiver[player] = {Model = receiver, Started = os.clock(), ReceivePoint = receivePoint, InitialDistance = math.max((self.Ball.Position - receivePoint).Magnitude, 1), AssistMode = assistMode}
+				end
 			end
 		end
 	elseif kind == "Shot" and validDirection(payload.Direction) then
@@ -438,12 +491,19 @@ function Service:Step()
 			end
 			debugKickoff("possession changed", "owner", currentOwner.Name, "team", currentOwner:GetAttribute("VTRTeam"), "aiControlled", currentOwner:GetAttribute("aiControlled"), "controlledByUser", currentOwner:GetAttribute("controlledByUser"), "kickoffReturnUntil", currentOwner:GetAttribute("VTRKickoffReturnUntil"), "noAutoPassUntil", currentOwner:GetAttribute("VTRNoAutoPassUntil"))
 			for player,active in self.Active do
+				if self.FixedActive[player] then continue end
 				local manuallyAway=(self.ManualSwitchAwayUntil[player]or 0)>os.clock()
 				if self.PlayerSides[player]==currentOwner:GetAttribute("VTRTeam")and active~=currentOwner and (not manuallyAway or tostring(currentOwner:GetAttribute("position")or"")=="GK") then self:_set(player,currentOwner,tostring(currentOwner:GetAttribute("position")or"")=="GK" and "GoalkeeperClaim" or "PossessionWon")end
 			end
 		end
 	end
 	for player, intent in self.PassIntent do
+		if self.FixedActive[player] then
+			self.Receiving:Cancel(player)
+			self.PendingReceiver[player] = nil
+			self.PassIntent[player] = nil
+			continue
+		end
 		local intended: Model = intent.Model
 		local owner = self.Possession:GetOwner()
 		if not intended.Parent or os.clock() >= intent.Until then
@@ -471,6 +531,7 @@ function Service:Step()
 		end
 	end
 	for player, entry in self.PendingReceiver do
+		if self.FixedActive[player] then self.PendingReceiver[player] = nil continue end
 		local receiver: Model = entry.Model
 		if not receiver.Parent then self.PendingReceiver[player] = nil continue end
 		local owner = self.Possession:GetOwner()
@@ -510,6 +571,7 @@ function Service:Destroy(player: Player)
 		self.Smoothing:Clear(active)
 	end
 	self.Active[player] = nil
+	self.FixedActive[player] = nil
 	self.PendingReceiver[player] = nil
 	self.PassIntent[player] = nil
 	self.ReceiverAssist[player] = nil

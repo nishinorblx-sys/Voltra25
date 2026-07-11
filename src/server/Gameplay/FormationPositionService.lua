@@ -12,6 +12,24 @@ local function isKeeper(model: Model): boolean
 	return tostring(model:GetAttribute("position") or "") == "GK"
 end
 
+local function kickoffTaker(team: {Model}?): Model?
+	if not team then
+		return nil
+	end
+	for _, index in {10, 9, 5, 6, 4, 3, 2} do
+		local model = team[index]
+		if model and model.Parent and not isKeeper(model) then
+			return model
+		end
+	end
+	for _, model in team do
+		if model and model.Parent and not isKeeper(model) then
+			return model
+		end
+	end
+	return team[1]
+end
+
 local function move(model: Model, position: Vector3, lookAt: Vector3)
 	model:PivotTo(CFrame.lookAt(position, Vector3.new(lookAt.X, position.Y, lookAt.Z)))
 	local humanoid = model:FindFirstChildOfClass("Humanoid")
@@ -34,7 +52,7 @@ function Service.Kickoff(teams: any, formation: any, pitchCFrame: CFrame): Model
 			move(model, position, world(pitchCFrame, point.X, point.Y * sign - sign * 10))
 		end
 	end
-	return teams.Home[10] or teams.Home[1]
+	return kickoffTaker(teams.Home) or teams.Home[1]
 end
 
 function Service.ThrowIn(teams: any, restartTeam: string, location: Vector3, pitchCFrame: CFrame, width: number, length: number): Model

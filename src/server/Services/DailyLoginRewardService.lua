@@ -17,16 +17,16 @@ local DAILY_REWARD_TRACK = {
 	{Day=1,Type="Coins",Amount=1000},
 	{Day=2,Type="VoltraPoints",Amount=250},
 	{Day=3,Type="Celebration",ItemId="basic_goal_celebration",Name="Basic Goal Celebration"},
-	{Day=4,Type="Pack",ItemId="bronze_pack",Name="Basic Pack"},
+	{Day=4,Type="Pack",ItemId="common_pack",Name="Common Pack"},
 	{Day=5,Type="Coins",Amount=2000},
 	{Day=6,Type="Pack",ItemId="rare_pack",Name="Rare Pack"},
 	{Day=7,Type="RandomPlayer",MinOVR=75,MaxOVR=82,Name="75-82 OVR Random Player"},
 	{Day=8,Type="Coins",Amount=3000},
 	{Day=9,Type="VoltraPoints",Amount=500},
-	{Day=10,Type="Pack",ItemId="elite_pack",Name="Epic Pack"},
+	{Day=10,Type="Pack",ItemId="elite_pack",Name="Elite Pack"},
 	{Day=11,Type="RandomPlayer",MinOVR=80,MaxOVR=84,Name="80-84 OVR Random Player"},
 	{Day=12,Type="Coins",Amount=5000},
-	{Day=13,Type="Pack",ItemId="icon_pack",Name="Icon Pack"},
+	{Day=13,Type="Pack",ItemId="legendary_pack",Name="Legendary Pack"},
 	{Day=14,Type="RandomPlayer",MinOVR=83,MaxOVR=88,Name="83-88 OVR Random Player"},
 }
 
@@ -265,6 +265,12 @@ function Service:Claim(player: Player): any
 	return response
 end
 
+function Service:GetPayload(player: Player): any
+	local profile = self.Profiles:GetProfile(player)
+	if not profile then return {Success = false, Message = "Profile unavailable."} end
+	return {Success = true, Data = self:_payload(player, profile)}
+end
+
 function Service:Show(player: Player)
 	task.spawn(function()
 		if self.Profiles.WaitForProfile then self.Profiles:WaitForProfile(player, 8) end
@@ -288,7 +294,10 @@ end
 function Service:Start()
 	if self.Started then return end
 	self.Started = true
-	claimRemote.OnServerInvoke = function(player: Player)
+	claimRemote.OnServerInvoke = function(player: Player, action: any?)
+		if action == "Peek" or action == "Status" then
+			return self:GetPayload(player)
+		end
 		return self:Claim(player)
 	end
 	for _, player in Players:GetPlayers() do

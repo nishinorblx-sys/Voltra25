@@ -14,9 +14,13 @@ Service.__index = Service
 local QUEUE_MAP = "VTR25_GlobalRankedQueue_v2"
 local MATCH_MAP = "VTR25_GlobalRankedMatches_v2"
 local RESULT_MAP = "VTR25_GlobalRankedResults_v2"
+local PAIR_LOCK_MAP = "VTR25_GlobalRankedPairLocks_v1"
+local PLAYER_LOCK_MAP = "VTR25_GlobalRankedPlayerLocks_v1"
 local QUEUE_TTL = 150
 local MATCH_TTL = 180
+local PAIR_LOCK_TTL = MATCH_TTL
 local MATCH_ASSIGNMENT_ACCEPT_SECONDS = 75
+local TELEPORTED_MATCH_WAIT_SECONDS = 45
 local POLL_SECONDS = 1.75
 
 local WEATHER = { "Clear", "Cloudy", "Rain" }
@@ -285,6 +289,67 @@ function Service:_clearMatchAssignmentsFor(matchId: any, home: Player?, away: Pl
 	end
 end
 
+function Service:_clearPairLockForUsers(homeUserId: any, awayUserId: any)
+	local first = tonumber(homeUserId)
+	local second = tonumber(awayUserId)
+	if not first or not second then return end
+	local map = self:_pairLockMap()
+	if not map then return end
+	pcall(function()
+		map:RemoveAsync(self:_pairKey(first, second))
+	end)
+end
+
+function Service:_clearPlayerLocksForUsers(homeUserId: any, awayUserId: any)
+	local map = self:_playerLockMap()
+	if not map then return end
+	for _, userId in {homeUserId, awayUserId} do
+		local id = tonumber(userId)
+		if id then
+			pcall(function()
+				map:RemoveAsync(self:_playerLockKey(id))
+			end)
+		end
+	end
+end
+
+function Service:_lockPlayerForMatch(map: any, userId: any, matchId: string, token: string): boolean
+	local id = tonumber(userId)
+	if not id then return false end
+	local value = nil
+	local ok = pcall(function()
+		value = map:UpdateAsync(self:_playerLockKey(id), function(current)
+			if type(current) == "table" and tonumber(current.ExpiresAt) and tonumber(current.ExpiresAt) > os.time() then
+				return current
+			end
+			return {
+				UserId = id,
+				MatchId = matchId,
+				LockToken = token,
+				CreatedAt = os.time(),
+				ExpiresAt = os.time() + PAIR_LOCK_TTL,
+			}
+		end, PAIR_LOCK_TTL)
+	end)
+	return ok and type(value) == "table" and tostring(value.LockToken or "") == token
+end
+
+function Service:_lockPlayersForMatch(homeUserId: any, awayUserId: any, matchId: string, token: string): boolean
+	local map = self:_playerLockMap()
+	if not map then return false end
+	local homeId = tonumber(homeUserId)
+	local awayId = tonumber(awayUserId)
+	if not homeId or not awayId or homeId == awayId then return false end
+	local first = math.min(homeId, awayId)
+	local second = math.max(homeId, awayId)
+	if not self:_lockPlayerForMatch(map, first, matchId, token) then return false end
+	if self:_lockPlayerForMatch(map, second, matchId, token) then return true end
+	pcall(function()
+		map:RemoveAsync(self:_playerLockKey(first))
+	end)
+	return false
+end
+
 function Service:_assignmentExpired(assignment: any): boolean
 	local created = tonumber(assignment and assignment.CreatedAt) or 0
 	return created > 0 and os.time() - created > MATCH_ASSIGNMENT_ACCEPT_SECONDS
@@ -295,6 +360,31 @@ function Service:_resultMap(): any?
 		return MemoryStoreService:GetSortedMap(RESULT_MAP)
 	end)
 	return ok and map or nil
+end
+
+function Service:_pairLockMap(): any?
+	local ok, map = pcall(function()
+		return MemoryStoreService:GetSortedMap(PAIR_LOCK_MAP)
+	end)
+	return ok and map or nil
+end
+
+function Service:_playerLockMap(): any?
+	local ok, map = pcall(function()
+		return MemoryStoreService:GetSortedMap(PLAYER_LOCK_MAP)
+	end)
+	return ok and map or nil
+end
+
+function Service:_pairKey(a: any, b: any): string
+	local first = tonumber(a) or 0
+	local second = tonumber(b) or 0
+	if first > second then first, second = second, first end
+	return "pair:" .. tostring(first) .. ":" .. tostring(second)
+end
+
+function Service:_playerLockKey(userId: any): string
+	return "user:" .. tostring(tonumber(userId) or 0)
 end
 
 function Service:_resultKey(player: Player): string
@@ -342,6 +432,33 @@ local function hasPackInstance(profile: any, packInstanceId: string): boolean
 		if tostring(pack.packInstanceId or pack.PackInstanceId or "") == packInstanceId then return true end
 	end
 	return false
+end
+
+local function receiptKey(prefix: string, resultId: string, fallback: any?): string
+	local id = tostring(resultId or "")
+	if id == "" then id = tostring(fallback or HttpService:GenerateGUID(false)) end
+	return prefix .. ":" .. id
+end
+
+local function receiptBucket(profile: any, key: string): any
+	profile[key] = type(profile[key]) == "table" and profile[key] or {}
+	return profile[key]
+end
+
+local function hasReceipt(profile: any, bucketKey: string, key: string): boolean
+	return receiptBucket(profile, bucketKey)[key] == true
+end
+
+local function markReceipt(profile: any, bucketKey: string, key: string)
+	local bucket = receiptBucket(profile, bucketKey)
+	bucket[key] = true
+	local orderKey = bucketKey .. "Order"
+	profile[orderKey] = type(profile[orderKey]) == "table" and profile[orderKey] or {}
+	table.insert(profile[orderKey], key)
+	while #profile[orderKey] > 80 do
+		local old = table.remove(profile[orderKey], 1)
+		bucket[old] = nil
+	end
 end
 
 function Service:_grantSpecificRankedPack(player: Player, packId: string?): boolean
@@ -402,26 +519,37 @@ function Service:_consumePendingRankedResult(player: Player)
 	if reward then
 		matchStats.Reward = reward
 	end
-	if applied and reward and self.Progression then
+	local rewardKey = receiptKey("reward", resultId, payload.MatchId)
+	local packKey = receiptKey("pack", resultId, payload.MatchId)
+	local receiptChanged = false
+	if reward and self.Progression and not hasReceipt(profile, "RankedRewardReceipts", rewardKey) then
 		self.Progression:GrantMatchRewards(player, {
 			Title = reward.Title or (result == "Win" and "RANKED VICTORY" or result == "Draw" and "RANKED DRAW" or "RANKED MATCH"),
 			Coins = tonumber(reward.Coins) or 0,
 			XP = tonumber(reward.XP) or 0,
 		})
+		markReceipt(profile, "RankedRewardReceipts", rewardKey)
+		receiptChanged = true
 	end
 	if result == "Win" or result == "ForfeitWin" then
-		local packId = tostring(payload.PackId or "")
+		local packId = tostring(payload.PackId or (reward and reward.PackId) or "")
 		local packInstanceId = tostring(payload.PackInstanceId or "")
-		local matchServerAlreadyPersisted = payload.AppliedInMatchServer == true and (packInstanceId == "" or hasPackInstance(profile, packInstanceId))
-		if packId ~= "" and (applied or not matchServerAlreadyPersisted) then
-			self:_grantSpecificRankedPack(player, packId)
+		local matchServerAlreadyPersisted = packInstanceId ~= "" and hasPackInstance(profile, packInstanceId)
+		if matchServerAlreadyPersisted then
+			markReceipt(profile, "RankedPackReceipts", packKey)
+			receiptChanged = true
+		elseif packId ~= "" and not hasReceipt(profile, "RankedPackReceipts", packKey) then
+			if self:_grantSpecificRankedPack(player, packId) then
+				markReceipt(profile, "RankedPackReceipts", packKey)
+				receiptChanged = true
+			end
 		end
 	end
 	if reward and resultId ~= "" and self.RankedProfiles.AttachHistoryReward then
 		self.RankedProfiles:AttachHistoryReward(player,resultId,reward)
 	end
 	self:_publishMenuData(player)
-	if applied then self:_savePlayer(player) end
+	if applied or receiptChanged then self:_savePlayer(player) end
 	pcall(function()
 		map:RemoveAsync(self:_resultKey(player))
 	end)
@@ -494,7 +622,20 @@ function Service:_attachResultHandlers(session: any, home: Player, away: Player)
 		session.RankedWinRewards=session.RankedWinRewards or{}
 		local existing=session.RankedWinRewards[winner.UserId]
 		if existing then return existing end
+		local side = (session.PlayerSides and session.PlayerSides[winner]) or (winner == home and "Home" or "Away")
+		local resultId = tostring(session.MatchId or "") .. ":" .. tostring(side or "Player")
+		local profile = self.Profiles:GetProfile(winner)
+		local packKey = receiptKey("pack", resultId, session.MatchId)
+		if profile and hasReceipt(profile, "RankedPackReceipts", packKey) then
+			local receiptReward = {Title="RANKED VICTORY", PackGranted=true, Packs=1, Source="RankedWin"}
+			session.RankedWinRewards[winner.UserId]=receiptReward
+			return receiptReward
+		end
 		local reward=RankedWinPackReward.Grant(self.Progression,winner,self.Publish)
+		if profile and type(reward)=="table" and reward.PackGranted==true then
+			markReceipt(profile, "RankedPackReceipts", packKey)
+			self:_savePlayer(winner)
+		end
 		session.RankedWinRewards[winner.UserId]=reward
 		return reward
 	end
@@ -504,7 +645,13 @@ function Service:_attachResultHandlers(session: any, home: Player, away: Player)
 		elseif session.ForfeitBy then
 			return "ForfeitWin"
 		end
-		if homeScore==awayScore then return "Draw" end
+		if homeScore==awayScore then
+			local shootoutWinner=tostring(session.PenaltyShootoutWinner or "")
+			if shootoutWinner=="Home"or shootoutWinner=="Away"then
+				return side==shootoutWinner and "Win" or "Loss"
+			end
+			return "Draw"
+		end
 		local won=(side=="Home" and homeScore>awayScore)or(side=="Away" and awayScore>homeScore)
 		return won and "Win" or "Loss"
 	end
@@ -610,20 +757,40 @@ function Service:_attachResultHandlers(session: any, home: Player, away: Player)
 			local draw=result=="Draw"
 			local coins = 900 + (won and 900 or draw and 450 or 225)
 			local xp = 140 + (won and 110 or draw and 55 or 25)
+			local side = participant == home and "Home" or "Away"
+			local resultId = tostring(session.MatchId or ended.MatchId or HttpService:GenerateGUID(false)) .. ":" .. side
+			local matchStats = personalByUser[participant.UserId] or {ResultId=resultId,Team=side}
+			local profile = self.Profiles:GetProfile(participant)
+			local rewardKey = receiptKey("reward", tostring(matchStats.ResultId or resultId), session.MatchId or ended.MatchId)
+			local packKey = receiptKey("pack", tostring(matchStats.ResultId or resultId), session.MatchId or ended.MatchId)
+			local rewardTitle = won and "RANKED VICTORY" or draw and "RANKED DRAW" or "RANKED MATCH"
 			local reward=nil
-			if self.Progression then
+			if self.Progression and (not profile or not hasReceipt(profile, "RankedRewardReceipts", rewardKey)) then
 				reward = self.Progression:GrantMatchRewards(participant, {
-					Title = won and "RANKED VICTORY" or draw and "RANKED DRAW" or "RANKED MATCH",
+					Title = rewardTitle,
 					Coins = coins,
 					XP = xp,
 				})
+				if profile and reward then
+					markReceipt(profile, "RankedRewardReceipts", rewardKey)
+					self:_savePlayer(participant)
+				end
+			elseif profile then
+				reward = {Title = rewardTitle, Coins = 0, XP = 0}
 			end
 			if won then
 				session.RankedWinRewards=session.RankedWinRewards or{}
 				local packReward=session.RankedWinRewards[participant.UserId]
-				if not packReward then
+				if not packReward and profile and hasReceipt(profile, "RankedPackReceipts", packKey) then
+					packReward={Title="RANKED VICTORY",PackGranted=true,Packs=1,Source="RankedWin"}
+					session.RankedWinRewards[participant.UserId]=packReward
+				elseif not packReward then
 					packReward=RankedWinPackReward.Grant(self.Progression,participant,self.Publish)
 					session.RankedWinRewards[participant.UserId]=packReward
+					if profile and type(packReward)=="table" and packReward.PackGranted==true then
+						markReceipt(profile, "RankedPackReceipts", packKey)
+						self:_savePlayer(participant)
+					end
 				end
 				reward=reward or{}
 				for key,value in packReward do
@@ -631,9 +798,6 @@ function Service:_attachResultHandlers(session: any, home: Player, away: Player)
 				end
 				reward.Title="RANKED VICTORY"
 			end
-			local side = participant == home and "Home" or "Away"
-			local resultId = tostring(session.MatchId or ended.MatchId or HttpService:GenerateGUID(false)) .. ":" .. side
-			local matchStats = personalByUser[participant.UserId] or {ResultId=resultId,Team=side}
 			local packReward = session.RankedWinRewards and session.RankedWinRewards[participant.UserId] or nil
 			if reward then rewards[participant.UserId] = reward end
 			if reward and self.RankedProfiles.AttachHistoryReward then
@@ -785,14 +949,43 @@ end
 function Service:_publishGlobalMatch(homeTicket: any, awayTicket: any): (boolean, string)
 	local matchMap = self:_matchMap()
 	local queueMap = self:_queueMap()
-	if not matchMap or not queueMap then return false, "Global matchmaking is unavailable." end
+	local pairMap = self:_pairLockMap()
+	if not matchMap or not queueMap or not pairMap then return false, "Global matchmaking is unavailable." end
+	local pairKey = self:_pairKey(homeTicket.UserId, awayTicket.UserId)
+	local lockMatchId = nil
+	local lockToken = HttpService:GenerateGUID(false)
+	local lockOk = pcall(function()
+		lockMatchId = pairMap:UpdateAsync(pairKey, function(current)
+			if type(current) == "table" and tonumber(current.ExpiresAt) and tonumber(current.ExpiresAt) > os.time() then
+				return current
+			end
+			return {
+				HomeUserId = homeTicket.UserId,
+				AwayUserId = awayTicket.UserId,
+				MatchId = HttpService:GenerateGUID(false),
+				LockToken = lockToken,
+				CreatedAt = os.time(),
+				ExpiresAt = os.time() + PAIR_LOCK_TTL,
+			}
+		end, PAIR_LOCK_TTL)
+	end)
+	if not lockOk or type(lockMatchId) ~= "table" then return false, "Could not lock ranked pair." end
+	if tostring(lockMatchId.LockToken or "") ~= lockToken then
+		return false, "Ranked pair is already assigned."
+	end
+	local matchId = tostring(lockMatchId.MatchId or HttpService:GenerateGUID(false))
+	if not self:_lockPlayersForMatch(homeTicket.UserId, awayTicket.UserId, matchId, lockToken) then
+		pcall(function() pairMap:RemoveAsync(pairKey) end)
+		return false, "One of these players is already assigned to a ranked match."
+	end
 	local okReserve, accessCode, privateServerId = pcall(function()
 		return TeleportService:ReserveServer(game.PlaceId)
 	end)
 	if not okReserve or type(accessCode) ~= "string" then
+		pcall(function() pairMap:RemoveAsync(pairKey) end)
+		self:_clearPlayerLocksForUsers(homeTicket.UserId, awayTicket.UserId)
 		return false, "Could not reserve match server."
 	end
-	local matchId = HttpService:GenerateGUID(false)
 	local homeAssignment = self:_makeAssignment(matchId, accessCode, tostring(privateServerId or ""), homeTicket, awayTicket, "Home")
 	local awayAssignment = self:_makeAssignment(matchId, accessCode, tostring(privateServerId or ""), homeTicket, awayTicket, "Away")
 	local okSet = pcall(function()
@@ -801,7 +994,11 @@ function Service:_publishGlobalMatch(homeTicket: any, awayTicket: any): (boolean
 		queueMap:RemoveAsync(tostring(homeTicket.UserId) .. ":" .. tostring(homeTicket.JobId))
 		queueMap:RemoveAsync(tostring(awayTicket.UserId) .. ":" .. tostring(awayTicket.JobId))
 	end)
-	if not okSet then return false, "Could not publish match assignment." end
+	if not okSet then
+		pcall(function() pairMap:RemoveAsync(pairKey) end)
+		self:_clearPlayerLocksForUsers(homeTicket.UserId, awayTicket.UserId)
+		return false, "Could not publish match assignment."
+	end
 	return true, matchId
 end
 
@@ -1074,6 +1271,24 @@ function Service:HandleTeleportedPlayer(player: Player): boolean
 	return true
 end
 
+function Service:_returnUnmatchedRankedPlayer(player: Player?, data: any?, reason: string)
+	if not player or player.Parent ~= Players then return end
+	if self.Notifications then
+		self.Notifications:Send(player, "RANKED MATCH", reason, "Error")
+	end
+	if player:GetAttribute("VTRRankedTeleporting") == true then return end
+	player:SetAttribute("VTRRankedTeleporting", true)
+	player:SetAttribute("VTRRankedQueueLockedUntil", os.clock() + 4)
+	local placeId = tonumber(data and data.ReturnPlaceId) or tonumber(data and data.PlaceId) or game.PlaceId
+	local ok, err = pcall(function()
+		TeleportService:TeleportAsync(placeId, { player })
+	end)
+	if not ok then
+		player:SetAttribute("VTRRankedTeleporting", nil)
+		warn("[VTR RANKED RETURN] " .. tostring(err))
+	end
+end
+
 function Service:_tryStartTeleportedMatch(matchId: string)
 	local bucket = self.PendingTeleportMatches[matchId]
 	if not bucket or bucket.Started then return end
@@ -1081,7 +1296,7 @@ function Service:_tryStartTeleportedMatch(matchId: string)
 	local home = bucket.Players[tonumber(data.HomeUserId) or -1]
 	local away = bucket.Players[tonumber(data.AwayUserId) or -2]
 	local startedAt = os.clock()
-	while os.clock() - startedAt < 45 do
+	while os.clock() - startedAt < TELEPORTED_MATCH_WAIT_SECONDS do
 		if home and away and home.Parent == Players and away.Parent == Players then
 			local homeProfile = self.Profiles:GetProfile(home)
 			local awayProfile = self.Profiles:GetProfile(away)
@@ -1092,19 +1307,40 @@ function Service:_tryStartTeleportedMatch(matchId: string)
 				local awayReady, awayMessage, awayRoster = self.RankedSquads:GetRoster(away)
 				if not homeReady or not homeRoster then
 					self.Notifications:Send(home, "MATCH FAILED", homeMessage or "Home lineup unavailable.", "Error")
+					self:_clearMatchAssignmentForUserId(data.HomeUserId)
+					self:_clearMatchAssignmentForUserId(data.AwayUserId)
+					self:_clearMatchAssignmentsFor(matchId, home, away)
+					self:_clearPairLockForUsers(data.HomeUserId, data.AwayUserId)
+					self:_clearPlayerLocksForUsers(data.HomeUserId, data.AwayUserId)
+					self:_returnUnmatchedRankedPlayer(home, data, "Your lineup was unavailable. Sending you back.")
+					self:_returnUnmatchedRankedPlayer(away, data, "Opponent lineup was unavailable. Sending you back.")
 					return
 				end
 				if not awayReady or not awayRoster then
 					self.Notifications:Send(away, "MATCH FAILED", awayMessage or "Away lineup unavailable.", "Error")
+					self:_clearMatchAssignmentForUserId(data.HomeUserId)
+					self:_clearMatchAssignmentForUserId(data.AwayUserId)
+					self:_clearMatchAssignmentsFor(matchId, home, away)
+					self:_clearPairLockForUsers(data.HomeUserId, data.AwayUserId)
+					self:_clearPlayerLocksForUsers(data.HomeUserId, data.AwayUserId)
+					self:_returnUnmatchedRankedPlayer(home, data, "Opponent lineup was unavailable. Sending you back.")
+					self:_returnUnmatchedRankedPlayer(away, data, "Your lineup was unavailable. Sending you back.")
 					return
 				end
 				bucket.Started = true
+				self:_clearMatchAssignmentForUserId(data.HomeUserId)
+				self:_clearMatchAssignmentForUserId(data.AwayUserId)
+				self:_clearMatchAssignmentsFor(matchId, home, away)
+				self:_clearPairLockForUsers(data.HomeUserId, data.AwayUserId)
+				self:_clearPlayerLocksForUsers(data.HomeUserId, data.AwayUserId)
 				local homeSetup = self:BuildRankedSetup(home, homeProfile, homeRoster)
 				local awaySetup = self:BuildRankedSetup(away, awayProfile, awayRoster)
 				local success, message = self.Runtime:StartRankedMatch(home, away, homeSetup, awaySetup, homeRoster, awayRoster)
 				if not success then
 					self.Notifications:Send(home, "MATCH FAILED", message, "Error")
 					self.Notifications:Send(away, "MATCH FAILED", message, "Error")
+					self:_returnUnmatchedRankedPlayer(home, data, "Match failed to start. Sending you back.")
+					self:_returnUnmatchedRankedPlayer(away, data, "Match failed to start. Sending you back.")
 					return
 				end
 				self.RankedSquads:ConsumeLoans(home)
@@ -1123,8 +1359,14 @@ function Service:_tryStartTeleportedMatch(matchId: string)
 		home = bucket.Players[tonumber(data.HomeUserId) or -1]
 		away = bucket.Players[tonumber(data.AwayUserId) or -2]
 	end
-	if home and home.Parent == Players then self.Notifications:Send(home, "MATCH FAILED", "Opponent did not reach the reserved server.", "Error") end
-	if away and away.Parent == Players then self.Notifications:Send(away, "MATCH FAILED", "Opponent did not reach the reserved server.", "Error") end
+	self.PendingTeleportMatches[matchId] = nil
+	self:_clearMatchAssignmentForUserId(data.HomeUserId)
+	self:_clearMatchAssignmentForUserId(data.AwayUserId)
+	self:_clearMatchAssignmentsFor(matchId, home, away)
+	self:_clearPairLockForUsers(data.HomeUserId, data.AwayUserId)
+	self:_clearPlayerLocksForUsers(data.HomeUserId, data.AwayUserId)
+	if home and home.Parent == Players then self:_returnUnmatchedRankedPlayer(home, data, "Opponent did not reach the match server. Sending you back.") end
+	if away and away.Parent == Players then self:_returnUnmatchedRankedPlayer(away, data, "Opponent did not reach the match server. Sending you back.") end
 end
 
 return Service

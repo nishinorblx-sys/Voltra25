@@ -2,10 +2,12 @@
 local VTRPendingPackAnimation = require(script.Parent:WaitForChild("PendingPackAnimationService"))
 local Players=game:GetService("Players")
 local ReplicatedStorage=game:GetService("ReplicatedStorage")
+local RunService=game:GetService("RunService")
 local Config=require(ReplicatedStorage.VTR.Shared.ProgressionConfig)
 local EconomyConfig=require(ReplicatedStorage.VTR.Shared.EconomyConfig)
 local DeveloperConfig=require(ReplicatedStorage.VTR.Shared.DeveloperConfig)
 local ClubIdentityConfig=require(ReplicatedStorage.VTR.Shared.ClubIdentityConfig)
+local PlayBuilderConfig=require(ReplicatedStorage.VTR.Shared.PlayBuilderConfig)
 local ObjectiveDefinitions=require(script.Parent.Parent.Data.Objectives)
 local CardInstanceFactory=require(script.Parent.Parent.Data.CardInstanceFactory)
 local PackInstanceFactory=require(script.Parent.Parent.Data.PackInstanceFactory)
@@ -13,6 +15,49 @@ local DefaultProfile=require(script.Parent.Parent.Data.DefaultProfile)
 local ProfileService={};ProfileService.__index=ProfileService
 
 local function copy(value:any):any if type(value)~="table" then return value end;local result={};for key,child in value do result[key]=copy(child) end;return result end
+
+local function applyStudioDefaultTeam(profile:any,player:Player)
+	if not RunService:IsStudio() then return end
+	local club=profile.ClubMembership or{}
+	club.ClubId=club.ClubId~=""and club.ClubId or("studio_club_"..tostring(player.UserId))
+	club.Name="STUDIO UNITED"
+	club.Abbreviation="VTR"
+	club.Tag="VTR"
+	club.PrimaryColor="electric_green"
+	club.SecondaryColor="pure_black"
+	club.AccentColor="silver"
+	club.KitStyle=ClubIdentityConfig.ResolveStyle("Solid")
+	club.BadgePreset="Modern"
+	club.BadgeShape="Shield"
+	club.BadgeSymbol="Lightning Bolt"
+	club.BadgeColorBehavior="Tri Color"
+	club.Role=club.Role~="FREE AGENT"and club.Role or"FOUNDER"
+	club.Members=math.max(1,tonumber(club.Members)or 1)
+	club.Capacity=tonumber(club.Capacity)or 24
+	club.Reputation=club.Reputation~="UNRANKED"and club.Reputation or"ROOKIE"
+	profile.ClubMembership=club
+	profile.Profile.SelectedClub=club.Name
+	local onboarding=profile.Onboarding or{}
+	onboarding.Complete=true
+	onboarding.Step=10
+	onboarding.ClubName=club.Name
+	onboarding.Abbreviation=club.Abbreviation
+	onboarding.PrimaryColor=club.PrimaryColor
+	onboarding.SecondaryColor=club.SecondaryColor
+	onboarding.AccentColor=club.AccentColor
+	onboarding.KitStyle=club.KitStyle
+	onboarding.BadgePreset=club.BadgePreset
+	onboarding.BadgeShape=club.BadgeShape
+	onboarding.BadgeSymbol=club.BadgeSymbol
+	onboarding.BadgeColorBehavior=club.BadgeColorBehavior
+	onboarding.IdentityConfigured=true
+	onboarding.StarterPackClaimed=true
+	onboarding.StarterPackOpened=true
+	onboarding.SquadFilled=true
+	onboarding.ObjectivesActivated=true
+	profile.Onboarding=onboarding
+	profile.OnboardingCompleted=true
+end
 
 local function ensureList(parent:any,key:string)
 	parent[key]=type(parent[key])=="table" and parent[key] or {}
@@ -166,6 +211,65 @@ local function normalizeObjectives(profile:any)
 	end
 	profile.Objectives=normalized
 end
+
+local MATCH_STAT_MODES={"Overall","Ranked","Campaign","WorldCup"}
+local function ensureResultBucket(bucket:any):any
+	bucket=type(bucket)=="table"and bucket or{}
+	bucket.Played=math.max(0,math.floor(tonumber(bucket.Played)or 0))
+	bucket.Wins=math.max(0,math.floor(tonumber(bucket.Wins)or 0))
+	bucket.Draws=math.max(0,math.floor(tonumber(bucket.Draws)or 0))
+	bucket.Losses=math.max(0,math.floor(tonumber(bucket.Losses)or 0))
+	return bucket
+end
+
+local function applyBucketBaseline(bucket:any,wins:number,draws:number,losses:number)
+	wins=math.max(0,math.floor(tonumber(wins)or 0))
+	draws=math.max(0,math.floor(tonumber(draws)or 0))
+	losses=math.max(0,math.floor(tonumber(losses)or 0))
+	bucket.Wins=math.max(bucket.Wins,wins)
+	bucket.Draws=math.max(bucket.Draws,draws)
+	bucket.Losses=math.max(bucket.Losses,losses)
+	bucket.Played=math.max(bucket.Played,bucket.Wins+bucket.Draws+bucket.Losses)
+end
+
+local function normalizeMatchStats(profile:any):any
+	profile.MatchStats=type(profile.MatchStats)=="table"and profile.MatchStats or copy(DefaultProfile.MatchStats)
+	for _,mode in MATCH_STAT_MODES do
+		profile.MatchStats[mode]=ensureResultBucket(profile.MatchStats[mode])
+	end
+	profile.MatchStats.AppliedResults=type(profile.MatchStats.AppliedResults)=="table"and profile.MatchStats.AppliedResults or{}
+	profile.MatchStats.History=type(profile.MatchStats.History)=="table"and profile.MatchStats.History or{}
+
+	local ranked=type(profile.Ranked)=="table"and profile.Ranked or{}
+	applyBucketBaseline(profile.MatchStats.Ranked,ranked.Wins,ranked.Draws,ranked.Losses)
+	local completed=0
+	local campaign=type(profile.CampaignProgress)=="table"and profile.CampaignProgress or{}
+	for _,done in type(campaign.CompletedTeams)=="table"and campaign.CompletedTeams or{}do
+		if done==true then completed+=1 end
+	end
+	applyBucketBaseline(profile.MatchStats.Campaign,completed,0,0)
+	local worldCupTitles=0
+	for _,entry in type(profile.WorldCupHistory)=="table"and profile.WorldCupHistory or{}do
+		if entry.Winner~=nil and entry.Country~=nil and tostring(entry.Winner)==tostring(entry.Country)then worldCupTitles+=1 end
+	end
+	if worldCupTitles>0 then profile.MatchStats.WorldCup.Titles=math.max(tonumber(profile.MatchStats.WorldCup.Titles)or 0,worldCupTitles)end
+
+	local overall=profile.MatchStats.Overall
+	local played,wins,draws,losses=0,0,0,0
+	for _,mode in{"Ranked","Campaign","WorldCup"}do
+		local bucket=profile.MatchStats[mode]
+		played+=tonumber(bucket.Played)or 0
+		wins+=tonumber(bucket.Wins)or 0
+		draws+=tonumber(bucket.Draws)or 0
+		losses+=tonumber(bucket.Losses)or 0
+	end
+	overall.Played=math.max(overall.Played,played)
+	overall.Wins=math.max(overall.Wins,wins)
+	overall.Draws=math.max(overall.Draws,draws)
+	overall.Losses=math.max(overall.Losses,losses)
+	return profile.MatchStats
+end
+
 function ProfileService.new(store:any) return setmetatable({Store=store},ProfileService) end
 function ProfileService:_migrate(profile:any):any
 	local version=math.min(profile.Version or Config.ProfileVersion,profile.SchemaVersion or Config.ProfileVersion)
@@ -174,7 +278,8 @@ function ProfileService:_migrate(profile:any):any
 	if profile.Ranked.Division=="UNRANKED" and profile.Ranked.Wins+profile.Ranked.Draws+profile.Ranked.Losses==0 then profile.Ranked.Division="DIVISION 10";profile.Ranked.Rank="NEW SEASON";profile.Ranked.PlacementStatus="PLACEMENT READY" end
 	local ranked=profile.Ranked;ranked.DivisionNumber=math.floor(tonumber(ranked.DivisionNumber)or tonumber(string.match(tostring(ranked.Division),"%d+"))or 10);ranked.DivisionNumber=ranked.DivisionNumber<=0 and 0 or math.clamp(ranked.DivisionNumber,1,10);ranked.Division=ranked.DivisionNumber==0 and"ELITE DIVISION"or("DIVISION "..ranked.DivisionNumber);ranked.DivisionWins=tonumber(ranked.DivisionWins)or 0;ranked.ProtectedWins=tonumber(ranked.ProtectedWins)or 0;ranked.VoltraRating=tonumber(ranked.VoltraRating)or 0;ranked.WinStreak=tonumber(ranked.WinStreak)or 0;ranked.BestWinStreak=tonumber(ranked.BestWinStreak)or ranked.WinStreak;ranked.FlawlessRuns=tonumber(ranked.FlawlessRuns)or 0;ranked.CleanSheets=tonumber(ranked.CleanSheets)or 0;ranked.BestPackRating=tonumber(ranked.BestPackRating)or 0;ranked.RequiredRP=ranked.DivisionNumber==0 and 0 or 10;ranked.PlayerStats=ranked.PlayerStats or {MatchesPlayed=0,Goals=0,Assists=0,MOTM=0,AverageRating=0,HatTricks=0,PenaltiesScored=0,FreeKickGoals=0}
 	profile.RankedRun=profile.RankedRun or copy(DefaultProfile.RankedRun);local run=profile.RankedRun;run.Results=type(run.Results)=="table"and run.Results or{};run.Target=math.clamp(math.floor(tonumber(run.Target)or 7),1,20);run.Wins=0;run.Draws=0;run.Losses=0;for index=#run.Results,1,-1 do local value=tostring(run.Results[index]);if value~="Win"and value~="Draw"and value~="Loss"then table.remove(run.Results,index)end end;while#run.Results>run.Target do table.remove(run.Results,1)end;for _,value in run.Results do if value=="Win"then run.Wins+=1 elseif value=="Draw"then run.Draws+=1 elseif value=="Loss"then run.Losses+=1 end end;run.Active=#run.Results>0 and #run.Results<run.Target;run.Ended=#run.Results>=run.Target;run.RewardClaimed=run.RewardClaimed==true
-	profile.ProClubMembership=profile.ProClubMembership or copy(DefaultProfile.ProClubMembership);profile.ProClubsPlayer=profile.ProClubsPlayer or copy(DefaultProfile.ProClubsPlayer)
+	normalizeMatchStats(profile)
+	profile.ProClubMembership=profile.ProClubMembership or copy(DefaultProfile.ProClubMembership);profile.ProClubsPlayer=profile.ProClubsPlayer or copy(DefaultProfile.ProClubsPlayer);profile.PlayBuilder=PlayBuilderConfig.Normalize(profile.PlayBuilder or DefaultProfile.PlayBuilder,profile.Profile and profile.Profile.Level or profile.Season and profile.Season.Level or 1)
 	normalizeCardInstances(profile)
 	normalizePackInstances(profile)
 	normalizeObjectives(profile)
@@ -184,7 +289,7 @@ function ProfileService:_migrate(profile:any):any
 	if (profile.ClubMembership.Abbreviation==nil or profile.ClubMembership.Abbreviation=="") and type(profile.ClubMembership.Tag)=="string" and profile.ClubMembership.Tag~="" then profile.ClubMembership.Abbreviation=string.upper(profile.ClubMembership.Tag)end;if (profile.ClubMembership.Tag==nil or profile.ClubMembership.Tag=="") and type(profile.ClubMembership.Abbreviation)=="string" and profile.ClubMembership.Abbreviation~="" then profile.ClubMembership.Tag=string.upper(profile.ClubMembership.Abbreviation)end
 	for key,value in ClubIdentityConfig.Default do if profile.ClubMembership[key]==nil or profile.ClubMembership[key]==""then profile.ClubMembership[key]=value end;if profile.Onboarding[key]==nil or profile.Onboarding[key]==""then profile.Onboarding[key]=value end end
 	profile.ClubMembership.KitStyle=ClubIdentityConfig.ResolveStyle(profile.ClubMembership.KitStyle);profile.Onboarding.KitStyle=ClubIdentityConfig.ResolveStyle(profile.Onboarding.KitStyle)
-	profile.UIState=profile.UIState or copy(DefaultProfile.UIState);profile.UIState.Settings=profile.UIState.Settings or {};local matchDefaults={TimedFinishing=true,MenuMusic=true,MotionEffects=true,PerformanceMode=false,InvertY=false,HighContrast=false,ReducedMotion=false,Crossplay=true,MasterVolume=0.8,CameraPreset="Tactical",CameraZoomMode="Wide",PlayerNames="Active Only",Trainer="Basic",PassReceiverAutoSwitch="Assisted",ReceiverAssist="Light",Minimap="Medium",MinimapOrientation="Broadcast",BroadcastHeight="178",BroadcastZoom="50",CameraSpeed="1",CameraSide="Near",PauseKey="M",SkipKey="Space",TutorialComplete=false,TutorialStep=1,TutorialDevice=""};profile.Settings=profile.Settings or {};for key,value in matchDefaults do if profile.UIState.Settings[key]==nil then profile.UIState.Settings[key]=value end;if profile.Settings[key]==nil then profile.Settings[key]=profile.UIState.Settings[key]end end;for _,target in{profile.UIState.Settings,profile.Settings}do local preset=tostring(target.CameraPreset or"");if preset=="Broadcast"or preset=="WideBroadcast"or preset=="Wide Broadcast"or preset=="CloseBroadcast"or preset=="Close Broadcast"or preset=="End to End"then target.CameraPreset="Tactical"end end;for _,key in{"Commentary","CommentaryLanguage","CommentaryVolume"}do profile.UIState.Settings[key]=nil;profile.Settings[key]=nil end;ensureMonetizationFields(profile)
+	profile.UIState=profile.UIState or copy(DefaultProfile.UIState);profile.UIState.Settings=profile.UIState.Settings or {};local matchDefaults={TimedFinishing=true,MenuMusic=true,MotionEffects=true,PerformanceMode=false,InvertY=false,HighContrast=false,ReducedMotion=false,Crossplay=true,MasterVolume=0.8,CameraPreset="Tactical",CameraZoomMode="Wide",PlayerNames="Active Only",Trainer="Basic",PassReceiverAutoSwitch="Assisted",ManualPassAutoSwitch="Closest",ReceiverAssist="Light",Minimap="Medium",MinimapOrientation="Broadcast",BroadcastHeight="178",BroadcastZoom="50",CameraSpeed="1",CameraSide="Near",PauseKey="M",SkipKey="Space",TutorialComplete=false,TutorialStep=1,TutorialDevice=""};profile.Settings=profile.Settings or {};for key,value in matchDefaults do if profile.UIState.Settings[key]==nil then profile.UIState.Settings[key]=value end;if profile.Settings[key]==nil then profile.Settings[key]=profile.UIState.Settings[key]end end;for _,target in{profile.UIState.Settings,profile.Settings}do local preset=tostring(target.CameraPreset or"");if preset=="Broadcast"or preset=="WideBroadcast"or preset=="Wide Broadcast"or preset=="CloseBroadcast"or preset=="Close Broadcast"or preset=="End to End"then target.CameraPreset="Tactical"end end;for _,key in{"Commentary","CommentaryLanguage","CommentaryVolume"}do profile.UIState.Settings[key]=nil;profile.Settings[key]=nil end;ensureMonetizationFields(profile)
 	if profile.Settings.TutorialComplete ~= nil then profile.UIState.Settings.TutorialComplete = profile.Settings.TutorialComplete == true end
 	if tonumber(profile.Settings.TutorialStep) then profile.UIState.Settings.TutorialStep = math.clamp(math.floor(tonumber(profile.Settings.TutorialStep) or 1), 1, 20) end
 	if profile.Settings.TutorialDevice ~= nil then profile.UIState.Settings.TutorialDevice = tostring(profile.Settings.TutorialDevice or ""):sub(1, 32) end
@@ -209,6 +314,7 @@ function ProfileService:Start()
 			profileOrError=self:_migrate(raw)
 		end
 		local profile=profileOrError
+		applyStudioDefaultTeam(profile,player)
 		profile.Profile.Avatar.UserId=player.UserId
 		local equipped=profile.UIState and profile.UIState.EquippedCosmetics or {}
 		player:SetAttribute("VTRGoalMusic",equipped.GoalMusic or "")
@@ -241,11 +347,48 @@ function ProfileService:GetProfile(player:Player):any?
 	return profile
 end
 function ProfileService:ResetProfile(player:Player):any?
-	if not player or player.Parent~=Players then return nil end;local profile=copy(self.Store.Template);self.Store.Sessions[player.UserId]=profile;profile=self:_migrate(profile);profile.Profile.Avatar.UserId=player.UserId;player:SetAttribute("VTRNewProfile",true);self.Store:SaveAsync(player.UserId,true);return profile
+	if not player or player.Parent~=Players then return nil end;local profile=copy(self.Store.Template);self.Store.Sessions[player.UserId]=profile;profile=self:_migrate(profile);applyStudioDefaultTeam(profile,player);profile.Profile.Avatar.UserId=player.UserId;player:SetAttribute("VTRNewProfile",true);self.Store:SaveAsync(player.UserId,true);return profile
 end
 function ProfileService:Save(player:Player,force:boolean?):boolean
 	if not player or player.Parent~=Players then return false end
 	return self.Store:SaveAsync(player.UserId,force==true)
+end
+function ProfileService:RecordMatchResult(player:Player,mode:string,resultId:string,result:string,metadata:any?):boolean
+	local profile=self:GetProfile(player)
+	if not profile then return false end
+	mode=tostring(mode or"")
+	if mode~="Ranked"and mode~="Campaign"and mode~="WorldCup"then return false end
+	result=tostring(result or"")
+	if result=="ForfeitWin"or result=="Won"or result=="Victory"then result="Win"end
+	if result=="ForfeitLoss"or result=="Lost"or result=="Defeat"then result="Loss"end
+	if result=="Tie"then result="Draw"end
+	if result~="Win"and result~="Draw"and result~="Loss"then return false end
+	local stats=normalizeMatchStats(profile)
+	resultId=tostring(resultId or"")
+	if resultId==""then
+		resultId=mode..":"..tostring(player.UserId)..":"..tostring(os.time())..":"..tostring((stats[mode].Played or 0)+1)
+	end
+	local key=mode..":"..resultId
+	if stats.AppliedResults[key]==true then return false end
+	stats.AppliedResults[key]=true
+	for _,bucketName in{mode,"Overall"}do
+		local bucket=stats[bucketName]
+		bucket.Played=(tonumber(bucket.Played)or 0)+1
+		if result=="Win"then bucket.Wins=(tonumber(bucket.Wins)or 0)+1 elseif result=="Draw"then bucket.Draws=(tonumber(bucket.Draws)or 0)+1 else bucket.Losses=(tonumber(bucket.Losses)or 0)+1 end
+	end
+	if mode=="Campaign"then
+		profile.CampaignProgress=type(profile.CampaignProgress)=="table"and profile.CampaignProgress or{UnlockedDifficulty=1,CompletedTeams={},RewardsClaimed={}}
+		profile.CampaignProgress.Wins=stats.Campaign.Wins
+		profile.CampaignProgress.Draws=stats.Campaign.Draws
+		profile.CampaignProgress.Losses=stats.Campaign.Losses
+	elseif mode=="WorldCup"then
+		stats.WorldCup.Titles=tonumber(stats.WorldCup.Titles)or 0
+	end
+	local history=stats.History
+	table.insert(history,1,{Id=key,Mode=mode,Result=result,At=os.time(),Meta=type(metadata)=="table"and copy(metadata)or nil})
+	while#history>100 do table.remove(history)end
+	if self.Save then self:Save(player,true)end
+	return true
 end
 function ProfileService:GetClientData(player:Player):any? local p=self:GetProfile(player);if not p then return nil end;return {Username=player.Name,DisplayName=player.DisplayName,Level=p.Profile.Level,XP=p.Profile.XP,SelectedClub=p.Profile.SelectedClub,ClubIdentity=table.clone(p.ClubMembership),Avatar={UserId=player.UserId,HeadshotType=p.Profile.Avatar.HeadshotType,OutfitId=p.Profile.Avatar.OutfitId}} end
 function ProfileService:GetVersion():number return Config.ProfileVersion end

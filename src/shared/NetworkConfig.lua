@@ -13,6 +13,7 @@ local NetworkConfig = {
 	PackFunction = "PackAction",
 	InventoryFunction = "InventoryAction",
 	MatchFunction = "MatchSetupAction",
+	DeveloperFunction = "DeveloperAction",
 	RequestCooldown = 0.15,
 	Services = table.freeze({
 		PlayerProfile = true,

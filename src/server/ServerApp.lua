@@ -29,6 +29,7 @@ local SquadService = require(script.Parent.Services.SquadService)
 local StoreService = require(script.Parent.Services.StoreService)
 local RankedProfileService = require(script.Parent.Services.RankedProfileService)
 local RankedQueueService = require(script.Parent.Services.RankedQueueService)
+local FiveVFiveQueueService = require(script.Parent.Services.FiveVFiveQueueService)
 local RankedSquadService = require(script.Parent.Services.RankedSquadService)
 local CareerService = require(script.Parent.Services.CareerService)
 local ClubIdentityService = require(script.Parent.Services.ClubIdentityService)
@@ -39,6 +40,7 @@ local MatchRuntimeService = require(script.Parent.Gameplay.MatchRuntimeService)
 local TransferMarketService=require(script.Parent.Services.TransferMarketService)
 local DailyLoginRewardService = require(script.Parent.Services.DailyLoginRewardService)
 local MonetizationReceiptService = require(script.Parent.Services.MonetizationReceiptService)
+local DeveloperPackGrantService = require(script.Parent.Services.DeveloperPackGrantService)
 
 local ServerApp = {}
 
@@ -68,6 +70,7 @@ function ServerApp.Start()
 	local packAction = remote(remotes, "RemoteFunction", NetworkConfig.PackFunction) :: RemoteFunction
 	local inventoryAction = remote(remotes, "RemoteFunction", NetworkConfig.InventoryFunction) :: RemoteFunction
 	local matchAction = remote(remotes, "RemoteFunction", NetworkConfig.MatchFunction) :: RemoteFunction
+	local developerAction = remote(remotes, "RemoteFunction", NetworkConfig.DeveloperFunction) :: RemoteFunction
 
 	local function publish(player: Player, serviceName: string, payload: any)
 		if player.Parent == Players then dataUpdated:FireClient(player, serviceName, payload) end
@@ -94,8 +97,10 @@ function ServerApp.Start()
 	local rankedSquads=RankedSquadService.new(profiles)
 	local matchSetup = MatchSetupService.new(profiles,publish,progression,matchRuntime,rankedSquads)
 	local rankedQueue = RankedQueueService.new(profiles,matchRuntime,rankedProfile,notifications,rankedSquads,progression,publish)
+	local fiveVFiveQueue = FiveVFiveQueueService.new(matchRuntime, publish, notifications, profiles)
 	local dailyLogin = DailyLoginRewardService.new(profiles,inventory,publish)
 	local monetization = MonetizationReceiptService.new(profiles, inventory, progression, publish)
+	local developerPacks = DeveloperPackGrantService.new(profiles, inventory, progression, publish, notifications, fiveVFiveQueue)
 	local career = CareerService.new(profiles)
 	local clubIdentity = ClubIdentityService.new(profiles)
 	local onboarding = OnboardingService.new(profiles)
@@ -116,8 +121,10 @@ function ServerApp.Start()
 		Store = store,
 		RankedProfile = rankedProfile,
 		RankedQueue = rankedQueue,
+		FiveVFiveQueue = fiveVFiveQueue,
 		DailyLogin = dailyLogin,
 		Monetization = monetization,
+		DeveloperPacks = developerPacks,
 		RankedSquad = rankedSquads,
 		Career = career,
 		ClubIdentity = clubIdentity,
@@ -133,9 +140,11 @@ function ServerApp.Start()
 	uiState:Start()
 	for _, player in Players:GetPlayers() do
 		rankedQueue:HandleTeleportedPlayer(player)
+		fiveVFiveQueue:HandleTeleportedPlayer(player)
 	end
 	Players.PlayerAdded:Connect(function(player)
 		rankedQueue:HandleTeleportedPlayer(player)
+		fiveVFiveQueue:HandleTeleportedPlayer(player)
 	end)
 
 	local lastRequest: { [Player]: { [string]: number } } = {}
@@ -198,6 +207,7 @@ function ServerApp.Start()
 			elseif action=="LockCard" then local accepted,text,data=squad:LockCard(player,payload.CardInstanceId,payload.Locked);return accepted,text,false,data
 			elseif action=="FavoriteCard" then local accepted,text,data=squad:FavoriteCard(player,payload.CardInstanceId,payload.Favorite);return accepted,text,false,data
 			elseif action=="QuickSellCard"then local accepted,text,data=squad:QuickSellCard(player,payload.CardInstanceId);return accepted,text,false,data
+			elseif action=="BulkQuickSellCards"then local accepted,text,data=squad:BulkQuickSellCards(player,payload.CardInstanceIds);return accepted,text,false,data
 			elseif action=="CreateTransferListing"then local accepted,text,data=transferMarket:CreateListing(player,payload.CardInstanceId,payload.StartPrice,payload.Duration);return accepted,text,false,data
 			elseif action=="GetTransferListings"then return true,"Listings loaded.",false,transferMarket:GetListings(player)
 			elseif action=="PlaceTransferBid"then local accepted,text,data=transferMarket:PlaceBid(player,payload.ListingId,payload.Amount);return accepted,text,false,data end
@@ -229,21 +239,28 @@ function ServerApp.Start()
 	inventoryAction.OnServerInvoke=function(player:Player,action:any)
 		if action~="GetInventory" then return {Success=false,Message="Invalid inventory request."} end;local now=os.clock();if now-(lastInventoryAction[player] or 0)<.15 then return {Success=false,Message="Please wait."} end;lastInventoryAction[player]=now;local data=inventory:GetClientData(player);return data and {Success=true,Data=data} or {Success=false,Message="Inventory unavailable."}
 	end
+	local lastDeveloperAction:{[Player]:number}={}
+	developerAction.OnServerInvoke=function(player:Player,action:any,payload:any)
+		if type(action)~="string" or #action>32 then return{Success=false,Message="Invalid developer action."}end
+		local now=os.clock();if now-(lastDeveloperAction[player] or 0)<.2 then return{Success=false,Message="Please wait."}end;lastDeveloperAction[player]=now
+		local ok,success,message,data=pcall(function()return developerPacks:Handle(player,action,payload)end)
+		return{Success=ok and success,Message=ok and message or"Developer action failed.",Data=ok and data or nil}
+	end
 	local lastMatchAction:{[Player]:number}={}
 	matchAction.OnServerInvoke=function(player:Player,action:any,payload:any)
 		if type(action)~="string"or#action>32 then return{Success=false,Message="Invalid match action."}end;payload=type(payload)=="table"and payload or{};local now=os.clock();if action~="GetConfig"and action~="GetRoster"and action~="GetTeams"and action~="GetWorldCup"and action~="GetRankedLeaderboards"and now-(lastMatchAction[player]or 0)<.2 then return{Success=false,Message="Please wait."}end;lastMatchAction[player]=now
-		local ok,success,message,data=pcall(function()if action=="GetConfig"then local result=matchSetup:GetClientData(player);if not result and profiles.WaitForProfile then profiles:WaitForProfile(player,8);result=matchSetup:GetClientData(player)end;return result~=nil,result and"Match setup loaded."or"Match setup unavailable.",result elseif action=="GetRoster"then local result=matchSetup:GetRoster(player,payload.TeamId);return result~=nil,result and"Roster loaded."or"Unknown team.",result elseif action=="GetTeams"then local result=matchSetup:GetTeams(player,payload.Country,payload.League);return result~=nil,result and"Teams loaded."or"Invalid country or league.",result elseif action=="SaveSetup"then return matchSetup:Save(player,payload)elseif action=="StartMatch"then return matchSetup:StartMatch(player)elseif action=="WatchMatch"then return matchSetup:WatchMatch(player)elseif action=="StartShootingPractice"then return matchSetup:StartShootingPractice(player,payload) elseif action=="GetWorldCup"then return matchSetup:GetWorldCup(player)elseif action=="BeginWorldCup"then return matchSetup:BeginWorldCup(player,tostring(payload.Country or""))elseif action=="ResetWorldCup"then return matchSetup:ResetWorldCup(player)elseif action=="EndWorldCup"then return matchSetup:EndWorldCup(player)elseif action=="ClaimWorldCupRewards"then return matchSetup:ClaimWorldCupRewards(player)elseif action=="StartWorldCupMatch"then return matchSetup:StartWorldCupMatch(player)elseif action=="SimulateWorldCupMatch"then return matchSetup:SimulateWorldCupMatch(player)elseif action=="SimulateRestOfWorldCup"then return matchSetup:SimulateRestOfWorldCup(player)elseif action=="JoinRankedQueue"then
+		local ok,success,message,data=pcall(function()if action=="GetConfig"then local result=matchSetup:GetClientData(player);if not result and profiles.WaitForProfile then profiles:WaitForProfile(player,8);result=matchSetup:GetClientData(player)end;return result~=nil,result and"Match setup loaded."or"Match setup unavailable.",result elseif action=="GetRoster"then local result=matchSetup:GetRoster(player,payload.TeamId);return result~=nil,result and"Roster loaded."or"Unknown team.",result elseif action=="GetTeams"then local result=matchSetup:GetTeams(player,payload.Country,payload.League);return result~=nil,result and"Teams loaded."or"Invalid country or league.",result elseif action=="SaveSetup"then return matchSetup:Save(player,payload)elseif action=="StartMatch"then return matchSetup:StartMatch(player)elseif action=="WatchMatch"then return matchSetup:WatchMatch(player)elseif action=="StartShootingPractice"then return matchSetup:StartShootingPractice(player,payload) elseif action=="GetWorldCup"then return matchSetup:GetWorldCup(player)elseif action=="BeginWorldCup"then return matchSetup:BeginWorldCup(player,tostring(payload.Country or""))elseif action=="ResetWorldCup"then return matchSetup:ResetWorldCup(player)elseif action=="EndWorldCup"then return matchSetup:EndWorldCup(player)elseif action=="ClaimWorldCupRewards"then return matchSetup:ClaimWorldCupRewards(player)elseif action=="ClaimWorldCupQuest"then return matchSetup:ClaimWorldCupQuest(player,tostring(payload.QuestId or ""))elseif action=="StartWorldCupMatch"then return matchSetup:StartWorldCupMatch(player)elseif action=="SimulateWorldCupMatch"then return matchSetup:SimulateWorldCupMatch(player)elseif action=="SimulateRestOfWorldCup"then return matchSetup:SimulateRestOfWorldCup(player)elseif action=="JoinRankedQueue"then
 		if player:GetAttribute("VTRInMatch")==true or (tonumber(player:GetAttribute("VTRRankedQueueLockedUntil"))or 0)>os.clock() then
 			return{Success=false,Message="Finish the current ranked match first."}
 		end
-return rankedQueue:Join(player,payload)elseif action=="LeaveRankedQueue"then return rankedQueue:Leave(player)elseif action=="GetRankedQueue"then return true,"Ranked queue status loaded.",rankedQueue:GetStatus(player)elseif action=="GetRankedLeaderboards"then return true,"Ranked leaderboards loaded.",rankedProfile:GetLeaderboards()elseif action=="ClaimRankedPathReward"then return rankedProfile:ClaimPathReward(player)elseif action=="DebugCompleteRankedPath"then return rankedProfile:DebugCompleteSevenWinPath(player)elseif action=="ReturnToMenu"then local result=matchSetup:ReturnToMenu(player);return result,result and"Returned to menu."or"No active match.",nil end;return false,"Unsupported match action.",nil end)
+return rankedQueue:Join(player,payload)elseif action=="LeaveRankedQueue"then return rankedQueue:Leave(player)elseif action=="GetRankedQueue"then return true,"Ranked queue status loaded.",rankedQueue:GetStatus(player)elseif action=="JoinFiveVFiveQueue"then return fiveVFiveQueue:Join(player)elseif action=="LeaveFiveVFiveQueue"then return fiveVFiveQueue:Leave(player)elseif action=="RejoinFiveVFive"then return fiveVFiveQueue:Rejoin(player)elseif action=="GetFiveVFiveQueue"then return true,"5v5 queue status loaded.",fiveVFiveQueue:GetStatus(player)elseif action=="GetPlayBuilder"then return fiveVFiveQueue:GetPlayBuilder(player)elseif action=="SavePlayBuilder"then return fiveVFiveQueue:SavePlayBuilder(player,payload)elseif action=="CreateFiveVFiveLobby"then return fiveVFiveQueue:CreateLobby(player,payload)elseif action=="ListFiveVFiveLobbies"then return fiveVFiveQueue:ListLobbies(player,payload.Query)elseif action=="JoinFiveVFiveLobby"then return fiveVFiveQueue:JoinLobby(player,payload)elseif action=="RandomFiveVFiveLobby"then return fiveVFiveQueue:RandomJoin(player)elseif action=="AssignFiveVFiveLobbyPlayer"then return fiveVFiveQueue:AssignLobbyPlayer(player,payload)elseif action=="KickFiveVFiveLobbyPlayer"then return fiveVFiveQueue:KickLobbyPlayer(player,payload)elseif action=="StartFiveVFiveLobby"then return fiveVFiveQueue:StartLobby(player)elseif action=="GetRankedLeaderboards"then return true,"Ranked leaderboards loaded.",rankedProfile:GetLeaderboards()elseif action=="ClaimRankedPathReward"then return rankedProfile:ClaimPathReward(player)elseif action=="DebugCompleteRankedPath"then return rankedProfile:DebugCompleteSevenWinPath(player)elseif action=="ReturnToMenu"then local result=matchSetup:ReturnToMenu(player);return result,result and"Returned to menu."or"No active match.",nil end;return false,"Unsupported match action.",nil end)
 		if not ok then
 			warn("[VTR MATCH ERROR] "..tostring(success))
 			return{Success=false,Message=RunService:IsStudio()and("Match failed: "..tostring(success))or"Match service failed.",Data=nil}
 		end
 		return{Success=success,Message=message,Data=data}
 	end
-	Players.PlayerRemoving:Connect(function(player)rankedQueue:PlayerRemoving(player);if rankedProfile.PlayerRemoving then rankedProfile:PlayerRemoving(player)end;if matchRuntime.PlayerRemoving then matchRuntime:PlayerRemoving(player)else matchSetup:ReturnToMenu(player)end;lastRequest[player] = nil;lastProgressionAction[player]=nil;lastLaunchAction[player]=nil;lastSquadAction[player]=nil;lastPlayerData[player]=nil;lastPackAction[player]=nil;lastInventoryAction[player]=nil;lastMatchAction[player]=nil end)
+	Players.PlayerRemoving:Connect(function(player)rankedQueue:PlayerRemoving(player);fiveVFiveQueue:PlayerRemoving(player);if rankedProfile.PlayerRemoving then rankedProfile:PlayerRemoving(player)end;if matchRuntime.PlayerRemoving then matchRuntime:PlayerRemoving(player)else matchSetup:ReturnToMenu(player)end;lastRequest[player] = nil;lastProgressionAction[player]=nil;lastLaunchAction[player]=nil;lastSquadAction[player]=nil;lastPlayerData[player]=nil;lastPackAction[player]=nil;lastInventoryAction[player]=nil;lastDeveloperAction[player]=nil;lastMatchAction[player]=nil end)
 
 	-- Public server API for future gameplay systems. Nothing here is exposed as
 	-- a client-controlled mutation remote.
@@ -266,3 +283,5 @@ return rankedQueue:Join(player,payload)elseif action=="LeaveRankedQueue"then ret
 end
 
 return ServerApp
+
+

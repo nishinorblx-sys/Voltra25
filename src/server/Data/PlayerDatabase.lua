@@ -5,13 +5,13 @@ local RarityConfig=require(ReplicatedStorage.VTR.Shared.RarityConfig)
 local AppearanceTypes=require(ReplicatedStorage.VTR.Shared.AppearanceTypes)
 local CardTypes=require(ReplicatedStorage.VTR.Shared.CardTypes)
 
-local players=Source.LoadAll();local byId={};local pools={};local indexes={country={},club={},position={},rarity={}}
+local players=Source.LoadAll();local byId={};local pools={};local typePools={};local typedPools={};local indexes={country={},club={},position={},rarity={},cardType={}}
 local function add(index:any,key:string,player:any)index[key]=index[key]or{};table.insert(index[key],player)end
-for _,player in players do byId[player.playerId]=player;pools[player.rarity]=pools[player.rarity]or{};table.insert(pools[player.rarity],player);add(indexes.country,string.lower(player.country),player);add(indexes.club,string.lower(player.club),player);add(indexes.rarity,string.lower(player.rarity),player);for _,position in player.positions do add(indexes.position,string.lower(position),player)end end
+for _,player in players do byId[player.playerId]=player;pools[player.rarity]=pools[player.rarity]or{};table.insert(pools[player.rarity],player);typePools[player.cardType]=typePools[player.cardType]or{};table.insert(typePools[player.cardType],player);typedPools[player.cardType]=typedPools[player.cardType]or{};typedPools[player.cardType][player.rarity]=typedPools[player.cardType][player.rarity]or{};table.insert(typedPools[player.cardType][player.rarity],player);add(indexes.country,string.lower(player.country),player);add(indexes.club,string.lower(player.club),player);add(indexes.rarity,string.lower(player.rarity),player);add(indexes.cardType,string.lower(player.cardType),player);for _,position in player.positions do add(indexes.position,string.lower(position),player)end end
 -- Compatibility aliases only select CSV definitions; they never change CSV rarity metadata.
 pools.Starter=pools.Bronze;pools.Common=pools.Bronze;pools.Mythic=pools.Mythic or pools.Icon or pools.Legendary
 
-local Database={Count=#players,Players=players,ById=byId,Pools=pools,Indexes=indexes,Source=Source.Source}
+local Database={Count=#players,Players=players,ById=byId,Pools=pools,TypePools=typePools,TypedPools=typedPools,Indexes=indexes,Source=Source.Source}
 function Database.Get(playerId:string):any?return byId[playerId]end
 function Database.Search(filters:any,offset:number?,limit:number?):any
 	filters=type(filters)=="table"and filters or{};offset=math.max(0,offset or 0);limit=math.clamp(limit or 50,1,100)

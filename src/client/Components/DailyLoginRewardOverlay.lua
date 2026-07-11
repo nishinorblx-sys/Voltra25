@@ -117,6 +117,14 @@ local function makeLine(parent: Instance, pos: UDim2, size: UDim2, color: Color3
 	return line
 end
 
+local function dailyModalScale(viewport: Vector2, designWidth: number, designHeight: number): number
+	local safeWidth = viewport.X * 0.94
+	local safeHeight = viewport.Y * 0.88
+	local fitScale = math.min(safeWidth / designWidth, safeHeight / designHeight)
+	local maxScale = viewport.X < 760 and 0.62 or 1
+	return math.clamp(fitScale, 0.34, maxScale)
+end
+
 local function rewardTile(parent: Instance, reward: any, index: number): Frame
 	local claimed = reward.Claimed == true
 	local today = reward.Today == true
@@ -217,7 +225,7 @@ function Overlay.Show(payload: any, claim: () -> any)
 	local viewport = workspace.CurrentCamera and workspace.CurrentCamera.ViewportSize or Vector2.new(1280, 720)
 	local designWidth = 1120
 	local designHeight = 620
-	local modalScale = math.clamp(math.min((viewport.X * 0.86) / designWidth, (viewport.Y * 0.82) / designHeight), 0.74, 1)
+	local modalScale = dailyModalScale(viewport, designWidth, designHeight)
 
 	local panel = Instance.new("CanvasGroup")
 	panel.AnchorPoint = Vector2.new(0.5, 0.5)

@@ -187,6 +187,9 @@ function BlockHeadService.FixCharacter(model)
 	if not isMatchCharacter(model) then
 		return
 	end
+	if model:GetAttribute("VTRPreserveAvatarHead") == true then
+		return
+	end
 
 	local humanoid = model:FindFirstChildOfClass("Humanoid")
 	local head = model:FindFirstChild("Head")

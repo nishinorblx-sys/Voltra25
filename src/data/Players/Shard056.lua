@@ -1,5 +1,5 @@
 --!strict
--- Generated from VTRPlayers_OriginalNames_FictionalClubs.csv. Do not edit by hand.
+-- Generated from VTRPlayers_With_Special_Versions.csv. Do not edit by hand.
 return {
  {"94490d93c6ebc049","Ayoub Oufkir","Oufkir","Netherlands","Spartal Rotterdaen","Elite Circuit","RM","RM",62,77,925000,5000,1900000,"Left",3,3,"Lean (170-)","","Silver","Base",2487815571,19,168,66,"","Tan","Wide","Calm","Soft","Straight","Focused","TexturedTop","Black","None","None","Lean","VeryShort","Focused",false,"EarTape","DarkGray","R6_VTR_1","FrontBust","Salute","Confident",75,64,68,62,50,57,76,74,66,65,63,60,63,70,67,73,63,66,66,61,66,63,60,59,54,47,54,47,54,54,61,59,59,71,61,14,5,14,13,14},
  {"c3e114e85a6c1050","Madih Talal","Talal","France","Easov Bengaon VFC","Rift Championship","CAM,CM,ST","CAM",62,62,425000,3000,574000,"Right",3,3,"Normal (170-185)","","Silver","Base",3286308072,27,178,74,"","MediumBrown","Round","Narrow","Serious","Sharp","Serious","TempleFade","Black","ShortBeard","Black","Balanced","Average","Determined",false,"None","None","R6_VTR_1","PowerStance","Shush","QuickStep",64,60,69,68,44,51,64,63,61,63,57,58,58,71,67,72,66,69,64,67,72,64,69,69,43,41,41,48,50,54,48,52,50,65,65,15,17,12,14,10},

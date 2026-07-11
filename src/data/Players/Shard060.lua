@@ -1,5 +1,5 @@
 --!strict
--- Generated from VTRPlayers_OriginalNames_FictionalClubs.csv. Do not edit by hand.
+-- Generated from VTRPlayers_With_Special_Versions.csv. Do not edit by hand.
 return {
  {"9061204fc3b3bcc5","Samuel Howes","Howes","England","Leytan Orienen","Neon Circuit","GK","GK",60,61,220000,4000,402000,"Right",3,1,"Lean (185+)","","Silver","Base",2422284367,27,190,82,"","MediumBrown","Square","Intense","Serious","Button","Serious","Afro","Black","Mustache","Black","Lean","Tall","Determined",false,"None","None","R6_VTR_1","ThreeQuarterBust","PointSky","Relaxed",20,18,31,32,39,62,19,22,19,24,20,8,17,33,37,41,5,31,33,22,25,27,31,63,57,24,7,55,66,61,63,55,52,35,63,65,56,58,56,60},
  {"21358968a12fa489","Josue Jeronimo Reinatti Balansino","Balansino","Argentina","Newellaro Olell Boyin","Crown League","GK","GK",60,70,475000,3000,808000,"Left",2,1,"Normal (185+)","","Silver","Base",557156712,21,186,70,"","Sand","Long","Bright","Thick","Small","Neutral","SlickBack","LightBrown","LightStubble","LightBrown","Lean","Tall","Neutral",false,"None","None","R6_VTR_1","CalmPortrait","CalmNod","QuickStep",15,16,31,36,38,64,15,15,14,18,14,23,14,30,39,35,15,39,27,25,41,29,29,59,47,25,13,56,63,64,62,66,60,34,56,58,60,57,61,61},

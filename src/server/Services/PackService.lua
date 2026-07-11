@@ -18,6 +18,32 @@ local function poolFor(rarity: string): { any }
 		or PlayerDatabase.Pools.Starter
 end
 
+local cardTypeAliases = {
+	["Voltra Hero"] = "Hero",
+	Event = "Spark",
+	Champion = "Electrum",
+}
+
+local function cardTypeCandidates(cardType: string?): { string }
+	if type(cardType) ~= "string" or cardType == "" or cardType == "Base" then return {} end
+	local result = { cardType }
+	local alias = cardTypeAliases[cardType]
+	if alias and alias ~= cardType then table.insert(result, alias) end
+	return result
+end
+
+local function poolForCard(rarity: string, cardType: string?): { any }
+	for _, candidate in cardTypeCandidates(cardType) do
+		local typed = PlayerDatabase.TypedPools and PlayerDatabase.TypedPools[candidate]
+		if typed then
+			if typed[rarity] and #typed[rarity] > 0 then return typed[rarity] end
+			local broader = PlayerDatabase.TypePools and PlayerDatabase.TypePools[candidate]
+			if broader and #broader > 0 then return broader end
+		end
+	end
+	return poolFor(rarity)
+end
+
 local function rollRarity(odds: any): string
 	local roll = math.random() * 100
 	local cumulative = 0
@@ -48,7 +74,16 @@ local function vtrNormalizeNewPackCards(profile:any, startIndex:number)
 	end
 end
 
-local function rollCardType(definition:any,index:number): string?
+local function specialCardLimit(definition:any):number
+	if type(definition)~="table"then return 0 end
+	if tonumber(definition.SpecialCardLimit)then return math.clamp(math.floor(tonumber(definition.SpecialCardLimit)or 0),0,2)end
+	if type(definition.GuaranteedCardType)=="string"then return 2 end
+	if type(definition.CardTypeWeights)=="table"then return 1 end
+	return 0
+end
+
+local function rollCardType(definition:any,index:number,specialCount:number): string?
+	if specialCount>=specialCardLimit(definition)then return nil end
 	if index==1 and type(definition.GuaranteedCardType)=="string" then return definition.GuaranteedCardType end
 	local weights=definition.CardTypeWeights
 	if type(weights)~="table" then return nil end
@@ -59,7 +94,11 @@ local function rollCardType(definition:any,index:number): string?
 	local cumulative=0
 	for cardType,weight in weights do
 		cumulative+=tonumber(weight) or 0
-		if roll<=cumulative then return cardType end
+		if roll<=cumulative then
+			cardType=tostring(cardType)
+			if cardType=="Base"or cardType==""then return nil end
+			return cardType
+		end
 	end
 	return nil
 end
@@ -221,13 +260,15 @@ function PackService:Open(player: Player, packInstanceId: string): (boolean, { a
 	local reveals = {}
 	local success = pcall(function()
 		local rolled = rollPackRarities(definition,odds)
+		local specialCount=0
 		for index, rarity in rolled do
-			local pool = poolFor(rarity)
+			local specialType=rollCardType(definition,index,specialCount)
+			if specialType then specialCount+=1 end
+			local pool = poolForCard(rarity,specialType)
 			local playerDefinition = pool[math.random(1, #pool)]
 			local added, instance = self.Inventory:AddCard(player, playerDefinition)
 			if not added or not instance then error("Card grant rejected") end
-			local specialType=rollCardType(definition,index)
-			if specialType and specialType~="Base" then
+			if specialType and specialType~="Base" and (instance.cardType=="Base" or instance.CardType=="Base") then
 				instance.cardType=specialType
 				instance.CardType=specialType
 			end

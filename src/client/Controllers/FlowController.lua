@@ -32,6 +32,7 @@ local Button=require(script.Parent.Parent.Components.Button)
 local UISoundService=require(script.Parent.Parent.Services.UISoundService)
 local WidePlayerCard=require(script.Parent.Parent.Components.WidePlayerCard)
 local CardSurface=require(script.Parent.Parent.Components.CardSurface)
+local PlayerDetailsModal=require(script.Parent.Parent.Components.PlayerDetailsModal)
 local PackOpeningSequence=require(script.Parent.Parent.Components.PackOpeningSequence)
 local PackService=require(script.Parent.Parent.Services.PackService)
 local FlowController={};FlowController.__index=FlowController
@@ -97,7 +98,12 @@ function FlowController:PackPreview(card:any,action:any,callback:()->())
 		return
 	end
 	clearPackOverlays(self.Root)
-	Modal.open(self.Root,{Kicker="PACK PREVIEW",Title=card.Title,Meta=card.Subtitle,Description=card.Detail or "Cards are generated from the 5,000-player VTR database using this pack tier's server-owned rarity weights.",ConfirmLabel=action.Label=="OPEN PACK" and "OPEN PACK" or "VIEW CONTENTS",OnConfirm=callback,OnCancel=action.OnCancel})
+	Modal.open(self.Root,{Kicker="PACK PREVIEW",Title=card.Title,Meta=card.Subtitle,Description=card.Detail or "Cards are generated from the 5,000-player VTR database using this pack tier's server-owned rarity weights.",ConfirmLabel=action.Label=="OPEN PACK" and "OPEN PACK" or "VIEW CONTENTS",OnConfirm=function()
+		if action.Label=="OPEN PACK" then
+			self.LastPackOpenClickedAt=os.clock()
+		end
+		callback()
+	end,OnCancel=action.OnCancel})
 end
 
 function FlowController:_packResults(title:string,reveals:any,complete:()->())
@@ -125,7 +131,9 @@ function FlowController:PackOpening(title:string,complete:()->(),reveals:any?)
 		released=true
 		self.PackOpeningActive=false
 	end
-	local ok,overlay=pcall(function()return PackOpeningSequence.play(self.Root,{Title=title,Reveals=reveals,OnComplete=function()release();complete()end,OnViewPlayer=function(cardInstanceId:string) if self.PlayerDetailsHandler then self.PlayerDetailsHandler(cardInstanceId) end end,Toast=function(message:string,kind:string) self.Toast({Title="PACK CONTENTS",Message=message,Kind=kind}) end})end)
+	local packOpenClickedAt=self.LastPackOpenClickedAt
+	self.LastPackOpenClickedAt=nil
+	local ok,overlay=pcall(function()return PackOpeningSequence.play(self.Root,{Title=title,Reveals=reveals,PackOpenClickedAt=packOpenClickedAt,OnComplete=function()release();complete()end,OnViewPlayer=function(cardInstanceId:string) if self.PlayerDetailsHandler then self.PlayerDetailsHandler(cardInstanceId) end end,Toast=function(message:string,kind:string) self.Toast({Title="PACK CONTENTS",Message=message,Kind=kind}) end})end)
 	if not ok or not overlay then
 		release()
 		self:Error("PACK OPENING FAILED","The pack was opened, but the reveal screen could not start. Re-open Inventory to see the new players.")
@@ -147,6 +155,7 @@ function FlowController:OfferPackDelivery(delivered:any,onComplete:(()->())?,bef
 		end
 	end
 	Modal.open(self.Root,{Kicker="PACK DELIVERED",Title=delivered.name,Meta=quantity>1 and(quantity.." PACKS READY")or"PACK READY",Description=quantity>1 and("Open one now or close this panel to send the sealed packs into your Inventory.")or"Open this pack now or close this panel to send it into your Inventory.",CancelLabel="CLOSE",OnCancel=function()releaseFlyin()end,ConfirmLabel="OPEN PACK",OnConfirm=function()
+		self.LastPackOpenClickedAt=os.clock()
 		dropFlyin()
 		local opened=PackService:Open(delivered.packInstanceId);if not opened.Success then self:Error("PACK OPENING FAILED",opened.Message or "The pack could not be opened.");return end;if beforeOpen then beforeOpen()end
 		self:PackOpening(delivered.name,onComplete or function()self.Toast({Title="PACK CONTENTS",Message="Pack contents secured in your Club.",Kind="Reward"})end,opened.Data)
@@ -194,6 +203,154 @@ function FlowController:PromptGamePass(card:any,action:any)
 	self.Toast({Title="STORE",Message="Roblox gamepass prompt opened.",Kind="Info"})
 end
 
+function FlowController:ShowStarCardOffer(card:any,action:any)
+	local playerData=action.PlayerData or card.PlayerData
+	local productId=tonumber(action.ProductId)
+	if type(playerData)~="table" then self:Error("STAR CARD UNAVAILABLE","Today's Star Card could not be loaded.");return end
+	if not productId or productId<=0 then self:Error("PRODUCT UNAVAILABLE","The Star Card product id is missing.");return end
+	local existing=self.Root:FindFirstChild("StarCardOfferOverlay")
+	if existing then existing:Destroy()end
+	local overlay=Instance.new("CanvasGroup")
+	overlay.Name="StarCardOfferOverlay"
+	overlay.BackgroundColor3=Theme.Colors.Black
+	overlay.BackgroundTransparency=.1
+	overlay.BorderSizePixel=0
+	overlay.Size=UDim2.fromScale(1,1)
+	overlay.GroupTransparency=1
+	overlay.ZIndex=180
+	overlay.Active=true
+	overlay.Selectable=false
+	overlay.Parent=self.Root
+	local shield=Instance.new("TextButton")
+	shield.BackgroundTransparency=1
+	shield.BorderSizePixel=0
+	shield.Size=UDim2.fromScale(1,1)
+	shield.Text=""
+	shield.Modal=true
+	shield.ZIndex=180
+	shield.Parent=overlay
+	local panel=Panel.new({Name="StarCardOfferPanel",Size=UDim2.fromOffset(760,430),ClipsDescendants=true})
+	panel.AnchorPoint=Vector2.new(.5,.5)
+	panel.Position=UDim2.fromScale(.5,.5)
+	panel.ZIndex=181
+	panel.Parent=overlay
+	local scale=Instance.new("UIScale")
+	scale.Scale=.86
+	scale.Parent=panel
+	local stroke=Instance.new("UIStroke")
+	stroke.Color=Theme.Colors.Electric
+	stroke.Thickness=2
+	stroke.Transparency=.12
+	stroke.Parent=panel
+	local function text(value:string,pos:UDim2,size:UDim2,textSize:number,color:Color3,font:Enum.Font,z:number?):TextLabel
+		local label=Instance.new("TextLabel")
+		label.BackgroundTransparency=1
+		label.Position=pos
+		label.Size=size
+		label.Text=value
+		label.TextColor3=color
+		label.TextSize=textSize
+		label.Font=font
+		label.TextXAlignment=Enum.TextXAlignment.Left
+		label.TextWrapped=true
+		label.ZIndex=z or 183
+		label.Parent=panel
+		return label
+	end
+	text("STAR CARD OFFER",UDim2.fromOffset(28,24),UDim2.new(1,-56,0,22),10,Theme.Colors.Electric,Theme.Fonts.Strong)
+	text(tostring(playerData.Name or playerData.displayName or"FEATURED PLAYER"),UDim2.fromOffset(28,50),UDim2.new(1,-56,0,44),30,Theme.Colors.White,Theme.Fonts.Display)
+	text(tostring(playerData.Rating or playerData.overall or"--").." OVR  /  "..tostring(playerData.Position or playerData.bestPosition or"STAR").."  /  "..string.upper(tostring(playerData.Rarity or playerData.rarity or"RARE")),UDim2.fromOffset(30,94),UDim2.new(1,-60,0,22),10,Theme.Colors.Silver,Theme.Fonts.Strong)
+	text(action.Description or "Buy this featured Star Card and add him directly to your club.",UDim2.fromOffset(30,124),UDim2.fromOffset(300,72),10,Theme.Colors.Muted,Theme.Fonts.Body)
+	local cardHolder=Instance.new("Frame")
+	cardHolder.BackgroundTransparency=1
+	cardHolder.Position=UDim2.fromOffset(340,116)
+	cardHolder.Size=UDim2.fromOffset(390,112)
+	cardHolder.ZIndex=184
+	cardHolder.Parent=panel
+	local preview=WidePlayerCard.new({Parent=cardHolder,Card=playerData,Size=UDim2.fromScale(1,1),ZIndex=185})
+	preview.AutoButtonColor=true
+	preview.Activated:Connect(function()PlayerDetailsModal.open(self.Root,playerData)end)
+	local attained=text("ATTAINED",UDim2.fromOffset(0,238),UDim2.new(1,0,0,70),48,Theme.Colors.Electric,Theme.Fonts.Display,190)
+	attained.TextXAlignment=Enum.TextXAlignment.Center
+	attained.TextTransparency=1
+	local flash=Instance.new("Frame")
+	flash.BackgroundColor3=Theme.Colors.Electric
+	flash.BackgroundTransparency=1
+	flash.BorderSizePixel=0
+	flash.Size=UDim2.fromScale(1,1)
+	flash.ZIndex=189
+	flash.Parent=panel
+	local function close()
+		overlay:Destroy()
+	end
+	local closeButton=Button.new({Text="CLOSE",Variant="Secondary",Size=UDim2.fromOffset(132,40),OnActivated=close})
+	closeButton.Position=UDim2.new(1,-160,1,-64)
+	closeButton.ZIndex=190
+	closeButton.Parent=panel
+	local buying=false
+	local purchaseConnection:RBXScriptConnection?=nil
+	local function disconnect()
+		if purchaseConnection then purchaseConnection:Disconnect();purchaseConnection=nil end
+	end
+	overlay.Destroying:Connect(disconnect)
+	local function playAttained()
+		disconnect()
+		buying=false
+		TweenService:Create(flash,TweenInfo.new(.12),{BackgroundTransparency=.18}):Play()
+		task.delay(.14,function()if flash.Parent then TweenService:Create(flash,TweenInfo.new(.35),{BackgroundTransparency=1}):Play()end end)
+		TweenService:Create(scale,TweenInfo.new(.28,Enum.EasingStyle.Back,Enum.EasingDirection.Out),{Scale=1.05}):Play()
+		TweenService:Create(stroke,TweenInfo.new(.2),{Thickness=5,Transparency=0}):Play()
+		TweenService:Create(attained,TweenInfo.new(.22,Enum.EasingStyle.Back,Enum.EasingDirection.Out),{TextTransparency=0,TextSize=58}):Play()
+		task.delay(.72,function()
+			if scale.Parent then TweenService:Create(scale,TweenInfo.new(.22),{Scale=1}):Play()end
+			if stroke.Parent then TweenService:Create(stroke,TweenInfo.new(.4),{Thickness=2,Transparency=.12}):Play()end
+		end)
+		self.Toast({Title="STAR CARD",Message="Star Card attained.",Kind="Reward"})
+	end
+	local buyButton: TextButton? = nil
+	local function buyStarCard()
+		if not buyButton then return end
+		if buying then return end
+		buying=true
+		buyButton.Text="WAITING..."
+		disconnect()
+		purchaseConnection=MarketplaceService.PromptProductPurchaseFinished:Connect(function(userId:any,finishedProductId:any,purchased:any)
+			local localPlayer=Players.LocalPlayer
+			local finishedUserId=nil
+			if typeof(userId)=="Instance" and userId:IsA("Player") then
+				finishedUserId=userId.UserId
+			else
+				finishedUserId=tonumber(userId)
+			end
+			if localPlayer and finishedUserId==localPlayer.UserId and tonumber(finishedProductId)==productId then
+				if purchased==true then
+					buyButton.Text="ATTAINED"
+					playAttained()
+				else
+					buying=false
+					buyButton.Text="BUY STAR CARD"
+					disconnect()
+				end
+			end
+		end)
+		local player=Players.LocalPlayer
+		if player then MarketplaceService:PromptProductPurchase(player,productId)end
+		task.delay(90,function()
+			if buying and overlay.Parent then
+				buying=false
+				buyButton.Text="BUY STAR CARD"
+				disconnect()
+			end
+		end)
+	end
+	buyButton=Button.new({Text="BUY STAR CARD",Variant="Primary",Size=UDim2.fromOffset(190,40),OnActivated=buyStarCard})
+	buyButton.Position=UDim2.new(0,28,1,-64)
+	buyButton.ZIndex=190
+	buyButton.Parent=panel
+	TweenService:Create(overlay,TweenInfo.new(.16),{GroupTransparency=0}):Play()
+	TweenService:Create(scale,TweenInfo.new(.24,Enum.EasingStyle.Back,Enum.EasingDirection.Out),{Scale=1}):Play()
+end
+
 function FlowController:CelebrationPackReveal(payload:any)
 	if type(payload)~="table"then return end
 	local pool=type(payload.Pool)=="table"and payload.Pool or{}
@@ -234,6 +391,8 @@ function FlowController:Handle(card:any,action:any,perform:()->any,refresh:()->(
 		if action.Operation=="CareerSetup" then self:CareerSetup(function() navigateTab(action.TargetTab) end) else self:ModeTransition(action.TargetTab,function() navigateTab(action.TargetTab) end,true) end
 	elseif action.Operation=="DeveloperProduct" then self:PromptDeveloperProduct(card,action)
 	elseif action.Operation=="GamePass" then self:PromptGamePass(card,action)
+	elseif action.Operation=="ShowStarCard" then
+		self:ShowStarCardOffer(card,action)
 	elseif action.Operation=="EquipToggle" then self:PlayerCardDetail(card,action,run)
 	elseif action.Operation=="Purchase" and action.ItemType=="Pack" then Modal.open(self.Root,{Kicker="PACK PURCHASE",Title="BUY "..string.upper(card.Title),Meta=card.Meta,Description="Choose how many sealed packs to buy. The server validates currency and grants each pack as its own unopened inventory item.",Fields={{Key="Quantity",Placeholder="1 - 25",Default="1"}},ConfirmLabel="BUY PACKS",OnConfirm=function(values:any)
 		local quantity=math.clamp(math.floor(tonumber(values.Quantity)or 1),1,25)

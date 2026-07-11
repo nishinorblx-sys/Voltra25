@@ -303,7 +303,8 @@ function Service:_carrierDecision(context: any, carrier: any, assignment: any)
 		end
 	end
 	if carrier.IsGoalkeeper then
-		local waitDone = carriedFor >= 0.35 or pressure.Under or pressure.Heavy
+		local playKeeper = carrier.Model:GetAttribute("VTRFiveVFiveAIKeeper") == true
+		local waitDone = playKeeper or carriedFor >= 0.35 or pressure.Under or pressure.Heavy
 		if not waitDone then
 			assignment.TargetWorld = AIGoalkeeperService.PositionTarget(context, carrier)
 			assignment.MovementTarget = assignment.TargetWorld
