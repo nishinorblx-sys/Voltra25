@@ -7,6 +7,7 @@ local FormationConfig=require(ReplicatedStorage.VTR.Shared.FormationConfig)
 local ObjectiveService=require(script.Parent.ObjectiveService)
 local EconomyConfig=require(ReplicatedStorage.VTR.Shared.EconomyConfig)
 local CardProgressionResolver=require(ReplicatedStorage.VTR.Shared.CardProgressionResolver)
+local QuickSellValueConfig=require(ReplicatedStorage.VTR.Shared.QuickSellValueConfig)
 
 local SquadService={};SquadService.__index=SquadService
 local ORDER=FormationConfig.Order
@@ -231,16 +232,16 @@ function SquadService:RemoveCardFromStarting(player:Player,positionSlot:string):
 function SquadService:LockCard(player:Player,cardInstanceId:string,locked:boolean):(boolean,string,any?) local ok,message=self:SetCardFlag(player,cardInstanceId,"Locked",locked);return ok,message,self:GetSquadState(player) end
 function SquadService:FavoriteCard(player:Player,cardInstanceId:string,favorite:boolean):(boolean,string,any?) local ok,message=self:SetCardFlag(player,cardInstanceId,"Favorite",favorite);return ok,message,self:GetSquadState(player) end
 
-local function quickSellValue(card:any):number
-	local normalized=math.clamp(((tonumber(card and card.Rating)or 45)-45)/54,0,1)
-	return math.floor(1000+4000*(normalized^1.55)+.5)
+local function quickSellValue(card:any,meta:any?):number
+        return QuickSellValueConfig.Value(card,meta)
 end
 
 function SquadService:QuickSellCard(player:Player,cardInstanceId:string):(boolean,string,any?)
-	local p=self.Profiles:GetProfile(player);if not p then return false,"Profile unavailable.",nil end;self:_normalize(p);local card=self:_card(p,cardInstanceId);if not card then return false,"Player card is not owned.",nil end;local meta=p.PlayerCardMeta[card.Id]or{};if meta.Locked then return false,"Unlock this player before quick selling.",nil end;if meta.Loan==true then return false,"Loan players cannot be quick sold.",nil end
-	local protection=campaignProtection(p,card);if protection then return false,protection,nil end
-	local kind,slot=self:_locate(p,card.Id);self:_remove(p,kind,slot);for index,item in p.PlayerCardInventory do if item.Id==card.Id then table.remove(p.PlayerCardInventory,index);break end end;p.PlayerCardMeta[card.Id]=nil
-	local coins=quickSellValue(card);p.Currency.Coins=math.min(EconomyConfig.MaximumCoins,(tonumber(p.Currency.Coins)or 0)+coins);self:_update(player,p);self.Publish(player,"Currency",{Coins=p.Currency.Coins,Bolts=p.Currency.Bolts,VoltraPoints=p.Currency.VoltraPoints or 0});if self.Profiles.GetClientData then self.Publish(player,"PlayerProfile",self.Profiles:GetClientData(player))end;local snapshot=self:GetSquad(player);if snapshot then snapshot.QuickSellCoins=coins;snapshot.Currency={Coins=p.Currency.Coins,Bolts=p.Currency.Bolts,VoltraPoints=p.Currency.VoltraPoints or 0} end;return true,"Quick sold for "..coins.." coins.",snapshot
+        local p=self.Profiles:GetProfile(player);if not p then return false,"Profile unavailable.",nil end;self:_normalize(p);local card=self:_card(p,cardInstanceId);if not card then return false,"Player card is not owned.",nil end;local meta=p.PlayerCardMeta[card.Id]or{};if meta.Locked then return false,"Unlock this player before quick selling.",nil end;if meta.Loan==true then return false,"Loan players cannot be quick sold.",nil end;if meta.Favorite==true then return false,"Unfavorite this player before quick selling.",nil end
+        local protection=campaignProtection(p,card);if protection then return false,protection,nil end
+        local coins=quickSellValue(card,meta)
+        local kind,slot=self:_locate(p,card.Id);self:_remove(p,kind,slot);for index,item in p.PlayerCardInventory do if item.Id==card.Id then table.remove(p.PlayerCardInventory,index);break end end;p.PlayerCardMeta[card.Id]=nil
+        p.Currency.Coins=math.min(EconomyConfig.MaximumCoins,(tonumber(p.Currency.Coins)or 0)+coins);self:_update(player,p);self.Publish(player,"Currency",{Coins=p.Currency.Coins,Bolts=p.Currency.Bolts,VoltraPoints=p.Currency.VoltraPoints or 0});if self.Profiles.GetClientData then self.Publish(player,"PlayerProfile",self.Profiles:GetClientData(player))end;local snapshot=self:GetSquad(player);if snapshot then snapshot.QuickSellCoins=coins;snapshot.Currency={Coins=p.Currency.Coins,Bolts=p.Currency.Bolts,VoltraPoints=p.Currency.VoltraPoints or 0} end;return true,"Quick sold for "..coins.." coins.",snapshot
 end
 
 function SquadService:BulkQuickSellCards(player:Player,cardInstanceIds:any):(boolean,string,any?)
@@ -256,12 +257,13 @@ function SquadService:BulkQuickSellCards(player:Player,cardInstanceIds:any):(boo
 			seen[id]=true
 			local card=self:_card(p,id)
 			if not card then return false,"One selected player is no longer owned.",nil end
-			local meta=p.PlayerCardMeta[card.Id]or{}
-			if meta.Locked then return false,"Unlock selected players before bulk quick selling.",nil end
-			if meta.Loan==true then return false,"Loan players cannot be quick sold.",nil end
-			local protection=campaignProtection(p,card);if protection then return false,protection,nil end
-			table.insert(cards,card)
-			total+=quickSellValue(card)
+                        local meta=p.PlayerCardMeta[card.Id]or{}
+                        if meta.Locked then return false,"Unlock selected players before bulk quick selling.",nil end
+                        if meta.Loan==true then return false,"Loan players cannot be quick sold.",nil end
+                        if meta.Favorite==true then return false,"Unfavorite selected players before bulk quick selling.",nil end
+                        local protection=campaignProtection(p,card);if protection then return false,protection,nil end
+                        table.insert(cards,card)
+                        total+=quickSellValue(card,meta)
 			if #cards>=80 then break end
 		end
 	end

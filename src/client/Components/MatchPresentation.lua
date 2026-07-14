@@ -9,6 +9,7 @@ local BadgePreview=require(script.Parent.BadgePreview)
 local KitPreview=require(script.Parent.KitPreview)
 local MatchSetupService=require(script.Parent.Parent.Services.MatchSetupService)
 local EssentialMatchPreloadService=require(script.Parent.Parent.Services.EssentialMatchPreloadService)
+local MatchPresentationService=require(script.Parent.Parent.Services.MatchPresentationService)
 local AnimationConfig=require(ReplicatedStorage.VTR.Shared.AnimationConfig)
 
 local Presentation={}
@@ -30,17 +31,24 @@ function Presentation.play(root:Frame,setup:any,home:any,away:any,onReturn:(()->
 	end
 	root:SetAttribute("VTRMatchPresentationActive",true)
 	Players.LocalPlayer:SetAttribute("VTREssentialMatchReady",false)
+	local persistent=MatchPresentationService.BeginLoading("MATCHDAY","BUILDING MATCH RUNTIME")
+	persistent:Clear()
 	local overlay:CanvasGroup?=nil
 	local preloadHandle:any=nil
 	local function finish(showMenu:boolean)
-		root:SetAttribute("VTRMatchPresentationActive",nil)
-		if overlay and overlay.Parent then overlay:Destroy()end
-		if showMenu then Players.LocalPlayer:SetAttribute("VTREssentialMatchReady",nil);setMenuVisible(root,true)end
+		if showMenu then
+			root:SetAttribute("VTRMatchPresentationActive",nil)
+			MatchPresentationService.Complete(true)
+			Players.LocalPlayer:SetAttribute("VTREssentialMatchReady",nil)
+			setMenuVisible(root,true)
+		elseif overlay and overlay.Parent then
+			overlay:SetAttribute("VTREssentialReady",true)
+		end
 	end
 	setMenuVisible(root,false)
 	local homeKit=home.kits[setup.HomeKit]or home.kits.Home;local awayKit=away.kits[setup.AwayKit]or away.kits.Away
-	overlay=Instance.new("CanvasGroup");overlay.Name="MatchStartPresentation";overlay.BackgroundColor3=Theme.Colors.Black;overlay.BackgroundTransparency=0;overlay.BorderSizePixel=0;overlay.Size=UDim2.fromScale(1,1);overlay.GroupTransparency=0;overlay.ZIndex=180;overlay.Active=true;overlay.Selectable=false;overlay.Parent=root
-	overlay.Destroying:Connect(function()if preloadHandle and not preloadHandle:IsComplete()then preloadHandle:Cancel()end end)
+	overlay=Instance.new("CanvasGroup");overlay.Name="MatchStartPresentation";overlay.BackgroundColor3=Theme.Colors.Black;overlay.BackgroundTransparency=0;overlay.BorderSizePixel=0;overlay.Size=UDim2.fromScale(1,1);overlay.GroupTransparency=0;overlay.ZIndex=180;overlay.Active=true;overlay.Selectable=false;overlay.Parent=persistent.Stage
+	overlay.Destroying:Connect(function()root:SetAttribute("VTRMatchPresentationActive",nil);if preloadHandle and not preloadHandle:IsComplete()then preloadHandle:Cancel()end end)
 	local shield=Instance.new("TextButton");shield.Name="PresentationInputShield";shield.BackgroundTransparency=1;shield.BorderSizePixel=0;shield.Size=UDim2.fromScale(1,1);shield.Text="";shield.AutoButtonColor=false;shield.Selectable=false;shield.Modal=true;shield.Active=true;shield.ZIndex=180;shield.Parent=overlay
 	local stadiumWash=Instance.new("Frame");stadiumWash.BackgroundColor3=Theme.Colors.Pitch;stadiumWash.BackgroundTransparency=.3;stadiumWash.BorderSizePixel=0;stadiumWash.Position=UDim2.fromScale(.08,.12);stadiumWash.Size=UDim2.fromScale(.84,.76);stadiumWash.ZIndex=181;stadiumWash.Parent=overlay;local washCorner=Instance.new("UICorner");washCorner.CornerRadius=UDim.new(0,14);washCorner.Parent=stadiumWash
 	label(overlay,"VTR X  /  MATCHDAY",UDim2.fromScale(.1,.07),UDim2.fromScale(.8,.05),10,Theme.Colors.Electric,Theme.Fonts.Strong)
@@ -75,6 +83,6 @@ function Presentation.play(root:Frame,setup:any,home:any,away:any,onReturn:(()->
 	status.Text=watchMode and"WATCH MATCH READY"or"MATCH READY"
 	entering.Text=watchMode and"AI VS AI BROADCAST"or"TAKING CONTROL"
 	if started.Data and started.Data.ObjectiveCompletedNow and notify then notify("Play Your First Match completed.","Reward")end
-	tweenWait(overlay,.25,{GroupTransparency=1});finish(false)
+	finish(false)
 end
 return Presentation

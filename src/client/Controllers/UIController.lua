@@ -38,6 +38,7 @@ local AnimatedNumber = require(script.Parent.Parent.Components.AnimatedNumber)
 local SplashScreen = require(script.Parent.Parent.Components.SplashScreen)
 local OnboardingController = require(script.Parent.OnboardingController)
 local NewcomerTutorialOverlay = require(script.Parent.Parent.Components.NewcomerTutorialOverlay)
+local PlayabilityUnlockConfig = require(ReplicatedStorage.VTR.Shared.PlayabilityUnlockConfig)
 local COINS_ICON = "rbxassetid://93869095461582"
 
 local PageModules = {
@@ -63,12 +64,7 @@ local function normalizeRoute(id: string): string
 end
 
 local function progressionRouteUnlocked(progression: any, id: string): boolean
-	if id == "Home" or id == "WorldCup" or id == "Settings" then return true end
-	local progress = type(progression) == "table" and progression.PlayabilityProgress or nil
-	if type(progress) ~= "table" then return true end
-	if progress.LegacyAccessGranted == true or progress.FirstWorldCupRunCompleted == true then return true end
-	local completed = math.max(0, math.floor(tonumber(progress.CompletedMatches) or 0))
-	return completed >= 2 and (id == "UltimateTeam" or id == "Inventory")
+	return PlayabilityUnlockConfig.RouteUnlocked(progression, id)
 end
 
 local function label(text: string, size: number, color: Color3, font: Enum.Font): TextLabel
@@ -377,7 +373,7 @@ function UIController:Start()
 	for _, navData in Config.Navigation do
 		local item = SidebarItem.new(navData, function(id)
 			if not progressionRouteUnlocked(self.Data and self.Data.Progression, id) then
-				self:_showNotification({Title = "KEEP PLAYING", Message = "Complete your opening World Cup run to unlock this section.", Kind = "Info"})
+				self:_showNotification({Title = "KEEP PLAYING", Message = PlayabilityUnlockConfig.RouteRequirement(id), Kind = "Info"})
 				return
 			end
 			self.Flow:ModeTransition(id, function() navigation:Navigate(id); UIStateService:SetLastPage(id) end)
@@ -398,7 +394,7 @@ function UIController:Start()
 		Navigate = function(id: string)
 			local route = normalizeRoute(id)
 			if not progressionRouteUnlocked(self.Data and self.Data.Progression, route) then
-				self:_showNotification({Title = "KEEP PLAYING", Message = "Complete your opening World Cup run to unlock this section.", Kind = "Info"})
+				self:_showNotification({Title = "KEEP PLAYING", Message = PlayabilityUnlockConfig.RouteRequirement(route), Kind = "Info"})
 				return
 			end
 			self.Flow:ModeTransition(route, function() navigation:Navigate(route); UIStateService:SetLastPage(route) end)
@@ -443,7 +439,10 @@ function UIController:Start()
 	}
 	self.Flow:SetPlayerDetailsHandler(context.OpenPlayerDetails)
 	self.Flow:SetNavigator(context.Navigate)
-	self.Flow:SetInventoryNavigator(function()context.Data.UIState.SelectedTabs.Inventory="Packs";UIStateService:SetTab("Inventory","Packs");context.Navigate("Inventory")end)
+	self.Flow:SetInventoryNavigator(function()
+		local tab = PlayabilityUnlockConfig.FeatureUnlocked(context.Data.Progression, "Packs") and "Packs" or "Players"
+		context.Data.UIState.SelectedTabs.Inventory=tab;UIStateService:SetTab("Inventory",tab);context.Navigate("Inventory")
+	end)
 	self.Context = context
 	for id, pageModule in PageModules do
 		local page = pageModule.new(context)
@@ -659,7 +658,7 @@ function UIController:_bindDataUpdates()
 	ProgressionService:Observe(function(value)
 		self.Data.Progression = value
 		self:_syncProgressionNavigation()
-		for _, id in {"Home","Inventory","Campaign","Ranked","Store"} do self:_replacePage(id) end
+		for _, id in {"Home","UltimateTeam","Inventory","Campaign","Ranked","Store","Settings"} do self:_replacePage(id) end
 	end)
 end
 

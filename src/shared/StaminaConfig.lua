@@ -14,4 +14,5 @@ return table.freeze({
 	SprintDurationMaximumMultiplier = 1.1,
 	PossessionDrainMultiplier = 1.05,
 	RequestWatchdogSeconds = 1.6,
+	SimulationStepSeconds = 0.1,
 })

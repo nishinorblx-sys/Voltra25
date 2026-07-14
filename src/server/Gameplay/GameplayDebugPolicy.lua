@@ -4,6 +4,7 @@ local Policy = {}
 
 function Policy.CanUse(actionType: string, context: any): (boolean, string)
 	context = type(context) == "table" and context or {}
+	if context.OptIn ~= true then return false, "DISABLED" end
 	if context.Authorized ~= true then return false, "UNAUTHORIZED" end
 	if context.IsStudio ~= true and context.IsPrivateServer ~= true then return false, "PUBLIC_SERVER" end
 	if context.Ranked == true then return false, "RANKED" end

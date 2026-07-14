@@ -1,4 +1,6 @@
 --!strict
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local PassErrorResolver = require(ReplicatedStorage.VTR.Shared.PassErrorResolver)
 local Service = {}
 Service.__index = Service
 
@@ -14,36 +16,56 @@ function Service.new(ballService: any, targeting: any, remote: RemoteEvent, team
 	return setmetatable({BallService = ballService, Targeting = targeting, Remote = remote, Teams = teams, Random = Random.new()}, Service)
 end
 
-function Service:_pressure(passer: Model): number
+function Service:_pressure(passer: Model): (number, Vector3)
 	local passerRoot = root(passer)
-	if not passerRoot then return 1 end
+	if not passerRoot then return 1, Vector3.zero end
 	local side = tostring(passer:GetAttribute("VTRTeam") or "Home")
 	local nearest = 20
+	local pressureDirection = Vector3.zero
 	for _, opponent in self.Teams[side == "Home" and "Away" or "Home"] or {} do
 		local opponentRoot = root(opponent)
-		if opponentRoot then nearest = math.min(nearest, (opponentRoot.Position - passerRoot.Position).Magnitude) end
+		if opponentRoot then
+			local offset = flat(opponentRoot.Position - passerRoot.Position)
+			if offset.Magnitude < nearest then nearest = offset.Magnitude;pressureDirection = offset.Magnitude > 0.05 and offset.Unit or Vector3.zero end
+		end
 	end
-	return 1 - math.clamp((nearest - 2) / 12, 0, 1)
+	return 1 - math.clamp((nearest - 2) / 12, 0, 1), pressureDirection
 end
 
-function Service:_errorRadius(passer: Model, distance: number, pressure: number): number
-	local passing = math.clamp(tonumber(passer:GetAttribute("PAS")) or 60, 1, 99)
-	local weakFoot = math.clamp(tonumber(passer:GetAttribute("WeakFoot")) or 3, 1, 5)
-	local balance = math.clamp(tonumber(passer:GetAttribute("Balance")) or 65, 1, 99)
-	local accuracy = passing / 99
-	local base = 1.05 * (1 - accuracy) ^ 1.45 + 0.045
-	local longError = math.max(0, distance - 35) * (0.012 * (1 - accuracy) + 0.0025)
-	local pressureError = pressure * (1.45 - accuracy * 0.62)
-	local sprintError = passer:GetAttribute("VTRSprinting") == true and (0.30 - accuracy * 0.14) or 0
-	local weakFootError = (5 - weakFoot) * 0.085
-	local balanceError = (100 - balance) / 260
-	return base + longError + pressureError + sprintError + weakFootError + balanceError
+function Service:_errorProfile(passer: Model, targetPoint: Vector3, distance: number, pressure: number, pressureDirection: Vector3, passType: string?): any
+	local passerRoot = root(passer)
+	if not passerRoot then return PassErrorResolver.Resolve({Distance=distance,Pressure=pressure,PassFamily=passType}) end
+	local direction = flat(targetPoint - passerRoot.Position)
+	local fallback = flat(passerRoot.CFrame.LookVector)
+	fallback = fallback.Magnitude > 0.05 and fallback.Unit or Vector3.zAxis
+	direction = direction.Magnitude > 0.05 and direction.Unit or fallback
+	local facing = flat(passerRoot.CFrame.LookVector)
+	facing = facing.Magnitude > 0.05 and facing.Unit or direction
+	local right = flat(passerRoot.CFrame.RightVector)
+	right = right.Magnitude > 0.05 and right.Unit or Vector3.xAxis
+	local bodyDot = math.clamp(facing:Dot(direction), -1, 1)
+	return PassErrorResolver.Resolve({
+		Passing = passer:GetAttribute("PAS"),
+		WeakFoot = passer:GetAttribute("WeakFoot"),
+		Balance = passer:GetAttribute("Balance"),
+		Distance = distance,
+		Pressure = pressure,
+		PressureFromKickingSide = pressureDirection.Magnitude > 0.05 and math.max(0, pressureDirection:Dot(right)) or 0,
+		Sprinting = passer:GetAttribute("VTRSprinting") == true,
+		MovementSpeed = flat(passerRoot.AssemblyLinearVelocity).Magnitude,
+		BodyDot = bodyDot,
+		TurnAngle = math.acos(bodyDot),
+		TargetLateral = direction:Dot(right),
+		PreferredFoot = passer:GetAttribute("PreferredFoot"),
+		SelectedFoot = passer:GetAttribute("VTRPassFoot"),
+		PassFamily = passType or "Ground",
+	})
 end
 
 function Service:Pass(passer: Model, aimDirection: Vector3, charge: number, passType: string?, aimPosition: Vector3?, lockedReceiver: Model?): (Model?, Vector3?)
 	local passerRoot = root(passer)
 	if not passerRoot then return nil, nil end
-	local pressure = self:_pressure(passer)
+	local pressure, pressureDirection = self:_pressure(passer)
 	local receiver, targetPoint, targetDistance, targetScore
 	if lockedReceiver then
 		receiver, targetPoint, targetDistance, targetScore = self.Targeting:ChooseReceiver(passer, lockedReceiver, charge, passType)
@@ -55,13 +77,15 @@ function Service:Pass(passer: Model, aimDirection: Vector3, charge: number, pass
 	if not receiver then return nil, nil end
 	local direction = flat(targetPoint - passerRoot.Position)
 	if direction.Magnitude < 0.1 then return nil, nil end
-	local errorRadius = self:_errorRadius(passer, targetDistance, pressure)
-	if passType=="Lofted"then errorRadius*=.22 end
+	local errorProfile = self:_errorProfile(passer, targetPoint, targetDistance, pressure, pressureDirection, passType)
+	local errorRadius = errorProfile.Radius
 	local perpendicular = Vector3.new(-direction.Z, 0, direction.X).Unit
 	local lateralError = self.Random:NextNumber(-errorRadius, errorRadius)
 	local depthError = self.Random:NextNumber(-errorRadius * 0.3, errorRadius * 0.3)
 	local adjustedPoint = targetPoint + perpendicular * lateralError + direction.Unit * depthError
+	passer:SetAttribute("VTRPassFoot", errorProfile.KickingFoot)
 	local succeeded = self.BallService:Kick(passer, "Pass", adjustedPoint - passerRoot.Position, math.clamp(charge, 0, 1), receiver, passType, targetDistance,adjustedPoint)
+	passer:SetAttribute("VTRPassFoot", nil)
 	if not succeeded then return nil, nil end
 	self.Remote:FireAllClients({Type = "PassTarget", Model = receiver, Passer = passer, ReceivePoint = targetPoint, TargetScore = targetScore})
 	return receiver, targetPoint

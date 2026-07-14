@@ -10,6 +10,7 @@ local Theme = require(ReplicatedStorage.VTR.Shared.Theme)
 local BadgePreview = require(script.Parent.Parent.Components.BadgePreview)
 local AvatarPortraitGenerator = require(script.Parent.Parent.Services.PlayerPortraitService)
 local SettingsRuntimeService = require(script.Parent.Parent.Services.SettingsRuntimeService)
+local ControlGlyphService = require(script.Parent.Parent.Services.ControlGlyphService)
 
 local matchSetupService = nil
 local uiStateService = nil
@@ -309,6 +310,10 @@ function Controller.new(data: any)
 	DeviceScaleService.Apply(gui)
 
 	local topInset = GuiService:GetGuiInset()
+	local touchDevice=UserInputService.TouchEnabled
+	local completedMatches=math.max(0,math.floor(tonumber(data.Setup and data.Setup.PlayabilityCompletedMatches)or 0))
+	local firstSession=data.WatchMode~=true and data.Setup and data.Setup.PlayabilityLegacyAccess~=true and(data.PresentationProfile=="Acquisition"or completedMatches<3)
+	local touchFirstSession=touchDevice and firstSession
 	local board = panel(gui, UserInputService.TouchEnabled and UDim2.fromOffset(16, math.max(86, topInset.Y + 62)) or UDim2.fromOffset(18, math.max(74, topInset.Y + 54)), UDim2.fromOffset(306, 84))
 	board.BackgroundTransparency = 0.12
 	board.Visible = false
@@ -362,7 +367,7 @@ function Controller.new(data: any)
 	local shotModePanel=panel(gui,UDim2.fromOffset(18,math.max(166,topInset.Y+146)),UDim2.fromOffset(172,104))
 	shotModePanel.Name="ShotModePanel"
 	shotModePanel.BackgroundTransparency=.16
-	shotModePanel.Visible=data.WatchMode~=true
+	shotModePanel.Visible=data.WatchMode~=true and not touchFirstSession
 	local shotModeTitle=label(shotModePanel,"SHOT TYPE",UDim2.fromOffset(12,8),UDim2.new(1,-24,0,16),8)
 	shotModeTitle.TextColor3=Theme.Colors.Muted
 	shotModeTitle.Font=Theme.Fonts.Strong
@@ -384,6 +389,18 @@ function Controller.new(data: any)
 		row.Parent=shotModePanel
 		corner(row,4)
 		shotModeRows[spec[1]]=row
+	end
+	if touchDevice and not touchFirstSession then
+		shotModePanel.Size=UDim2.fromOffset(132,30)
+		shotModeTitle.Position=UDim2.fromOffset(10,6)
+		shotModeTitle.Size=UDim2.new(1,-20,1,-12)
+		shotModeTitle.Text="NORMAL SHOT"
+		shotModeTitle.TextColor3=Theme.Colors.Electric
+		for _,row in shotModeRows do row.Visible=false end
+	elseif firstSession then
+		shotModePanel.Size=UDim2.fromOffset(172,52)
+		shotModeRows.Finesse.Visible=false
+		shotModeRows.LowDriven.Visible=false
 	end
 	local scorerPanel = Instance.new("CanvasGroup")
 	scorerPanel.Name = "KickoffScorerPanel"
@@ -537,7 +554,7 @@ function Controller.new(data: any)
 		corner(diagnostics, 4)
 	end
 
-	local help = label(gui, "WASD MOVE   SHIFT SPRINT   LMB SHOT   RMB GROUND   E + RMB THROUGH   ALT + RMB LOB   CTRL + RMB MANUAL   Q SWITCH", UDim2.new(0.5, -520, 1, -31), UDim2.fromOffset(1040, 18), 9)
+	local help = label(gui, ControlGlyphService.ControlSummary({}), UDim2.new(0.5, -520, 1, -31), UDim2.fromOffset(1040, 18), 9)
 	help.TextXAlignment = Enum.TextXAlignment.Center
 	help.TextColor3 = Theme.Colors.Silver
 	help.Visible = false
@@ -597,6 +614,7 @@ function Controller.new(data: any)
 		Phase = phase,
 		PhasePanel = phasePanel,
 		ShotModePanel=shotModePanel,
+		ShotModeTitle=shotModeTitle,
 		ShotModeRows=shotModeRows,
 		Banner = banner,
 		Charge = charge,
@@ -610,8 +628,13 @@ function Controller.new(data: any)
 		ShotSweetZone = sweetZone,
 		OverhitZone = overhitZone,
 		SprintTutorial = data.Setup and data.Setup.WorldCupTutorial == true,
+		TouchDevice=touchDevice,
+		WatchMode=data.WatchMode==true,
+		TouchFirstSession=touchFirstSession==true,
+		TouchCompactShotMode=touchDevice and not touchFirstSession,
 		ActiveName = activeName,
 		ActiveState = activeState,
+		ActiveBadge=activeBadge,
 		Rating=rating,
 		ActiveModel = nil,
 		TargetPanel = targetPanel,
@@ -639,12 +662,40 @@ function Controller.new(data: any)
 		PitchWidth = data.PitchWidth or 80,
 		PitchLength = data.PitchLength or 120,
 	}, Controller)
+	result:ApplyDeviceProfile({MobileControlHandedness="Right"})
 	if pauseButton then
 		pauseButton.Activated:Connect(function()
 			if result.PauseButtonCallback then result.PauseButtonCallback() end
 		end)
 	end
 	return result
+end
+
+function Controller:ApplyDeviceProfile(settings:any?)
+	if not self.TouchDevice then return end
+	local actionHand=type(settings)=="table"and tostring(settings.MobileControlHandedness or"Right")or"Right"
+	local actionsLeft=actionHand=="Left"
+	self.Charge.Position=actionsLeft and UDim2.new(0,18,1,-310)or UDim2.new(1,-288,1,-310)
+	self.QueuedAction.Position=actionsLeft and UDim2.new(0,18,1,-338)or UDim2.new(1,-148,1,-338)
+	if self.TouchFirstSession then
+		self.ActivePanel.Size=UDim2.fromOffset(172,34)
+		self.ActivePanelPosition=actionsLeft and UDim2.new(1,-190,1,-245)or UDim2.new(0,18,1,-245)
+		self.ActiveBadge.Visible=false
+		self.ActiveName.Visible=false
+		self.ActiveState.Visible=false
+		self.Rating.Visible=false
+		self.SprintLabel.Text="SPRINT ENERGY"
+		self.SprintLabel.Position=UDim2.fromOffset(10,4)
+		self.SprintLabel.Size=UDim2.new(1,-20,0,10)
+		self.SprintBar.Position=UDim2.fromOffset(10,19)
+		self.SprintBar.Size=UDim2.new(1,-20,0,5)
+		self.ShotModePanel.Visible=false
+		self.TargetPanel.Visible=false
+		self.SuppressTargetPanel=true
+	else
+		self.ActivePanelPosition=UDim2.new(0,22,1,-92)
+		self.ShotModePanel.Visible=not self.WatchMode
+	end
 end
 
 function Controller:SetPauseButtonCallback(callback:()->())
@@ -854,7 +905,8 @@ function Controller:PlayPlayerPanelsIntro(force: boolean?)
 	local active = self.ActivePanel
 	if active then
 		active.Visible = true
-		active.Position = UDim2.new(0, -305, 1, -92)
+		local destination=self.ActivePanelPosition or UDim2.new(0,22,1,-92)
+		active.Position = destination.X.Scale>.5 and UDim2.new(1,24,destination.Y.Scale,destination.Y.Offset)or UDim2.new(0,-305,destination.Y.Scale,destination.Y.Offset)
 		active.BackgroundTransparency = 1
 		local scale = active:FindFirstChild("IntroScale") :: UIScale?
 		if not scale then
@@ -863,7 +915,7 @@ function Controller:PlayPlayerPanelsIntro(force: boolean?)
 			scale.Parent = active
 		end
 		scale.Scale = 0.92
-		tween(active, 0.36, {Position = UDim2.new(0, 22, 1, -92), BackgroundTransparency = 0.12}, Enum.EasingStyle.Back)
+		tween(active, 0.36, {Position = destination, BackgroundTransparency = 0.12}, Enum.EasingStyle.Back)
 		tween(scale, 0.32, {Scale = 1}, Enum.EasingStyle.Back)
 	end
 end
@@ -901,6 +953,9 @@ end
 
 function Controller:SetShotMode(mode:string?)
 	mode=mode=="Finesse"and"Finesse"or mode=="LowDriven"and"LowDriven"or"Normal"
+	if self.TouchCompactShotMode and self.ShotModeTitle then
+		self.ShotModeTitle.Text=string.upper(mode=="LowDriven"and"LOW DRIVEN"or mode).." SHOT"
+	end
 	for key,row in self.ShotModeRows or{}do
 		local active=key==mode
 		row.BackgroundTransparency=active and 0 or .35
@@ -979,12 +1034,13 @@ function Controller:SetStamina(value: number,endurance:number?)
 	else
 		self.SprintFullAt=nil
 	end
-	local visible=self.SprintTutorial==true or self.SprintFullAt==nil or os.clock()-self.SprintFullAt<2
+	local visible=self.TouchFirstSession==true or self.SprintTutorial==true or self.SprintFullAt==nil or os.clock()-self.SprintFullAt<2
 	if self.SprintBar then self.SprintBar.Visible=visible end
 	if self.SprintLabel then self.SprintLabel.Visible=visible end
 end
 
 function Controller:SetOpponent(model: Model?)
+	if self.SuppressTargetPanel then self.TargetPanel.Visible=false;return end
 	local wasVisible = self.TargetPanel.Visible
 	self.TargetPanel.Visible = model ~= nil
 	if model ~= nil and not wasVisible then
@@ -1668,7 +1724,7 @@ function Controller:SetPaused(paused: boolean, cameraController: any, onReturn: 
 			optionRow("PassReceiverAutoSwitch","PASS RECEIVER SWITCH","Choose how quickly control moves to a pass receiver.",{"Assisted","Instant","Off"})
 			optionRow("ManualPassAutoSwitch","MANUAL PASS AUTO SWITCH","Auto switch to the closest teammate near manual passes.",{"Closest","Off"})
 			optionRow("ReceiverAssist","RECEIVER ASSIST","Assisted receiving support after passes.",{"Light","Assisted","Off"})
-			addRow("KEYBINDS: PAUSE M  /  SWITCH Q  /  TACKLE E  /  SLIDE F  /  MANUAL CTRL  /  LOB ALT",Theme.Colors.Silver)
+			addRow("CONTROLS: "..ControlGlyphService.ControlSummary(settings),Theme.Colors.Silver)
 		elseif activeTab=="Audio"then
 			sliderRow("MasterVolume","MASTER VOLUME","Controls global game audio.",.8)
 			toggleRow("MenuMusic","MENU MUSIC","Turns menu soundtrack audio on or off.")

@@ -1,5 +1,6 @@
 --!strict
 local Players = game:GetService("Players")
+local MatchVisualCleanupService = require(script.Parent.Parent.Services.MatchVisualCleanupService)
 
 local Controller = {}
 Controller.__index = Controller
@@ -31,6 +32,7 @@ local function makeRing(): Part
 	ring.Color = COLORS.ActiveUser
 	ring.Transparency = 0.36
 	ring.Parent = workspace
+	MatchVisualCleanupService.RegisterTemporary(ring)
 	return ring
 end
 
@@ -56,6 +58,7 @@ local function makeMarker(kind: string, color: Color3): BillboardGui
 	end
 	arrow.Parent = gui
 	gui.Parent = workspace.CurrentCamera
+	MatchVisualCleanupService.RegisterTemporary(gui)
 	return gui
 end
 
@@ -97,6 +100,7 @@ local function makeYellowCardMarker(): BillboardGui
 	y.Parent = card
 	local playerGui = Players.LocalPlayer and Players.LocalPlayer:FindFirstChildOfClass("PlayerGui")
 	gui.Parent = playerGui or workspace.CurrentCamera
+	MatchVisualCleanupService.RegisterTemporary(gui)
 	return gui
 end
 
@@ -160,6 +164,30 @@ function Controller:SetPassTarget(model: Model?, fallback: boolean?)
 		self.HUD:SetTeammate(model)
 	end
 	self:_refreshNames()
+end
+
+function Controller:SetReceptionTarget(model: Model?, imminent: boolean?, contested: boolean?, reducedMotion: boolean?)
+	self.ReceptionTarget = model
+	self.ReceptionImminent = imminent == true
+	self.ReceptionContested = contested == true
+	self.ReceptionReducedMotion = reducedMotion == true
+	self.ReceptionExpiresAt = model and os.clock() + 8 or nil
+	self.PassTarget = model
+	self:_setMarker("PassTarget", model)
+	local color = self.ReceptionContested and COLORS.OffsideWarning or COLORS.PassTarget
+	self.TargetRing.Color = color
+	local arrow = self.Markers.PassTarget:FindFirstChild("Arrow") :: TextLabel?
+	if arrow then arrow.TextColor3 = color end
+end
+
+function Controller:ClearReceptionTarget(model: Model?)
+	if model and self.ReceptionTarget ~= model then return end
+	self.ReceptionTarget = nil
+	self.ReceptionImminent = false
+	self.ReceptionContested = false
+	self.ReceptionExpiresAt = nil
+	self.TargetRing.Transparency = 1
+	self:SetPassTarget(nil)
 end
 
 function Controller:SetAimDirection(direction: Vector3)
@@ -265,7 +293,17 @@ function Controller:Update(dt: number)
 		self.Ring.CFrame = CFrame.new(activeRoot.Position - Vector3.new(0, 2.85, 0)) * CFrame.Angles(0, 0, math.pi / 2)
 	end
 	self.Ring.Transparency = 1
-	self.TargetRing.Transparency = 1
+	local receptionRoot = rootOf(self.ReceptionTarget)
+	if receptionRoot and (tonumber(self.ReceptionExpiresAt) or 0) > os.clock() then
+		self.TargetRing.CFrame = CFrame.new(receptionRoot.Position - Vector3.new(0, 2.85, 0)) * CFrame.Angles(0, 0, math.pi / 2)
+		local pulse = self.ReceptionReducedMotion and 0 or (math.sin(self.Pulse * 9) + 1) * 0.5
+		self.TargetRing.Transparency = self.ReceptionImminent and 0.12 + pulse * 0.16 or 0.34
+		self:_setMarker("PassTarget", self.ReceptionTarget)
+	elseif self.ReceptionTarget then
+		self:ClearReceptionTarget(self.ReceptionTarget)
+	else
+		self.TargetRing.Transparency = 1
+	end
 	self.Clock += dt
 	if self.Clock < 0.16 then
 		return
@@ -274,7 +312,7 @@ function Controller:Update(dt: number)
 	self:_refreshYellowCards()
 	self:SetNextSwitch(nil)
 	self:SetOpponentTarget(nil)
-	self:SetPassTarget(nil)
+	if not self.ReceptionTarget then self:SetPassTarget(nil) end
 end
 
 function Controller:Destroy()

@@ -2,21 +2,24 @@
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local GuiService = game:GetService("GuiService")
 local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
 local Workspace = game:GetService("Workspace")
 
 local ActionTuning = require(ReplicatedStorage.VTR.Shared.ActionTuningConfig)
 local DeviceConfig = require(ReplicatedStorage.VTR.Shared.DeviceGameplayConfig)
+local MobileControlLayout = require(ReplicatedStorage.VTR.Shared.MobileControlLayout)
+local Theme = require(ReplicatedStorage.VTR.Shared.Theme)
 
 local Controls = {}
 Controls.__index = Controls
 
-local GREEN = Color3.fromHex("B7FF1A")
-local WHITE = Color3.fromHex("F5F7F2")
-local BLACK = Color3.fromHex("061006")
-local RED = Color3.fromHex("FF4056")
-local AMBER = Color3.fromHex("FFC83D")
+local GREEN = Theme.Colors.Electric
+local WHITE = Theme.Colors.White
+local BLACK = Theme.Colors.Black
+local RED = Theme.Colors.Danger
+local AMBER = Theme.Colors.Warning
 
 local function corner(parent: Instance, radius: number)
 	local item = Instance.new("UICorner")
@@ -33,10 +36,28 @@ local function stroke(parent: Instance, color: Color3, transparency: number, thi
 	return item
 end
 
-local function controlScale(): number
-	local camera = Workspace.CurrentCamera
-	local viewport = camera and camera.ViewportSize or Vector2.new(1920, 1080)
-	return math.clamp(math.min(viewport.X / 1920, viewport.Y / 1080), 0.78, 1.08)
+local function safeInsets(): any
+	local insets = {Left = 0, Top = 0, Right = 0, Bottom = 0}
+	local okInset, topLeft, bottomRight = pcall(function()
+		local first, second = GuiService:GetGuiInset()
+		return first, second
+	end)
+	if okInset and typeof(topLeft) == "Vector2" then
+		insets.Left = math.max(insets.Left, topLeft.X)
+		insets.Top = math.max(insets.Top, topLeft.Y)
+	end
+	if okInset and typeof(bottomRight) == "Vector2" then
+		insets.Right = math.max(insets.Right, bottomRight.X)
+		insets.Bottom = math.max(insets.Bottom, bottomRight.Y)
+	end
+	local okSafe, offsets = pcall(function() return GuiService:GetSafeZoneOffsets() end)
+	if okSafe and typeof(offsets) == "Vector4" then
+		insets.Left = math.max(insets.Left, offsets.X)
+		insets.Top = math.max(insets.Top, offsets.Y)
+		insets.Right = math.max(insets.Right, offsets.Z)
+		insets.Bottom = math.max(insets.Bottom, offsets.W)
+	end
+	return insets
 end
 
 local function circle(parent: Instance, name: string, size: number, position: UDim2, label: string, color: Color3): TextButton
@@ -95,11 +116,21 @@ function Controls.new(controller: any)
 	self.ActionAim = {}
 	self.ActionMagnitude = {}
 	self.ActionTouches = {}
+	self.ActiveChargedTouch = nil
+	self.ActiveChargedButton = nil
+	self.ActiveChargedKind = nil
+	self.ActiveChargedRole = nil
+	self.ActiveChargedToken = nil
+	self.NextChargedToken = 0
 	self.PassMode = nil
 	self.Defending = false
+	self.ReceivingPass = false
 	self.ContextAction = "Through"
 	self.SprintMode = "Toggle"
 	self.Handedness = "Right"
+	self.Destroyed = false
+	self.LayoutGeneration = 0
+	self.MoveTouch = nil
 
 	self.Gui = Instance.new("ScreenGui")
 	self.Gui.Name = "VTRLiteMobileControls"
@@ -116,24 +147,24 @@ function Controls.new(controller: any)
 	root.Parent = self.Gui
 	self.Root = root
 
-	local scale = controlScale()
-	self.ControlScale = scale
-	local function px(value: number): number
-		return math.floor(value * scale + 0.5)
-	end
+	local camera = Workspace.CurrentCamera
+	local viewport = camera and camera.ViewportSize or Vector2.new(1280, 720)
+	local layout = MobileControlLayout.Resolve(viewport, safeInsets(), self.Handedness)
+	self.Layout = layout
+	self.ControlScale = layout.Scale
 
 	local base = Instance.new("Frame")
 	base.Name = "MovementJoystick"
 	base.AnchorPoint = Vector2.new(0.5, 0.5)
-	base.Position = UDim2.new(0, px(126), 1, -px(136))
-	base.Size = UDim2.fromOffset(px(164), px(164))
+	base.Position = UDim2.fromOffset(layout.Joystick.X, layout.Joystick.Y)
+	base.Size = UDim2.fromOffset(layout.JoystickSize, layout.JoystickSize)
 	base.BackgroundColor3 = BLACK
 	base.BackgroundTransparency = 0.44
 	base.BorderSizePixel = 0
 	base.Active = true
 	base.ZIndex = 205
 	base.Parent = root
-	corner(base, px(164))
+	corner(base, layout.JoystickSize)
 	stroke(base, GREEN, 0.45, 1.2)
 
 	local arrows = Instance.new("TextLabel")
@@ -142,8 +173,8 @@ function Controls.new(controller: any)
 	arrows.Text = "+"
 	arrows.TextColor3 = GREEN
 	arrows.TextTransparency = 0.2
-	arrows.TextSize = px(38)
-	arrows.Font = Enum.Font.GothamBlack
+	arrows.TextSize = math.floor(layout.JoystickSize * .23)
+	arrows.Font = Theme.Fonts.Display
 	arrows.ZIndex = 206
 	arrows.Parent = base
 
@@ -151,23 +182,23 @@ function Controls.new(controller: any)
 	knob.Name = "Knob"
 	knob.AnchorPoint = Vector2.new(0.5, 0.5)
 	knob.Position = UDim2.fromScale(0.5, 0.5)
-	knob.Size = UDim2.fromOffset(px(66), px(66))
+	knob.Size = UDim2.fromOffset(layout.KnobSize, layout.KnobSize)
 	knob.BackgroundColor3 = GREEN
 	knob.BackgroundTransparency = 0.18
 	knob.BorderSizePixel = 0
 	knob.ZIndex = 207
 	knob.Parent = base
-	corner(knob, px(66))
+	corner(knob, layout.KnobSize)
 	stroke(knob, WHITE, 0.72, 1)
 	self.Joystick = base
 	self.Knob = knob
 
-	local large = px(math.clamp(68, DeviceConfig.Mobile.ActionButtonMinimum, DeviceConfig.Mobile.ActionButtonMaximum))
-	local medium = px(math.clamp(62, DeviceConfig.Mobile.ActionButtonMinimum, DeviceConfig.Mobile.ActionButtonMaximum))
-	self.PrimaryButton = circle(root, "PrimaryAction", large, UDim2.new(1, -px(108), 1, -px(156)), "PASS", GREEN)
-	self.SecondaryButton = circle(root, "SecondaryAction", large, UDim2.new(1, -px(182), 1, -px(244)), "SHOOT", GREEN)
-	self.SprintButton = circle(root, "SprintAction", medium, UDim2.new(1, -px(290), 1, -px(126)), "SPRINT", GREEN)
-	self.ContextButton = circle(root, "ContextAction", medium, UDim2.new(1, -px(310), 1, -px(220)), "THROUGH", GREEN)
+	local large = math.max(64, math.clamp(layout.PrimarySize, DeviceConfig.Mobile.ActionButtonMinimum, DeviceConfig.Mobile.ActionButtonMaximum))
+	local medium = math.max(56, math.clamp(layout.NormalSize, DeviceConfig.Mobile.ActionButtonMinimum, DeviceConfig.Mobile.ActionButtonMaximum))
+	self.PrimaryButton = circle(root, "PrimaryAction", large, UDim2.fromOffset(layout.Primary.X, layout.Primary.Y), "PASS", GREEN)
+	self.SecondaryButton = circle(root, "SecondaryAction", large, UDim2.fromOffset(layout.Secondary.X, layout.Secondary.Y), "SHOOT", GREEN)
+	self.SprintButton = circle(root, "SprintAction", medium, UDim2.fromOffset(layout.Sprint.X, layout.Sprint.Y), "SPRINT", GREEN)
+	self.ContextButton = circle(root, "ContextAction", medium, UDim2.fromOffset(layout.Context.X, layout.Context.Y), "THROUGH", GREEN)
 
 	local aimLine = Instance.new("Frame")
 	aimLine.Name = "ActionAimLine"
@@ -175,14 +206,13 @@ function Controls.new(controller: any)
 	aimLine.BackgroundColor3 = GREEN
 	aimLine.BackgroundTransparency = 0.18
 	aimLine.BorderSizePixel = 0
-	aimLine.Size = UDim2.fromOffset(0, px(3))
+	aimLine.Size = UDim2.fromOffset(0, math.max(2, math.floor(3 * layout.Scale)))
 	aimLine.Visible = false
 	aimLine.ZIndex = 208
 	aimLine.Parent = root
-	corner(aimLine, px(3))
+	corner(aimLine, 3)
 	self.AimLine = aimLine
 
-	local moveTouch: InputObject? = nil
 	local function updateMove(input: InputObject)
 		local center = base.AbsolutePosition + base.AbsoluteSize * 0.5
 		local delta = Vector2.new(input.Position.X, input.Position.Y) - center
@@ -193,21 +223,21 @@ function Controls.new(controller: any)
 	end
 
 	table.insert(self.Connections, base.InputBegan:Connect(function(input)
-		if input.UserInputType == Enum.UserInputType.Touch and moveTouch == nil then
-			moveTouch = input
+		if input.UserInputType == Enum.UserInputType.Touch and self.MoveTouch == nil then
+			self.MoveTouch = input
 			updateMove(input)
 		end
 	end))
 	table.insert(self.Connections, UserInputService.TouchMoved:Connect(function(input)
-		if input == moveTouch then
+		if input == self.MoveTouch then
 			updateMove(input)
 		else
 			self:_updateActionTouch(input)
 		end
 	end))
 	table.insert(self.Connections, UserInputService.TouchEnded:Connect(function(input)
-		if input == moveTouch then
-			moveTouch = nil
+		if input == self.MoveTouch then
+			self.MoveTouch = nil
 			self.MoveInput = Vector2.zero
 			knob.Position = UDim2.fromScale(0.5, 0.5)
 		else
@@ -219,8 +249,67 @@ function Controls.new(controller: any)
 	self:_bindActionButton(self.SecondaryButton, "Secondary")
 	self:_bindActionButton(self.SprintButton, "Sprint")
 	self:_bindActionButton(self.ContextButton, "Context")
+	self:_bindLayoutSignals()
 	self:SetDefending(false)
 	return self
+end
+
+function Controls:_applyLayout(cancelTouches: boolean?)
+	if self.Destroyed or not self.Root or not self.Root.Parent then return end
+	if cancelTouches then
+		self:CancelActionTouches("layout_rebuild")
+		self.MoveTouch = nil
+		self.MoveInput = Vector2.zero
+		self.Knob.Position = UDim2.fromScale(.5, .5)
+	end
+	local camera = Workspace.CurrentCamera
+	local viewport = camera and camera.ViewportSize or Vector2.new(1280, 720)
+	local layout = MobileControlLayout.Resolve(viewport, safeInsets(), self.Handedness)
+	self.Layout = layout
+	self.ControlScale = layout.Scale
+	local large = math.max(64, math.clamp(layout.PrimarySize, DeviceConfig.Mobile.ActionButtonMinimum, DeviceConfig.Mobile.ActionButtonMaximum))
+	local medium = math.max(56, math.clamp(layout.NormalSize, DeviceConfig.Mobile.ActionButtonMinimum, DeviceConfig.Mobile.ActionButtonMaximum))
+	self.Joystick.Position = UDim2.fromOffset(layout.Joystick.X, layout.Joystick.Y)
+	self.Joystick.Size = UDim2.fromOffset(layout.JoystickSize, layout.JoystickSize)
+	self.Knob.Size = UDim2.fromOffset(layout.KnobSize, layout.KnobSize)
+	self.PrimaryButton.Position = UDim2.fromOffset(layout.Primary.X, layout.Primary.Y)
+	self.PrimaryButton.Size = UDim2.fromOffset(large, large)
+	self.SecondaryButton.Position = UDim2.fromOffset(layout.Secondary.X, layout.Secondary.Y)
+	self.SecondaryButton.Size = UDim2.fromOffset(large, large)
+	self.SprintButton.Position = UDim2.fromOffset(layout.Sprint.X, layout.Sprint.Y)
+	self.SprintButton.Size = UDim2.fromOffset(medium, medium)
+	self.ContextButton.Position = UDim2.fromOffset(layout.Context.X, layout.Context.Y)
+	self.ContextButton.Size = UDim2.fromOffset(medium, medium)
+	for _, button in {self.PrimaryButton, self.SecondaryButton, self.SprintButton, self.ContextButton} do
+		button.TextSize = math.max(12, math.floor(button.AbsoluteSize.X * .17))
+	end
+	self.AimLine.Visible = false
+end
+
+function Controls:_queueLayout()
+	self.LayoutGeneration += 1
+	local generation = self.LayoutGeneration
+	task.defer(function()
+		if self.Destroyed or generation ~= self.LayoutGeneration then return end
+		self:_applyLayout(true)
+	end)
+end
+
+function Controls:_bindViewportCamera()
+	if self.ViewportConnection then self.ViewportConnection:Disconnect() end
+	self.ViewportConnection = nil
+	local camera = Workspace.CurrentCamera
+	if camera then
+		self.ViewportConnection = camera:GetPropertyChangedSignal("ViewportSize"):Connect(function() self:_queueLayout() end)
+	end
+	self:_queueLayout()
+end
+
+function Controls:_bindLayoutSignals()
+	self:_bindViewportCamera()
+	table.insert(self.Connections, Workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(function() self:_bindViewportCamera() end))
+	local ok, signal = pcall(function() return GuiService:GetPropertyChangedSignal("TopbarInset") end)
+	if ok and signal then table.insert(self.Connections, signal:Connect(function() self:_queueLayout() end)) end
 end
 
 function Controls:_buttonCenter(button: TextButton): Vector2
@@ -258,6 +347,26 @@ function Controls:_updateActionTouch(input: InputObject)
 	end
 end
 
+function Controls:_setChargedButtonsAvailable(available: boolean, owner: TextButton?)
+	for _, button in {self.PrimaryButton, self.SecondaryButton, self.ContextButton} do
+		local enabled = available or button == owner
+		button.TextTransparency = if enabled then 0 else 0.58
+		button.BackgroundTransparency = if enabled then (button == owner and 0.08 or 0.3) else 0.68
+	end
+end
+
+function Controls:_clearChargedOwnership(button: TextButton, state: any)
+	if self.ActiveChargedButton ~= button or self.ActiveChargedToken ~= state.Token then
+		return
+	end
+	self.ActiveChargedTouch = nil
+	self.ActiveChargedButton = nil
+	self.ActiveChargedKind = nil
+	self.ActiveChargedRole = nil
+	self.ActiveChargedToken = nil
+	self:_setChargedButtonsAvailable(true, nil)
+end
+
 function Controls:_beginActionTouch(button: TextButton, input: InputObject, role: string)
 	if self.ActionTouches[button] ~= nil then
 		return
@@ -270,10 +379,10 @@ function Controls:_beginActionTouch(button: TextButton, input: InputObject, role
 	elseif role == "Secondary" then
 		kind = if self.Defending then "Switch" else "Shot"
 	elseif role == "Context" then
-		if self.Defending then
-			kind = "SlideTackle"
-		elseif self.ContextAction == "Skill" then
-			kind = "Skill"
+		if self.ReceivingPass then
+			kind = "ReceiverOverride"
+		elseif self.ContextAction == "SlideTackle" or self.ContextAction == "Block" or self.ContextAction == "Skill" then
+			kind = self.ContextAction
 		else
 			kind = "Pass"
 			options = {PassMode = if self.ContextAction == "Cross" or self.ContextAction == "Lob" then "Lob" else "Through"}
@@ -281,14 +390,35 @@ function Controls:_beginActionTouch(button: TextButton, input: InputObject, role
 	elseif role == "Sprint" then
 		kind = "Sprint"
 	end
-	self.ActionTouches[button] = {Input = input, Role = role, Kind = kind, Delta = Vector2.zero}
+	local charged = kind == "Pass" or kind == "Shot"
+	local token: number? = nil
+	if charged then
+		if self.ActiveChargedTouch ~= nil then
+			self.Controller:RejectMobileCharge(kind)
+			return
+		end
+		self.NextChargedToken += 1
+		token = self.NextChargedToken
+		if not self.Controller:BeginMobileAction(kind, options, token) then
+			return
+		end
+		self.ActiveChargedTouch = input
+		self.ActiveChargedButton = button
+		self.ActiveChargedKind = kind
+		self.ActiveChargedRole = role
+		self.ActiveChargedToken = token
+		self:_setChargedButtonsAvailable(false, button)
+	end
+	self.ActionTouches[button] = {Input = input, Role = role, Kind = kind, Delta = Vector2.zero, Token = token}
 	self.ActionAim[kind] = Vector2.zero
 	self.ActionMagnitude[kind] = 0
 	setPressed(button, true)
-	if kind == "Pass" or kind == "Shot" then
-		self.Controller:BeginMobileAction(kind, options)
-	elseif kind == "Sprint" and self.SprintMode == "Hold" then
+	if kind == "Sprint" and self.SprintMode == "Hold" then
 		self.Controller:SetSprintRequested(true)
+	elseif kind == "Block" then
+		self.Controller:TriggerMobileAction("Block")
+	elseif kind == "ReceiverOverride" then
+		self.Controller:TriggerMobileAction("ReceiverOverrideBegin")
 	end
 end
 
@@ -299,22 +429,56 @@ function Controls:_finishActionTouch(input: InputObject, cancelled: boolean)
 			self.AimLine.Visible = false
 			setPressed(button, false)
 			if cancelled then
-				if state.Kind == "Pass" or state.Kind == "Shot" then self.Controller:CancelMobileAction(state.Kind) end
+				if state.Kind == "Pass" or state.Kind == "Shot" then self.Controller:CancelMobileAction(state.Kind, state.Token, "touch_cancelled")
+				elseif state.Kind == "Sprint" and self.SprintMode == "Hold" then self.Controller:SetSprintRequested(false) end
+				if state.Kind == "ReceiverOverride" then self.Controller:TriggerMobileAction("ReceiverOverrideEnd") end
 			elseif state.Kind == "Pass" then
 				local delta = state.Delta
 				local swipe = ActionTuning.MobilePassSwipePixels * (self.ControlScale or 1)
-				if state.Role == "Primary" and delta.Magnitude >= swipe and -delta.Y > math.abs(delta.X) * 0.7 then self.PassMode = "Through" elseif state.Role == "Context" then self.PassMode = if self.ContextAction == "Cross" or self.ContextAction == "Lob" then "Lob" else "Through" else self.PassMode = "Ground" end
-				self.Controller:EndMobileAction("Pass")
+				local forwardSwipe = self.Controller.IsForwardPassSwipe and self.Controller:IsForwardPassSwipe(delta) or -delta.Y > math.abs(delta.X) * 0.7
+				if state.Role == "Primary" and delta.Magnitude >= swipe and forwardSwipe then self.PassMode = "Through" elseif state.Role == "Context" then self.PassMode = if self.ContextAction == "Cross" or self.ContextAction == "Lob" then "Lob" else "Through" else self.PassMode = "Ground" end
+				self.Controller:EndMobileAction("Pass", state.Token)
 			elseif state.Kind == "Shot" then
-				self.Controller:EndMobileAction("Shot")
+				self.Controller:EndMobileAction("Shot", state.Token)
 			elseif state.Kind == "Sprint" then
 				if self.SprintMode == "Hold" then self.Controller:SetSprintRequested(false) else self.Controller:ToggleSprint() end
+			elseif state.Kind == "Block" then
+				self.Controller:TriggerMobileAction("BlockEnd")
+			elseif state.Kind == "ReceiverOverride" then
+				self.Controller:TriggerMobileAction("ReceiverOverrideEnd")
 			else
 				self.Controller:TriggerMobileAction(state.Kind)
 			end
+			if cancelled and state.Kind == "Block" then self.Controller:TriggerMobileAction("BlockEnd") end
+			self:_clearChargedOwnership(button, state)
+			self.ActionAim[state.Kind] = nil
+			self.ActionMagnitude[state.Kind] = nil
 			return
 		end
 	end
+end
+
+function Controls:CancelChargedAction(reason: string?)
+	local button = self.ActiveChargedButton
+	local token = self.ActiveChargedToken
+	if not button or token == nil then
+		return
+	end
+	local state = self.ActionTouches[button]
+	if state and state.Token == token then
+		self.ActionTouches[button] = nil
+		setPressed(button, false)
+		self.ActionAim[state.Kind] = nil
+		self.ActionMagnitude[state.Kind] = nil
+		self:_clearChargedOwnership(button, state)
+	end
+	self.AimLine.Visible = false
+end
+
+function Controls:CancelActionTouches(reason: string?)
+	local pending = {}
+	for _, state in self.ActionTouches do table.insert(pending, state.Input) end
+	for _, input in pending do self:_finishActionTouch(input, true) end
 end
 
 function Controls:_bindActionButton(button: TextButton, role: string)
@@ -331,26 +495,16 @@ end
 
 function Controls:SetPreferences(sprintMode: string?, handedness: string?)
 	self.SprintMode = if sprintMode == "Hold" then "Hold" else "Toggle"
-	self.Handedness = if handedness == "Left" then "Left" else "Right"
-	local scale = self.ControlScale or 1
-	local function px(value: number): number return math.floor(value * scale + 0.5) end
-	if self.Handedness == "Left" then
-		self.Joystick.Position = UDim2.new(1, -px(126), 1, -px(136))
-		self.PrimaryButton.Position = UDim2.new(0, px(108), 1, -px(156))
-		self.SecondaryButton.Position = UDim2.new(0, px(182), 1, -px(244))
-		self.SprintButton.Position = UDim2.new(0, px(290), 1, -px(126))
-		self.ContextButton.Position = UDim2.new(0, px(310), 1, -px(220))
-	else
-		self.Joystick.Position = UDim2.new(0, px(126), 1, -px(136))
-		self.PrimaryButton.Position = UDim2.new(1, -px(108), 1, -px(156))
-		self.SecondaryButton.Position = UDim2.new(1, -px(182), 1, -px(244))
-		self.SprintButton.Position = UDim2.new(1, -px(290), 1, -px(126))
-		self.ContextButton.Position = UDim2.new(1, -px(310), 1, -px(220))
+	local nextHandedness = if handedness == "Left" then "Left" else "Right"
+	if self.Handedness ~= nextHandedness then
+		self.Handedness = nextHandedness
+		self:_applyLayout(true)
 	end
 end
 
 function Controls:SetVisible(visible: boolean)
 	self.Gui.Enabled = visible == true
+	if not visible then self:CancelActionTouches("hidden") end
 end
 
 function Controls:PulseMovement(intensity: number?)
@@ -368,12 +522,27 @@ function Controls:SetContextAction(action: string?)
 	if value ~= "Through" and value ~= "Cross" and value ~= "Lob" and value ~= "Skill" and value ~= "SlideTackle" and value ~= "Block" then
 		value = if self.Defending then "SlideTackle" else "Through"
 	end
+	if self.ContextAction ~= value then
+		local active = self.ActionTouches[self.ContextButton]
+		if active then self:_finishActionTouch(active.Input, true) end
+	end
 	self.ContextAction = value
-	self.ContextButton.Text = string.upper(if value == "SlideTackle" then "SLIDE" else value)
+	self.ContextButton.Text = if self.ReceivingPass then "OVERRIDE" else string.upper(if value == "SlideTackle" then "SLIDE" else value)
+end
+
+function Controls:SetReceivingPass(receiving: boolean)
+	local value = receiving == true
+	if self.ReceivingPass == value then return end
+	local active = self.ActionTouches[self.ContextButton]
+	if active then self:_finishActionTouch(active.Input, true) end
+	self.ReceivingPass = value
+	self.ContextButton.Text = if value then "OVERRIDE" else string.upper(if self.ContextAction == "SlideTackle" then "SLIDE" else self.ContextAction)
 end
 
 function Controls:SetDefending(defending: boolean)
-	self.Defending = defending == true
+	local value = defending == true
+	if self.Defending ~= value then self:CancelActionTouches("context_changed") end
+	self.Defending = value
 	if self.ShootingOnly then
 		self.PrimaryButton.Visible = false
 		self.SecondaryButton.Visible = true
@@ -388,19 +557,21 @@ function Controls:SetDefending(defending: boolean)
 	self.ContextButton.Visible = true
 	self.PrimaryButton.Text = if self.Defending then "TACKLE" else "PASS"
 	self.SecondaryButton.Text = if self.Defending then "SWITCH" else "SHOOT"
+	self.ContextButton.Text = if self.ReceivingPass then "OVERRIDE" else string.upper(if self.ContextAction == "SlideTackle" then "SLIDE" else self.ContextAction)
 	local color = if self.Defending then RED else GREEN
 	local outline = self.PrimaryButton:FindFirstChildOfClass("UIStroke")
 	if outline then outline.Color = color end
-	self:SetContextAction(if self.Defending then "SlideTackle" else "Through")
+	if self.Defending then
+		if self.ContextAction ~= "SlideTackle" and self.ContextAction ~= "Block" then self:SetContextAction("SlideTackle") end
+	elseif self.ContextAction == "SlideTackle" or self.ContextAction == "Block" then
+		self:SetContextAction("Through")
+	end
 end
 
 function Controls:SetShootingOnly(active: boolean)
 	self.ShootingOnly = active == true
 	self.PassMode = nil
-	for button, state in self.ActionTouches do
-		self:_finishActionTouch(state.Input, true)
-		setPressed(button, false)
-	end
+	self:CancelActionTouches("shooting_only")
 	self:SetDefending(self.Defending)
 end
 
@@ -442,6 +613,12 @@ function Controls:ConsumePassMode(): string?
 end
 
 function Controls:Destroy()
+	self.Destroyed = true
+	self.LayoutGeneration += 1
+	self:CancelActionTouches("destroyed")
+	self.MoveTouch = nil
+	self.MoveInput = Vector2.zero
+	if self.ViewportConnection then self.ViewportConnection:Disconnect();self.ViewportConnection=nil end
 	for _, connection in self.Connections do
 		connection:Disconnect()
 	end

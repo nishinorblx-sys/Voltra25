@@ -1,5 +1,7 @@
 --!strict
 local PrematchBroadcastPresentation = require(script.Parent.Parent.Components.PrematchBroadcastPresentation)
+local MatchPresentationService = require(script.Parent.Parent.Services.MatchPresentationService)
+local MatchExperienceConfig = require(game:GetService("ReplicatedStorage").VTR.Shared.MatchExperienceConfig)
 
 local Controller = {}
 Controller.__index = Controller
@@ -31,7 +33,8 @@ function Controller:StadiumIntro(payload: any?, onComplete: (() -> ())?)
 	if self.HUD.Gui then
 		self.HUD.Gui.Enabled = false
 	end
-	self.Camera:BeginStadiumIntro(PrematchBroadcastPresentation.Duration(payload and payload.PresentationProfile))
+	local profile = MatchExperienceConfig.Normalize(payload and payload.PresentationProfile)
+	if profile ~= "Acquisition" then self.Camera:BeginStadiumIntro(PrematchBroadcastPresentation.Duration(profile)) end
 	if payload then
 		PrematchBroadcastPresentation.Play(payload, function()
 			if self.HUD then
@@ -46,12 +49,10 @@ function Controller:StadiumIntro(payload: any?, onComplete: (() -> ())?)
 end
 
 function Controller:SkipStadiumIntro()
-	local playerGui = game:GetService("Players").LocalPlayer:FindFirstChild("PlayerGui")
-	local gui = playerGui and playerGui:FindFirstChild("VTRPrematchBroadcast")
 	if PrematchBroadcastPresentation.StopAudio then
 		PrematchBroadcastPresentation.StopAudio()
 	end
-	if gui then gui:Destroy() end
+	MatchPresentationService.Complete(true)
 	if self.Camera and self.Camera.EndCutscene then
 		self.Camera:EndCutscene()
 	end

@@ -24,7 +24,7 @@ local function distanceToSegment(point: Vector3, from: Vector3, to: Vector3): nu
 end
 
 function Service.new(teams: any, pitchCFrame: CFrame)
-	return setmetatable({Teams = teams, PitchCFrame = pitchCFrame}, Service)
+	return setmetatable({Teams = teams, PitchCFrame = pitchCFrame, VelocitySamples = {}}, Service)
 end
 
 function Service:_pressure(model: Model, opponents: {Model}): number
@@ -49,7 +49,43 @@ end
 
 function Service:_receivePoint(passerPosition: Vector3, candidate: Model, passType: string?, charge: number): Vector3
 	local candidateRoot = root(candidate) :: BasePart
-	local predicted = PassInterceptService.Predict(passerPosition, candidateRoot, passType == "Through", charge)
+	local side = tostring(candidate:GetAttribute("VTRTeam") or "Home")
+	local opponents = self.Teams[side == "Home" and "Away" or "Home"] or {}
+	local velocity = flat(candidateRoot.AssemblyLinearVelocity)
+	if velocity.Magnitude > 21 then velocity = velocity.Unit * 21 end
+	local now = os.clock()
+	local previous = self.VelocitySamples[candidate]
+	local acceleration = Vector3.zero
+	if previous and now - previous.At >= 0.04 then acceleration = (velocity - previous.Velocity) / math.max(now - previous.At, 0.04) end
+	if not previous or now - previous.At >= 0.04 then self.VelocitySamples[candidate] = {Velocity = velocity, At = now} end
+	if acceleration.Magnitude > 18 then acceleration = acceleration.Unit * 18 end
+	local attackSign = side == "Home" and -1 or 1
+	local attackDirection = flat(self.PitchCFrame:VectorToWorldSpace(Vector3.new(0, 0, attackSign)))
+	attackDirection = attackDirection.Magnitude > 0.05 and attackDirection.Unit or Vector3.zAxis
+	local forwardSpace = 30
+	for _, opponent in opponents do
+		local opponentRoot = root(opponent)
+		if opponentRoot then
+			local ahead = flat(opponentRoot.Position - candidateRoot.Position):Dot(attackDirection)
+			if ahead > 0 then forwardSpace = math.min(forwardSpace, ahead) end
+		end
+	end
+	local predicted = candidateRoot.Position
+	for _ = 1, 2 do
+		local distance = flat(predicted - passerPosition).Magnitude
+		local speed = PassInterceptService.RequiredInitialSpeed(distance, charge)
+		local travelTime = math.clamp(distance / math.max(speed, 1), 0.08, 1.35)
+		if velocity.Magnitude < 1.25 then
+			local stationaryLead = passType == "Through" and attackDirection * math.min(2.5, forwardSpace * 0.12 * math.clamp(charge + 0.25, 0.25, 1)) or Vector3.zero
+			predicted = candidateRoot.Position + stationaryLead
+		else
+			local leadTime = travelTime * (passType == "Through" and 0.86 or 0.52)
+			local lead = velocity * leadTime + acceleration * (0.5 * leadTime * leadTime)
+			local maximumLead = passType == "Through" and math.clamp(4 + forwardSpace * 0.48, 5, 20) or 12
+			if lead.Magnitude > maximumLead then lead = lead.Unit * maximumLead end
+			predicted = candidateRoot.Position + lead
+		end
+	end
 	local lead = predicted - candidateRoot.Position
 	local passerToReceiver = flat(candidateRoot.Position - passerPosition)
 	if passType ~= "Through" and passerToReceiver.Magnitude > 0.1 and lead:Dot(passerToReceiver.Unit) < -3 then

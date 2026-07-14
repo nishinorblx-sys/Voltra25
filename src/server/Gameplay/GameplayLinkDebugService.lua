@@ -1,4 +1,5 @@
 --!strict
+local RunService=game:GetService("RunService")
 local Service = {}
 Service.__index = Service
 
@@ -11,11 +12,11 @@ local function flatMagnitude(vector: Vector3): number
 end
 
 local function enabled(): boolean
-	return workspace:GetAttribute("VTRLinkDebug") == true or workspace:GetAttribute("VTRGameplayDebug") == true
+	return (RunService:IsStudio() or game.PrivateServerId ~= "") and (workspace:GetAttribute("VTRLinkDebug") == true or workspace:GetAttribute("VTRGameplayDebug") == true)
 end
 
 local function visualsEnabled(): boolean
-	return workspace:GetAttribute("VTRLinkDebugVisuals") == true
+	return (RunService:IsStudio() or game.PrivateServerId ~= "") and workspace:GetAttribute("VTRLinkDebugVisuals") == true
 end
 
 local function marker(parent: Folder, name: string, position: Vector3, color: Color3, size: number)
@@ -111,6 +112,7 @@ function Service:_passState(session: any, issues: {string})
 	local passInFlight = owner == nil and motionKind == "Pass" and passStartedAt > 0 and passAge < 4
 	local expectedReceiver = session.BallService and session.BallService.ExpectedReceiver
 	local expectedRoot = expectedReceiver and root(expectedReceiver)
+	local reception = session.TeamControl and session.TeamControl.GetReceptionDiagnostics and session.TeamControl:GetReceptionDiagnostics() or nil
 
 	ball:SetAttribute("VTRDebugOwner", owner and owner.Name or "")
 	ball:SetAttribute("VTRDebugMotionKind", motionKind)
@@ -119,6 +121,15 @@ function Service:_passState(session: any, issues: {string})
 	ball:SetAttribute("VTRDebugPassAge", passAge)
 	ball:SetAttribute("VTRDebugExpectedReceiver", expectedReceiver and expectedReceiver.Name or "")
 	ball:SetAttribute("VTRDebugBallSpeed", flatMagnitude(ball.AssemblyLinearVelocity))
+	ball:SetAttribute("VTRDebugReceptionCount", reception and reception.ActiveContractCount or 0)
+	ball:SetAttribute("VTRDebugReceptionSolverCost", reception and reception.SolverCost or 0)
+	ball:SetAttribute("VTRDebugReceptionSamples", reception and reception.CandidateSampleCount or 0)
+	ball:SetAttribute("VTRDebugReceptionOpponents", reception and reception.NearbyOpponentCount or 0)
+	ball:SetAttribute("VTRDebugReceptionBallETA", reception and reception.BallETA or nil)
+	ball:SetAttribute("VTRDebugReceptionReceiverETA", reception and reception.ReceiverETA or nil)
+	ball:SetAttribute("VTRDebugReceptionOpponentETA", reception and reception.OpponentETA or nil)
+	ball:SetAttribute("VTRDebugReceptionPhase", reception and reception.Phase or nil)
+	ball:SetAttribute("VTRDebugReceptionCancelReason", reception and reception.CancelReason or nil)
 
 	if motionKind == "Pass" then
 		if passStartedAt <= 0 then
@@ -169,6 +180,10 @@ function Service:_passState(session: any, issues: {string})
 		end
 		if expectedRoot then
 			marker(folder, "ExpectedReceiver", expectedRoot.Position, Color3.fromRGB(185, 255, 40), 1.5)
+		end
+		if reception and typeof(reception.RouteTarget) == "Vector3" then
+			marker(folder, "ReceptionRouteTarget", reception.RouteTarget, Color3.fromRGB(183, 255, 26), 1.35)
+			if expectedRoot then segment(folder, "ReceiverToRouteTarget", expectedRoot.Position, reception.RouteTarget, Color3.fromRGB(183, 255, 26)) end
 		end
 	end
 end

@@ -86,7 +86,33 @@ function Controller.new(remote: RemoteEvent, aim: (string?, number?) -> any)
 		ShotMode = "Normal",
 		LastActionSent = {},
 		KickSequence = 0,
+		ActionContextToken = 0,
+		ActionModel = nil,
+		ReceptionContractId = nil,
+		ReceptionRevision = nil,
 	}, Controller)
+end
+
+function Controller:_receptionIdentity(): (number?, number?)
+	local model = self.ActionModel
+	local contractId = tonumber(self.ReceptionContractId) or (model and tonumber(model:GetAttribute("VTRReceptionContractId")))
+	local revision = tonumber(self.ReceptionRevision) or (model and tonumber(model:GetAttribute("VTRReceptionRevision")))
+	if not contractId or not revision then return nil, nil end
+	return math.floor(contractId), math.floor(revision)
+end
+
+function Controller:_stampReception(payload: any): boolean
+	local contractId, revision = self:_receptionIdentity()
+	if not contractId or not revision then return false end
+	payload.ReceptionContractId = contractId
+	payload.ReceptionRevision = revision
+	payload.ReceptionClientTime = workspace:GetServerTimeNow()
+	return true
+end
+
+function Controller:_sendReceiverOverride(active: boolean)
+	local payload = {Type = "ReceiverAssistOverride", Active = active}
+	if self:_stampReception(payload) then self.Remote:FireServer(payload) end
 end
 
 function Controller:SetShotModeChanged(callback: any)
@@ -138,20 +164,98 @@ function Controller:SetControlsSettings(settings: any)
 end
 
 function Controller:_cancelPending(reason: string, report: boolean?)
-	if not self.PendingAction then
+	local pending = self.PendingAction
+	if not pending then
 		return
 	end
 	self.PendingAction = nil
 	if report ~= false then
-		self.Remote:FireServer({Type = "ActionQueueCancelled", Reason = string.sub(reason, 1, 32)})
+		local payload = {Type = "ActionQueueCancelled", Reason = string.sub(reason, 1, 32)}
+		if pending.SentForReception == true then
+			payload.ReceptionContractId = pending.ContractId
+			payload.ReceptionRevision = pending.Revision
+			payload.ReceptionClientTime = workspace:GetServerTimeNow()
+		end
+		self.Remote:FireServer(payload)
 	end
+end
+
+function Controller:CancelPossessionActions(reason: string, report: boolean?)
+	local charge = self.Charge
+	local pending = self.PendingAction
+	self.Charge = nil
+	self.PendingAction = nil
+	if self.MobileControls and self.MobileControls.CancelChargedAction then
+		self.MobileControls:CancelChargedAction(reason)
+	end
+	if self.CancellationCallback then
+		self.CancellationCallback(reason)
+	end
+	if report ~= false and (charge or pending) then
+		local actionFamily = charge and tostring(charge.Kind or "") or tostring(pending and pending.Payload and pending.Payload.ActionFamily or "")
+		local payload = {Type = "ActionQueueCancelled", Reason = string.sub(reason, 1, 32), ActionFamily = actionFamily}
+		if pending and pending.SentForReception == true then
+			payload.ReceptionContractId = pending.ContractId
+			payload.ReceptionRevision = pending.Revision
+			payload.ReceptionClientTime = workspace:GetServerTimeNow()
+		end
+		self.Remote:FireServer(payload)
+	end
+end
+
+function Controller:ResolveReception(contractId: any, revision: any, cancelled: boolean?)
+	local pending = self.PendingAction
+	if pending and tonumber(pending.ContractId) == tonumber(contractId) and tonumber(pending.Revision) == tonumber(revision) then self.PendingAction = nil end
+	if cancelled == true and self.Charge then self.Charge = nil end
+	if tonumber(self.ReceptionContractId) == tonumber(contractId) then
+		self.ReceptionContractId = nil
+		self.ReceptionRevision = nil
+	end
+end
+
+function Controller:ClearReceptionQueuedAction(contractId: any, revision: any)
+	local pending = self.PendingAction
+	if pending and tonumber(pending.ContractId) == tonumber(contractId) and tonumber(pending.Revision) == tonumber(revision) then self.PendingAction = nil end
+end
+
+function Controller:SetCancellationCallback(callback: any)
+	self.CancellationCallback = callback
+end
+
+function Controller:SetActiveModel(model: Model?)
+	if self.ActionModel == model then
+		return
+	end
+	self:CancelPossessionActions("active_player_changed")
+	self.ActionContextToken += 1
+	self.ActionModel = model
+end
+
+function Controller:SetMatchContext(pitchCFrame: CFrame?)
+	self.PitchCFrame = pitchCFrame
+end
+
+function Controller:IsForwardPassSwipe(delta: Vector2): boolean
+	if typeof(delta) ~= "Vector2" or delta.Magnitude < 1 then return false end
+	local camera = workspace.CurrentCamera
+	local model = self.ActionModel
+	local root = model and model:FindFirstChild("HumanoidRootPart") :: BasePart?
+	if not camera or not root or typeof(self.PitchCFrame) ~= "CFrame" then return -delta.Y > math.abs(delta.X) * 0.7 end
+	local half = tonumber(workspace:GetAttribute("VTRMatchHalf")) or 1
+	local team = tostring(model:GetAttribute("VTRTeam") or "Home")
+	local attackSign = team == "Home" and (half >= 2 and 1 or -1) or (half >= 2 and -1 or 1)
+	local attackDirection = self.PitchCFrame:VectorToWorldSpace(Vector3.new(0, 0, attackSign))
+	local origin = camera:WorldToViewportPoint(root.Position)
+	local destination = camera:WorldToViewportPoint(root.Position + attackDirection * 24)
+	local projected = Vector2.new(destination.X - origin.X, destination.Y - origin.Y)
+	if projected.Magnitude < 4 then return -delta.Y > math.abs(delta.X) * 0.7 end
+	return delta.Unit:Dot(projected.Unit) >= 0.55
 end
 
 function Controller:SetSuppressed(suppressed: boolean)
 	self.Suppressed = suppressed == true
 	if self.Suppressed then
-		self.Charge = nil
-		self:_cancelPending("suppressed")
+		self:CancelPossessionActions("suppressed")
 		self:SetSprintRequested(false)
 	else
 		for key in movementKeys do
@@ -172,8 +276,7 @@ end
 
 function Controller:LockActions(duration: number?)
 	self.ActionLockedUntil = math.max(self.ActionLockedUntil or 0, os.clock() + math.max(0, duration or 0))
-	self.Charge = nil
-	self:_cancelPending("action_locked")
+	self:CancelPossessionActions("action_locked")
 	self:SetSprintRequested(false)
 	table.clear(self.IgnoredActionKeys)
 	for _, key in {Enum.KeyCode.ButtonA, Enum.KeyCode.ButtonB, Enum.KeyCode.ButtonX, Enum.KeyCode.ButtonY} do
@@ -186,10 +289,7 @@ end
 function Controller:SetShootingOnly(active: boolean)
 	self.ShootingOnly = active == true
 	if self.ShootingOnly then
-		if self.Charge and self.Charge.Kind ~= "Shot" then
-			self.Charge = nil
-		end
-		self:_cancelPending("shooting_only")
+		self:CancelPossessionActions("shooting_only")
 		self:SetSprintRequested(false)
 		table.clear(self.Keys)
 	end
@@ -210,16 +310,18 @@ function Controller:_aim(kind: string, charge: number?): any
 	return {Direction = value}
 end
 
-function Controller:_chargeStart(kind: string, options: any?)
+function Controller:_chargeStart(kind: string, options: any?, mobileToken: number?): boolean
 	if self:ActionsLocked() or self.Suppressed then
-		return
+		return false
 	end
 	if self.ShootingOnly and kind ~= "Shot" then
-		return
+		return false
 	end
 	if not self.Charge then
-		self.Charge = {Kind = kind, Started = os.clock(), Options = options or {}}
+		self.Charge = {Kind = kind, Started = os.clock(), Options = options or {}, ContextToken = self.ActionContextToken, Model = self.ActionModel, MobileToken = mobileToken}
+		return true
 	end
+	return false
 end
 
 function Controller:_chargeAction(charge: any): string
@@ -246,12 +348,16 @@ function Controller:_selectedDesktopPass(): (string, boolean)
 	return "Ground", control
 end
 
-function Controller:_chargeEnd(kind: string)
+function Controller:_chargeEnd(kind: string, mobileToken: number?)
 	local current = self.Charge
-	if not current or current.Kind ~= kind then
+	if not current or current.Kind ~= kind or (mobileToken ~= nil and current.MobileToken ~= mobileToken) then
 		return
 	end
 	self.Charge = nil
+	if current.ContextToken ~= self.ActionContextToken or current.Model ~= self.ActionModel then
+		self.Remote:FireServer({Type = "ActionQueueCancelled", Reason = "context_changed", ActionFamily = kind})
+		return
+	end
 	if self:ActionsLocked() or self.Suppressed then
 		return
 	end
@@ -299,9 +405,10 @@ function Controller:_commitAction(payload: any)
 		payload.ClientTime = now
 		if self.HasBall then
 			self.Remote:FireServer(payload)
-		elseif self.ReceivingPass then
+		elseif self.ReceivingPass and (actionType == "Pass" or actionType == "Shot") and self:_stampReception(payload) then
 			local duration = if self.ReceiveArrivalSeconds and self.ReceiveArrivalSeconds <= ActionTuning.QueueImminentArrivalSeconds then ActionTuning.QueueImminentSeconds else ActionTuning.QueueNormalSeconds
-			self.PendingAction = {Payload = payload, CreatedAt = now, ExpiresAt = now + duration}
+			self.PendingAction = {Payload = payload, CreatedAt = now, ExpiresAt = now + duration, ContextToken = self.ActionContextToken, Model = self.ActionModel, SentForReception = true, ContractId = payload.ReceptionContractId, Revision = payload.ReceptionRevision}
+			self.Remote:FireServer(payload)
 		end
 		return
 	end
@@ -311,13 +418,20 @@ end
 function Controller:SetActionContext(hasBall: boolean, receivingPass: boolean, context: any?)
 	local hadBall = self.HasBall
 	local wasReceiving = self.ReceivingPass
+	local contextModel = type(context) == "table" and context.ActiveModel or nil
+	if contextModel and contextModel ~= self.ActionModel then
+		self:SetActiveModel(contextModel)
+	end
 	self.HasBall = hasBall == true
 	self.ReceivingPass = receivingPass == true
+	if self.MobileControls and self.MobileControls.SetReceivingPass then self.MobileControls:SetReceivingPass(self.ReceivingPass) end
 	self.ReceiveArrivalSeconds = type(context) == "table" and math.max(0, tonumber(context.ArrivalSeconds) or math.huge) or nil
+	self.ReceptionContractId = type(context) == "table" and tonumber(context.ReceptionContractId) or nil
+	self.ReceptionRevision = type(context) == "table" and tonumber(context.ReceptionRevision) or nil
 	if self.HasBall and self.PendingAction then
 		local pending = self.PendingAction
 		self.PendingAction = nil
-		if os.clock() <= (tonumber(pending.ExpiresAt) or 0) then
+		if pending.SentForReception ~= true and os.clock() <= (tonumber(pending.ExpiresAt) or 0) and pending.ContextToken == self.ActionContextToken and pending.Model == self.ActionModel then
 			self.Remote:FireServer(pending.Payload)
 		end
 	elseif self.PendingAction and os.clock() > (tonumber(self.PendingAction.ExpiresAt) or 0) then
@@ -326,6 +440,9 @@ function Controller:SetActionContext(hasBall: boolean, receivingPass: boolean, c
 		self:_cancelPending("possession_lost")
 	elseif self.PendingAction and hadBall and not self.HasBall and not self.ReceivingPass then
 		self:_cancelPending("opponent_collected")
+	end
+	if self.Charge and ((hadBall and not self.HasBall) or (wasReceiving and not self.ReceivingPass and not self.HasBall)) then
+		self:CancelPossessionActions(if hadBall then "possession_lost" else "receive_cancelled")
 	end
 end
 
@@ -381,26 +498,30 @@ function Controller:ToggleSprint()
 end
 
 function Controller:_switchPlayer()
-	self:_cancelPending("player_switch")
+	self:CancelPossessionActions("player_switch")
 	local aim = self:_aim("Switch")
 	local gamepad = string.find(UserInputService:GetLastInputType().Name, "Gamepad", 1, true) ~= nil
 	local closestToBall = UserInputService.TouchEnabled or gamepad
 	self.Remote:FireServer({Type = "Switch", TargetModel = if closestToBall then nil else aim.TargetModel, AimPosition = aim.Position, ClosestToBall = closestToBall})
 end
 
-function Controller:BeginMobileAction(kind: string, options: any?)
-	self:_chargeStart(kind, options)
+function Controller:BeginMobileAction(kind: string, options: any?, token: number?): boolean
+	return self:_chargeStart(kind, options, token)
 end
 
-function Controller:EndMobileAction(kind: string)
-	self:_chargeEnd(kind)
+function Controller:EndMobileAction(kind: string, token: number?)
+	self:_chargeEnd(kind, token)
 end
 
-function Controller:CancelMobileAction(kind: string)
-	if self.Charge and self.Charge.Kind == kind then
+function Controller:CancelMobileAction(kind: string, token: number?, reason: string?)
+	if self.Charge and self.Charge.Kind == kind and (token == nil or self.Charge.MobileToken == token) then
 		self.Charge = nil
-		self.Remote:FireServer({Type = "MobileActionCancelled", ActionFamily = kind})
+		self.Remote:FireServer({Type = "MobileActionCancelled", ActionFamily = kind, Reason = string.sub(reason or "touch_cancelled", 1, 32)})
 	end
+end
+
+function Controller:RejectMobileCharge(kind: string)
+	self.Remote:FireServer({Type = "MobileChargeConflictRejected", ActionFamily = string.sub(kind, 1, 24)})
 end
 
 function Controller:TriggerMobileAction(action: string)
@@ -412,6 +533,12 @@ function Controller:TriggerMobileAction(action: string)
 		self.Remote:FireServer({Type = "SlideTackle"})
 	elseif action == "Block" then
 		self.Remote:FireServer({Type = "Block", Active = true})
+	elseif action == "BlockEnd" then
+		self.Remote:FireServer({Type = "Block", Active = false})
+	elseif action == "ReceiverOverrideBegin" then
+		self:_sendReceiverOverride(true)
+	elseif action == "ReceiverOverrideEnd" then
+		self:_sendReceiverOverride(false)
 	elseif action == "Skill" then
 		local aim = self:_aim("Skill")
 		self.Remote:FireServer({Type = "DribbleMove", Direction = aim.Direction})
@@ -434,6 +561,10 @@ function Controller:Start()
 		end
 		if movementKeys[key] or modifierKeys[key] or key == self.ManualPassKey or key == self.LobbedPassKey or key == self.ThroughPassKey then
 			self.Keys[key] = true
+		end
+		if self.ReceivingPass and key == self.ManualPassKey then
+			self:_sendReceiverOverride(true)
+			return
 		end
 		if key == Enum.KeyCode.LeftShift or key == Enum.KeyCode.RightShift then
 			self:SetSprintRequested(true)
@@ -469,7 +600,7 @@ function Controller:Start()
 			self:_switchPlayer()
 		elseif key == Enum.KeyCode.ButtonL2 then
 			self.Keys[key] = true
-			self.Remote:FireServer({Type = "ReceiverAssistOverride", Active = true})
+			self:_sendReceiverOverride(true)
 		elseif key == Enum.KeyCode.ButtonR2 then
 			self:SetSprintRequested(true)
 		elseif input.UserInputType == Enum.UserInputType.MouseButton1 then
@@ -488,6 +619,7 @@ function Controller:Start()
 		if movementKeys[key] or modifierKeys[key] or key == self.ManualPassKey or key == self.LobbedPassKey or key == self.ThroughPassKey then
 			self.Keys[key] = nil
 		end
+		if key == self.ManualPassKey then self:_sendReceiverOverride(false) end
 		if key == Enum.KeyCode.LeftShift or key == Enum.KeyCode.RightShift or key == Enum.KeyCode.ButtonR2 then
 			self:SetSprintRequested(false)
 		end
@@ -495,23 +627,23 @@ function Controller:Start()
 			return
 		end
 		if self.ShootingOnly then
-			if key == Enum.KeyCode.ButtonB or input.UserInputType == Enum.UserInputType.MouseButton1 then self:_chargeEnd("Shot") end
+			if self.Charge and self.Charge.Kind == "Shot" and (key == Enum.KeyCode.ButtonB or input.UserInputType == Enum.UserInputType.MouseButton1) then self:_chargeEnd("Shot") end
 			return
 		end
-		if key == Enum.KeyCode.ButtonA and not self.Defending then
+		if key == Enum.KeyCode.ButtonA and self.Charge and self.Charge.Kind == "Pass" then
 			self:_chargeEnd("Pass")
-		elseif key == Enum.KeyCode.ButtonB and not self.Defending then
+		elseif key == Enum.KeyCode.ButtonB and self.Charge and self.Charge.Kind == "Shot" then
 			self:_chargeEnd("Shot")
-		elseif (key == Enum.KeyCode.ButtonX or key == Enum.KeyCode.ButtonY) and not self.Defending then
+		elseif (key == Enum.KeyCode.ButtonX or key == Enum.KeyCode.ButtonY) and self.Charge and self.Charge.Kind == "Pass" then
 			self:_chargeEnd("Pass")
 		elseif key == Enum.KeyCode.ButtonL2 then
 			self.Keys[key] = nil
-			self.Remote:FireServer({Type = "ReceiverAssistOverride", Active = false})
+			self:_sendReceiverOverride(false)
 		elseif key == Enum.KeyCode.R then
 			self.Remote:FireServer({Type = "Block", Active = false})
-		elseif input.UserInputType == Enum.UserInputType.MouseButton1 then
+		elseif input.UserInputType == Enum.UserInputType.MouseButton1 and self.Charge and self.Charge.Kind == "Shot" then
 			self:_chargeEnd("Shot")
-		elseif input.UserInputType == Enum.UserInputType.MouseButton2 then
+		elseif input.UserInputType == Enum.UserInputType.MouseButton2 and self.Charge and self.Charge.Kind == "Pass" then
 			self:_chargeEnd("Pass")
 		end
 	end))
@@ -527,7 +659,7 @@ function Controller:Start()
 	end))
 	table.insert(self.Connections, UserInputService.WindowFocusReleased:Connect(function()
 		self:SetSprintRequested(false)
-		self:_cancelPending("focus_lost")
+		self:CancelPossessionActions("focus_lost")
 	end))
 	table.insert(self.Connections, UserInputService.TextBoxFocused:Connect(function()
 		self:SetSprintRequested(false)
@@ -584,10 +716,11 @@ function Controller:MobilePassMode(): string?
 end
 
 function Controller:SetMobileDefending(defending: boolean)
-	self.Defending = defending == true
-	if self.Defending and self.Charge and self.Charge.Kind == "Pass" then
-		self.Charge = nil
+	local value = defending == true
+	if self.Defending ~= value and self.Charge then
+		self:CancelPossessionActions("action_context_changed")
 	end
+	self.Defending = value
 	if self.MobileControls then
 		self.MobileControls:SetDefending(self.Defending)
 	end
@@ -632,15 +765,15 @@ function Controller:FreeKickModifiers(): (number, number)
 end
 
 function Controller:Destroy()
+	self:CancelPossessionActions("destroyed", false)
 	self:SetSprintRequested(false)
 	if self.Keys[Enum.KeyCode.ButtonL2] then
-		self.Remote:FireServer({Type = "ReceiverAssistOverride", Active = false})
+		self:_sendReceiverOverride(false)
 	end
 	if self.MobileControls then
 		self.MobileControls:Destroy()
 		self.MobileControls = nil
 	end
-	self.PendingAction = nil
 	for _, connection in self.Connections do
 		connection:Disconnect()
 	end

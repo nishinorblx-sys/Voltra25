@@ -1,106 +1,68 @@
+--!strict
+
 local ShotPowerModel = {}
 
-ShotPowerModel.AccurateMax = 89
+ShotPowerModel.AccurateMax = 90
 ShotPowerModel.OverhitStart = 90
 ShotPowerModel.MaxPercent = 100
 
-local function numberValue(value)
-	local n = tonumber(value)
-	if not n then
-		return nil
-	end
-	return n
+local function normalized(value: any): number
+	local amount = tonumber(value) or 0
+	if amount > 1.25 then amount /= 100 end
+	return math.clamp(amount, 0, 1)
 end
 
-function ShotPowerModel.ToPercent(power)
-	local n = numberValue(power)
-	if not n then
-		return 0
-	end
-
-	if n <= 1.25 then
-		return math.clamp(n * 100, 0, 100)
-	end
-
-	return math.clamp(n, 0, 100)
+local function smoothstep(value: number): number
+	local amount = math.clamp(value, 0, 1)
+	return amount * amount * (3 - 2 * amount)
 end
 
-function ShotPowerModel.ScaleInputPower(power)
-	local n = numberValue(power)
-	if not n then
-		return power
-	end
-
-	local percent = ShotPowerModel.ToPercent(n)
-	local scaled = math.clamp(percent / ShotPowerModel.AccurateMax, 0, 1)
-
-	if n <= 1.25 then
-		return scaled
-	end
-
-	return scaled * 100
+function ShotPowerModel.ToPercent(power: any): number
+	return normalized(power) * 100
 end
 
-function ShotPowerModel.IsOverhit(power)
-	return ShotPowerModel.ToPercent(power) > ShotPowerModel.OverhitStart
+function ShotPowerModel.ScaleInputPower(power: any): number
+	return normalized(power)
 end
 
-function ShotPowerModel.OverhitAmount(power)
-	local percent = ShotPowerModel.ToPercent(power)
-
-	if percent <= ShotPowerModel.OverhitStart then
-		return 0
-	end
-
-	return math.clamp((percent - ShotPowerModel.OverhitStart) / (ShotPowerModel.MaxPercent - ShotPowerModel.OverhitStart), 0, 1)
+function ShotPowerModel.SpeedScale(power: any): number
+	local amount = normalized(power)
+	return 0.18 + 0.82 * (amount * 0.35 + smoothstep(amount) * 0.65)
 end
 
-function ShotPowerModel.HighLift(power)
-	local amount = ShotPowerModel.OverhitAmount(power)
-
-	if amount <= 0 then
-		return 0
-	end
-
-	return 55 + amount * amount * 145
+function ShotPowerModel.OverhitAmount(power: any): number
+	return smoothstep(math.clamp((normalized(power) - 0.9) / 0.1, 0, 1))
 end
 
-function ShotPowerModel.ApplyToVelocity(velocity, power)
-	if typeof(velocity) ~= "Vector3" then
-		return velocity
-	end
+function ShotPowerModel.IsOverhit(power: any): boolean
+	return normalized(power) > 0.9
+end
 
+function ShotPowerModel.HighLift(power: any): number
+	return ShotPowerModel.OverhitAmount(power) * 2.4
+end
+
+function ShotPowerModel.PlacementMultiplier(power: any): number
+	return 1 - ShotPowerModel.OverhitAmount(power) * 0.24
+end
+
+function ShotPowerModel.ComposureMultiplier(power: any): number
+	return 1 - ShotPowerModel.OverhitAmount(power) * 0.18
+end
+
+function ShotPowerModel.ApplyToVelocity(velocity: any, power: any): any
+	if typeof(velocity) ~= "Vector3" then return velocity end
 	local lift = ShotPowerModel.HighLift(power)
-
-	if lift <= 0 then
-		return velocity
-	end
-
-	return Vector3.new(velocity.X, math.max(velocity.Y, 0) + lift, velocity.Z)
+	return Vector3.new(velocity.X, velocity.Y + lift, velocity.Z)
 end
 
-function ShotPowerModel.ApplyToTarget(origin, target, power)
-	if typeof(target) ~= "Vector3" then
-		return target
-	end
-
-	local lift = ShotPowerModel.HighLift(power)
-
-	if lift <= 0 then
-		return target
-	end
-
-	return target + Vector3.new(0, lift * 0.7, 0)
+function ShotPowerModel.ApplyToTarget(_origin: any, target: any, power: any): any
+	if typeof(target) ~= "Vector3" then return target end
+	return target + Vector3.yAxis * ShotPowerModel.HighLift(power) * 0.16
 end
 
-function ShotPowerModel.ApplyToArcHeight(arcHeight, power)
-	local lift = ShotPowerModel.HighLift(power)
-
-	if lift <= 0 then
-		return arcHeight
-	end
-
-	return (tonumber(arcHeight) or 0) + lift * 0.55
+function ShotPowerModel.ApplyToArcHeight(arcHeight: any, power: any): number
+	return (tonumber(arcHeight) or 0) + ShotPowerModel.HighLift(power) * 0.3
 end
 
-return ShotPowerModel
+return table.freeze(ShotPowerModel)

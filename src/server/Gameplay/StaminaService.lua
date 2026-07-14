@@ -25,6 +25,18 @@ function Service.new()
 	return setmetatable({}, Service)
 end
 
+function Service:Reset(model: Model, energy: number?): number
+	local value = math.clamp(tonumber(energy) or Config.Maximum, 0, Config.Maximum)
+	model:SetAttribute("VTRAISprintRequested", false)
+	model:SetAttribute("VTRUserSprintRequested", false)
+	mirror(model, value, 0, false, false)
+	return value
+end
+
+function Service:Energy(model: Model): number
+	return math.clamp(tonumber(model:GetAttribute("VTRSprintEnergy")) or Config.Maximum, 0, Config.Maximum)
+end
+
 function Service:Step(model: Model, dt: number, state: any): (number, number, boolean, boolean)
 	local energy = math.clamp(tonumber(model:GetAttribute("VTRSprintEnergy")) or tonumber(model:GetAttribute("VTRSprintStamina")) or Config.Maximum, 0, Config.Maximum)
 	local duration = math.max(0, tonumber(model:GetAttribute("VTRSprintDuration")) or 0)

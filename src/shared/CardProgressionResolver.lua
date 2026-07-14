@@ -1,6 +1,7 @@
 --!strict
 
 local Config = require(script.Parent.CampaignAscensionConfig)
+local QuickSellValueConfig = require(script.Parent.QuickSellValueConfig)
 
 local Resolver = {}
 
@@ -81,12 +82,16 @@ function Resolver.Resolve(card: any, meta: any?): any
 	resolved.QuickSellBlocked = meta.QuickSellBlocked == true or bound
 	resolved.TransferBlocked = meta.TransferBlocked == true or bound
 	resolved.AcquisitionSource = meta.AcquisitionSource
+	resolved.AcquiredFromPackId = meta.AcquiredFromPackId
+	resolved.AcquiredFromPackInstanceId = meta.AcquiredFromPackInstanceId
 	resolved.CampaignDivisionId = meta.CampaignDivisionId
 	resolved.CampaignSeasonId = meta.CampaignSeasonId
 	resolved.Meta = copy(meta)
 	resolved.Meta.CampaignBound = bound
 	resolved.Meta.CampaignVariant = resolved.CampaignVariant
 	resolved.Meta.CampaignVisualTier = resolved.CampaignVisualTier
+	resolved.QuickSellValue = QuickSellValueConfig.Value(resolved, resolved.Meta)
+	resolved.Meta.QuickSellValue = resolved.QuickSellValue
 	return resolved
 end
 

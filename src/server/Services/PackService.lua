@@ -1,6 +1,8 @@
 --!strict
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local VTRPendingPackAnimation = require(script.Parent:WaitForChild("PendingPackAnimationService"))
 
+local QuickSellValueConfig = require(ReplicatedStorage.VTR.Shared.QuickSellValueConfig)
 local PackData = require(script.Parent.Parent.Data.Packs)
 local PlayerDatabase = require(script.Parent.Parent.Data.PlayerDatabase)
 
@@ -69,6 +71,52 @@ local function vtrNormalizeNewPackCards(profile:any, startIndex:number)
 				profile.PlayerCardMeta[id]=profile.PlayerCardMeta[id] or{}
 				profile.PlayerCardMeta[id].AcquiredAt=profile.PlayerCardMeta[id].AcquiredAt or os.time()
 				profile.PlayerCardMeta[id].NewPackPull=true
+			end
+		end
+	end
+end
+
+local function packPrice(definition:any):number
+	if type(definition)~="table"then return 0 end
+	return tonumber(definition.PriceCoins or definition.priceCoins or definition.CostCoins or definition.costCoins or definition.Price or definition.price)or 0
+end
+
+local function stampQuickSellMetadata(profile:any,owned:any,definition:any,cards:{any},reveals:{any})
+	profile.PlayerCardMeta=profile.PlayerCardMeta or{}
+	local source=tostring(owned.source or owned.Source or "Legacy")
+	local packId=owned.packId or owned.Id
+	local packInstanceId=owned.packInstanceId or owned.PackInstanceId
+	local values={}
+	if source=="Purchase"then
+		values=QuickSellValueConfig.PurchasedPackValues(cards,packPrice(definition))
+	else
+		for index,card in cards do values[index]=QuickSellValueConfig.NaturalValue(card)end
+	end
+	for index,card in cards do
+		local id=card and(card.Id or card.cardInstanceId)
+		if id then
+			local value=values[index]or QuickSellValueConfig.NaturalValue(card)
+			profile.PlayerCardMeta[id]=profile.PlayerCardMeta[id]or{}
+			local meta=profile.PlayerCardMeta[id]
+			meta.QuickSellValue=value
+			meta.AcquiredFromPackId=packId
+			meta.AcquiredFromPackInstanceId=packInstanceId
+			meta.AcquisitionSource=source
+			card.QuickSellValue=value
+			card.AcquiredFromPackId=packId
+			card.AcquiredFromPackInstanceId=packInstanceId
+			card.AcquisitionSource=source
+			local reveal=reveals[index]
+			if type(reveal)=="table"then
+				reveal.QuickSellValue=value
+				reveal.AcquiredFromPackId=packId
+				reveal.AcquiredFromPackInstanceId=packInstanceId
+				reveal.AcquisitionSource=source
+				reveal.Meta=reveal.Meta or{}
+				reveal.Meta.QuickSellValue=value
+				reveal.Meta.AcquiredFromPackId=packId
+				reveal.Meta.AcquiredFromPackInstanceId=packInstanceId
+				reveal.Meta.AcquisitionSource=source
 			end
 		end
 	end
@@ -258,6 +306,7 @@ function PackService:Open(player: Player, packInstanceId: string): (boolean, { a
 	local odds=boostedOdds(definition.Odds or { Starter = 100 },vipBoost)
 	local previousCardCount = #profile.PlayerCardInventory
 	local reveals = {}
+	local newCards = {}
 	local success = pcall(function()
 		local rolled = rollPackRarities(definition,odds)
 		local specialCount=0
@@ -272,6 +321,7 @@ function PackService:Open(player: Player, packInstanceId: string): (boolean, { a
 				instance.cardType=specialType
 				instance.CardType=specialType
 			end
+			table.insert(newCards,instance)
 			local details = self.Inventory:GetCardDetails(player, instance.cardInstanceId)
 			if details then
 				for key, value in instance do if details[key] == nil then details[key] = value end end
@@ -292,6 +342,7 @@ function PackService:Open(player: Player, packInstanceId: string): (boolean, { a
 	end
 	owned.status = "opened";owned.Status = "opened";owned.openedAt = os.time();owned.Count = 0
 	vtrNormalizeNewPackCards(profile, previousCardCount + 1)
+	stampQuickSellMetadata(profile,owned,definition,newCards,reveals)
 	local best=reveals[1];for _,card in reveals do if (card.Rating or card.overall or 0)>(best.Rating or best.overall or 0) then best=card end end
 	local packRating=math.floor(tonumber(best.Rating or best.overall)or 0)
 	owned.bestPull={cardInstanceId=best.cardInstanceId or best.Id,playerId=best.playerId or best.PlayerId,name=best.Name or best.displayName,rating=packRating,position=best.Position or best.bestPosition,rarity=best.Rarity or best.rarity,cardType=best.CardType or best.cardType}

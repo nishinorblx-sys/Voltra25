@@ -9,21 +9,16 @@ local Panel = require(script.Parent.Parent.Components.Panel)
 local Button = require(script.Parent.Parent.Components.Button)
 local SettingsRuntimeService = require(script.Parent.Parent.Services.SettingsRuntimeService)
 local UISoundService = require(script.Parent.Parent.Services.UISoundService)
+local ControlGlyphService = require(script.Parent.Parent.Services.ControlGlyphService)
+local PlayabilityUnlockConfig = require(ReplicatedStorage.VTR.Shared.PlayabilityUnlockConfig)
 local PageBase = require(script.Parent.PageBase)
 
 local SettingsPage = {}
 local TABS = {"Controls", "Audio", "Camera", "Accessibility", "Account"}
 local CAMERA_PRESETS = {"Tactical", "Pro"}
+local ASSIST_MODES = {"Newcomer", "Standard", "Manual"}
 local NUMBER_NAMES = {Zero = "0", One = "1", Two = "2", Three = "3", Four = "4", Five = "5", Six = "6", Seven = "7", Eight = "8", Nine = "9"}
-local KEY_DEFAULTS = {
-	PauseKey = "M",
-	ManualPassKey = "LeftControl",
-	LobbedPassKey = "LeftAlt",
-	ChangePlayerKey = "Q",
-	TackleKey = "E",
-	SlideTackleKey = "F",
-	SkipKey = "Space",
-}
+local KEY_DEFAULTS = ControlGlyphService.DefaultBindings
 
 local CONTROL_ROWS = {
 	{Key = "PauseKey", Title = "PAUSE", Subtitle = "Open or close the pause menu.", Editable = true},
@@ -249,17 +244,23 @@ local function renderTab(context: any, scroll: ScrollingFrame, active: string)
 		end
 	end
 	if active == "Controls" then
-		local box = panel(scroll, "Controls", UDim2.fromOffset(0, 154), UDim2.new(1, 0, 0, 610))
+		local advancedUnlocked = PlayabilityUnlockConfig.FeatureUnlocked(context.Data.Progression, "AdvancedCompetitiveSettings")
+		local assistModes = advancedUnlocked and ASSIST_MODES or {"Newcomer", "Standard"}
+		local box = panel(scroll, "Controls", UDim2.fromOffset(0, 154), UDim2.new(1, 0, 0, 850))
+		option(box, context, "ReceiverAssistMode", "RECEIVER ASSIST", advancedUnlocked and "Guidance while meeting an incoming pass." or "Manual unlocks after your opening World Cup run.", 52, assistModes)
+		option(box, context, "DefensiveAutoSwitchMode", "DEFENSIVE AUTO SWITCH", advancedUnlocked and "Controls automatic defender changes during opponent passes." or "Manual unlocks after your opening World Cup run.", 126, assistModes)
+		option(box, context, "PassReceiverAutoSwitch", "PASS RECEIVER SWITCH", advancedUnlocked and "Controls when possession transfers to your intended receiver." or "Manual unlocks after your opening World Cup run.", 200, assistModes)
 		for index, item in ipairs(CONTROL_ROWS) do
-			keybind(box, context, item.Key, item.Title, item.Subtitle, 52 + (index - 1) * 74, item.Editable ~= false)
+			keybind(box, context, item.Key, item.Title, item.Subtitle, 286 + (index - 1) * 74, item.Editable ~= false)
 		end
 	elseif active == "Audio" then
 		local mix = panel(scroll, "Audio Mix", UDim2.fromOffset(0, 154), UDim2.new(1, 0, 0, 242))
 		slider(mix, context, "MasterVolume", "MASTER VOLUME", "Controls global game audio.", 52, .8)
 		toggle(mix, context, "MenuMusic", "MENU MUSIC", "Turns menu soundtrack audio on or off.", 126)
 	elseif active == "Camera" then
+		local advancedUnlocked = PlayabilityUnlockConfig.FeatureUnlocked(context.Data.Progression, "AdvancedCompetitiveSettings")
 		local cam = panel(scroll, "Camera Options", UDim2.fromOffset(0, 154), UDim2.new(1, 0, 0, 190))
-		option(cam, context, "CameraPreset", "CAMERA PRESET", "Tactical or Pro.", 52, CAMERA_PRESETS)
+		option(cam, context, "CameraPreset", "CAMERA PRESET", advancedUnlocked and "Tactical or Pro." or "Pro unlocks after your opening World Cup run.", 52, advancedUnlocked and CAMERA_PRESETS or {"Tactical"})
 	elseif active == "Accessibility" then
 		local access = panel(scroll, "Accessibility", UDim2.fromOffset(0, 154), UDim2.new(1, 0, 0, 220))
 		toggle(access, context, "HighContrast", "HIGH CONTRAST", "Increases scene contrast and UI readability.", 52)
@@ -283,7 +284,7 @@ local function renderTab(context: any, scroll: ScrollingFrame, active: string)
 end
 
 function SettingsPage.new(context: any): CanvasGroup
-	local group, scroll = PageBase.new("Settings", 900)
+	local group, scroll = PageBase.new("Settings", 1120)
 	PageBase.heading(scroll, "SETTINGS", "GAME SETTINGS", "Adjust controls, audio, camera, accessibility, and account matchmaking.")
 	local active = (context.Data.UIState.SelectedTabs and context.Data.UIState.SelectedTabs.Settings) or "Controls"
 	if not table.find(TABS, active) then active = "Controls" end

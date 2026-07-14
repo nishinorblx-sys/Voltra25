@@ -1,41 +1,18 @@
 --!strict
-local UserInputService = game:GetService("UserInputService")
 local TrainerPromptComponent = require(script.Parent.Parent.Components.TrainerPromptComponent)
+local ControlGlyphService = require(script.Parent.Parent.Services.ControlGlyphService)
 
 local Controller = {}
 Controller.__index = Controller
 
-local PROMPTS = {
-	KeyboardMouse = {
-		Possession = {{Label = "SHOOT", Key = "LMB", Action = "Shoot"}, {Label = "PASS", Key = "RMB", Action = "Pass"}, {Label = "MANUAL LOB", Key = "ALT", Action = "Lob"}, {Label = "MANUAL PASS", Key = "CTRL", Action = "Manual"}, {Label = "DRIBBLE", Key = "C", Action = "Dribble"}},
-		Defending = {{Label = "SWITCH PLAYER", Key = "Q", Action = "Switch"}, {Label = "TACKLE", Key = "E", Action = "Tackle"}, {Label = "SLIDE TACKLE", Key = "F", Action = "SlideTackle"}, {Label = "BLOCK", Key = "R", Action = "Block"}},
-		Loose = {{Label = "CHASE", Key = "WASD", Action = "Move"}, {Label = "SWITCH", Key = "Q", Action = "Switch"}},
-	},
-	Gamepad = {
-		Possession = {{Label = "PASS", Key = "A", Action = "Pass"}, {Label = "SHOOT", Key = "B", Action = "Shoot"}, {Label = "LOBBED PASS", Key = "X", Action = "Lob"}, {Label = "MANUAL PASS", Key = "Y", Action = "Manual"}, {Label = "SPRINT LOCK", Key = "R2", Action = "Sprint"}},
-		Defending = {{Label = "SWITCH PLAYER", Key = "L1", Action = "Switch"}, {Label = "STAND TACKLE", Key = "A", Action = "Tackle"}, {Label = "SLIDE TACKLE", Key = "X", Action = "SlideTackle"}, {Label = "SPRINT LOCK", Key = "R2", Action = "Sprint"}},
-		Loose = {{Label = "CHASE", Key = "LS", Action = "Move"}, {Label = "SWITCH", Key = "L1", Action = "Switch"}, {Label = "SPRINT LOCK", Key = "R2", Action = "Sprint"}},
-	},
-	Touch = {
-		Possession = {{Label = "PASS", Key = "PASS", Action = "Pass"}, {Label = "SHOOT", Key = "SHOT", Action = "Shoot"}, {Label = "SPRINT", Key = "DRAG", Action = "Sprint"}},
-		Defending = {{Label = "TACKLE", Key = "TACKLE", Action = "Tackle"}, {Label = "SWITCH PLAYER", Key = "SWITCH", Action = "Switch"}, {Label = "SPRINT", Key = "DRAG", Action = "Sprint"}},
-		Loose = {{Label = "CHASE", Key = "STICK", Action = "Move"}, {Label = "SWITCH", Key = "SWITCH", Action = "Switch"}},
-	},
+local PROMPTS: any = {
+	Possession = {{Label = "SHOOT", Action = "Shoot", Glyph = "Shot"}, {Label = "PASS", Action = "Pass", Glyph = "GroundPass"}, {Label = "THROUGH PASS", Action = "Pass", Glyph = "ThroughPass"}, {Label = "LOB", Action = "Pass", Glyph = "Lob"}, {Label = "SPRINT", Action = "Sprint"}},
+	Defending = {{Label = "SWITCH PLAYER", Action = "Switch"}, {Label = "TACKLE", Action = "Tackle"}, {Label = "SLIDE TACKLE", Action = "SlideTackle"}, {Label = "BLOCK", Action = "Block"}, {Label = "SPRINT", Action = "Sprint"}},
+	Loose = {{Label = "CHASE", Action = "Move"}, {Label = "SWITCH", Action = "Switch"}, {Label = "SPRINT", Action = "Sprint"}},
 }
 
-local function currentDevice(): string
-	local last = UserInputService:GetLastInputType()
-	if string.find(last.Name, "Gamepad") then
-		return "Gamepad"
-	end
-	if UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled then
-		return "Touch"
-	end
-	return "KeyboardMouse"
-end
-
-function Controller.new(parent: Instance, ball: BasePart, mode: string?)
-	return setmetatable({Ball = ball, Mode = mode or "Basic", Prompt = TrainerPromptComponent.new(parent), LastState = "", LastDevice = "", MatchActive = false, HiddenActions = {}, StateVisibleUntil = 0, Busy = false}, Controller)
+function Controller.new(parent: Instance, ball: BasePart, mode: string?, settings: any?)
+	return setmetatable({Ball = ball, Mode = mode or "Basic", Settings = settings or {}, Prompt = TrainerPromptComponent.new(parent), LastState = "", LastDevice = "", MatchActive = false, HiddenActions = {}, StateVisibleUntil = 0, Busy = false}, Controller)
 end
 
 function Controller:SetMatchActive(active: boolean)
@@ -77,8 +54,6 @@ end
 
 function Controller:_prompts(state: string): {{Label: string, Key: string}}
 	local prompts = {}
-	local device = currentDevice()
-	local promptSet = PROMPTS[device] or PROMPTS.KeyboardMouse
 	if self.Mode == "WorldCupOnboarding" then
 		if self.TutorialPrompt then
 			local message=tostring(self.TutorialPrompt.Message or "")
@@ -87,57 +62,27 @@ function Controller:_prompts(state: string): {{Label: string, Key: string}}
 			local target=tonumber(self.TutorialPrompt.Target)or 0
 			if action=="StartMatch"or message==""then return{}end
 			local suffix=target>1 and("  "..tostring(count).."/"..tostring(target))or""
-			if action=="Pass"then
-				if device=="Gamepad"then return{{Label=message..suffix,Key="A",Action="Pass"}}end
-				if device=="Touch"then return{{Label=message..suffix,Key="PASS",Action="Pass"}}end
-				return{{Label=message..suffix,Key="RMB",Action="Pass"}}
-			elseif action=="Shoot"then
-				if device=="Gamepad"then return{{Label=message..suffix,Key="B",Action="Shoot"}}end
-				if device=="Touch"then return{{Label=message..suffix,Key="SHOT",Action="Shoot"}}end
-				return{{Label=message..suffix,Key="LMB",Action="Shoot"}}
-			elseif action=="ShootingFocus"then
-				if device=="Gamepad"then return{{Label=message..suffix,Key="Y",Action="ShootingFocus"}}end
-				if device=="Touch"then return{{Label=message..suffix,Key="FOCUS",Action="ShootingFocus"}}end
-				return{{Label=message..suffix,Key="1",Action="ShootingFocus"}}
-			elseif action=="Switch"then
-				if device=="Gamepad"then return{{Label=message..suffix,Key="L1",Action="Switch"}}end
-				if device=="Touch"then return{{Label=message..suffix,Key="SWITCH",Action="Switch"}}end
-				return{{Label=message..suffix,Key="Q",Action="Switch"}}
-			elseif action=="Tackle"then
-				if device=="Gamepad"then return{{Label=message..suffix,Key="A",Action="Tackle"}}end
-				if device=="Touch"then return{{Label=message..suffix,Key="TACKLE",Action="Tackle"}}end
-				return{{Label=message..suffix,Key="E",Action="Tackle"}}
-			end
-			return{{Label=message..suffix,Key="GO",Action=action}}
+			local glyphAction = action == "Pass" and "GroundPass" or action == "Shoot" and "Shot" or action
+			return{{Label=message..suffix,Key=ControlGlyphService.Glyph(glyphAction,self.Settings,{MobilePassContext="Swipe"}),Action=action}}
 		end
 		local elapsed = os.clock() - (self.OnboardingStartedAt or os.clock())
 		if elapsed < 35 then
-			if state == "Possession" then
-				if device == "Gamepad" then return {{Label = "PASS", Key = "A", Action = "Pass"}} end
-				if device == "Touch" then return {{Label = "PASS", Key = "PASS", Action = "Pass"}} end
-				return {{Label = "PASS", Key = "RMB", Action = "Pass"}}
-			end
+			if state == "Possession" then return {{Label = "PASS", Key = ControlGlyphService.Glyph("GroundPass",self.Settings), Action = "Pass"}} end
 			return {}
 		elseif elapsed < 70 then
-			if state == "Possession" then
-				if device == "Gamepad" then return {{Label = "TAP CONTROLLED SHOT  /  HOLD FOR POWER", Key = "B", Action = "Shoot"}} end
-				if device == "Touch" then return {{Label = "TAP SHOT  /  HOLD FOR POWER", Key = "SHOT", Action = "Shoot"}} end
-				return {{Label = "TAP SHOOT  /  HOLD FOR POWER", Key = "LMB", Action = "Shoot"}}
-			end
+			if state == "Possession" then return {{Label = "HOLD SHOOT AND RELEASE", Key = ControlGlyphService.Glyph("Shot",self.Settings), Action = "Shoot"}} end
 			return {}
 		elseif elapsed < 105 then
 			if state == "Defending" then
-				if device == "Gamepad" then return {{Label = "TACKLE", Key = "A", Action = "Tackle"}, {Label = "SWITCH", Key = "L1", Action = "Switch"}, {Label = "SPRINT", Key = "R2", Action = "Sprint"}} end
-				if device == "Touch" then return {{Label = "TACKLE", Key = "TACKLE", Action = "Tackle"}, {Label = "SWITCH", Key = "SWITCH", Action = "Switch"}, {Label = "SPRINT", Key = "DRAG", Action = "Sprint"}} end
-				return {{Label = "TACKLE", Key = "E", Action = "Tackle"}, {Label = "SWITCH PLAYER", Key = "Q", Action = "Switch"}, {Label = "SPRINT", Key = "SHIFT", Action = "Sprint"}}
+				return {{Label = "TACKLE", Key = ControlGlyphService.Glyph("Tackle",self.Settings), Action = "Tackle"}, {Label = "SWITCH", Key = ControlGlyphService.Glyph("Switch",self.Settings), Action = "Switch"}, {Label = "SPRINT", Key = ControlGlyphService.Glyph("Sprint",self.Settings), Action = "Sprint"}}
 			end
 			return {}
 		end
 		return {}
 	end
-	for _, prompt in promptSet[state] do
+	for _, prompt in PROMPTS[state] or {} do
 		if os.clock() >= (self.HiddenActions[prompt.Action] or 0) then
-			table.insert(prompts, prompt)
+			table.insert(prompts, {Label=prompt.Label,Key=ControlGlyphService.Glyph(prompt.Glyph or prompt.Action,self.Settings,{MobilePassContext="Swipe"}),Action=prompt.Action})
 			if #prompts >= 5 then break end
 		end
 	end
@@ -157,7 +102,7 @@ function Controller:Update()
 	if not onScreen or screenPoint.Z <= 0 then self.Prompt:SetVisible(false) return end
 	local ownerName = self.Ball:GetAttribute("OwnerModel")
 	local state = ownerName == self.Active.Name and "Possession" or ownerName == "" and "Loose" or "Defending"
-	local device = currentDevice()
+	local device = ControlGlyphService.CurrentDevice()
 	if state ~= self.LastState or device ~= self.LastDevice then
 		self.LastState = state
 		self.LastDevice = device

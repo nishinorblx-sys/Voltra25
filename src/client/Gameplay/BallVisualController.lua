@@ -3,62 +3,162 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Config = require(ReplicatedStorage.VTR.Shared.GameplayConfig)
 local BallTrajectory = require(ReplicatedStorage.VTR.Shared.BallTrajectory)
+local DribbleTargetResolver = require(ReplicatedStorage.VTR.Shared.DribbleTargetResolver)
+local MatchVisualCleanupService = require(script.Parent.Parent.Services.MatchVisualCleanupService)
 
 local Controller = {}
 Controller.__index = Controller
 
 local function ballModel(ball: BasePart): Model?
-	return ball.Parent and ball.Parent:IsA("Model") and ball.Parent or nil
+	local parent = ball.Parent
+	if not parent or not parent:IsA("Model") then return nil end
+	if parent.Name == "VTRBallModel" or parent.PrimaryPart == ball or tostring(ball:GetAttribute("BallTemplateModel") or "") == parent.Name then
+		return parent
+	end
+	return nil
 end
 
-local function hideOriginal(ball: BasePart, hidden: boolean)
-	local model = ballModel(ball)
-	if model then
-		for _, descendant in model:GetDescendants() do
-			if descendant:IsA("BasePart") then descendant.LocalTransparencyModifier = hidden and 1 or 0
-			elseif descendant:IsA("Decal")or descendant:IsA("Texture")then descendant.Transparency=hidden and 1 or 0 end
-		end
-	else
-		ball.LocalTransparencyModifier = hidden and 1 or 0
-		for _,child in ball:GetDescendants()do if child:IsA("Decal")or child:IsA("Texture")then child.Transparency=hidden and 1 or 0 end end
-	end
+local function isEnabledVisual(instance: Instance): boolean
+	return instance:IsA("Trail") or instance:IsA("Beam") or instance:IsA("ParticleEmitter") or instance:IsA("Smoke") or instance:IsA("Fire") or instance:IsA("Sparkles") or instance:IsA("SurfaceGui") or instance:IsA("BillboardGui")
 end
 
-local function showVisual(instance: Instance)
-	for _, descendant in instance:GetDescendants() do
-		if descendant:IsA("BasePart") then
-			descendant.LocalTransparencyModifier = 0
-		elseif (descendant:IsA("Decal") or descendant:IsA("Texture")) and descendant.Transparency >= 0.99 then
-			descendant.Transparency = 0
+local function isApprovedVisualDescendant(instance: Instance): boolean
+	return instance:IsA("DataModelMesh") or instance:IsA("Decal") or instance:IsA("Texture") or instance:IsA("SurfaceAppearance") or instance:IsA("Attachment")
+		or instance:IsA("Folder")
+		or instance:IsA("Configuration")
+end
+
+local function cloneVisualPart(source: BasePart): BasePart?
+	local ok, clone = pcall(function()
+		return source:Clone()
+	end)
+	if not ok or not clone or not clone:IsA("BasePart") then return nil end
+	for _, descendant in clone:GetDescendants() do
+		if descendant.Parent and (descendant:IsA("BasePart") or not isApprovedVisualDescendant(descendant)) then
+			descendant:Destroy()
 		end
 	end
+	clone.Anchored = true
+	clone.CanCollide = false
+	clone.CanQuery = false
+	clone.CanTouch = false
+	clone.CastShadow = source.CastShadow
+	clone.LocalTransparencyModifier = source.LocalTransparencyModifier
+	return clone
+end
+
+function Controller:_captureOriginal(instance: Instance)
+	if self.OriginalStateByInstance[instance] then return end
+	local state: any = {Instance = instance}
 	if instance:IsA("BasePart") then
-		instance.LocalTransparencyModifier = 0
+		state.Kind = "BasePart"
+		state.Transparency = instance.Transparency
+		state.LocalTransparencyModifier = instance.LocalTransparencyModifier
+	elseif instance:IsA("Decal") or instance:IsA("Texture") then
+		state.Kind = "Surface"
+		state.Transparency = instance.Transparency
+	elseif isEnabledVisual(instance) then
+		state.Kind = "Enabled"
+		state.Enabled = (instance :: any).Enabled
+	else
+		return
 	end
+	self.OriginalStateByInstance[instance] = state
+	table.insert(self.OriginalStates, state)
+end
+
+function Controller:_hideOriginalState(state: any)
+	local instance = state.Instance
+	if not instance or (instance ~= self.Ball and instance.Parent == nil) then return end
+	if state.Kind == "BasePart" then
+		instance.LocalTransparencyModifier = 1
+	elseif state.Kind == "Surface" then
+		instance.Transparency = 1
+	elseif state.Kind == "Enabled" then
+		instance.Enabled = false
+	end
+end
+
+function Controller:_hideOriginal()
+	for _, state in self.OriginalStates do
+		self:_hideOriginalState(state)
+	end
+end
+
+function Controller:_restoreOriginal()
+	for _, state in self.OriginalStates do
+		local instance = state.Instance
+		if not instance or (instance ~= self.Ball and instance.Parent == nil) then continue end
+		if state.Kind == "BasePart" then
+			instance.Transparency = state.Transparency
+			instance.LocalTransparencyModifier = state.LocalTransparencyModifier
+		elseif state.Kind == "Surface" then
+			instance.Transparency = state.Transparency
+		elseif state.Kind == "Enabled" then
+			instance.Enabled = state.Enabled
+		end
+	end
+end
+
+function Controller:_captureOriginalTree(root: Instance)
+	self:_captureOriginal(root)
+	for _, descendant in root:GetDescendants() do
+		self:_captureOriginal(descendant)
+	end
+end
+
+function Controller:_refreshRaycastExclusions()
+	if not self.Raycast then return end
+	local excluded: {Instance} = {self.Ball, self.Model}
+	local sourceModel = ballModel(self.Ball)
+	if sourceModel then table.insert(excluded, sourceModel) end
+	if self.VisualModel then
+		table.insert(excluded, self.VisualModel)
+	elseif self.Visual then
+		table.insert(excluded, self.Visual)
+	end
+	if self.Shadow then table.insert(excluded, self.Shadow) end
+	self.Raycast.FilterDescendantsInstances = excluded
 end
 
 function Controller.new(ball: BasePart, model: Model)
-	for _, child in workspace:GetChildren() do
-		if child.Name == "VTRPredictedBall" and child ~= ball and child ~= ball.Parent then
-			child:Destroy()
-		end
-	end
+	local raycast = RaycastParams.new()
+	raycast.FilterType = Enum.RaycastFilterType.Exclude
+	raycast.IgnoreWater = true
+	local sourceRoot = ballModel(ball) or ball
 	local self=setmetatable({
 		Ball = ball,
 		Model = model,
+		OriginalRoot = sourceRoot,
+		OriginalStates = {},
+		OriginalStateByInstance = {},
 		Orientation = CFrame.identity,
 		LastVisualPosition = ball.Position,
 		PredictedPosition = ball.Position,
 		PredictedVelocity = ball.AssemblyLinearVelocity,
 		Radius = math.max(ball.Size.X * 0.5, 0.1),
+		Raycast = raycast,
 	}, Controller)
+	self:_captureOriginalTree(sourceRoot)
 	self:_createVisual()
-	local shadow=Instance.new("Part");shadow.Name="VTRBallShadow";shadow.Shape=Enum.PartType.Cylinder;shadow.Size=Vector3.new(.035,2.1,2.1);shadow.Anchored=true;shadow.CanCollide=false;shadow.CanTouch=false;shadow.CanQuery=false;shadow.CastShadow=false;shadow.Material=Enum.Material.SmoothPlastic;shadow.Color=Color3.new(0,0,0);shadow.Transparency=.62;shadow.Parent=workspace;self.Shadow=shadow
-	local raycast=RaycastParams.new();raycast.FilterType=Enum.RaycastFilterType.Exclude;local excluded={ball,model};if ball.Parent and ball.Parent:IsA("Model")then table.insert(excluded,ball.Parent)end;if self.VisualModel then table.insert(excluded,self.VisualModel)elseif self.Visual then table.insert(excluded,self.Visual)end;raycast.FilterDescendantsInstances=excluded;self.Raycast=raycast
+	local shadow=Instance.new("Part");shadow.Name="VTRBallShadow";shadow.Shape=Enum.PartType.Cylinder;shadow.Size=Vector3.new(.035,2.1,2.1);shadow.Anchored=true;shadow.CanCollide=false;shadow.CanTouch=false;shadow.CanQuery=false;shadow.CastShadow=false;shadow.Material=Enum.Material.SmoothPlastic;shadow.Color=Color3.new(0,0,0);shadow.Transparency=.62;shadow.Parent=workspace;MatchVisualCleanupService.RegisterTemporary(shadow);self.Shadow=shadow
+	self:_refreshRaycastExclusions()
+	self.DescendantAddedConnection = sourceRoot.DescendantAdded:Connect(function(descendant)
+		if self.Destroyed then return end
+		local additions = {descendant}
+		for _, child in descendant:GetDescendants() do table.insert(additions, child) end
+		for _, addition in additions do
+			self:_captureOriginal(addition)
+			local state = self.OriginalStateByInstance[addition]
+			if state then self:_hideOriginalState(state) end
+		end
+	end)
 	return self
 end
 
 function Controller:_createVisual()
+	self:_restoreOriginal()
+	self.ShotTrail = nil
 	if self.VisualModel then
 		self.VisualModel:Destroy()
 		self.VisualModel = nil
@@ -68,20 +168,36 @@ function Controller:_createVisual()
 	end
 	local sourceModel = ballModel(self.Ball)
 	if sourceModel then
-		local clone = sourceModel:Clone()
-		clone.Name = "VTRPredictedBall"
-		for _, descendant in clone:GetDescendants() do if descendant:IsA("BasePart") then descendant.Anchored = true;descendant.CanCollide = false;descendant.CanQuery = false;descendant.CanTouch = false end end
-		showVisual(clone)
-		clone.Parent = workspace
-		self.VisualModel = clone
-		self.Visual = clone:FindFirstChild(self.Ball.Name, true) :: BasePart?
+		local proxy = Instance.new("Model")
+		proxy.Name = "VTRPredictedBall"
+		local visualRoot: BasePart? = nil
+		for _, descendant in sourceModel:GetDescendants() do
+			if not descendant:IsA("BasePart") then continue end
+			local visualPart = cloneVisualPart(descendant)
+			if not visualPart then continue end
+			visualPart.CFrame = descendant.CFrame
+			visualPart.Parent = proxy
+			if descendant == self.Ball then visualRoot = visualPart end
+		end
+		if not visualRoot then
+			proxy:Destroy()
+			return
+		end
+		proxy.PrimaryPart = visualRoot
+		proxy.Parent = workspace
+		MatchVisualCleanupService.RegisterTemporary(proxy)
+		self.VisualModel = proxy
+		self.Visual = visualRoot
 	else
-		local visual = self.Ball:Clone()
-		visual.Name = "VTRPredictedBall";visual.Anchored = true;visual.CanCollide = false;visual.CanQuery = false;visual.CanTouch = false;visual.Parent = workspace
-		showVisual(visual)
+		local visual = cloneVisualPart(self.Ball)
+		if not visual then return end
+		visual.Name = "VTRPredictedBall"
+		visual.Parent = workspace
+		MatchVisualCleanupService.RegisterTemporary(visual)
 		self.Visual = visual
 	end
-	hideOriginal(self.Ball, true)
+	self:_hideOriginal()
+	self:_refreshRaycastExclusions()
 	local trailRoot=self.Visual
 	if trailRoot then
 		local top=Instance.new("Attachment");top.Name="VTRShotTrailTop";top.Position=Vector3.new(0,self.Radius*.48,0);top.Parent=trailRoot
@@ -113,7 +229,6 @@ end
 function Controller:SnapTo(position: Vector3?, velocity: Vector3?, lockDuration: number?)
 	local target = position or self.Ball.Position
 	local currentVelocity = velocity or self.Ball.AssemblyLinearVelocity
-	hideOriginal(self.Ball, true)
 	self.PredictedPosition = target
 	self.PredictedVelocity = currentVelocity
 	self.LastVisualPosition = target
@@ -142,12 +257,32 @@ function Controller:StartTrajectory(data: any)
 	self.PredictedVelocity = BallTrajectory.Velocity(data, 0)
 end
 
+function Controller:_sampleGround(position: Vector3, startHeight: number, depth: number): RaycastResult?
+	return workspace:Raycast(position + Vector3.new(0, startHeight, 0), Vector3.new(0, -depth, 0), self.Raycast)
+end
+
+function Controller:_updateShadow(position: Vector3, groundHit: RaycastResult?)
+	if not self.Shadow then return end
+	local hit = groundHit
+	if not hit or hit.Normal.Y <= .35 then
+		hit = self:_sampleGround(position, 1, 30)
+	end
+	if not hit then
+		self.Shadow.Transparency = 1
+		return
+	end
+	local height = math.max(0, position.Y - hit.Position.Y)
+	local scale = math.clamp(1 - height / 18, .42, 1)
+	self.Shadow.Size = Vector3.new(.035, 2.1 * scale, 2.1 * scale)
+	self.Shadow.CFrame = CFrame.new(hit.Position + hit.Normal * .035) * CFrame.Angles(0, 0, math.pi / 2)
+	self.Shadow.Transparency = math.clamp(.56 + height / 38, .56, .83)
+end
+
 function Controller:Update(dt: number, move: Vector3, sprinting: boolean)
 	local ownerName = tostring(self.Ball:GetAttribute("OwnerModel") or "")
 	local owns = self.Ball:GetAttribute("OwnerUserId") == Players.LocalPlayer.UserId or ownerName == self.Model.Name
-	if not self.Visual then self:_createVisual()end
+	if not self.Visual or not self.Visual.Parent then self:_createVisual()end
 	if not self.Visual then return end
-	hideOriginal(self.Ball, true)
 	if self.LockedUntil and os.clock() < self.LockedUntil and typeof(self.LockedPosition) == "Vector3" then
 		self:SnapTo(self.LockedPosition, typeof(self.LockedVelocity) == "Vector3" and self.LockedVelocity or Vector3.zero)
 		return
@@ -164,8 +299,10 @@ function Controller:Update(dt: number, move: Vector3, sprinting: boolean)
 		local alpha=math.clamp((workspace:GetServerTimeNow()-(tonumber(trajectory.StartServerTime)or workspace:GetServerTimeNow()))/math.max(tonumber(trajectory.Duration)or 1,.05),0,1)
 		local sampled=BallTrajectory.Sample(trajectory,alpha)
 		local velocity=BallTrajectory.Velocity(trajectory,alpha)
+		local groundHit: RaycastResult? = nil
 		if trajectory.KickKind=="Pass"and trajectory.PassType~="Lofted"and trajectory.PassType~="ManualLobbed"then
-			local hit=workspace:Raycast(sampled+Vector3.new(0,4,0),Vector3.new(0,-12,0),self.Raycast)
+			local hit=self:_sampleGround(sampled,4,12)
+			groundHit=hit
 			if hit and hit.Normal.Y>.55 then
 				local groundY=(hit.Position+hit.Normal*(self.Radius+.012)).Y
 				local maxLift=trajectory.PassType=="Through"and .42 or .18
@@ -188,10 +325,7 @@ function Controller:Update(dt: number, move: Vector3, sprinting: boolean)
 		end
 		local desired=CFrame.new(sampled)*self.Orientation.Rotation
 		if self.VisualModel then self.VisualModel:PivotTo(desired)else self.Visual.CFrame=desired end
-		if self.Shadow then
-			local hit=workspace:Raycast(sampled+Vector3.new(0,1,0),Vector3.new(0,-30,0),self.Raycast)
-			if hit then local height=math.max(0,sampled.Y-hit.Position.Y);local scale=math.clamp(1-height/18,.42,1);self.Shadow.Size=Vector3.new(.035,2.1*scale,2.1*scale);self.Shadow.CFrame=CFrame.new(hit.Position+hit.Normal*.035)*CFrame.Angles(0,0,math.pi/2);self.Shadow.Transparency=math.clamp(.56+height/38,.56,.83)else self.Shadow.Transparency=1 end
-		end
+		self:_updateShadow(sampled,groundHit)
 		return
 	elseif trajectory and (tonumber(trajectory.Id)or 0)<=(tonumber(self.Ball:GetAttribute("VTRTrajectoryId"))or 0) then
 		self.ActiveTrajectory=nil
@@ -231,27 +365,35 @@ function Controller:Update(dt: number, move: Vector3, sprinting: boolean)
 	local target=predictedPosition
 	if owns and root then
 		local facing=Vector3.new(root.CFrame.LookVector.X,0,root.CFrame.LookVector.Z)
-		local direction=move.Magnitude>.1 and move.Unit or facing.Magnitude>.1 and facing.Unit or Vector3.zAxis
 		local rootVelocity=Vector3.new(root.AssemblyLinearVelocity.X,0,root.AssemblyLinearVelocity.Z)
-		local lead=rootVelocity.Magnitude>6 and rootVelocity.Unit:Dot(direction)>.35 and math.clamp(rootVelocity.Magnitude*.024,0,sprinting and .55 or .32)or 0
-		local distance=Config.Ball.DribbleDistance+(sprinting and .72 or .18)+lead
-		local control=root.Position+direction*distance-Vector3.new(0,Config.Ball.DribbleVerticalOffset,0)
-		local radius=math.max(self.Radius,Config.Ball.Radius or .1)
-		local rootFlat=Vector3.new(root.Position.X,0,root.Position.Z)
-		local controlFlat=Vector3.new(control.X,0,control.Z)
-		local minSeparation=math.max(radius*1.28,1.55)
-		if (controlFlat-rootFlat).Magnitude<minSeparation then
-			controlFlat=rootFlat+direction*minSeparation
-		end
-		control=Vector3.new(controlFlat.X,math.min(control.Y,root.Position.Y-.72),controlFlat.Z)
-		local alpha=sprinting and .86 or .78
-		local ownedY=math.min(predictedPosition.Y+(control.Y-predictedPosition.Y)*alpha,root.Position.Y-.72)
-		target=Vector3.new(target.X+(control.X-target.X)*alpha,ownedY,target.Z+(control.Z-target.Z)*alpha)
-		if (Vector3.new(authoritativePosition.X,0,authoritativePosition.Z)-Vector3.new(control.X,0,control.Z)).Magnitude < 9 then
+		local touchStarted = tonumber(self.Ball:GetAttribute("VTRDribbleTouchStartedAt")) or workspace:GetServerTimeNow()
+		local touchDuration = math.max(tonumber(self.Ball:GetAttribute("VTRDribbleTouchDuration")) or 0.4, 0.05)
+		local touchPhase = math.clamp((workspace:GetServerTimeNow() - touchStarted) / touchDuration, 0, 1)
+		local targetData = DribbleTargetResolver.Resolve({
+			RootPosition = root.Position,
+			RootLookVector = facing,
+			MoveVector = move,
+			HorizontalVelocity = rootVelocity,
+			Sprinting = sprinting,
+			CloseControl = self.Model:GetAttribute("VTRCloseControl") == true,
+			BallControl = tonumber(self.Model:GetAttribute("BallControl")) or tonumber(self.Model:GetAttribute("DRI")) or 60,
+			TurnDot = move.Magnitude > 0.08 and facing.Magnitude > 0.05 and move.Unit:Dot(facing.Unit) or 1,
+			TouchPhase = touchPhase,
+			BallRadius = math.max(self.Radius, Config.Ball.Radius or 0.1),
+			VerticalOffset = Config.Ball.DribbleVerticalOffset,
+			ActionLocked = (tonumber(self.Model:GetAttribute("VTRActionLockedUntil")) or 0) > os.clock(),
+		})
+		local control = targetData.PredictedVisualTarget
+		local alpha = 1 - math.exp(-targetData.CorrectionStrength * dt)
+		target = predictedPosition:Lerp(control, alpha)
+		self.VisualTarget = target
+		if (Vector3.new(authoritativePosition.X,0,authoritativePosition.Z)-Vector3.new(control.X,0,control.Z)).Magnitude < targetData.HardRecoveryDistance then
 			self.PredictedPosition=target
 		end
+	else
+		self.VisualTarget = target
 	end
-	local groundHit=workspace:Raycast(target+Vector3.new(0,2,0),Vector3.new(0,-8,0),self.Raycast)
+	local groundHit=self:_sampleGround(target,2,8)
 	if groundHit and groundHit.Normal.Y > 0.55 then
 		local height=(target-groundHit.Position):Dot(groundHit.Normal)
 		local desiredGroundHeight = self.Radius + 0.035
@@ -287,16 +429,23 @@ function Controller:Update(dt: number, move: Vector3, sprinting: boolean)
 	-- PredictedPosition is already a continuous render-time signal. Applying a
 	-- second Lerp here used to make fast shots visibly pause and then catch up.
 	if self.VisualModel then self.VisualModel:PivotTo(desired) else self.Visual.CFrame=desired end
-	if self.Shadow then
-		local hit=workspace:Raycast(target+Vector3.new(0,1,0),Vector3.new(0,-30,0),self.Raycast)
-		if hit then local height=math.max(0,target.Y-hit.Position.Y);local scale=math.clamp(1-height/18,.42,1);self.Shadow.Size=Vector3.new(.035,2.1*scale,2.1*scale);self.Shadow.CFrame=CFrame.new(hit.Position+hit.Normal*.035)*CFrame.Angles(0,0,math.pi/2);self.Shadow.Transparency=math.clamp(.56+height/38,.56,.83)else self.Shadow.Transparency=1 end
-	end
+	self:_updateShadow(target,groundHit)
 end
 
 function Controller:Destroy()
+	if self.Destroyed then return end
+	self.Destroyed = true
+	if self.DescendantAddedConnection then self.DescendantAddedConnection:Disconnect();self.DescendantAddedConnection=nil end
 	if self.VisualModel then self.VisualModel:Destroy() elseif self.Visual then self.Visual:Destroy() end
 	if self.Shadow then self.Shadow:Destroy()end
-	hideOriginal(self.Ball, false)
+	self.VisualModel=nil;self.Visual=nil;self.Shadow=nil;self.ShotTrail=nil
+	self:_restoreOriginal()
+	table.clear(self.OriginalStates)
+	table.clear(self.OriginalStateByInstance)
+end
+
+function Controller:GetFocusPosition(): Vector3
+	return self.VisualTarget or self.PredictedPosition or self.Ball.Position
 end
 
 return Controller

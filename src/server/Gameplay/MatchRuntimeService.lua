@@ -18,6 +18,7 @@ local MovementStatsResolver=require(ReplicatedStorage.VTR.Shared.MovementStatsRe
 local StaminaConfig=require(ReplicatedStorage.VTR.Shared.StaminaConfig)
 local MatchFormatConfig=require(ReplicatedStorage.VTR.Shared.MatchFormatConfig)
 local MatchExperienceConfig=require(ReplicatedStorage.VTR.Shared.MatchExperienceConfig)
+local DifficultyConfig=require(ReplicatedStorage.VTR.Shared.DifficultyConfig)
 local Remotes=require(ReplicatedStorage.VTR.Shared.Remotes)
 local PenaltyConfig=require(ReplicatedStorage.VTR.Shared.PenaltyConfig)
 local VTRLiteConfig=require(ReplicatedStorage.VTR.Shared.VTRLiteConfig)
@@ -32,6 +33,7 @@ local StatsService=require(script.Parent.MatchStatsService)
 local RefereeService=require(script.Parent.RefereeService)
 local StadiumAnalyzer=require(script.Parent.StadiumAnalyzer)
 local TeamControlService=require(script.Parent.TeamControlService)
+local ReceiverMovementService=require(script.Parent.ReceiverMovementService)
 local OutOfBoundsService=require(script.Parent.OutOfBoundsService)
 local SetPieceService=require(script.Parent.SetPieceService)
 local MatchClockService=require(script.Parent.MatchClockService)
@@ -54,8 +56,6 @@ local GameplayDebugPolicy=require(script.Parent.GameplayDebugPolicy)
 local ReplayRestartGate=require(script.Parent.ReplayRestartGate)
 local Service={};Service.__index=Service
 local POST_MATCH_WORLD_CLEANUP_DELAY=8.0
-local EXTRA_TIME_TOTAL_SECONDS=180
-local EXTRA_TIME_HALF_PAUSE_SECONDS=30
 local SHOOTING_PRACTICE_KEEPER_BASELINE={Reaction=1.75,DiveSpeed=1.15,Reach=1.65,Handling=1.65,SaveBias=1}
 local function packRarity(definition:any):string
 	local odds=definition and definition.Odds or{}
@@ -100,7 +100,7 @@ local function isFinalThirdForTeam(session:any,side:string,position:Vector3):boo
 	return pitchPosition.Z>=PitchConfig.Zones.FinalThird.ZMin
 end
 local function kickoffDebugEnabled():boolean
-	return Workspace:GetAttribute("VTRKickoffDebug")~=false
+	return Workspace:GetAttribute("VTRKickoffDebug")==true and(RunService:IsStudio()or game.PrivateServerId~="")
 end
 local function debugKickoff(message:string,...:any)
 	if kickoffDebugEnabled()then print("[VTR KICKOFF][Runtime] "..message,...)end
@@ -206,15 +206,22 @@ local function colorFromKitValue(value:any,fallback:Color3):Color3
 	end
 	return fallback
 end
-local function applyStandForFansColors(homeKit:any)
+local function rememberStandVisual(world:any,instance:BasePart)
+	world.StandSnapshots=world.StandSnapshots or{}
+	if not world.StandSnapshots[instance]then world.StandSnapshots[instance]={Color=instance.Color,Material=instance.Material}end
+end
+local function restoreStandVisuals(world:any)
+	for instance,snapshot in world and world.StandSnapshots or{}do
+		if instance and instance.Parent then instance.Color=snapshot.Color;instance.Material=snapshot.Material end
+	end
+	if world then world.StandSnapshots=nil end
+end
+local function applyStandForFansColors(world:any,homeKit:any)
 	if type(homeKit)~="table"then return end
 	local primary=colorFromKitValue(homeKit.Primary,Color3.fromHex("B7FF1A"))
 	local secondary=colorFromKitValue(homeKit.Secondary,Color3.fromHex("050505"))
-	for _,instance in Workspace:GetDescendants()do
-		if instance:IsA("BasePart")and instance.Name=="StandForFans"then
-			local hasHighAttribute=instance:GetAttributes().High~=nil
-			instance.Color=hasHighAttribute and primary or secondary
-		end
+	for _,instance in world.FanStands or{}do
+		if instance and instance.Parent then rememberStandVisual(world,instance);instance.Color=instance:GetAttribute("High")~=nil and primary or secondary end
 	end
 end
 local function part(parent:Instance,name:string,size:Vector3,cframe:CFrame,color:Color3,collide:boolean?):Part local p=Instance.new("Part");p.Name=name;p.Size=size;p.CFrame=cframe;p.Anchored=true;p.CanCollide=collide~=false;p.Color=color;p.Material=Enum.Material.SmoothPlastic;p.Parent=parent;return p end
@@ -226,12 +233,8 @@ local function applyAscensionStadium(world:any,setup:any,homeKit:any)
 		local primary=colorFromKitValue(homeKit and homeKit.Primary,Color3.fromHex("B7FF1A"))
 		local secondary=colorFromKitValue(homeKit and homeKit.Secondary,Color3.fromHex("050505"))
 		local index=0
-		for _,instance in Workspace:GetDescendants()do
-			if instance:IsA("BasePart")and(instance.Name=="StandForFans"or(instance.Name=="Stand"and instance:IsDescendantOf(world.Folder)))then
-				index+=1
-				instance.Color=index%3==0 and primary or secondary
-				if level>=3 and index%6==0 then instance.Material=Enum.Material.Neon end
-			end
+		for _,instance in world.Stands or{}do
+			if instance and instance.Parent then rememberStandVisual(world,instance);index+=1;instance.Color=index%3==0 and primary or secondary;if level>=3 and index%6==0 then instance.Material=Enum.Material.Neon end end
 		end
 	end
 	if level>=3 and setup.AscensionPromotionFinal==true then
@@ -253,27 +256,45 @@ local function buildWorld(player:Player,setup:any):any
 	local analysisOk,analysis=pcall(StadiumAnalyzer.Analyze,nil);if not analysisOk then warn("[VTR STADIUM ANALYZER] "..tostring(analysis));analysis=nil end
 	local folder=Instance.new("Folder");folder.Name="VTRMatch_"..player.UserId;folder.Parent=Workspace;folder:SetAttribute("StadiumId",setup.StadiumId);folder:SetAttribute("Weather",setup.Weather);folder:SetAttribute("Time",setup.Time)
 	local pitchCFrame:CFrame;local width:number;local length:number
+	local fanStands:{BasePart}=analysis and analysis.FanStands or{};local stands:{BasePart}=analysis and analysis.Stands or{}
 	if analysis then
-		pitchCFrame=analysis.PitchCFrame;width=analysis.Width;length=analysis.Length;folder:SetAttribute("UsesExistingStadium",true);StadiumAnalyzer.PrintReport(analysis);if Workspace:GetAttribute("VTRStadiumDebug")==true then StadiumAnalyzer.CreateDebugMarkers(analysis)end
+		pitchCFrame=analysis.PitchCFrame;width=analysis.Width;length=analysis.Length;folder:SetAttribute("UsesExistingStadium",true);if Workspace:GetAttribute("VTRStadiumDebug")==true and(RunService:IsStudio()or game.PrivateServerId~="")then StadiumAnalyzer.PrintReport(analysis);StadiumAnalyzer.CreateDebugMarkers(analysis)end
 	else
 		local center=Vector3.new((player.UserId%100)*350,0,2200);pitchCFrame=CFrame.new(center+Vector3.new(0,.5,0));width=Config.Pitch.Width;length=Config.Pitch.Length
 		part(folder,"Pitch",Vector3.new(width,1,length),CFrame.new(center),Color3.fromHex("173F19"));part(folder,"CenterLine",Vector3.new(width,.08,.45),pitchCFrame,Color3.fromHex("D9D9D9"),false)
-		for _,z in{-length/2-10,length/2+10}do part(folder,"Stand",Vector3.new(width+30,24,14),pitchCFrame*CFrame.new(0,11.5,z),Color3.fromHex("111111"))end;for _,x in{-width/2-10,width/2+10}do part(folder,"Stand",Vector3.new(14,24,length+10),pitchCFrame*CFrame.new(x,11.5,0),Color3.fromHex("1B1B1B"))end
+		for _,z in{-length/2-10,length/2+10}do table.insert(stands,part(folder,"Stand",Vector3.new(width+30,24,14),pitchCFrame*CFrame.new(0,11.5,z),Color3.fromHex("111111")))end;for _,x in{-width/2-10,width/2+10}do table.insert(stands,part(folder,"Stand",Vector3.new(14,24,length+10),pitchCFrame*CFrame.new(x,11.5,0),Color3.fromHex("1B1B1B")))end
 	end
 	BallCollisionService.ApplyWorld(folder);BallCollisionService.ApplyGoalNets();local ball=BallFactoryService.Create(folder,pitchCFrame*CFrame.new(0,Config.Ball.Radius+.15,0))
 	local score=Instance.new("Folder");score.Name="Score";score.Parent=folder;local home=Instance.new("IntValue");home.Name="Home";home.Parent=score;local away=home:Clone();away.Name="Away";away.Parent=score
-	return{Folder=folder,Center=pitchCFrame.Position,PitchCFrame=pitchCFrame,Width=width,Length=length,Ball=ball,HomeScore=home,AwayScore=away,Analysis=analysis}
+	return{Folder=folder,Center=pitchCFrame.Position,PitchCFrame=pitchCFrame,Width=width,Length=length,Ball=ball,HomeScore=home,AwayScore=away,Analysis=analysis,FanStands=fanStands,Stands=stands,StandSnapshots={}}
 end
 function Service.new()local action,state=Remotes.Create();local self=setmetatable({Action=action,State=state,Sessions={},PostMatchReturns={},CampaignAscension=nil,Analytics=nil},Service);action.OnServerEvent:Connect(function(player,payload)self:_action(player,payload)end);RunService.Heartbeat:Connect(function(dt)self:_step(dt)end);return self end
 function Service:SetCampaignAscension(service:any)self.CampaignAscension=service end
 function Service:SetAnalytics(service:any)self.Analytics=service end
+local TELEMETRY_SCOPE_FIELDS={
+	playability_tutorial_stage_entered={"tutorialStage"},playability_tutorial_stage_duration={"tutorialStage"},playability_tutorial_assistance={"tutorialStage","helpLevel"},playability_tutorial_soft_retry={"tutorialStage"},
+	playability_forced_defensive_switch={"switchMode"},playability_defensive_switch_recommendation={"switchMode","etaBand"},playability_automatic_switch_undone={"previousSwitchReason"},playability_receiver_switch={"switchReason","receiverEtaBand"},
+	playability_first_touch={"firstTouchMode","firstTouchOutcome"},playability_tackle_outcome={"tackleOutcome","tackleGeometryBand"},playability_possession_contact={"contactOutcome"},playability_ball_hard_correction={"hardCorrectionReason","hardCorrectionMagnitudeBand"},playability_ball_divergence={"divergenceBand"},
+	playability_mobile_action_cancelled={"cancellationReason"},playability_mobile_charge_conflict_rejected={"actionFamily"},playability_action_queue_cancelled={"cancellationReason"},playability_stale_action_cancelled={"cancellationReason"},playability_shot_power={"shotPowerBand","overhitBand"},playability_pass_selection={"passFamily","targetChanged"},
+	playability_reception_started={"receptionId"},playability_reception_committed={"receptionId"},playability_reception_camera_prepared={"receptionId"},playability_reception_control_transferred={"receptionId"},playability_reception_contact={"receptionId"},playability_reception_completed={"receptionId"},playability_reception_cancelled={"receptionId"},playability_reception_retargeted={"receptionId","receptionRevision"},playability_reception_override={"receptionId"},playability_first_touch_intent={"receptionId"},playability_first_time_action={"receptionId"},playability_reception_route_conflict={"receptionId"},
+}
+local function firstSessionProgressionState(session:any):string
+	local setup=session.Setup or{}
+	if setup.PlayabilityLegacyAccess==true then return"ReturningLegacy"end
+	local completed=math.max(0,math.floor(tonumber(setup.PlayabilityCompletedMatches)or 0))
+	if completed<=0 then return"FirstMatch"end
+	if completed<3 then return"IntroMatch"..tostring(completed+1)end
+	return"Returning"
+end
 function Service:_track(session:any,player:Player,eventName:string,properties:any?)
 	if not self.Analytics then return end
-	local fields={mode=matchMode(session),presentationProfile=tostring(session.PresentationProfile or"Standard"),matchFormat=tostring(session.MatchFormat or"Standard")}
+	local fields={mode=matchMode(session),presentationProfile=tostring(session.PresentationProfile or"Standard"),matchFormat=tostring(session.MatchFormat or"Standard"),firstSessionProgressionState=firstSessionProgressionState(session)}
 	local state=session.PlayerState and session.PlayerState[player]
-	if state then fields.device=tostring(state.Device or"Unknown");fields.assistanceMode=tostring(state.ReceiverAssistMode or"Standard");fields.cameraPreset=tostring(state.CameraPreset or"Auto")end
+	if state then fields.device=tostring(state.Device or"Unknown");fields.assistanceMode=tostring(state.ReceiverAssistMode or"Standard");fields.cameraPreset=tostring(state.CameraPreset or"Auto");fields.latencyBand=tostring(state.LatencyBand or"Unknown");if state.PerformanceBand then fields.performanceBand=tostring(state.PerformanceBand)end end
 	for key,value in type(properties)=="table"and properties or{}do fields[key]=value end
-	self.Analytics:TrackOnce(player,tostring(session.World and session.World.Folder.Name or session.StartedAt or"match"),eventName,fields)
+	local scope=tostring(session.World and session.World.Folder.Name or session.StartedAt or"match")
+	for _,key in TELEMETRY_SCOPE_FIELDS[eventName]or{}do scope..=":"..string.sub(tostring(fields[key]or""),1,20)end
+	self.Analytics:TrackOnce(player,scope,eventName,fields)
 end
 function Service:_controlEnabled(session:any)
 	if session.ControlEnabledAt then return end
@@ -297,7 +318,7 @@ function Service:StartMatch(player:Player,setup:any,opponent:Player?,opponentSet
 	local presentation=MatchExperienceConfig.Get(finalSetup.PresentationProfile)
 	local noPrematch=finalSetup.NoPrematch==true or finalSetup.SkipPrematch==true or finalSetup.NoPresentation==true or finalSetup.FiveVFive==true
 	local home=homeRoster or TeamDatabase.GetRoster(finalSetup.HomeTeamId);local away=awayRoster or TeamDatabase.GetRoster(finalSetup.AwayTeamId);if not home or not away then return false,"Selected rosters are unavailable.",nil end
-	local world=buildWorld(player,finalSetup);local teams,formation,kits=TeamSpawnService.Spawn(world.Folder,world.PitchCFrame,world.Width,world.Length,player,home,away,finalSetup);applyStandForFansColors(kits and kits.Home);applyAscensionStadium(world,finalSetup,kits and kits.Home);local models={};for _,m in teams.Home do table.insert(models,m)end;for _,m in teams.Away do table.insert(models,m)end;BallCollisionService.ApplyPlayers(models);for _,m in models do m:SetAttribute("VTRSession",player.UserId);m:SetAttribute("VTRRankedMatch",opponent~=nil)end
+	local world=buildWorld(player,finalSetup);local teams,formation,kits=TeamSpawnService.Spawn(world.Folder,world.PitchCFrame,world.Width,world.Length,player,home,away,finalSetup);applyStandForFansColors(world,kits and kits.Home);applyAscensionStadium(world,finalSetup,kits and kits.Home);local models={};for _,m in teams.Home do table.insert(models,m)end;for _,m in teams.Away do table.insert(models,m)end;BallCollisionService.ApplyPlayers(models);for _,m in models do m:SetAttribute("VTRSession",player.UserId);m:SetAttribute("VTRRankedMatch",opponent~=nil)end
 	for _,group in{"Width","Depth","Press","Passing","Runs","Shape","Keeper"}do workspace:SetAttribute("TacticalDebug"..group,false)end;workspace:SetAttribute("TacticalDebug",false)
 	local postGoalAnchorGuard=world.Ball:GetPropertyChangedSignal("Anchored"):Connect(function()
 		local untilTime=tonumber(world.Ball:GetAttribute("VTRPostGoalPhysicsUntil"))or 0
@@ -325,13 +346,19 @@ function Service:StartMatch(player:Player,setup:any,opponent:Player?,opponentSet
 		end
 	end
 	local stats=StatsService.new(models,world.PitchCFrame,world.Width,world.Length);local possession=PossessionService.new(world.Ball,self.State);local animations=MatchAnimationService.new(models);local ballService=BallService.new(world.Ball,possession,self.State,stats,models,animations);local teamControl=TeamControlService.new(self.State,teams,world.Ball,possession,ballService,world.PitchCFrame,world.Width,world.Length,animations);local duration=math.max(60,tonumber(format.RealSeconds)or 300);local practiceMode=finalSetup.ShootingPractice==true
-	local session={Player=player,Players=players,SidePlayers={Home=player,Away=opponent},PlayerSides={[player]="Home"},PlayerState={},StepOwner=player,Ranked=opponent~=nil,ShootingPractice=practiceMode,Setup=finalSetup,World=world,Teams=teams,Kits=kits,Formation=formation,Models=models,Stats=stats,Possession=possession,BallService=ballService,Animations=animations,TeamControl=teamControl,Grounding=BallGroundingService.new(world.Ball,world.PitchCFrame,models),Clock=MatchClockService.new(duration),StaminaService=StaminaService.new(),Remaining=duration,Duration=duration,MatchFormat=finalSetup.MatchFormat,Format=format,PresentationProfile=finalSetup.PresentationProfile,Presentation=presentation,NoPrematch=noPrematch,ClientReady={},PresentationReady={},MatchStartPayloads={},HalfTimeTriggered=false,Phase=practiceMode and"SHOOTING PRACTICE"or"PRE MATCH",Running=false,Ended=false,Accumulator=0,StartedAt=os.clock(),LastPositions={},MovementSpeeds={},BenchData={Home=home.Bench or{},Away=away.Bench or{}},UsedBench={Home={},Away={}},PauseSecondsByPlayer={},PauseRequester=nil,PauseResumeVotes={},PauseGrantIndex=0,PauseTimerAccumulator=0,PrematchSkipUnlockAt=os.clock()+(noPrematch and 0 or math.max(0,tonumber(presentation.SkipLock)or 0)),Connections={postGoalAnchorGuard}}
+	local session={Player=player,Players=players,SidePlayers={Home=player,Away=opponent},PlayerSides={[player]="Home"},PlayerState={},StepOwner=player,Ranked=opponent~=nil,ShootingPractice=practiceMode,Setup=finalSetup,World=world,Teams=teams,Kits=kits,Formation=formation,Models=models,Stats=stats,Possession=possession,BallService=ballService,Animations=animations,TeamControl=teamControl,Grounding=BallGroundingService.new(world.Ball,world.PitchCFrame,models),Clock=MatchClockService.new(duration),StaminaService=StaminaService.new(),Remaining=duration,Duration=duration,MatchFormat=finalSetup.MatchFormat,Format=format,PresentationProfile=finalSetup.PresentationProfile,Presentation=presentation,NoPrematch=noPrematch,ClientReady={},PresentationReady={},MatchStartPayloads={},HalfTimeTriggered=false,Phase=practiceMode and"SHOOTING PRACTICE"or"PRE MATCH",Running=false,Ended=false,Accumulator=0,StaminaAccumulator=0,StartedAt=os.clock(),LastPositions={},MovementSpeeds={},BenchData={Home=home.Bench or{},Away=away.Bench or{}},UsedBench={Home={},Away={}},PauseSecondsByPlayer={},PauseRequester=nil,PauseResumeVotes={},PauseGrantIndex=0,PauseTimerAccumulator=0,PrematchSkipUnlockAt=os.clock()+(noPrematch and 0 or math.max(0,tonumber(presentation.SkipLock)or 0)),Connections={postGoalAnchorGuard}}
+	teamControl:SetTelemetry(function(participant:Player,eventName:string,properties:any)self:_track(session,participant,eventName,properties)end)
+	ballService:SetTelemetry(function(model:Model?,eventName:string,properties:any)
+		local side=model and tostring(model:GetAttribute("VTRTeam")or"")or""
+		for _,participant in players do if side==""or session.PlayerSides[participant]==side then self:_track(session,participant,eventName,properties)end end
+	end)
 	session.LinkDebug=GameplayLinkDebugService.new()
+	for _,model in models do session.StaminaService:Reset(model)end
 	if opponent then session.PlayerSides[opponent]="Away"end
 	for _,participant in players do local hum=humanoids[participant];session.PlayerState[participant]={Stamina=Config.Stamina.Maximum,Endurance=Config.Stamina.Maximum,SprintRequested=false,SprintActual=false,SprintLastSignalAt=0,PreviousSpeed=hum.WalkSpeed,PreviousJump=hum.JumpPower,ReturnCFrame=parkedReturnCFrames[participant] or CFrame.new(0,8,0)};session.PauseSecondsByPlayer[participant]=60;hum.WalkSpeed=0;hum.JumpPower=0;participant:SetAttribute("VTRInMatch",true);self.Sessions[participant]=session end
 	for _,model in models do local modelRoot=model:FindFirstChild("HumanoidRootPart")::BasePart?;if modelRoot then session.LastPositions[model]=modelRoot.Position end end
 	if finalSetup.WorldCupTutorial==true then world.Ball:SetAttribute("VTRTutorialPhysics",true)end
-	session.Goals=GoalService.new(world.Ball,world.PitchCFrame,world.Width,world.Length,function(team)self:_goal(session,team)end);session.AI=AIService.new(teams,formation,world.PitchCFrame,world.Width,world.Length,finalSetup.Difficulty,world.Ball,possession,ballService,finalSetup.TeamTactics);session.Goalkeepers=GoalkeeperService.new(world.Ball,teams,world.PitchCFrame,world.Width,world.Length,ballService,animations,self.State,session.AI);session.SetPieces=SetPieceService.new(self.State,world,teams,formation,possession,teamControl,ballService,function()return session.Paused==true end);session.OutOfBounds=OutOfBoundsService.new(world.Ball,world.PitchCFrame,world.Width,world.Length,ballService,function(kind,restartTeam,location)self:_startSetPiece(session,kind,restartTeam,location)end)
+	session.Goals=GoalService.new(world.Ball,world.PitchCFrame,world.Width,world.Length,function(team)self:_goal(session,team)end);session.AI=AIService.new(teams,formation,world.PitchCFrame,world.Width,world.Length,finalSetup.Difficulty,world.Ball,possession,ballService,finalSetup.TeamTactics);if finalSetup.FirstPlayableMatch==true or finalSetup.WorldCupOnboarding==true or finalSetup.WorldCupTutorial==true then session.AI:SetFirstMatchAssistance(true)end;session.Goalkeepers=GoalkeeperService.new(world.Ball,teams,world.PitchCFrame,world.Width,world.Length,ballService,animations,self.State,session.AI);session.SetPieces=SetPieceService.new(self.State,world,teams,formation,possession,teamControl,ballService,function()return session.Paused==true end);session.OutOfBounds=OutOfBoundsService.new(world.Ball,world.PitchCFrame,world.Width,world.Length,ballService,function(kind,restartTeam,location)self:_startSetPiece(session,kind,restartTeam,location)end)
 	if finalSetup.CampaignAscension==true and session.AI and session.AI.UpdateTactics then
 		if type(finalSetup.AscensionOpponentTactics)=="table"then session.AI:UpdateTactics("Away",sanitizeRuntimeTactics(finalSetup.AscensionOpponentTactics))end
 		if type(finalSetup.AscensionCounterPlan)=="string"and finalSetup.AscensionCounterPlan~=""then session.AI:UpdateTactics("Home",sanitizeRuntimeTactics({Identity=finalSetup.AscensionCounterPlan}))end
@@ -1075,7 +1102,7 @@ function Service:_startPrematchPresentation(session:any)
 	if profile~="Broadcast"then
 		self:_teleportPresentationStage(session,"Kickoff","KickoffReady")
 		task.spawn(function()
-			local earliest=session.PresentationStartedAt+math.max(.5,duration-.35)
+			local earliest=session.PresentationStartedAt+(profile=="Acquisition"and.5 or math.max(.5,duration-.35))
 			local deadline=session.PresentationStartedAt+duration
 			while not presentationStopped(session)and os.clock()<deadline do
 				if os.clock()>=earliest and allParticipantsReady(session,"PresentationReady")then break end
@@ -1137,7 +1164,6 @@ function Service:_beginClientReadiness(session:any)
 		session.ReadinessCompletedAt=os.clock()
 		if session.WorldCupTutorial==true then
 			self:_startWorldCupTutorial(session)
-			self:_controlEnabled(session)
 		elseif session.ShootingPractice==true then
 			self:_resetShootingPractice(session,"START")
 			self:_controlEnabled(session)
@@ -1388,9 +1414,7 @@ local function reviveMatchBallForKickoff(session:any,reason:string?)
 		session.Possession:Reset()
 	end
 
-	if session.TeamControl and session.TeamControl.Receiving then
-		session.TeamControl.Receiving:Clear()
-	end
+	if session.TeamControl and session.TeamControl.CancelReception then session.TeamControl:CancelReception("SetPiece") end
 
 	broadcast(session.State or session.Remote or Remotes.Create(),session,{Type="BallRevived",Reason=reason or"Kickoff",Ball=ball})
 end
@@ -1442,6 +1466,7 @@ function Service:_resetForSecondHalfKickoff(session:any)
 		for _,attribute in{"VTRGoalkeeperHolding","VTRGoalkeeperHoldingSince","VTRKeeperMustDistributeUntil","VTRGoalkeeperSaving","VTRKeeperDiveAnimationLocked","VTRBlocking","VTRBlockUntil","VTRDribbleMoveUntil","VTRPostSkillVulnerableUntil","VTRStunnedUntil","VTRCannotRecoverBallUntil","VTRReceiverAssist","VTRPreparingReceive","VTRReceiveUntil","VTRReceiveTarget","VTRSetPieceWall","VTRWallJumpUntil","VTRPenaltyGuessSlot","VTRPenaltyGuessPoint","VTRSetPieceTaker","VTRForceIdle","VTRKickoffReady","VTRCornerTaker","VTRThrowInTaker"}do
 			model:SetAttribute(attribute,nil)
 		end
+		ReceiverMovementService.Clear(model)
 		local humanoid=model:FindFirstChildOfClass("Humanoid")
 		local root=model:FindFirstChild("HumanoidRootPart")::BasePart?
 		if humanoid then
@@ -1553,7 +1578,7 @@ function Service:_resetShootingPractice(session:any,reason:string?)
 	for _,attribute in{"VTRPostGoalPhysicsUntil","VTRPostGoalVelocity","VTRPostGoalAngularVelocity","VTRGoalCalledAt","VTRGoalEntryVelocity","VTRGoalEntryAngularVelocity","VTRGoalEntryPosition","VTRGoalEntryNormal","VTRPenaltyShotActive","VTRGoalkeeperHeld","VTRGoalkeeperTracking","VTRPassTarget","VTRPassStartedAt","VTRPassTeam","VTRPassReceiver","VTRLobTarget","VTRLobPassActive"}do ball:SetAttribute(attribute,nil)end
 	ball:SetAttribute("VTRMotionKind","Loose")
 	if session.Possession then session.Possession:Reset();session.Possession:ForcePickup(shooter)end
-	if session.TeamControl then if session.TeamControl.Receiving and session.TeamControl.Receiving.Clear then session.TeamControl.Receiving:Clear()end;session.TeamControl:SetActive(session.Player,shooter,"ShootingPractice")end
+	if session.TeamControl then if session.TeamControl.CancelReception then session.TeamControl:CancelReception("MatchInterrupted")end;session.TeamControl:SetActive(session.Player,shooter,"ShootingPractice")end
 	if session.OutOfBounds and session.OutOfBounds.Reset then session.OutOfBounds:Reset()end;if session.Goals and session.Goals.Unlock then session.Goals:Unlock()end;if session.AI and session.AI.SetExternalPhase then session.AI:SetExternalPhase(nil)end;if session.Goalkeepers and session.Goalkeepers.SetHalf then session.Goalkeepers:SetHalf(session.Clock and session.Clock:Payload().Half or 1)end
 	self:_releasePlayersForLive(session);self:_syncPositions(session)
 	broadcast(self.State,session,{Type="PracticeReset",Reason=reason or"RESET",Shooter=shooter,Keeper=keeper,Ball=ball,Tuning=session.PracticeTuning})
@@ -1733,6 +1758,7 @@ end
 
 function Service:_openPause(session:any,requester:Player?)
 	if session.Ended or session.Paused then return end
+	if session.TeamControl and session.TeamControl.CancelAllReceptionQueuedActions then session.TeamControl:CancelAllReceptionQueuedActions("pause") end
 	local remaining=requester and session.PauseSecondsByPlayer and session.PauseSecondsByPlayer[requester] or 60
 	if remaining<=0 then
 		if requester then self.State:FireClient(requester,{Type="Info",Message="No pause time available until the next 30-minute window.",Important=true})end
@@ -1782,6 +1808,7 @@ function Service:_setLocalFiveVFivePause(session:any,player:Player,paused:boolea
 	if not session or session.FiveVFive~=true then return end
 	session.LocalPausedPlayers=session.LocalPausedPlayers or{}
 	if paused then
+		if session.TeamControl and session.TeamControl.CancelReceptionQueuedAction then session.TeamControl:CancelReceptionQueuedAction(player,"pause") end
 		session.LocalPausedPlayers[player]=true
 		local active=session.TeamControl and session.TeamControl:GetActive(player)or nil
 		local humanoid=active and active:FindFirstChildOfClass("Humanoid")
@@ -1838,7 +1865,10 @@ function Service:_startSetPiece(session:any,kind:string,restartTeam:string,locat
 		end
 	end
 	if kind~="Kickoff"then session.Clock:Record(kind)end
-	session.Running=false;session.Phase=kind;session.Possession:Reset();session.TeamControl.Receiving:Clear();session.AI:SetExternalPhase(kind)
+	local restartDisplayKind=tostring(session.World.Ball:GetAttribute("VTRRestartDisplayKind")or"")
+	local receptionCancelReason=if restartDisplayKind=="Offside"then"Offside"elseif kind=="Corner"or kind=="ThrowIn"or kind=="GoalKick"then"BallOut"elseif kind=="FreeKick"or kind=="Penalty"then"Foul"else"SetPiece"
+	if session.TeamControl and session.TeamControl.CancelReception then session.TeamControl:CancelReception(receptionCancelReason) end
+	session.Running=false;session.Phase=kind;session.Possession:Reset();session.AI:SetExternalPhase(kind)
 	if kind=="Kickoff"then debugKickoff("start set piece","team",restartTeam,"running",session.Running,"phase",session.Phase)end
 	self:_setPlayersFrozen(session,true)
 	if session.Goalkeepers then session.Goalkeepers:Reset()end
@@ -1885,7 +1915,8 @@ function Service:_startSetPiece(session:any,kind:string,restartTeam:string,locat
 	end
 	
 	if kind~="Kickoff"and not(session.PenaltyShootoutStarted==true and session.PenaltyShootoutResolved~=true and kind=="Penalty")then
-		local autoDelay=tonumber(workspace:GetAttribute("VTRSetPieceAutoDecisionDelay"))or 10
+		local configuredDelay=tonumber(session.Format and(session.Format.SetPieceDecisionSeconds or session.Format.SetPieceSeconds))or 4
+		local autoDelay=math.clamp(tonumber(workspace:GetAttribute("VTRSetPieceAutoDecisionDelay"))or configuredDelay,3,5)
 		delayUnpaused(session,autoDelay,function()
 			if session.Ended or session.Running or session.SetPieceAutoSeq~=setPieceAutoSeq or session.Phase~=kind then return end
 			self:_autoReleaseSetPiece(session,controller)
@@ -1968,6 +1999,7 @@ end
 
 function Service:_goal(session:any,team:string)
 	if not session.Running then return end
+	if session.TeamControl and session.TeamControl.CancelReception then session.TeamControl:CancelReception("Goal") end
 	local clockPayloadForGoal=session.Clock:Payload()
 	if (clockPayloadForGoal.Half or 1)>=2 then
 		-- GoalService resolves physical goal hitboxes as first-half scoring sides:
@@ -1983,7 +2015,7 @@ function Service:_goal(session:any,team:string)
 		self:_scheduleShootingPracticeReset(session,"GOAL",1.45)
 		return
 	end
-	if session.WorldCupTutorial==true and session.TutorialStage==3 then
+	if session.WorldCupTutorial==true and session.GuidedTutorialFlow~=true and session.TutorialStage==3 then
 		if session.TutorialShootingRestarting==true then return end
 		session.TutorialShootingRestarting=true
 		if session.Goalkeepers and session.Goalkeepers.FinishActiveDiveAfterGoal then session.Goalkeepers:FinishActiveDiveAfterGoal()end
@@ -1994,7 +2026,7 @@ function Service:_goal(session:any,team:string)
 		task.delay(1.6,function()if self.Sessions[session.Player]==session and not session.Ended then self:_restartWorldCupTutorialStage(session,4)end end)
 		return
 	end
-	if session.WorldCupTutorial==true and session.TutorialStage==4 then
+	if session.WorldCupTutorial==true and session.GuidedTutorialFlow~=true and session.TutorialStage==4 then
 		if session.TutorialRestarting==true then return end
 		session.TutorialRestarting=true
 		self:_playTutorialRestartTransition(session)
@@ -2088,12 +2120,13 @@ end
 
 function Service:_halfTime(session:any)
 	if session.HalfTimeTriggered or session.Ended then return end
+	if session.TeamControl and session.TeamControl.CancelReception then session.TeamControl:CancelReception("HalfTime") end
 	for _,participant in session.Players do self:_track(session,participant,"playability_halftime",{})end
 	session.HalfTimeTriggered=true;session.Running=false;session.Phase="HALF TIME";session.Possession:Reset();self:_setPlayersFrozen(session,true)
 	if session.CampaignManager then session.CampaignManager.FirstHalfGoalDifference=session.World.HomeScore.Value-session.World.AwayScore.Value end
 	local gameSeconds=session.Clock:Payload().GameSeconds
 	local payload=self:_pausePayload(session,true,nil)
-	local halfTimeBreakSeconds=session.ExtraTimeActive==true and (tonumber(session.ExtraTimeHalfPauseSeconds) or EXTRA_TIME_HALF_PAUSE_SECONDS) or math.max(3,tonumber(session.Format and session.Format.HalftimeSeconds)or 7)
+	local halfTimeBreakSeconds=session.ExtraTimeActive==true and (tonumber(session.ExtraTimeHalfPauseSeconds) or 7) or math.max(3,tonumber(session.Format and session.Format.HalftimeSeconds)or 7)
 	payload.Type="HalfTime";payload.HalfTime=true;payload.ExtraTime=session.ExtraTimeActive==true;payload.PauseRemaining=halfTimeBreakSeconds;payload.Home=session.World.HomeScore.Value;payload.Away=session.World.AwayScore.Value;payload.Stats=session.Stats:Serialize(session.World.HomeScore.Value,session.World.AwayScore.Value,gameSeconds)
 	session.HalfTimeBreak=true;session.HalfTimeBreakEndsAt=os.clock()+halfTimeBreakSeconds;session.HalfTimeTimerAccumulator=0;session.HalfTimeResumeVotes={}
 	broadcast(self.State,session,payload)
@@ -2169,7 +2202,7 @@ function Service:_watchdogResetSecondHalf(session:any,player:Player?):boolean
 	session.HalfTimeResumeVotes={}
 	session.HalfTimeResuming=true
 	if session.Possession then session.Possession:Reset()end
-	if session.TeamControl and session.TeamControl.Receiving then session.TeamControl.Receiving:Clear()end
+	if session.TeamControl and session.TeamControl.CancelReception then session.TeamControl:CancelReception("HalfTime")end
 	if session.SetPieces then session.SetPieces:Cancel()end
 	if session.World and session.World.Ball then
 		session.World.Ball.Anchored=false
@@ -2484,7 +2517,7 @@ function Service:_tutorialUpdatePassTarget(session:any,owner:Model?)
 	local target=self:_tutorialNextPassTarget(session,owner)
 	session.TutorialPassTarget=target
 	local count=tonumber(session.TutorialPasses)or 0
-	local message=count>0 and"COMPLETE 3 PASSES WITHOUT GETTING TACKLED"or"RIGHT CLICK - PASS"
+	local message=count>0 and"COMPLETE THE PASSING SEQUENCE"or"PASS TO THE HIGHLIGHTED PLAYER"
 	self:_tutorialPrompt(session,message,"Pass",count,3,false,target,self:_tutorialPassReceiverTargets(session,owner))
 end
 
@@ -2496,14 +2529,247 @@ function Service:_setTutorialDrillMode(session:any,active:boolean)
 	broadcast(self.State,session,{Type="Phase",Phase=active and"IN PLAY"or"TUTORIAL"})
 end
 
-function Service:_startWorldCupTutorial(session:any)
-	if not session or session.Ended then return end
+function Service:_guidedTutorialStage(session:any,stage:number)
+	if not session or session.Ended or session.GuidedTutorialFlow~=true then return end
+	local now=os.clock()
+	local previous=tonumber(session.TutorialStage)or 0
+	if previous>0 and session.TutorialStageStartedAt then
+		self:_track(session,session.Player,"playability_tutorial_stage_duration",{tutorialStage=previous,stageDuration=now-session.TutorialStageStartedAt})
+	end
+	session.TutorialStage=stage
+	session.TutorialStageStartedAt=now
+	session.TutorialHelpLevel=0
+	session.TutorialPassAttempted=false
+	session.TutorialPasser=nil
+	session.TutorialShotTaken=false
+	session.TutorialSwitched=false
+	session.TutorialTackleAttempts=0
+	session.TutorialSoftRetryAt=nil
+	session.TutorialAdvanceAt=nil
+	self:_track(session,session.Player,"playability_tutorial_stage_entered",{tutorialStage=stage})
+	for _,model in session.Models or{}do
+		model:SetAttribute("VTRTutorialPressing",nil)
+		model:SetAttribute("VTRTutorialFrozen",nil)
+		model:SetAttribute("VTRTutorialShot",nil)
+		model:SetAttribute("VTRPracticeShotSpeed",nil)
+		model:SetAttribute("VTRPracticeShotLift",nil)
+		model:SetAttribute("VTRForceIdle",nil)
+		model:SetAttribute("VTRPracticeKeeperReaction",nil)
+		model:SetAttribute("VTRPracticeKeeperDiveSpeed",nil)
+		model:SetAttribute("VTRPracticeKeeperReach",nil)
+		model:SetAttribute("VTRPracticeKeeperHandling",nil)
+		model:SetAttribute("VTRPracticeKeeperSaveBias",nil)
+		model:SetAttribute("VTRNoAutoPassUntil",os.clock()+999)
+	end
+	local home=session.Teams and session.Teams.Home or{}
+	local away=session.Teams and session.Teams.Away or{}
+	if stage==1 then
+		session.TutorialAllowAI=false
+		local active=session.Possession and session.Possession:GetOwner()or home[10]or home[9]or home[1]
+		if not active or tostring(active:GetAttribute("VTRTeam")or"")~="Home"then active=home[10]or home[9]or home[1];self:_tutorialBallTo(session,active)end
+		self:_tutorialSetActive(session,active,"TutorialMovement")
+		local activeRoot=tutorialRoot(active)
+		session.TutorialMovementStartPosition=activeRoot and activeRoot.Position or nil
+		session.TutorialMovementInputStartedAt=nil
+		session.TutorialMovementInputActiveUntil=nil
+		local attackSign=attackSignForSide(session,"Home")
+		local direction=session.World.PitchCFrame:VectorToWorldSpace(Vector3.new(0,0,attackSign))
+		local target=activeRoot and activeRoot.Position+flatUnit(direction,Vector3.zAxis)*20+session.World.PitchCFrame.RightVector*8 or session.World.PitchCFrame.Position
+		session.TutorialMovementLaneTarget=target
+		self:_tutorialPrompt(session,"MOVE INTO SPACE","Move",0,1,false,nil,nil,nil,target,0)
+	elseif stage==2 then
+		session.TutorialAllowAI=false
+		local passer=session.Possession and session.Possession:GetOwner()or nil
+		if not passer or tostring(passer:GetAttribute("VTRTeam")or"")~="Home"then passer=home[10]or home[9]or home[1];self:_tutorialBallTo(session,passer)end
+		local passerRoot=tutorialRoot(passer)
+		local receiver:Model?=nil
+		local best=math.huge
+		for _,candidate in home do
+			local candidateRoot=tutorialRoot(candidate)
+			if candidate~=passer and candidateRoot and tostring(candidate:GetAttribute("position")or"")~="GK"then
+				local distance=passerRoot and(candidateRoot.Position-passerRoot.Position).Magnitude or math.huge
+				if distance>=8 and distance<best then receiver=candidate;best=distance end
+			end
+		end
+		session.TutorialPassTarget=receiver
+		session.TutorialPasser=passer
+		self:_tutorialSetActive(session,passer,"TutorialPassing")
+		self:_tutorialPrompt(session,"PASS TO THE HIGHLIGHTED PLAYER","Pass",0,1,false,receiver,receiver and{receiver}or nil)
+	elseif stage==3 then
+		session.TutorialAllowAI=false
+		local attacker=home[10]or home[9]or home[1]
+		local keeper=getGoalkeeper(away)
+		local goalSign=attackSignForSide(session,"Home")
+		local goalCenter=tutorialPitchGoalPoint(session,goalSign,0,3.2,0)
+		local shotStart=tutorialPitchGoalPoint(session,goalSign,0,3.2,72)
+		local attackerRoot=tutorialRoot(attacker)
+		if attackerRoot then attacker:PivotTo(CFrame.lookAt(shotStart,shotStart+flatUnit(goalCenter-shotStart,session.World.PitchCFrame.LookVector)));attackerRoot.Anchored=false;attackerRoot.AssemblyLinearVelocity=Vector3.zero;attackerRoot.AssemblyAngularVelocity=Vector3.zero end
+		if attacker then attacker:SetAttribute("VTRTutorialShot",true);attacker:SetAttribute("VTRPracticeShotSpeed",.56);attacker:SetAttribute("VTRPracticeShotLift",.72);attacker:SetAttribute("VTRForceIdle",nil)end
+		if keeper then local keeperScale=math.clamp(tonumber(DifficultyConfig.FirstMatch.CleanShotKeeperScale)or .68,.45,1);keeper:SetAttribute("VTRForceIdle",nil);keeper:SetAttribute("VTRNoAutoPassUntil",nil);keeper:SetAttribute("VTRPracticeKeeperReaction",keeperScale);keeper:SetAttribute("VTRPracticeKeeperDiveSpeed",keeperScale);keeper:SetAttribute("VTRPracticeKeeperReach",keeperScale);keeper:SetAttribute("VTRPracticeKeeperHandling",keeperScale);keeper:SetAttribute("VTRPracticeKeeperSaveBias",keeperScale);local keeperRoot=tutorialRoot(keeper);if keeperRoot then keeperRoot.Anchored=false end end
+		self:_tutorialBallTo(session,attacker)
+		session.TutorialShootingKeeper=keeper
+		session.TutorialShootingGoalSign=goalSign
+		self:_tutorialSetActive(session,attacker,"TutorialShooting")
+		self:_tutorialPrompt(session,"HOLD SHOOT AND RELEASE","Shoot",0,1,false,nil,nil,goalSign)
+	elseif stage==4 then
+		session.TutorialAllowAI=true
+		if session.AI and session.AI.SetExternalPhase then session.AI:SetExternalPhase(nil)end
+		for _,model in session.Models or{}do model:SetAttribute("VTRForceIdle",nil);model:SetAttribute("VTRNoAutoPassUntil",nil)end
+		local attacker=away[10]or away[9]or away[1]
+		local defender=home[4]or home[5]or home[1]
+		local support=home[5]or home[4]or home[2]
+		local sign=attackSignForSide(session,"Away")
+		local pitch=session.World.PitchCFrame
+		local start=pitch:PointToWorldSpace(Vector3.new(0,3,-sign*38))
+		local direction=flatUnit(pitch:VectorToWorldSpace(Vector3.new(0,0,sign)),pitch.LookVector)
+		local attackerRoot=tutorialRoot(attacker)
+		if attackerRoot then attacker:PivotTo(CFrame.lookAt(start,start+direction));attackerRoot.Anchored=false;attackerRoot.AssemblyLinearVelocity=Vector3.zero end
+		local defenderRoot=tutorialRoot(defender);if defenderRoot then defender:PivotTo(CFrame.lookAt(start-direction*24-pitch.RightVector*22,start));defenderRoot.Anchored=false end
+		local supportRoot=tutorialRoot(support);if supportRoot then support:PivotTo(CFrame.lookAt(start+direction*18+pitch.RightVector*8,start));supportRoot.Anchored=false end
+		if attacker then attacker:SetAttribute("VTRNoAutoPassUntil",os.clock()+2.2);attacker:SetAttribute("VTRAISprintRequested",true)end
+		self:_tutorialBallTo(session,attacker)
+		session.TutorialDefenseInitialOwner=attacker
+		self:_tutorialSetActive(session,defender,"TutorialDefending")
+		self:_tutorialPrompt(session,"SWITCH TO THE NEAREST DEFENDER","Switch",0,1,false,support,support and{support}or nil)
+	end
+end
+
+function Service:_startGuidedWorldCupMatch(session:any)
+	if not session or session.Ended or session.GuidedTutorialFlow==true then return end
+	session.GuidedTutorialFlow=true
 	session.WorldCupTutorial=true
 	session.PrematchSkipped=true
+	session.TutorialStage=0
+	session.TutorialStartedAt=os.clock()
+	session.TutorialAllowAI=false
 	session.World.HomeScore.Value=0
 	session.World.AwayScore.Value=0
-	self:_setTutorialDrillMode(session,true)
-	self:_restartWorldCupTutorialStage(session,1)
+	if session.World and session.World.Ball then session.World.Ball:SetAttribute("VTRTutorialPhysics",nil)end
+	if session.SetPieces then session.SetPieces.OnboardingNoAutoKickoff=true end
+	local starter=session.Teams and(session.Teams.Home[10]or session.Teams.Home[9]or session.Teams.Home[1])or nil
+	self:_startSetPiece(session,"Kickoff","Home",session.World.PitchCFrame.Position,starter)
+	task.spawn(function()
+		local deadline=os.clock()+6
+		while self.Sessions[session.Player]==session and not session.Ended and not session.Running and os.clock()<deadline do task.wait(.05)end
+		if self.Sessions[session.Player]==session and not session.Ended then self:_guidedTutorialStage(session,1)end
+	end)
+end
+
+function Service:_completeGuidedWorldCupMatch(session:any)
+	if not session or session.Ended or session.GuidedTutorialFlow~=true then return end
+	local now=os.clock()
+	if session.TutorialStageStartedAt then self:_track(session,session.Player,"playability_tutorial_stage_duration",{tutorialStage=tonumber(session.TutorialStage)or 0,stageDuration=now-session.TutorialStageStartedAt})end
+	self:_track(session,session.Player,"playability_tutorial_complete",{stageDuration=now-(tonumber(session.TutorialStartedAt)or now)})
+	if session.AI and session.AI.BeginFirstMatchRestoration then session.AI:BeginFirstMatchRestoration()end
+	session.GuidedTutorialFlow=false
+	session.WorldCupTutorial=false
+	session.WorldCupOnboarding=false
+	session.TutorialStage=nil
+	session.TutorialAllowAI=false
+	session.TutorialPassTarget=nil
+	session.TutorialShootingKeeper=nil
+	session.TutorialDefenseInitialOwner=nil
+	if type(session.Setup)=="table"then session.Setup.WorldCupTutorial=false;session.Setup.WorldCupOnboarding=false end
+	if session.World and session.World.Ball then session.World.Ball:SetAttribute("VTRWorldCupFirstPassPending",nil);session.World.Ball:SetAttribute("VTRTutorialPhysics",nil)end
+	session.OffsideDisabled=false
+	if session.BallService and session.Offside then session.BallService:SetOffsideService(session.Offside)end
+	if session.SetPieces then session.SetPieces.OnboardingNoAutoKickoff=false end
+	if session.AI and session.AI.SetExternalPhase then session.AI:SetExternalPhase(nil)end
+	for _,model in session.Models or{}do
+		model:SetAttribute("VTRNoAutoPassUntil",nil)
+		model:SetAttribute("VTRTutorialFrozen",nil)
+		model:SetAttribute("VTRTutorialPressing",nil)
+		model:SetAttribute("VTRTutorialShot",nil)
+		model:SetAttribute("VTRPracticeShotSpeed",nil)
+		model:SetAttribute("VTRPracticeShotLift",nil)
+		model:SetAttribute("VTRForceIdle",nil)
+		model:SetAttribute("VTRPracticeKeeperReaction",nil)
+		model:SetAttribute("VTRPracticeKeeperDiveSpeed",nil)
+		model:SetAttribute("VTRPracticeKeeperReach",nil)
+		model:SetAttribute("VTRPracticeKeeperHandling",nil)
+		model:SetAttribute("VTRPracticeKeeperSaveBias",nil)
+	end
+	self:_tutorialPrompt(session,"","",0,0)
+	broadcast(self.State,session,{Type="Phase",Phase="IN PLAY"})
+end
+
+function Service:_handleGuidedWorldCupAction(session:any,player:Player,payload:any):boolean
+	local stage=tonumber(session.TutorialStage)or 0
+	if payload.Type=="TutorialReady"then return true end
+	if stage==1 and payload.Type=="Move"then
+		local direction=typeof(payload.Direction)=="Vector3"and payload.Direction or Vector3.zero
+		if direction.Magnitude>.12 then session.TutorialMovementInputStartedAt=session.TutorialMovementInputStartedAt or os.clock();session.TutorialMovementInputActiveUntil=os.clock()+.16 end
+	elseif stage==2 and payload.Type=="Pass"then
+		session.TutorialPassAttempted=true
+		session.TutorialPassAttemptedAt=os.clock()
+		session.TutorialPasser=session.TeamControl and session.TeamControl:GetActive(player)or session.TutorialPasser
+	elseif stage==3 and payload.Type=="Shot"then
+		session.TutorialShotTaken=true
+		session.TutorialAdvanceAt=os.clock()+1.1
+	elseif stage==4 and payload.Type=="Switch"then
+		session.TutorialSwitched=true
+		self:_tutorialPrompt(session,"TACKLE WHEN CLOSE","Tackle",0,1)
+	elseif stage==4 and payload.Type=="Tackle"then
+		session.TutorialTackleAttempts=(tonumber(session.TutorialTackleAttempts)or 0)+1
+		if session.TutorialTackleAttempts>=2 then session.TutorialAdvanceAt=os.clock()+.4 end
+	end
+	return false
+end
+
+function Service:_stepGuidedWorldCupMatch(session:any,dt:number)
+	local stage=tonumber(session.TutorialStage)or 0
+	local now=os.clock()
+	local elapsed=now-(tonumber(session.TutorialStageStartedAt)or now)
+	if stage==1 then
+		local active=session.TeamControl and session.TeamControl:GetActive(session.Player)or nil
+		local activeRoot=tutorialRoot(active)
+		local start=session.TutorialMovementStartPosition
+		local moved=activeRoot and typeof(start)=="Vector3"and Vector3.new(activeRoot.Position.X-start.X,0,activeRoot.Position.Z-start.Z).Magnitude>=5
+		local inputHeld=session.TutorialMovementInputStartedAt and now-session.TutorialMovementInputStartedAt>=.6 and(tonumber(session.TutorialMovementInputActiveUntil)or 0)>=now
+		if moved or inputHeld or elapsed>=12 then
+			self:_tutorialPrompt(session,"MOVEMENT COMPLETE","",1,1)
+			task.delay(.75,function()if self.Sessions[session.Player]==session and session.GuidedTutorialFlow==true and session.TutorialStage==1 then self:_guidedTutorialStage(session,2)end end)
+			session.TutorialStage=0
+		elseif elapsed>=8 and session.TutorialHelpLevel<2 then
+			session.TutorialHelpLevel=2;self:_track(session,session.Player,"playability_tutorial_assistance",{tutorialStage=1,helpLevel=2});self:_tutorialPrompt(session,"MOVE INTO SPACE","Move",0,1,false,nil,nil,nil,session.TutorialMovementLaneTarget,2)
+		elseif elapsed>=4 and session.TutorialHelpLevel<1 then
+			session.TutorialHelpLevel=1;self:_track(session,session.Player,"playability_tutorial_assistance",{tutorialStage=1,helpLevel=1});self:_tutorialPrompt(session,"MOVE INTO SPACE","Move",0,1,false,nil,nil,nil,session.TutorialMovementLaneTarget,1)
+		end
+	elseif stage==2 then
+		local owner=session.Possession and session.Possession:GetOwner()or nil
+		if session.TutorialPassAttempted and owner and owner~=session.TutorialPasser and tostring(owner:GetAttribute("VTRTeam")or"")=="Home"then
+			self:_tutorialPrompt(session,"PASS COMPLETE","",1,1)
+			task.delay(.75,function()if self.Sessions[session.Player]==session and session.GuidedTutorialFlow==true and session.TutorialStage==2 then self:_guidedTutorialStage(session,3)end end)
+			session.TutorialStage=0
+		elseif owner and tostring(owner:GetAttribute("VTRTeam")or"")=="Away"then
+			session.TutorialSoftRetryAt=session.TutorialSoftRetryAt or now+.7
+			if now>=session.TutorialSoftRetryAt then
+				local home=session.Teams.Home;local passer=home[10]or home[9]or home[1];self:_tutorialBallTo(session,passer);self:_tutorialSetActive(session,passer,"TutorialPassing");session.TutorialPasser=passer;session.TutorialPassAttempted=false;session.TutorialSoftRetryAt=nil;self:_track(session,session.Player,"playability_tutorial_soft_retry",{tutorialStage=2});self:_tutorialPrompt(session,"PASS TO THE HIGHLIGHTED PLAYER","Pass",0,1,false,session.TutorialPassTarget,session.TutorialPassTarget and{session.TutorialPassTarget}or nil)
+			end
+		elseif elapsed>=18 then
+			self:_guidedTutorialStage(session,3)
+		end
+	elseif stage==3 then
+		if session.TutorialShotTaken and session.Running and now>=(tonumber(session.TutorialAdvanceAt)or math.huge)then
+			self:_tutorialPrompt(session,"SHOOTING COMPLETE","",1,1)
+			task.delay(.75,function()if self.Sessions[session.Player]==session and session.GuidedTutorialFlow==true and session.TutorialStage==3 and session.Running then self:_guidedTutorialStage(session,4)end end)
+			session.TutorialAdvanceAt=math.huge
+		elseif elapsed>=25 and session.Running then
+			self:_guidedTutorialStage(session,4)
+		end
+	elseif stage==4 then
+		local owner=session.Possession and session.Possession:GetOwner()or nil
+		local won=owner and tostring(owner:GetAttribute("VTRTeam")or"")=="Home"
+		if won or now>=(tonumber(session.TutorialAdvanceAt)or math.huge)or elapsed>=25 then
+			self:_tutorialPrompt(session,"DEFENDING COMPLETE","",1,1)
+			session.TutorialStage=0
+			task.delay(.9,function()if self.Sessions[session.Player]==session and session.GuidedTutorialFlow==true then self:_completeGuidedWorldCupMatch(session)end end)
+		end
+	end
+end
+
+function Service:_startWorldCupTutorial(session:any)
+	self:_startGuidedWorldCupMatch(session)
 end
 
 function Service:_restartWorldCupTutorialStage(session:any,stage:number)
@@ -2626,7 +2892,7 @@ function Service:_restartWorldCupTutorialStage(session:any,stage:number)
 		self:_tutorialSetActive(session,a,"TutorialPassing")
 		self:_tutorialBallTo(session,a)
 		session.TutorialPassTarget=b
-		self:_tutorialPrompt(session,"RIGHT CLICK - PASS","Pass",0,3,true,b,{b,c})
+		self:_tutorialPrompt(session,"PASS TO THE HIGHLIGHTED PLAYER","Pass",0,3,true,b,{b,c})
 	elseif stage==3 then
 		local attacker=home[9]or home[10]or home[1]
 		local goalSign=1
@@ -2697,7 +2963,7 @@ function Service:_restartWorldCupTutorialStage(session:any,stage:number)
 		session.TutorialStageModels={attacker,keeper}
 		self:_tutorialSetActive(session,attacker,"TutorialShooting")
 		self:_tutorialBallTo(session,attacker)
-		self:_tutorialPrompt(session,"HOLD LEFT CLICK - SHOOT","Shoot",0,1,false,nil,nil,goalSign)
+		self:_tutorialPrompt(session,"HOLD SHOOT AND RELEASE","Shoot",0,1,false,nil,nil,goalSign)
 	elseif stage==4 then
 		local d1,d2=home[4]or home[1],home[5]or home[2]
 		local a1,a2,a3=away[9]or away[1],away[10]or away[2],away[11]or away[3]
@@ -2727,13 +2993,14 @@ function Service:_restartWorldCupTutorialStage(session:any,stage:number)
 		self:_tutorialPrompt(session,"SWITCH PLAYER","Switch",0,1)
 	elseif stage==5 then
 		self:_setTutorialDrillMode(session,false)
-		self:_tutorialPrompt(session,"START MATCH","StartMatch",3,3)
+		self:_completeWorldCupTutorial(session)
 	end
 end
 
 function Service:_completeWorldCupTutorial(session:any)
 	if not session or session.Ended then return end
 	for _,participant in session.Players do self:_track(session,participant,"playability_tutorial_complete",{})end
+	if session.AI and session.AI.BeginFirstMatchRestoration then session.AI:BeginFirstMatchRestoration()end
 	session.WorldCupTutorial=false
 	session.WorldCupOnboarding=false
 	session.WorldCupOnboardingMidfieldStarted=true
@@ -2764,8 +3031,6 @@ function Service:_completeWorldCupTutorial(session:any)
 			model:SetAttribute("VTRUserId",nil)
 		end
 	end
-	session.World.HomeScore.Value=1
-	session.World.AwayScore.Value=1
 	session.TutorialStage=nil
 	session.TutorialAllowAI=false
 	session.TutorialStageModels=nil
@@ -2777,67 +3042,35 @@ function Service:_completeWorldCupTutorial(session:any)
 	session.TutorialDefenseGoalSign=nil
 	session.TutorialDefenseShotAt=nil
 	session.TutorialDefenseNextAttackAt=nil
-	session.Running=false
-	session.HalfTimeBreak=false
-	session.HalfTimeBreakEndsAt=nil
-	session.HalfTimeTriggered=true
-	session.HalfTimeResuming=true
-	session.Accumulator=0
-	session.Phase="Kickoff"
+	session.Running=true
+	session.HalfTimeResuming=nil
+	session.Phase="IN PLAY"
 	if session.AI and session.AI.SetExternalPhase then session.AI:SetExternalPhase(nil)end
-	self:_resetForSecondHalfKickoff(session)
-	session.World.HomeScore.Value=1
-	session.World.AwayScore.Value=1
-	session.SecondHalfStartedAt=os.clock()
-	if session.Clock then session.Clock:StartSecondHalf()end
-	if session.AI and session.AI.SetHalf then session.AI:SetHalf(2)end
-	if session.Referee and session.Referee.SetHalf then session.Referee:SetHalf(2)end
-	if session.Offside and session.Offside.SetHalf then session.Offside:SetHalf(2)end
-	if session.Goalkeepers and session.Goalkeepers.SetHalf then session.Goalkeepers:SetHalf(2)end
-	if session.OutOfBounds and session.OutOfBounds.SetHalf then session.OutOfBounds:SetHalf(2)end
-	reviveMatchBallForKickoff(session,"WorldCupTutorialFullMatchStart")
+	self:_setPlayersFrozen(session,false)
+	self:_releasePlayersForLive(session)
+	self:_stabilizePlayers(session)
 	self:_tutorialPrompt(session,"","",0,0)
-	self:_startSetPiece(session,"Kickoff","Away",session.World.PitchCFrame.Position)
-	broadcast(self.State,session,{Type="HalfTimeResume",ExtraTime=false})
+	broadcast(self.State,session,{Type="Phase",Phase="IN PLAY"})
 	local clockPayload=session.Clock and session.Clock:Payload()
 	if clockPayload then
 		broadcast(self.State,session,{Type="Clock",GameSeconds=clockPayload.GameSeconds,Half=clockPayload.Half,AddedMinutes=clockPayload.AddedMinutes,InAddedTime=clockPayload.InAddedTime,AddedElapsed=clockPayload.AddedElapsed,Home=session.World.HomeScore.Value,Away=session.World.AwayScore.Value})
 	end
-	task.delay(1.9,function()
-		if not session.Ended and session.HalfTimeResuming and session.Phase=="Kickoff" and not session.Running then
-			self:_forceSecondHalfKickoffLive(session)
-		end
-	end)
-	task.delay(4.5,function()
-		if not session.Ended and session.HalfTimeResuming and session.Phase=="Kickoff" and not session.Running then
-			self:_forceSecondHalfKickoffLive(session)
-		end
-	end)
-	task.delay(7,function()
-		if not session.Ended and session.HalfTimeResuming and not session.Running then
-			self:_forceSecondHalfKickoffLive(session)
-		end
-		session.HalfTimeResuming=nil
-	end)
 end
 
 function Service:_handleWorldCupTutorialAction(session:any,player:Player,payload:any)
 	if not session.WorldCupTutorial then return false end
+	if session.GuidedTutorialFlow==true then return self:_handleGuidedWorldCupAction(session,player,payload)end
 	if payload.Type=="TutorialReady"then
 		session.TutorialReady=true
 		return true
 	end
-	if session.TutorialStage==1 and payload.Type~="Move"and payload.Type~="Sprint"and payload.Type~="TutorialStartMatch"then
+	if session.TutorialStage==1 and payload.Type~="Move"and payload.Type~="Sprint"then
 		return true
 	end
-	if session.TutorialStage==2 and payload.Type~="Pass"and payload.Type~="Move"and payload.Type~="TutorialStartMatch"then
+	if session.TutorialStage==2 and payload.Type~="Pass"and payload.Type~="Move"then
 		return true
 	end
-	if session.TutorialReady~=true and payload.Type~="TutorialStartMatch"then
-		return true
-	end
-	if payload.Type=="TutorialStartMatch" and session.TutorialStage==5 then
-		self:_completeWorldCupTutorial(session)
+	if session.TutorialReady~=true then
 		return true
 	end
 	local stage=tonumber(session.TutorialStage)or 0
@@ -2903,6 +3136,7 @@ end
 
 function Service:_stepWorldCupTutorial(session:any,dt:number)
 	if not session or session.Ended or session.WorldCupTutorial~=true then return end
+	if session.GuidedTutorialFlow==true then self:_stepGuidedWorldCupMatch(session,dt);return end
 	if session.TutorialStage==1 then
 		local active=session.TeamControl and session.TeamControl:GetActive(session.Player)or nil
 		local root=tutorialRoot(active)
@@ -2921,7 +3155,7 @@ function Service:_stepWorldCupTutorial(session:any,dt:number)
 			local sprinting=(active and active:GetAttribute("VTRSprinting")==true)or(playerState and playerState.SprintActual==true)
 			if sprintRequired and not sprinting then
 				if session.TutorialMovementSprintPrompted~=true then session.TutorialMovementSprintPrompted=true end
-				self:_tutorialPrompt(session,"SHIFT TO SPRINT","Sprint",currentCount,5,false,nil,nil,nil,target,math.max(tonumber(session.TutorialMovementHelpLevel)or 0,1),points,index)
+				self:_tutorialPrompt(session,"SPRINT TO THE NEXT MARKER","Sprint",currentCount,5,false,nil,nil,nil,target,math.max(tonumber(session.TutorialMovementHelpLevel)or 0,1),points,index)
 				return
 			end
 			index+=1
@@ -2935,7 +3169,7 @@ function Service:_stepWorldCupTutorial(session:any,dt:number)
 			end
 			session.TutorialMovementLaneTarget=points[index]
 			local count=math.clamp(index-1,0,5)
-			local message=count>=2 and"SHIFT TO SPRINT"or"MOVE INTO SPACE"
+			local message=count>=2 and"SPRINT TO THE NEXT MARKER"or"MOVE INTO SPACE"
 			local action=count>=2 and"Sprint"or"Move"
 			if count>=2 then session.TutorialMovementSprintPrompted=true end
 			self:_tutorialPrompt(session,message,action,count,5,false,nil,nil,nil,session.TutorialMovementLaneTarget,tonumber(session.TutorialMovementHelpLevel)or 0,points,index)
@@ -2948,11 +3182,11 @@ function Service:_stepWorldCupTutorial(session:any,dt:number)
 				session.TutorialMovementLaneTarget=type(points)=="table"and points[index]or tutorialWorldPoint(session,Vector3.new(localPos.X,3,localPos.Z-16))
 			end
 			local count=math.max(0,(tonumber(session.TutorialMovementPointIndex)or 1)-1)
-			self:_tutorialPrompt(session,count>=2 and"SHIFT TO SPRINT"or"MOVE INTO SPACE",count>=2 and"Sprint"or"Move",count,5,false,nil,nil,nil,session.TutorialMovementLaneTarget,2,session.TutorialMovementPoints,session.TutorialMovementPointIndex)
+			self:_tutorialPrompt(session,count>=2 and"SPRINT TO THE NEXT MARKER"or"MOVE INTO SPACE",count>=2 and"Sprint"or"Move",count,5,false,nil,nil,nil,session.TutorialMovementLaneTarget,2,session.TutorialMovementPoints,session.TutorialMovementPointIndex)
 		elseif elapsed>=4 and help<1 then
 			session.TutorialMovementHelpLevel=1
 			local count=math.max(0,(tonumber(session.TutorialMovementPointIndex)or 1)-1)
-			self:_tutorialPrompt(session,count>=2 and"SHIFT TO SPRINT"or"MOVE INTO SPACE",count>=2 and"Sprint"or"Move",count,5,false,nil,nil,nil,session.TutorialMovementLaneTarget,1,session.TutorialMovementPoints,session.TutorialMovementPointIndex)
+			self:_tutorialPrompt(session,count>=2 and"SPRINT TO THE NEXT MARKER"or"MOVE INTO SPACE",count>=2 and"Sprint"or"Move",count,5,false,nil,nil,nil,session.TutorialMovementLaneTarget,1,session.TutorialMovementPoints,session.TutorialMovementPointIndex)
 		end
 		return
 	end
@@ -3143,7 +3377,7 @@ function Service:_resetForExtraTimeKickoff(session:any)
 	if session.OutOfBounds and session.OutOfBounds.Reset then session.OutOfBounds:Reset()end
 	if session.Goals and session.Goals.Unlock then session.Goals:Unlock()end
 	if session.Possession then session.Possession:Reset()end
-	if session.TeamControl and session.TeamControl.Receiving then session.TeamControl.Receiving:Clear()end
+	if session.TeamControl and session.TeamControl.CancelReception then session.TeamControl:CancelReception("HalfTime")end
 	if session.AI and session.AI.SetExternalPhase then session.AI:SetExternalPhase(nil)end
 	if session.BallService then
 		session.BallService:ClearGoalkeeperHoldState(nil)
@@ -3176,6 +3410,7 @@ function Service:_resetForExtraTimeKickoff(session:any)
 		for _,attribute in{"VTRGoalkeeperHolding","VTRGoalkeeperHoldingSince","VTRKeeperMustDistributeUntil","VTRGoalkeeperSaving","VTRKeeperDiveAnimationLocked","VTRBlocking","VTRBlockUntil","VTRDribbleMoveUntil","VTRPostSkillVulnerableUntil","VTRStunnedUntil","VTRCannotRecoverBallUntil","VTRReceiverAssist","VTRPreparingReceive","VTRReceiveUntil","VTRReceiveTarget","VTRSetPieceWall","VTRWallJumpUntil","VTRPenaltyGuessSlot","VTRPenaltyGuessPoint","VTRSetPieceTaker","VTRForceIdle","VTRKickoffReady","VTRCornerTaker","VTRThrowInTaker"}do
 			model:SetAttribute(attribute,nil)
 		end
+		ReceiverMovementService.Clear(model)
 		local humanoid=model:FindFirstChildOfClass("Humanoid")
 		local root=model:FindFirstChild("HumanoidRootPart")::BasePart?
 		if humanoid then
@@ -3199,15 +3434,18 @@ function Service:_resetForExtraTimeKickoff(session:any)
 end
 
 function Service:_startWorldCupExtraTime(session:any):boolean
-	if not self:_isWorldCupKnockoutTiebreakMatch(session) or not self:_scoreTied(session) or session.ExtraTimeStarted==true then
+	if not(session.Ranked==true or self:_isWorldCupKnockoutTiebreakMatch(session)) or not self:_scoreTied(session) or session.ExtraTimeStarted==true then
 		return false
 	end
 
+	local pacing=session.Ranked==true and MatchFormatConfig.Ranked or session.Format or MatchFormatConfig.Get(session.MatchFormat)
+	local extraTimeSeconds=math.max(60,tonumber(pacing and pacing.ExtraTimeSeconds)or 120)
+	local midpointBreakSeconds=math.clamp(tonumber(pacing and pacing.ExtraTimeMidpointBreakSeconds)or 7,4,12)
 	session.ExtraTimeStarted=true
 	session.ExtraTimeActive=true
 	session.ExtraTimeCompleted=false
-	session.ExtraTimeHalfPauseSeconds=EXTRA_TIME_HALF_PAUSE_SECONDS
-	session.Clock=MatchClockService.new(EXTRA_TIME_TOTAL_SECONDS)
+	session.ExtraTimeHalfPauseSeconds=midpointBreakSeconds
+	session.Clock=MatchClockService.new(extraTimeSeconds)
 	session.Running=false
 	session.Phase="EXTRA TIME"
 	session.Paused=false
@@ -3215,8 +3453,8 @@ function Service:_startWorldCupExtraTime(session:any):boolean
 	session.HalfTimeTriggered=false
 
 	self:_resetForExtraTimeKickoff(session)
-	broadcast(self.State,session,{Type="ExtraTime",Phase="EXTRA TIME",Home=session.World.HomeScore.Value,Away=session.World.AwayScore.Value,Duration=EXTRA_TIME_TOTAL_SECONDS,HalfPause=EXTRA_TIME_HALF_PAUSE_SECONDS})
-	task.delay(2.25,function()
+	broadcast(self.State,session,{Type="ExtraTime",Phase="EXTRA TIME",Ranked=session.Ranked==true,Home=session.World.HomeScore.Value,Away=session.World.AwayScore.Value,Duration=extraTimeSeconds,HalfPause=midpointBreakSeconds})
+	task.delay(.55,function()
 		if session.Ended or not session.ExtraTimeActive then return end
 		self:_startSetPiece(session,"Kickoff","Home",session.World.PitchCFrame.Position)
 	end)
@@ -3813,10 +4051,35 @@ function Service:_releaseAIThrowIn(session:any)
 end
 
 local DEBUG_ACTIONS={AITacticsDebug=true,ShootingPracticeTuning=true,DebugCorner=true,DebugFreeKick=true,DebugPenaltyAttack=true,DebugPenaltyDefense=true}
+local LIFECYCLE_DIAGNOSTIC_KEYS={"StateConnections","InputConnections","RenderBindings","ActionBindings","TemporaryGuis","TemporaryInstances","Tasks"}
+local function latencyBand(seconds:number):string
+	if seconds<.08 then return"under80ms"end
+	if seconds<.14 then return"80-140ms"end
+	if seconds<.22 then return"140-220ms"end
+	return"220ms+"
+end
+local function performanceBand(fps:number):string
+	if fps<30 then return"under30"end
+	if fps<45 then return"30-44"end
+	if fps<60 then return"45-59"end
+	return"60+"
+end
+local function divergenceBand(distance:number):string
+	if distance<1 then return"under1"end
+	if distance<3 then return"1-3"end
+	if distance<6 then return"3-6"end
+	return"6+"
+end
+local function lifecycleDiagnosticTotal(value:any):number
+	if type(value)~="table"then return 0 end
+	local total=0
+	for _,key in LIFECYCLE_DIAGNOSTIC_KEYS do total+=math.clamp(math.floor(tonumber(value[key])or 0),0,128)end
+	return total
+end
 function Service:_debugActionAllowed(session:any,player:Player,actionType:string):boolean
 	local now=os.clock()
 	session.DebugActionAt=session.DebugActionAt or{}
-	local allowed=GameplayDebugPolicy.CanUse(actionType,{Authorized=DeveloperAccessService.IsAuthorized(player),IsStudio=RunService:IsStudio(),IsPrivateServer=game.PrivateServerId~="",Ranked=session.Ranked==true,WorldCup=worldCupSession(session),ShootingPractice=session.ShootingPractice==true,RateReady=now-(tonumber(session.DebugActionAt[player])or 0)>=.75})
+	local allowed=GameplayDebugPolicy.CanUse(actionType,{OptIn=Workspace:GetAttribute("VTRKickoffDebug")==true,Authorized=DeveloperAccessService.IsAuthorized(player),IsStudio=RunService:IsStudio(),IsPrivateServer=game.PrivateServerId~="",Ranked=session.Ranked==true,WorldCup=worldCupSession(session),ShootingPractice=session.ShootingPractice==true,RateReady=now-(tonumber(session.DebugActionAt[player])or 0)>=.75})
 	if allowed then session.DebugActionAt[player]=now;return true end
 	if self.Analytics then self.Analytics:TrackOnce(player,tostring(session.World and session.World.Folder.Name or"match")..":"..actionType,"playability_debug_action_rejected",{mode=matchMode(session),actionFamily=actionType})end
 	return false
@@ -3826,9 +4089,35 @@ function Service:_action(player:Player,payload:any)
 	if not session or type(payload)~="table"then return end
 	local actionType=tostring(payload.Type or"")
 	if DEBUG_ACTIONS[actionType]and not self:_debugActionAllowed(session,player,actionType)then return end
-	if actionType=="ActionQueueCancelled"or actionType=="MobileActionCancelled"then
-		local eventName=actionType=="ActionQueueCancelled"and"playability_action_queue_cancelled"or"playability_mobile_action_cancelled"
-		self:_track(session,player,eventName,{cancellationReason=tostring(payload.Reason or"cancelled"),actionFamily=tostring(payload.ActionFamily or"")})
+	if actionType=="ActionQueueCancelled"or actionType=="MobileActionCancelled"or actionType=="MobileChargeConflictRejected"then
+		session.ClientTelemetryAt=session.ClientTelemetryAt or{}
+		local now=os.clock();if now-(tonumber(session.ClientTelemetryAt[player])or 0)<.08 then return end;session.ClientTelemetryAt[player]=now
+		local eventName=actionType=="ActionQueueCancelled"and"playability_action_queue_cancelled"or actionType=="MobileChargeConflictRejected"and"playability_mobile_charge_conflict_rejected"or"playability_mobile_action_cancelled"
+		local family=tostring(payload.ActionFamily or"");if family~="Pass"and family~="Shot"and family~="Clearance"and family~="Ground"and family~="Through"and family~="Lob"then family=""end
+		local reason=string.sub(tostring(payload.Reason or"cancelled"),1,32)
+		self:_track(session,player,eventName,{cancellationReason=reason,actionFamily=family})
+		if actionType=="ActionQueueCancelled"then
+			self:_track(session,player,"playability_stale_action_cancelled",{cancellationReason=reason,actionFamily=family})
+			if session.TeamControl and session.TeamControl.CancelReceptionQueuedAction then session.TeamControl:CancelReceptionQueuedAction(player,reason,payload.ReceptionContractId,payload.ReceptionRevision) end
+		end
+		return
+	end
+	if actionType=="ClientPerformance"then
+		if tostring(payload.MatchSessionId or"")~=tostring(session.World and session.World.Folder.Name or"")or session.ClientPerformanceReceived and session.ClientPerformanceReceived[player]then return end
+		local fps=tonumber(payload.AverageFPS);local divergence=tonumber(payload.MaxBallDivergence)
+		if not fps or fps~=fps or not divergence or divergence~=divergence then return end
+		session.ClientPerformanceReceived=session.ClientPerformanceReceived or{};session.ClientPerformanceReceived[player]=true
+		fps=math.clamp(fps,1,240);divergence=math.clamp(divergence,0,500)
+		local state=session.PlayerState and session.PlayerState[player];if state then state.PerformanceBand=performanceBand(fps)end
+		self:_track(session,player,"playability_client_performance",{fpsBand=performanceBand(fps),divergenceBand=divergenceBand(divergence)})
+		self:_track(session,player,"playability_ball_divergence",{divergenceBand=divergenceBand(divergence)})
+		return
+	end
+	if actionType=="ClientLifecycleDiagnostics"then
+		if tostring(payload.MatchSessionId or"")~=tostring(session.World and session.World.Folder.Name or"")or session.ClientLifecycleReceived and session.ClientLifecycleReceived[player]then return end
+		session.ClientLifecycleReceived=session.ClientLifecycleReceived or{};session.ClientLifecycleReceived[player]=true
+		local before=lifecycleDiagnosticTotal(payload.Before);local after=lifecycleDiagnosticTotal(payload.After)
+		self:_track(session,player,"playability_lifecycle_cleanup",{lifecycleBeforeCount=before,lifecycleAfterCount=after,cleanupResidual=after>0})
 		return
 	end
 	if payload.Type=="ClientReady"then
@@ -3839,8 +4128,12 @@ function Service:_action(player:Player,payload:any)
 			if state then
 				local device=tostring(payload.Device or"");state.Device=table.find({"KeyboardMouse","Gamepad","Touch"},device)and device or"Unknown"
 				local assist=tostring(payload.ReceiverAssistMode or"");state.ReceiverAssistMode=table.find({"Newcomer","Standard","Manual"},assist)and assist or"Standard"
+				local defensive=tostring(payload.DefensiveAutoSwitchMode or"");state.DefensiveAutoSwitchMode=table.find({"Newcomer","Standard","Manual"},defensive)and defensive or"Standard"
+				if session.TeamControl and session.TeamControl.SetDefensiveAutoSwitch then session.TeamControl:SetDefensiveAutoSwitch(player,state.DefensiveAutoSwitchMode)end
 				local camera=tostring(payload.CameraPreset or"");state.CameraPreset=table.find({"Tactical","Pro","Roblox"},camera)and camera or"Auto"
+				local ok,ping=pcall(function()return player:GetNetworkPing()end);state.LatencyBand=ok and latencyBand(math.clamp(tonumber(ping)or 0,0,2))or"Unknown"
 			end
+			self:_track(session,player,"playability_client_ready",{fullScreenPresentationLayers=math.clamp(math.floor(tonumber(payload.PresentationLayerCount)or 0),0,4)})
 		end
 		return
 	end
@@ -3972,14 +4265,29 @@ function Service:_action(player:Player,payload:any)
 		end
 		return
 	end
-	if session.WorldCupTutorial==true and (payload.Type=="TutorialStartMatch"or payload.Type=="TutorialReady")then
+	if session.WorldCupTutorial==true and payload.Type=="TutorialReady"then
 		self:_handleWorldCupTutorialAction(session,player,payload)
 		return
 	end
-	if session.WorldCupTutorial==true and session.TutorialStage==1 and payload.Type~="Move"and payload.Type~="Sprint"then
+	if session.WorldCupTutorial==true and session.GuidedTutorialFlow==true then
+		local stage=tonumber(session.TutorialStage)or 0
+		local action=tostring(payload.Type or"")
+		local operational=action=="Pause"or action=="Forfeit"
+		local allowed=operational
+		if stage==1 then
+			allowed=allowed or action=="Move"or action=="Sprint"
+		elseif stage==2 then
+			allowed=allowed or action=="Pass"or action=="Move"or action=="Sprint"
+			if action=="Pass"then payload.PassType="Ground"end
+		elseif stage==3 then
+			allowed=allowed or action=="Shot"or action=="Move"or action=="Sprint"or action=="ShootingFocus"
+		elseif stage==4 then
+			allowed=allowed or action=="Switch"or action=="Tackle"or action=="Move"or action=="Sprint"
+		end
+		if not allowed then return end
+	elseif session.WorldCupTutorial==true and session.TutorialStage==1 and payload.Type~="Move"and payload.Type~="Sprint"then
 		return
-	end
-	if session.WorldCupTutorial==true and session.TutorialStage==2 and payload.Type~="Pass"and payload.Type~="Move"then
+	elseif session.WorldCupTutorial==true and session.TutorialStage==2 and payload.Type~="Pass"and payload.Type~="Move"then
 		return
 	end
 	if session.ShootingPractice and payload.Type~="Shot"and payload.Type~="Move"and payload.Type~="Sprint"and payload.Type~="ReceiverAssistOverride"and payload.Type~="Pause"and payload.Type~="Forfeit"then
@@ -4108,13 +4416,18 @@ function Service:_action(player:Player,payload:any)
 		if session.UsedBench[side][benchIndex] then return end
 		local incoming=session.BenchData[side] and session.BenchData[side][benchIndex]
 		if not incoming then return end
+		if session.TeamControl and session.TeamControl.CancelReceptionForReceiver then session.TeamControl:CancelReceptionForReceiver(outgoing,"Substitution") end
 		outgoing:SetAttribute("playerId",incoming.playerId)
 		outgoing:SetAttribute("DisplayName",incoming.displayName or incoming.shortName or"SUBSTITUTE")
 		outgoing:SetAttribute("overall",incoming.overall or 60)
-		outgoing:SetAttribute("VTRSprintStamina",100)
-		outgoing:SetAttribute("VTREndurance",100)
-		outgoing:SetAttribute("VTRStamina",100)
-		outgoing:SetAttribute("VTRSprintLocked",false)
+		session.StaminaService:Reset(outgoing)
+		session.MovementSpeeds[outgoing]=nil
+		for _,participant in session.Players do
+			if session.TeamControl:GetActive(participant)==outgoing then
+				local state=session.PlayerState[participant]
+				if state then state.Stamina=StaminaConfig.Maximum;state.Endurance=StaminaConfig.Maximum;state.SprintRequested=false;state.SprintActual=false;state.SprintLastSignalAt=0 end
+			end
+		end
 		for _,key in{"PAC","SHO","PAS","DRI","DEF","PHY"}do outgoing:SetAttribute(key,tonumber(incoming.mainStats and incoming.mainStats[key])or incoming.overall or 60)end
 		local detailed=incoming.detailedStats or incoming.DetailedStats or{}
 		local shooting=tonumber(incoming.mainStats and incoming.mainStats.SHO)or tonumber(incoming.SHO)or incoming.overall or 60
@@ -4153,7 +4466,7 @@ function Service:_action(player:Player,payload:any)
 	end
 	if payload.Type=="ReceiverAssistOverride"then
 		if session.TeamControl and session.TeamControl.SetManualReceiveOverride then
-			session.TeamControl:SetManualReceiveOverride(player,payload.Active==true)
+			session.TeamControl:SetManualReceiveOverride(player,payload.Active==true,payload.ReceptionContractId,payload.ReceptionRevision,payload.ReceptionClientTime)
 		end
 		return
 	end
@@ -4317,7 +4630,8 @@ function Service:_stepPlayabilityTelemetry(session:any)
 		for _,participant in session.Players do
 			if participant.UserId==ownerId then
 				local magnitude=tonumber(session.World.Ball:GetAttribute("VTRLastHardCorrectionMagnitude"))or 0
-				self:_track(session,participant,"playability_ball_hard_correction",{hardCorrectionMagnitudeBand=magnitude<8 and"6-8"or magnitude<12 and"8-12"or"12+"})
+				local divergence=tonumber(session.World.Ball:GetAttribute("VTRDribbleServerDivergence"))or magnitude
+				self:_track(session,participant,"playability_ball_hard_correction",{hardCorrectionMagnitudeBand=magnitude<8 and"6-8"or magnitude<12 and"8-12"or"12+",hardCorrectionReason=tostring(session.World.Ball:GetAttribute("VTRLastHardCorrectionReason")or"Unknown"),divergenceBand=divergenceBand(divergence)})
 				break
 			end
 		end
@@ -4350,7 +4664,7 @@ function Service:_step(dt:number)
 				session.WorldCupFirstPassPending=false
 				if session.World and session.World.Ball then session.World.Ball:SetAttribute("VTRWorldCupFirstPassPending",nil)end
 				if session.WorldCupFirstPassPasser and session.WorldCupFirstPassPasser.Parent then session.WorldCupFirstPassPasser:SetAttribute("VTRNoAutoPassUntil",nil)end
-				if session.WorldCupTutorial==true and session.TutorialStage==2 then
+				if session.WorldCupTutorial==true and session.GuidedTutorialFlow~=true and session.TutorialStage==2 then
 					session.TutorialAllowAI=true
 					local defender=session.TutorialDefender
 					local defenderRoot=tutorialRoot(defender)
@@ -4387,7 +4701,7 @@ function Service:_step(dt:number)
 		end
 		if not session.Running then continue end
 		session.Accumulator+=dt
-		if session.WorldCupTutorial~=true then session.Clock:Step(dt)end
+		if session.WorldCupTutorial~=true or session.GuidedTutorialFlow==true then session.Clock:Step(dt)end
 		local grantIndex=math.floor((session.Clock:Payload().GameSeconds or 0)/1800)
 		if grantIndex>(session.PauseGrantIndex or 0)then
 			for _,participant in session.Players do
@@ -4401,19 +4715,38 @@ function Service:_step(dt:number)
 			local active=session.TeamControl:GetActive(participant)
 			if active and state then
 				if state.SprintRequested==true and os.clock()-(tonumber(state.SprintLastSignalAt)or 0)>StaminaConfig.RequestWatchdogSeconds then state.SprintRequested=false end
-				local root=active:FindFirstChild("HumanoidRootPart")::BasePart?
-				local speed=root and Vector3.new(root.AssemblyLinearVelocity.X,0,root.AssemblyLinearVelocity.Z).Magnitude or 0
-				local move=math.clamp(tonumber(active:GetAttribute("VTRMoveMagnitude"))or 0,0,1)
-				local frozen=active:GetAttribute("VTRFrozen")==true or active:GetAttribute("VTRSentOff")==true
-				local stunned=(tonumber(active:GetAttribute("VTRStunnedUntil"))or 0)>os.clock()
-				local reserve,endurance,actual=session.StaminaService:Step(active,dt,{SprintRequested=state.SprintRequested==true,SprintAllowed=session.Running==true and session.Paused~=true,MoveMagnitude=move,CurrentSpeed=speed,HasBall=session.Possession:GetOwner()==active,UserControlled=true,Frozen=frozen,Stunned=stunned,ActionLocked=active:GetAttribute("VTRActionSprintLocked")==true})
-				state.Stamina=reserve;state.Endurance=endurance;state.SprintActual=actual
-				activeOwners[active]=participant;sprintingByModel[active]=actual
+				activeOwners[active]=participant
 			end
 		end
+		session.StaminaAccumulator=(tonumber(session.StaminaAccumulator)or 0)+dt
+		local staminaStep=math.max(.02,tonumber(StaminaConfig.SimulationStepSeconds)or .1)
+		if session.StaminaAccumulator>=staminaStep then
+			local staminaDt=math.min(session.StaminaAccumulator,.35)
+			session.StaminaAccumulator=0
+			local now=os.clock()
+			for _,model in session.Models do
+				local modelRoot=model:FindFirstChild("HumanoidRootPart")::BasePart?
+				local participant=activeOwners[model]
+				local state=participant and session.PlayerState[participant]or nil
+				local userRequested=state and state.SprintRequested==true or false
+				model:SetAttribute("VTRUserSprintRequested",userRequested)
+				local receptionSprint=model:GetAttribute("VTRPreparingReceive")==true and model:GetAttribute("VTRReceiveRouteSprintRequested")==true
+				local requested=if participant then userRequested or receptionSprint else model:GetAttribute("VTRAISprintRequested")==true
+				local move=math.clamp(math.max(tonumber(model:GetAttribute("VTRMoveMagnitude"))or 0,receptionSprint and(tonumber(model:GetAttribute("VTRActualLocomotionMagnitude"))or 0)or 0),0,1)
+				local speed=modelRoot and Vector3.new(modelRoot.AssemblyLinearVelocity.X,0,modelRoot.AssemblyLinearVelocity.Z).Magnitude or 0
+				local frozen=model:GetAttribute("VTRFrozen")==true or model:GetAttribute("VTRForceIdle")==true or model:GetAttribute("VTRSentOff")==true or model:GetAttribute("VTRRedCard")==true
+				local stunned=(tonumber(model:GetAttribute("VTRStunnedUntil"))or 0)>now
+				local actionLocked=model:GetAttribute("VTRActionSprintLocked")==true or model:GetAttribute("VTRSetPieceTaker")==true
+				local phaseAllows=session.Phase=="IN PLAY"or session.Phase=="SHOOTING PRACTICE"
+				local reserve,endurance,actual=session.StaminaService:Step(model,staminaDt,{SprintRequested=requested,SprintAllowed=session.Running==true and phaseAllows,MoveMagnitude=move,CurrentSpeed=speed,HasBall=session.Possession:GetOwner()==model,UserControlled=participant~=nil,Frozen=frozen,Stunned=stunned,ActionLocked=actionLocked})
+				if state then state.Stamina=reserve;state.Endurance=endurance;state.SprintActual=actual end
+			end
+		end
+		for _,model in session.Models do sprintingByModel[model]=model:GetAttribute("VTRSprinting")==true end
 		for _,participant in session.Players do
 			local playerState=session.PlayerState[participant];local active=session.TeamControl:GetActive(participant);local humanoid=active and active:FindFirstChildOfClass("Humanoid");if not active or not playerState then continue end
-			local sprinting=sprintingByModel[active]==true;active:SetAttribute("VTRSprinting",sprinting);local moveMagnitude=math.clamp(tonumber(active:GetAttribute("VTRMoveMagnitude"))or 0,0,1);local turnDot=math.clamp(tonumber(active:GetAttribute("VTRTurnDot"))or 1,-1,1);local ownsBall=session.Possession:GetOwner()==active
+			playerState.Stamina=session.StaminaService:Energy(active);playerState.Endurance=playerState.Stamina;playerState.SprintActual=sprintingByModel[active]==true
+			local sprinting=sprintingByModel[active]==true;local moveMagnitude=math.clamp(tonumber(active:GetAttribute("VTRActualLocomotionMagnitude"))or tonumber(active:GetAttribute("VTRMoveMagnitude"))or 0,0,1);local turnDot=math.clamp(tonumber(active:GetAttribute("VTRTurnDot"))or 1,-1,1);local ownsBall=session.Possession:GetOwner()==active
 			local resolved=MovementStatsResolver.Resolve(active,{MoveMagnitude=moveMagnitude,Sprinting=sprinting,StaminaRatio=playerState.Stamina/Config.Stamina.Maximum,HasBall=ownsBall,TurnDot=turnDot,TurnPenalty=tonumber(active:GetAttribute("DribbleTurnPenalty"))or 1,UserControlled=true});local target=resolved.TargetSpeed;local current=session.MovementSpeeds[active]or 0;local switchedAt=tonumber(active:GetAttribute("VTRControlSwitchedAt"))or 0
 			local immediateUntil=tonumber(active:GetAttribute("VTRImmediateControlUntil"))or 0
 			if os.clock()<immediateUntil and moveMagnitude>.08 then
@@ -4424,8 +4757,8 @@ function Service:_step(dt:number)
 			active:SetAttribute(MovementTuning.DebugAttributes.CurrentSpeed,current);active:SetAttribute(MovementTuning.DebugAttributes.TargetSpeed,target);active:SetAttribute(MovementTuning.DebugAttributes.Stamina,playerState.Stamina);active:SetAttribute(MovementTuning.DebugAttributes.SprintMultiplier,resolved.SprintMultiplier);active:SetAttribute(MovementTuning.DebugAttributes.BallControlModifier,resolved.BallControlModifier);if humanoid then humanoid.WalkSpeed=math.max(.1,current)end
 		end
 		for _,model in session.Models do local modelRoot=model:FindFirstChild("HumanoidRootPart")::BasePart?;if modelRoot then local last=session.LastPositions[model];local limit=math.max(8,(model:GetAttribute("VTRUserId")and 40 or 48)*math.min(dt+.12,.28));if last and(modelRoot.Position-last).Magnitude>limit then local facing=Vector3.new(modelRoot.CFrame.LookVector.X,0,modelRoot.CFrame.LookVector.Z);model:PivotTo(CFrame.lookAt(last,last+(facing.Magnitude>.01 and facing.Unit or Vector3.zAxis)))else session.LastPositions[model]=modelRoot.Position end end end
-		local currentHalf=session.Clock and session.Clock:Payload().Half or 1;if session.AI and session.AI.SetHalf then session.AI:SetHalf(currentHalf)end;if session.Offside and session.Offside.SetHalf and session.OffsideDisabled~=true then session.Offside:SetHalf(currentHalf)end;if session.Goalkeepers and session.Goalkeepers.SetHalf then session.Goalkeepers:SetHalf(currentHalf)end;if session.Stats and session.Stats.RecordPositions then session.Stats:RecordPositions(session.Models,dt)end;session.BallService:Step(dt);session.TeamControl:Step();session.Animations:Step(session.Possession:GetOwner());session.Grounding:Step();local tutorialAI=session.WorldCupTutorial and session.TutorialAllowAI==true and session.TutorialStage~=1;if not session.ShootingPractice and (not session.WorldCupTutorial or tutorialAI) then session.AI:Step(dt)end;self:_stepWorldCupTutorial(session,dt);session.Goalkeepers:Step(dt);session.Goals:Step();if session.Running and not session.ShootingPractice and not session.WorldCupTutorial then session.OutOfBounds:Step()end;if not session.ShootingPractice and not session.WorldCupTutorial then RefereeService.Enforce(session.Models,session.World.PitchCFrame,session.World.Width,session.World.Length)end;if session.LinkDebug then session.LinkDebug:Step(session,dt)end
-		if session.WorldCupTutorial then
+		local currentHalf=session.Clock and session.Clock:Payload().Half or 1;if session.AI and session.AI.SetHalf then session.AI:SetHalf(currentHalf)end;if session.Offside and session.Offside.SetHalf and session.OffsideDisabled~=true then session.Offside:SetHalf(currentHalf)end;if session.Goalkeepers and session.Goalkeepers.SetHalf then session.Goalkeepers:SetHalf(currentHalf)end;if session.Stats and session.Stats.RecordPositions then session.Stats:RecordPositions(session.Models,dt)end;session.BallService:Step(dt);session.TeamControl:Step(dt);session.Animations:Step(session.Possession:GetOwner());session.Grounding:Step();local tutorialAI=session.WorldCupTutorial and session.TutorialAllowAI==true and session.TutorialStage~=1;if not session.ShootingPractice and (not session.WorldCupTutorial or tutorialAI) then session.AI:Step(dt)end;self:_stepWorldCupTutorial(session,dt);session.Goalkeepers:Step(dt);session.Goals:Step();if session.Running and not session.ShootingPractice and not session.WorldCupTutorial then session.OutOfBounds:Step()end;if not session.ShootingPractice and not session.WorldCupTutorial then RefereeService.Enforce(session.Models,session.World.PitchCFrame,session.World.Width,session.World.Length)end;if session.LinkDebug then session.LinkDebug:Step(session,dt)end
+		if session.WorldCupTutorial and session.GuidedTutorialFlow~=true then
 			local owner=session.Possession and session.Possession:GetOwner()or nil
 			if session.TutorialStage==2 and not session.TutorialRestarting and owner and tostring(owner:GetAttribute("VTRTeam")or"")=="Away"then
 				session.TutorialRestarting=true
@@ -4572,7 +4905,7 @@ function Service:_finalWhistleFreeze(session:any)
 		session.AI:SetExternalPhase("FULL TIME")
 	end
 	if session.Possession then session.Possession:Reset()end
-	if session.TeamControl and session.TeamControl.Receiving then session.TeamControl.Receiving:Clear()end
+	if session.TeamControl and session.TeamControl.CancelReception then session.TeamControl:CancelReception("FullTime")end
 	self:_setPlayersFrozen(session,true)
 	if session.World and session.World.Ball then
 		session.World.Ball.AssemblyLinearVelocity=Vector3.zero
@@ -4643,8 +4976,11 @@ function Service:EndMatch(player:Player,showResult:boolean):boolean
 		return true
 	end
 	if showResult and session.Ranked==true and session.PenaltyShootoutResolved~=true and self:_scoreTied(session) and not session.ForfeitBy and not session.RankedForceLossUserId then
+		if session.ExtraTimeStarted~=true then return self:_startWorldCupExtraTime(session)end
+		session.ExtraTimeCompleted=true
 		return self:_startRankedPenaltyShootout(session)
 	end
+	if session.TeamControl and session.TeamControl.CancelReception then session.TeamControl:CancelReception(showResult and "FullTime" or "MatchInterrupted") end
 	for _,connection in session.Connections or{}do if connection and connection.Disconnect then connection:Disconnect()end end
 	self:_clearFinalChance(session)
 	session.Ended=true;session.Running=false;if session.SetPieces then session.SetPieces:Cancel()end
@@ -4678,7 +5014,9 @@ function Service:EndMatch(player:Player,showResult:boolean):boolean
 				local sideWon=(side=="Home"and homeScore>awayScore)or(side=="Away"and awayScore>homeScore)
 				result=sideWon and"Win"or"Loss"
 			end
-			self:_track(session,participant,"playability_match_complete",{result=result,stageDuration=os.clock()-(tonumber(session.StartedAt)or os.clock())})
+			local receptionDiagnostics=session.TeamControl and session.TeamControl.GetReceptionDiagnostics and session.TeamControl:GetReceptionDiagnostics()or nil
+			local receptionSummary=receptionDiagnostics and receptionDiagnostics.Summary or{}
+			self:_track(session,participant,"playability_match_complete",{result=result,stageDuration=os.clock()-(tonumber(session.StartedAt)or os.clock()),receptionsAttempted=tonumber(receptionSummary.Attempted)or 0,receptionsIntended=tonumber(receptionSummary.IntendedCompletions)or 0,receptionsAlternate=tonumber(receptionSummary.AlternateCompletions)or 0,receptionInterceptions=tonumber(receptionSummary.Interceptions)or 0,receptionOverrides=tonumber(receptionSummary.Overrides)or 0,receptionAverageTransferETA=tonumber(receptionSummary.AverageTransferETA)or 0})
 			if participant.Parent==Players then
 				local shouldReturnToOrigin=(session.PrivateRankedMatch==true or session.PrivateAICampaignMatch==true) and session.ReturnPlaceId
 				if shouldReturnToOrigin then
@@ -4708,7 +5046,8 @@ function Service:EndMatch(player:Player,showResult:boolean):boolean
 					rewardPayload.Pack=rewardPayload.PackName
 					rewardPayload.Rarity=definition and packRarity(definition) or rewardPayload.Rarity or"Rare"
 				end
-				self.State:FireClient(participant,{Type="MatchEnded",Ranked=session.Ranked,LocalSide=side,Result=result,Forfeit=session.ForfeitBy~=nil,ForfeitReason=session.ForfeitReason,RankedLossUserId=session.RankedForceLossUserId,Home=homeScore,Away=awayScore,PenaltyShootout=session.PenaltyShootout,PenaltyShootoutWinner=session.PenaltyShootoutWinner,ExtraTime=session.ExtraTimeStarted==true,Stats=resultStats,Reward=rewardPayload,RankedWinPack=rankedWin and rewardPayload or nil,ResultDelay=math.max(2,tonumber(session.Format and session.Format.FullTimeSeconds)or 6)})
+				local pacing=session.Ranked==true and MatchFormatConfig.Ranked or session.Format
+				self.State:FireClient(participant,{Type="MatchEnded",Ranked=session.Ranked,LocalSide=side,Result=result,Forfeit=session.ForfeitBy~=nil,ForfeitReason=session.ForfeitReason,RankedLossUserId=session.RankedForceLossUserId,Home=homeScore,Away=awayScore,PenaltyShootout=session.PenaltyShootout,PenaltyShootoutWinner=session.PenaltyShootoutWinner,ExtraTime=session.ExtraTimeStarted==true,Stats=resultStats,Reward=rewardPayload,RankedWinPack=rankedWin and rewardPayload or nil,ResultDelay=math.clamp(tonumber(pacing and pacing.FinalWhistleFreezeSeconds)or 1.25,1,1.5),PostMatchSummarySeconds=math.clamp(tonumber(pacing and pacing.PostMatchSummarySeconds)or 2.4,1.5,3),NextMatchInputSeconds=math.max(4,tonumber(pacing and pacing.NextMatchInputSeconds)or 8)})
 			end
 		end
 		if session.OnRankedEnded then task.defer(function()local ok,err=pcall(session.OnRankedEnded,session);if not ok then warn("[VTR MATCH RESULT] OnRankedEnded failed: "..tostring(err))end end)end
@@ -4719,7 +5058,7 @@ function Service:EndMatch(player:Player,showResult:boolean):boolean
 				if character then local accountRoot=character:FindFirstChild("HumanoidRootPart")::BasePart?;if accountRoot then accountRoot.Anchored=false end;character:SetAttribute("VTRParked",nil);character:SetAttribute("VTRCinematicParked",nil);character:SetAttribute("VTRSession",nil);character:SetAttribute("VTRSprinting",nil);character:PivotTo(safeReturnCFrame(state));local humanoid=character:FindFirstChildOfClass("Humanoid");if humanoid then humanoid.WalkSpeed=state and state.PreviousSpeed or 16;humanoid.JumpPower=state and state.PreviousJump or 50;humanoid.AutoRotate=true;humanoid.PlatformStand=false;humanoid.Sit=false;humanoid.Health=math.max(1,humanoid.MaxHealth);humanoid.PlatformStand=false;humanoid.Sit=false;humanoid.Health=math.max(1,humanoid.MaxHealth) end end
 				session.TeamControl:Destroy(participant);self.Sessions[participant]=nil;if participant.Parent==Players then participant:SetAttribute("VTRInMatch",false)end
 			end
-			if session.LinkDebug then session.LinkDebug:Destroy()end;if session.AI then session.AI:Destroy()end;if session.Animations then session.Animations:Destroy()end;if session.OfficialAnimations then session.OfficialAnimations:Destroy()end;if session.World and session.World.Folder and session.World.Folder.Parent then session.World.Folder:Destroy()end
+			if session.LinkDebug then session.LinkDebug:Destroy()end;if session.AI then session.AI:Destroy()end;if session.Animations then session.Animations:Destroy()end;if session.OfficialAnimations then session.OfficialAnimations:Destroy()end;restoreStandVisuals(session.World);if session.World and session.World.Folder and session.World.Folder.Parent then session.World.Folder:Destroy()end
 		end)
 		return true
 	end
@@ -4728,7 +5067,7 @@ function Service:EndMatch(player:Player,showResult:boolean):boolean
 		if character then local accountRoot=character:FindFirstChild("HumanoidRootPart")::BasePart?;if accountRoot then accountRoot.Anchored=false end;character:SetAttribute("VTRParked",nil);character:SetAttribute("VTRCinematicParked",nil);character:SetAttribute("VTRSession",nil);character:SetAttribute("VTRSprinting",nil);character:PivotTo(safeReturnCFrame(state));local humanoid=character:FindFirstChildOfClass("Humanoid");if humanoid then humanoid.WalkSpeed=state and state.PreviousSpeed or 16;humanoid.JumpPower=state and state.PreviousJump or 50;humanoid.AutoRotate=true;humanoid.PlatformStand=false;humanoid.Sit=false;humanoid.Health=math.max(1,humanoid.MaxHealth);humanoid.PlatformStand=false;humanoid.Sit=false;humanoid.Health=math.max(1,humanoid.MaxHealth) end end
 		session.TeamControl:Destroy(participant);self.Sessions[participant]=nil;participant:SetAttribute("VTRInMatch",false)
 	end
-	if session.LinkDebug then session.LinkDebug:Destroy()end;if session.AI then session.AI:Destroy()end;if session.Animations then session.Animations:Destroy()end;if session.OfficialAnimations then session.OfficialAnimations:Destroy()end;if session.World.Folder.Parent then session.World.Folder:Destroy()end
+	if session.LinkDebug then session.LinkDebug:Destroy()end;if session.AI then session.AI:Destroy()end;if session.Animations then session.Animations:Destroy()end;if session.OfficialAnimations then session.OfficialAnimations:Destroy()end;restoreStandVisuals(session.World);if session.World.Folder.Parent then session.World.Folder:Destroy()end
 	return true
 end
 function Service:ReturnToMenu(player:Player):boolean

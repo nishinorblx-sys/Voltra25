@@ -10,6 +10,7 @@ local CampaignMigration = require(script.Parent.CampaignMigration)
 local DeveloperAccessService=require(script.Parent.DeveloperAccessService)
 local PlayerDatabase=require(script.Parent.Parent.Data.PlayerDatabase)
 local StarCardOfferService=require(script.Parent.StarCardOfferService)
+local PlayabilityUnlockConfig=require(ReplicatedStorage.VTR.Shared.PlayabilityUnlockConfig)
 
 local ProgressionService = {}
 ProgressionService.__index = ProgressionService
@@ -148,6 +149,7 @@ function ProgressionService:GetClientData(player: Player): any?
 		StoreCatalog = { Packs = copy(Catalog.Packs), CoinBundles = copy(Catalog.CoinBundles), VoltraPointBundles = copy(Catalog.VoltraPointBundles), GamePasses = copy(Catalog.GamePasses), DeveloperProducts = copy(Catalog.DeveloperProducts), Kits = copy(Catalog.Kits), Stadiums = copy(Catalog.Stadiums), Cosmetics = copy(Catalog.Cosmetics),Consumables=copy(Catalog.Consumables) },
 		Onboarding = copy(profile.Onboarding),
 		PlayabilityProgress = copy(profile.PlayabilityProgress),
+		PlayabilityUnlocks = PlayabilityUnlockConfig.ClientSummary(profile.PlayabilityProgress),
 		WorldCupSummary = worldCupSummary(profile),
 		DeveloperAccess=DeveloperAccessService.IsAuthorized(player),
 		DeveloperStudioAccess=DeveloperAccessService.IsStudio(),

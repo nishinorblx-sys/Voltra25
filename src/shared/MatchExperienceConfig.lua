@@ -24,14 +24,7 @@ local function normalize(value: any): string
 end
 
 local function resolve(setup: any, profile: any): string
-	local onboarding = if type(profile) == "table" then profile.Onboarding else nil
 	local settings = if type(profile) == "table" then profile.Settings else nil
-	if type(setup) == "table" and (setup.WorldCupOnboarding == true or setup.Tutorial == true or setup.FirstPlayableMatch == true) then
-		return "Acquisition"
-	end
-	if type(onboarding) == "table" and onboarding.Complete ~= true then
-		return "Acquisition"
-	end
 	if type(setup) == "table" then
 		local mode = string.lower(tostring(setup.Mode or setup.MatchType or ""))
 		local round = string.lower(tostring(setup.WorldCupRound or setup.Round or ""))
@@ -39,6 +32,11 @@ local function resolve(setup: any, profile: any): string
 			return "Broadcast"
 		end
 	end
+	local progress = if type(profile) == "table" and type(profile.PlayabilityProgress) == "table" then profile.PlayabilityProgress else nil
+	local completed = math.max(0, math.floor(tonumber(progress and progress.CompletedMatches) or 0))
+	local legacy = progress and progress.LegacyAccessGranted == true
+	if type(setup) == "table" and (setup.WorldCupOnboarding == true or setup.Tutorial == true or setup.FirstPlayableMatch == true) then return "Acquisition" end
+	if completed < 3 and not legacy then return "Acquisition" end
 	if type(settings) == "table" and settings.ImmersivePresentation == true then
 		return "Broadcast"
 	end

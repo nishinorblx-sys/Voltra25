@@ -99,6 +99,10 @@ function Service:_runtimeSetup(profile:any,setup:any):any
 	local launch=table.clone(setup)
 	launch.MatchFormat=MatchFormatConfig.Normalize(launch.MatchFormat or launch.MatchLength)
 	launch.PresentationProfile=MatchExperienceConfig.Resolve(launch,profile)
+	local playability=type(profile and profile.PlayabilityProgress)=="table"and profile.PlayabilityProgress or{}
+	launch.PlayabilityCompletedMatches=math.max(0,math.floor(tonumber(playability.CompletedMatches)or 0))
+	launch.PlayabilityLegacyAccess=playability.LegacyAccessGranted==true
+	launch.FirstWorldCupRunCompleted=playability.FirstWorldCupRunCompleted==true
 	return launch
 end
 

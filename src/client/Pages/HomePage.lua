@@ -101,7 +101,11 @@ local function firstSessionHome(context: any, progression: any): CanvasGroup
 	local stage = tostring(worldCup.Stage or "GROUP STAGE"):gsub("(%l)(%u)", "%1 %2")
 	local matchday = tonumber(worldCup.Matchday) or 0
 	text(hero, string.upper(stage) .. (matchday > 0 and "  /  MATCHDAY " .. tostring(matchday) or ""), UDim2.fromOffset(30, 160), UDim2.new(1, -60, 0, 20), 10, Theme.Colors.Muted, Theme.Fonts.Strong)
-	text(hero, completed == 0 and "OBJECTIVE  /  COMPLETE YOUR FIRST MATCH" or "OBJECTIVE  /  PLAY THE NEXT FIXTURE", UDim2.fromOffset(30, 205), UDim2.new(.58, 0, 0, 22), 11, Theme.Colors.White, Theme.Fonts.Strong)
+	local objective = if completed == 0 then "MATCH 1  /  EARN YOUR FIRST PLAYER"
+		elseif completed == 1 then "MATCH 2  /  UNLOCK SQUAD + INVENTORY"
+		elseif completed == 2 then "MATCH 3  /  UNLOCK PACKS + CHEMISTRY + ASCENSION"
+		else "CONTINUE THE RUN  /  COMPLETE IT TO UNLOCK RANKED"
+	text(hero, objective, UDim2.fromOffset(30, 205), UDim2.new(.58, 0, 0, 22), 11, Theme.Colors.White, Theme.Fonts.Strong)
 	local progressBar = ProgressBar.new(math.clamp(completed / 3, 0, 1))
 	progressBar.Position = UDim2.fromOffset(30, 240)
 	progressBar.Size = UDim2.new(.52, 0, 0, 7)
@@ -110,7 +114,7 @@ local function firstSessionHome(context: any, progression: any): CanvasGroup
 
 	local busy = false
 	local playButton: TextButton
-	playButton = Button.new({Text = worldCup.Active == true and worldCup.Complete ~= true and "PLAY MATCH" or "OPEN WORLD CUP", Variant = "Primary", Size = UDim2.fromOffset(250, 54), OnActivated = function()
+	playButton = Button.new({Text = worldCup.Active == true and worldCup.Complete ~= true and "PLAY NEXT WORLD CUP MATCH" or "OPEN WORLD CUP", Variant = "Primary", Size = UDim2.fromOffset(250, 54), OnActivated = function()
 		if busy then return end
 		if worldCup.Active ~= true or worldCup.Complete == true then context.Navigate("WorldCup"); return end
 		busy = true
@@ -119,7 +123,7 @@ local function firstSessionHome(context: any, progression: any): CanvasGroup
 			local result = MatchSetupService:StartWorldCupMatch()
 			if not result or result.Success ~= true then
 				busy = false
-				playButton.Text = "PLAY MATCH"
+				playButton.Text = "PLAY NEXT WORLD CUP MATCH"
 				context.Toast({Title = "WORLD CUP", Message = result and result.Message or "The match could not start. Try again.", Kind = "Error"})
 			end
 		end)

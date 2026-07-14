@@ -7,6 +7,7 @@ local function defaultSettings():any
 	local settings=PlayabilitySettingsConfig.CopyDefaults()
 	settings.ReceiverAssistMode="Newcomer"
 	settings.PassReceiverAutoSwitch="Newcomer"
+	settings.DefensiveAutoSwitchMode="Newcomer"
 	for key,value in {TimedFinishing=true,MenuMusic=true,MotionEffects=true,InvertY=false,HighContrast=false,Crossplay=true,MasterVolume=0.8,PlayerNames="Active Only",Minimap="Medium",MinimapOrientation="Broadcast",BroadcastHeight="178",BroadcastZoom="50",CameraSpeed="1",CameraSide="Near",PauseKey="M",SkipKey="Space",TutorialComplete=false,TutorialStep=1,TutorialDevice=""}do settings[key]=value end
 	return settings
 end

@@ -30,6 +30,8 @@ local MonetizationConfig=require(ReplicatedStorage.VTR.Shared.MonetizationConfig
 local Modal=require(script.Parent.Parent.Components.Modal)
 local FormationConfig=require(ReplicatedStorage.VTR.Shared.FormationConfig)
 local LiteConfig=require(ReplicatedStorage.VTR.Shared.VTRLiteConfig)
+local QuickSellValueConfig=require(ReplicatedStorage.VTR.Shared.QuickSellValueConfig)
+local PlayabilityUnlockConfig=require(ReplicatedStorage.VTR.Shared.PlayabilityUnlockConfig)
 
 local UltimateTeamPage={}
 local TABS={"Starting XI","Bench","Reserves","Club","Customize"}
@@ -332,6 +334,8 @@ function UltimateTeamPage.new(context:any):CanvasGroup
 	local group,scroll=PageBase.new("UltimateTeam",930)
 	PageBase.heading(scroll,"VOLTRA ULTIMATE TEAM","SQUAD BUILDER","Build, move and manage the complete matchday roster.")
 	local response=SquadService:GetSquad();local snapshot=response.Success and response.Data or {Slots={},SlotOrder={},Bench={},Reserves={},Club={},Rating=0,Chemistry=0,Filled=0,Formation="4-3-3",FormationOptions={"4-3-3"},CardMeta={}}
+	local chemistryUnlocked=PlayabilityUnlockConfig.FeatureUnlocked(context.Data.Progression,"Chemistry")
+	local packsUnlocked=PlayabilityUnlockConfig.FeatureUnlocked(context.Data.Progression,"Packs")
 	local tactics=LiteConfig.DefaultTactics()
 	for key,value in context.Data.Progression.TeamTactics or{}do tactics[key]=value end
 	tactics.Sliders=tactics.Sliders or LiteConfig.DefaultTactics().Sliders
@@ -505,7 +509,7 @@ function UltimateTeamPage.new(context:any):CanvasGroup
 		item("SEND TO BENCH",function() local destination=1;for index=1,7 do if not snapshot.Bench[index] or not snapshot.Bench[index].Card then destination=index;break end end;requestMove(card.Id,"Bench",destination) end)
 		item("SEND TO RESERVES",function() requestMove(card.Id,"Reserves",nil) end)
 		item("REMOVE FROM SQUAD",function() requestMove(card.Id,"Club",nil) end)
-		item(campaignProtected and"PROTECTED"or"QUICK SELL",function()if campaignProtected then toast(campaignProtectionMessage,"Error")elseif meta.Locked then toast("Unlock this player before quick selling.","Error")else context.Flow:Confirmation("QUICK SELL "..string.upper(card.Name),"This permanently removes the card. Value scales from 1,000 to 5,000 coins by card quality.","QUICK SELL",function()apply(SquadService:QuickSellCard(card.Id))end)end end)
+		item(campaignProtected and"PROTECTED"or"QUICK SELL",function()if campaignProtected then toast(campaignProtectionMessage,"Error")elseif meta.Locked then toast("Unlock this player before quick selling.","Error")elseif meta.Loan==true then toast("Loan players cannot be quick sold.","Error")elseif meta.Favorite==true then toast("Unfavorite this player before quick selling.","Error")else local value=QuickSellValueConfig.Value(card,meta);context.Flow:Confirmation("QUICK SELL "..string.upper(card.Name),"This permanently removes the card for "..value.." coins.","QUICK SELL",function()apply(SquadService:QuickSellCard(card.Id))end)end end)
 		item(meta.Locked and "UNLOCK PLAYER" or "LOCK PLAYER",function() apply(SquadService:SetCardFlag(card.Id,"Locked",not meta.Locked)) end)
 		item(meta.Favorite and "REMOVE FAVORITE" or "FAVORITE PLAYER",function() apply(SquadService:SetCardFlag(card.Id,"Favorite",not meta.Favorite)) end)
 		overlay.Activated:Connect(function() closeMenu(overlay) end)
@@ -529,8 +533,8 @@ function UltimateTeamPage.new(context:any):CanvasGroup
 		local chemistry=tonumber(snapshot.Chemistry)or 0
 		text(command,tostring(rating),UDim2.fromOffset(12,60),UDim2.fromOffset(58,36),28,Theme.Colors.Electric,Theme.Fonts.Display)
 		text(command,"OVR",UDim2.fromOffset(66,70),UDim2.fromOffset(36,16),8,Theme.Colors.Muted,Theme.Fonts.Strong)
-		text(command,tostring(chemistry).."/33",UDim2.fromOffset(104,66),UDim2.new(1,-116,0,24),17,Theme.Colors.White,Theme.Fonts.Display)
-		text(command,"CHEMISTRY",UDim2.fromOffset(106,92),UDim2.new(1,-118,0,14),7,Theme.Colors.Muted,Theme.Fonts.Strong)
+		text(command,chemistryUnlocked and tostring(chemistry).."/33"or"LOCKED",UDim2.fromOffset(104,66),UDim2.new(1,-116,0,24),17,chemistryUnlocked and Theme.Colors.White or Theme.Colors.Muted,Theme.Fonts.Display)
+		text(command,chemistryUnlocked and"CHEMISTRY"or"AFTER MATCH 3",UDim2.fromOffset(106,92),UDim2.new(1,-118,0,14),7,Theme.Colors.Muted,Theme.Fonts.Strong)
 		local function meter(labelValue:string,ratio:number,y:number,color:Color3)
 			text(command,labelValue,UDim2.fromOffset(12,y),UDim2.new(1,-24,0,13),7,Theme.Colors.Silver,Theme.Fonts.Strong)
 			local bar=Instance.new("Frame");bar.BackgroundColor3=Theme.Colors.Black;bar.BackgroundTransparency=.18;bar.BorderSizePixel=0;bar.Position=UDim2.fromOffset(12,y+16);bar.Size=UDim2.new(1,-24,0,5);bar.Parent=command;corner(bar,3)
@@ -557,7 +561,7 @@ function UltimateTeamPage.new(context:any):CanvasGroup
 		local card=selectedCard;local portrait=AvatarPortraitGenerator.new(previewContent,card,UDim2.new(1,0,0,156),false);portrait.Position=UDim2.fromOffset(0,0)
 		text(previewContent,card.Rating.."  "..card.Position,UDim2.fromOffset(10,10),UDim2.new(1,-20,0,27),18,Theme.Colors.White,Theme.Fonts.Display).ZIndex=4;text(previewContent,card.Name,UDim2.fromOffset(0,164),UDim2.new(1,0,0,28),14,Theme.Colors.White,Theme.Fonts.Display)
 		local stats=selectedDetails and selectedDetails.mainStats or {PAC="-",SHO="-",PAS="-",DRI="-",DEF="-",PHY="-"};local details=selectedDetails and (selectedDetails.detailedStats or selectedDetails.DetailedStats) or {};local isGoalkeeper=string.upper(tostring(card.Position or card.bestPosition or ""))=="GK";local statHolder=Instance.new("Frame");statHolder.BackgroundTransparency=1;statHolder.Position=UDim2.fromOffset(0,202);statHolder.Size=UDim2.new(1,0,0,94);statHolder.Parent=previewContent;local grid=Instance.new("UIGridLayout");grid.CellSize=UDim2.new(1/3,-5,0,43);grid.CellPadding=UDim2.fromOffset(6,6);grid.SortOrder=Enum.SortOrder.LayoutOrder;grid.Parent=statHolder;local displayStats=isGoalkeeper and {{Key="gkDiving",Label="DIV",Value=details.gkDiving or details.GKDiving or 0},{Key="gkHandling",Label="HAN",Value=details.gkHandling or details.GKHandling or 0},{Key="gkKicking",Label="KIC",Value=details.gkKicking or details.GKKicking or 0},{Key="gkPositioning",Label="POS",Value=details.gkPositioning or details.GKPositioning or 0},{Key="gkReflexes",Label="REF",Value=details.gkReflexes or details.GKReflexes or 0}} or {{Key="PAC",Label="PAC",Value=stats.PAC},{Key="SHO",Label="SHO",Value=stats.SHO},{Key="PAS",Label="PAS",Value=stats.PAS},{Key="DRI",Label="DRI",Value=stats.DRI},{Key="DEF",Label="DEF",Value=stats.DEF},{Key="PHY",Label="PHY",Value=stats.PHY}};for index,item in displayStats do local chip=Panel.new({Name=item.Label});chip.LayoutOrder=index;chip.Parent=statHolder;text(chip,tostring(item.Value or "-"),UDim2.fromOffset(0,4),UDim2.new(1,0,0,20),13,Theme.Colors.Electric,Theme.Fonts.Display).TextXAlignment=Enum.TextXAlignment.Center;text(chip,item.Label,UDim2.fromOffset(0,24),UDim2.new(1,0,0,14),7,Theme.Colors.Muted,Theme.Fonts.Strong).TextXAlignment=Enum.TextXAlignment.Center end
-		local location,locationSlot="Club",nil;for _,clubCard in snapshot.Club do if clubCard.Id==card.Id then location=clubCard.RosterLocation;locationSlot=clubCard.RosterSlot;break end end;local impact=location=="StartingXI" and snapshot.Slots[locationSlot] and snapshot.Slots[locationSlot].OutOfPosition and "OUT OF POSITION  /  -2 BASE CHEM" or location=="StartingXI" and "NATURAL ROLE  /  +2 BASE CHEM" or "NOT IN STARTING XI";text(previewContent,"CHEMISTRY IMPACT",UDim2.fromOffset(0,318),UDim2.new(1,0,0,18),8,Theme.Colors.Muted,Theme.Fonts.Strong);text(previewContent,impact,UDim2.fromOffset(0,338),UDim2.new(1,0,0,32),8,location=="StartingXI" and Theme.Colors.White or Theme.Colors.Silver,Theme.Fonts.Strong)
+		local location,locationSlot="Club",nil;for _,clubCard in snapshot.Club do if clubCard.Id==card.Id then location=clubCard.RosterLocation;locationSlot=clubCard.RosterSlot;break end end;local impact=location=="StartingXI" and snapshot.Slots[locationSlot] and snapshot.Slots[locationSlot].OutOfPosition and "OUT OF POSITION  /  -2 BASE CHEM" or location=="StartingXI" and "NATURAL ROLE  /  +2 BASE CHEM" or "NOT IN STARTING XI";text(previewContent,chemistryUnlocked and"CHEMISTRY IMPACT"or"CHEMISTRY LOCKED",UDim2.fromOffset(0,318),UDim2.new(1,0,0,18),8,Theme.Colors.Muted,Theme.Fonts.Strong);text(previewContent,chemistryUnlocked and impact or"COMPLETE INTRO MATCH 3",UDim2.fromOffset(0,338),UDim2.new(1,0,0,32),8,chemistryUnlocked and location=="StartingXI" and Theme.Colors.White or Theme.Colors.Silver,Theme.Fonts.Strong)
 		local actions=Button.new({Text="PLAYER ACTIONS",Variant="Primary",Size=UDim2.new(1,0,0,40),OnActivated=actionMenu});actions.Position=UDim2.new(0,0,1,-50);actions.Parent=previewContent
 	end
 
@@ -1091,7 +1095,7 @@ function UltimateTeamPage.new(context:any):CanvasGroup
 	for _,name in TABS do local tab=Button.new({Text=string.upper(name),Variant=name==activeTab and "Primary" or "Secondary",Size=UDim2.fromOffset(126,32),OnActivated=function() activeTab=name;saveTrayState();renderTray();if name=="Customize"then openCustomizeHub()end end});tab.Parent=tabBar;tabButtons[name]=tab end
 	local shortcuts=Instance.new("Frame");shortcuts.BackgroundTransparency=1;shortcuts.Position=UDim2.new(1,-626,0,18);shortcuts.Size=UDim2.fromOffset(626,34);shortcuts.Parent=scroll;local shortcutLayout=Instance.new("UIListLayout");shortcutLayout.FillDirection=Enum.FillDirection.Horizontal;shortcutLayout.Padding=UDim.new(0,6);shortcutLayout.Parent=shortcuts
 	local squadShortcut=Button.new({Text="SQUAD BUILDER",Variant="Primary",Size=UDim2.fromOffset(116,34),OnActivated=function()toast("Squad Builder is active.")end});squadShortcut.Parent=shortcuts
-	local packsButton=Button.new({Text="PACKS",Variant="Secondary",Size=UDim2.fromOffset(116,34),OnActivated=openPackHub});packsButton.Parent=shortcuts
+	if packsUnlocked then local packsButton=Button.new({Text="PACKS",Variant="Secondary",Size=UDim2.fromOffset(116,34),OnActivated=openPackHub});packsButton.Parent=shortcuts end
 	local navigatingToPlayers=false
 	local playersButton=Button.new({Text="PLAYER INVENTORY",Variant="Secondary",Size=UDim2.fromOffset(132,34),OnActivated=function()
 		if navigatingToPlayers or(context.Flow and context.Flow.Busy)then return end

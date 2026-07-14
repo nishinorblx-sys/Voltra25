@@ -2,6 +2,7 @@
 
 local MatchFormatConfig = require(script.Parent.MatchFormatConfig)
 local ReceiverAssistConfig = require(script.Parent.ReceiverAssistConfig)
+local DefensiveSwitchConfig = require(script.Parent.DefensiveSwitchConfig)
 
 local defaults = table.freeze({
 	MatchFormat = "Standard",
@@ -9,6 +10,7 @@ local defaults = table.freeze({
 	CameraZoomMode = "Moderate",
 	ReceiverAssistMode = "Standard",
 	PassReceiverAutoSwitch = "Standard",
+	DefensiveAutoSwitchMode = "Standard",
 	ManualPassAutoSwitch = "Manual",
 	MobileSprintMode = "Toggle",
 	MobileControlHandedness = "Right",
@@ -51,6 +53,7 @@ local function normalize(source: any): {[string]: any}
 	result.CameraZoomMode = if validZoom[zoom] then zoom else defaults.CameraZoomMode
 	result.ReceiverAssistMode = ReceiverAssistConfig.Normalize(input.ReceiverAssistMode or input.ReceiverAssist or input.PassReceiverAutoSwitch, defaults.ReceiverAssistMode)
 	result.PassReceiverAutoSwitch = ReceiverAssistConfig.Normalize(input.PassReceiverAutoSwitch or result.ReceiverAssistMode, result.ReceiverAssistMode)
+	result.DefensiveAutoSwitchMode = DefensiveSwitchConfig.Normalize(input.DefensiveAutoSwitchMode or input.DefensiveAutoSwitch, defaults.DefensiveAutoSwitchMode)
 	result.ManualPassAutoSwitch = ReceiverAssistConfig.Normalize(input.ManualPassAutoSwitch, defaults.ManualPassAutoSwitch)
 	local mobileSprint = tostring(input.MobileSprintMode or input.SprintMode or "")
 	if mobileSprint == "" and input.SprintToggle == false then
@@ -64,6 +67,7 @@ local function normalize(source: any): {[string]: any}
 	result.PerformanceMode = input.PerformanceMode == true
 	result.ImmersivePresentation = input.ImmersivePresentation == true
 	result.ReceiverAssist = nil
+	result.DefensiveAutoSwitch = nil
 	result.SprintToggle = nil
 	result.SprintMode = nil
 	result.MobileLayout = nil

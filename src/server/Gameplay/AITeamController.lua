@@ -7,6 +7,7 @@ local AIPlayerBrain = require(script.Parent.AIPlayerBrain)
 local AIDebugService = require(script.Parent.AIDebugService)
 local AIDifficultyService = require(script.Parent.AIDifficultyService)
 local AITacticalStyleService = require(script.Parent.AITacticalStyleService)
+local RunService = game:GetService("RunService")
 
 local Service = {}
 Service.__index = Service
@@ -56,11 +57,12 @@ function Service.new(teams: any, formations: any, pitchCFrame: CFrame, width: nu
 			Shadow = {},
 		},
 		ManualTackleSides = {},
+		FirstMatchAssistance = nil,
 	}, Service)
 end
 
 local function debugEnabled(): boolean
-	return workspace:GetAttribute("VTRKickoffDebug") ~= false
+	return workspace:GetAttribute("VTRKickoffDebug") == true and (RunService:IsStudio() or game.PrivateServerId ~= "")
 end
 
 local function debugKickoff(message: string, ...: any)
@@ -94,6 +96,24 @@ function Service:SetManualTackleSides(sides: {[string]: boolean}?)
 	self.ManualTackleSides = sides or {}
 end
 
+function Service:SetFirstMatchAssistance(active: boolean)
+	self.FirstMatchAssistance = active and {RestoreStartedAt = nil} or nil
+end
+
+function Service:BeginFirstMatchRestoration()
+	if self.FirstMatchAssistance then
+		self.FirstMatchAssistance.RestoreStartedAt = os.clock()
+	end
+end
+
+function Service:_firstMatchBlend(now: number): number
+	local state = self.FirstMatchAssistance
+	if not state then return 0 end
+	local blend = AIDifficultyService.FirstMatchBlend(state.RestoreStartedAt, now)
+	if blend <= 0 then self.FirstMatchAssistance = nil end
+	return blend
+end
+
 function Service:UpdateTactics(side: string, tactics: any)
 	local targetSide = side == "Away" and "Away" or "Home"
 	local style = AITacticalStyleService.new(tactics)
@@ -108,12 +128,16 @@ function Service:_isLive(): boolean
 end
 
 function Service:_context(): any
-	return AIContextBuilder.Build(self.Teams, self.Formations, self.PitchCFrame, self.Width, self.Length, self.Ball, self.Possession, self:_attackSigns())
+	local context = AIContextBuilder.Build(self.Teams, self.Formations, self.PitchCFrame, self.Width, self.Length, self.Ball, self.Possession, self:_attackSigns())
+	context.FirstMatchAssistance = self:_firstMatchBlend(context.Now or os.clock())
+	context.FirstMatchPassTempoCap = AIDifficultyService.FirstMatchPassTempoCap(context.FirstMatchAssistance)
+	return context
 end
 
 function Service:_updatePressState(context: any)
 	local owner = context.Owner
 	local side = context.OwnerSide
+	local firstMatchAssistance = math.clamp(tonumber(context.FirstMatchAssistance) or 0, 0, 1)
 	context.DefensivePress = {Home = {}, Away = {}}
 	context.PressPaused = {Home = false, Away = false}
 	local now = context.Now
@@ -128,7 +152,7 @@ function Service:_updatePressState(context: any)
 		local ballPitch = context.BallTeam[defendingSide]
 		local ownerInfo = owner and context.Players[owner] or nil
 		local strikerInDefensiveThird = ownerInfo and ownerInfo.Role == "ST" and ownerInfo.Pitch.Z <= (742 / 3)
-		local trigger = defending and (ballPitch.Z <= 192 or strikerInDefensiveThird)
+		local trigger = defending and (ballPitch.Z <= 192 - firstMatchAssistance * 82 or strikerInDefensiveThird and firstMatchAssistance < .45)
 		if not trigger then
 			self.PressState.Primary[defendingSide] = nil
 			self.PressState.PrimaryOwner[defendingSide] = nil

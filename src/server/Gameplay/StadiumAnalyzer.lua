@@ -31,7 +31,17 @@ function Analyzer.Analyze(pitch:BasePart?):any?
 	local width,length,pitchCFrame
 	if pitch.Size.Z>=pitch.Size.X then width=pitch.Size.X;length=pitch.Size.Z;pitchCFrame=pitch.CFrame else width=pitch.Size.Z;length=pitch.Size.X;pitchCFrame=CFrame.fromMatrix(pitch.Position,pitch.CFrame.LookVector,pitch.CFrame.UpVector,pitch.CFrame.RightVector)end
 	pitchCFrame=CFrame.fromMatrix(pitch.Position+pitch.CFrame.UpVector*(pitch.Size.Y/2),pitchCFrame.RightVector,pitchCFrame.UpVector,pitchCFrame.ZVector)
-	local result={Pitch=pitch,PitchCFrame=pitchCFrame,Center=pitchCFrame.Position,Width=width,Length=length,HomeGoal=pitchCFrame:PointToWorldSpace(Vector3.new(0,0,length/2)),AwayGoal=pitchCFrame:PointToWorldSpace(Vector3.new(0,0,-length/2)),HomeSpawns={},AwaySpawns={}}
+	local fanStands:{BasePart}={};local stands:{BasePart}={};local seen:{[BasePart]:boolean}={};local maximumDistance=math.max(width,length)*2.5
+	local function include(instance:Instance,fan:boolean)
+		if not instance:IsA("BasePart")or seen[instance]or(instance.Position-pitchCFrame.Position).Magnitude>maximumDistance then return end
+		seen[instance]=true;table.insert(stands,instance);if fan then table.insert(fanStands,instance)end
+	end
+	for _,instance in CollectionService:GetTagged("VTRStandForFans")do include(instance,true)end
+	for _,instance in CollectionService:GetTagged("VTRStadiumStand")do include(instance,instance.Name=="StandForFans")end
+	local stadiumRoot:Instance?=pitch:FindFirstAncestorWhichIsA("Model")
+	if not stadiumRoot and pitch.Parent and pitch.Parent~=Workspace then stadiumRoot=pitch.Parent end
+	if stadiumRoot then for _,instance in stadiumRoot:GetDescendants()do if instance:IsA("BasePart")and(instance.Name=="StandForFans"or instance.Name=="Stand")then include(instance,instance.Name=="StandForFans")end end end
+	local result={Pitch=pitch,PitchCFrame=pitchCFrame,Center=pitchCFrame.Position,Width=width,Length=length,HomeGoal=pitchCFrame:PointToWorldSpace(Vector3.new(0,0,length/2)),AwayGoal=pitchCFrame:PointToWorldSpace(Vector3.new(0,0,-length/2)),HomeSpawns={},AwaySpawns={},FanStands=fanStands,Stands=stands}
 	for index,point in formation do local x=point.X*width;local z=point.Y*length/2;result.HomeSpawns[index]=pitchCFrame:PointToWorldSpace(Vector3.new(x,3,z));result.AwaySpawns[index]=pitchCFrame:PointToWorldSpace(Vector3.new(x,3,-z))end
 	return result
 end

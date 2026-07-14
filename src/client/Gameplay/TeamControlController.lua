@@ -26,7 +26,9 @@ function Controller:Update(dt: number, input: Vector2)
 	self.MoveClock += dt
 	if self.MoveClock >= 0.033 then
 		self.MoveClock = 0
-		self.Remote:FireServer({Type = "Move", Direction = self.Camera:Movement(input)})
+		local contractId = self.Active:GetAttribute("VTRReceptionContractId")
+		local revision = self.Active:GetAttribute("VTRReceptionRevision")
+		self.Remote:FireServer({Type = "Move", Direction = self.Camera:Movement(input), ReceptionContractId = contractId, ReceptionRevision = revision, ReceptionClientTime = contractId ~= nil and workspace:GetServerTimeNow() or nil})
 	end
 end
 

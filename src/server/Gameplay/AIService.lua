@@ -44,6 +44,14 @@ function Service:SetManualTackleSides(sides: {[string]: boolean}?)
 	end
 end
 
+function Service:SetFirstMatchAssistance(active: boolean)
+	self.Controller:SetFirstMatchAssistance(active)
+end
+
+function Service:BeginFirstMatchRestoration()
+	self.Controller:BeginFirstMatchRestoration()
+end
+
 function Service:SetDisabled(disabled: boolean)
 	self.Disabled = disabled == true
 	if self.Disabled then

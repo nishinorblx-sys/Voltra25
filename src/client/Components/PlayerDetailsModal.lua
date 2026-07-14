@@ -59,6 +59,32 @@ local function compactMoney(value:any):string
 	return tostring(math.floor(amount+.5))
 end
 
+local function overallDisplay(data:any):(number,string?,boolean)
+	local capped=math.floor(tonumber(data.Rating or data.overall or data.Overall)or 0)
+	local meta=type(data.Meta)=="table"and data.Meta or{}
+	local progression=type(meta.CampaignProgression)=="table"and meta.CampaignProgression or{}
+	local base=tonumber(data.BaseOverall or data.BaseRating or data.baseOverall or data.baseRating)
+	local boost=tonumber(progression.OverallBoost or data.UncappedOverallBoost or data.TotalOverallBoost)
+	local uncapped=tonumber(data.UncappedOverall or data.NormalOverall or data.TrueOverall)
+	if not uncapped and base and boost then uncapped=base+boost end
+	uncapped=uncapped and math.floor(uncapped+.5)or nil
+	if uncapped and uncapped>capped then
+		return capped,tostring(uncapped).." OVR",true
+	end
+	return capped,nil,false
+end
+
+local function cappedOverallLabel(parent:Instance,data:any,position:UDim2,size:UDim2)
+	local capped,uncapped,cappedByStats=overallDisplay(data)
+	if cappedByStats and uncapped then
+		local item=label(parent,"<font color=\"#E84A55\">STAT CAPPED "..capped.." OVR</font>  &lt;&gt;  <font color=\"#FFFFFF\">"..uncapped.."</font>",position,size,16,Theme.Colors.White,Theme.Fonts.Display)
+		item.RichText=true
+		item.TextScaled=true
+		return item
+	end
+	return label(parent,tostring(capped).." OVR",position,size,22,Theme.Colors.White,Theme.Fonts.Display)
+end
+
 local function readable(key: string): string
 	return string.upper((key:gsub("(%l)(%u)", "%1 %2"):gsub("^gk ", "GK ")))
 end
@@ -138,8 +164,8 @@ function PlayerDetailsModal.open(root: Frame, data: any)
 	left.Parent = modal
 	local portrait = AvatarPortraitGenerator.new(left, data, UDim2.fromOffset(300, 150), false)
 	portrait.Position = UDim2.fromOffset(0, 0)
-	label(left, data.overall .. " OVR", UDim2.fromOffset(16, 10), UDim2.fromOffset(100, 34), 22, Theme.Colors.White, Theme.Fonts.Display)
-	label(left, data.potential .. " POT", UDim2.new(1, -116, 0, 10), UDim2.fromOffset(100, 34), 16, Theme.Colors.Electric, Theme.Fonts.Display).TextXAlignment = Enum.TextXAlignment.Right
+	cappedOverallLabel(left,data,UDim2.fromOffset(16,10),UDim2.fromOffset(190,34))
+	label(left, data.potential .. " POT", UDim2.new(1, -116, 0, 42), UDim2.fromOffset(100, 28), 14, Theme.Colors.Electric, Theme.Fonts.Display).TextXAlignment = Enum.TextXAlignment.Right
 	label(left, data.age .. " YEARS  /  " .. data.heightCm .. " CM  /  " .. data.weightKg .. " KG  /  " .. string.upper(data.preferredFoot), UDim2.fromOffset(0, 160), UDim2.new(1, 0, 0, 24), 8, Theme.Colors.Muted, Theme.Fonts.Strong)
 	local radarFrame = RadarChart.new(left, data.mainStats, Vector2.new(240, 240))
 	radarFrame.Position = UDim2.fromOffset(28, 184)

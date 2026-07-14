@@ -26,6 +26,11 @@ function Service:Apply(info: any, assignment: any, context: any, dt: number)
 		return
 	end
 	local model = info.Model
+	local receiveTarget = model:GetAttribute("VTRReceiveTarget")
+	if model:GetAttribute("VTRPreparingReceive") == true and typeof(receiveTarget) == "Vector3" then
+		local sprint = model:GetAttribute("VTRReceiveRouteSprintRequested") == true
+		assignment = {PrimaryAssignment = "ReceivePass", TargetWorld = receiveTarget, FaceWorld = context.BallWorld, MovementUrgency = sprint and 1 or 0.88, SprintAllowed = sprint, Phase = "PassReception"}
+	end
 	local now = context.Now or os.clock()
 	local state = self:_state(model, info.World)
 	local assignmentName = assignment.PrimaryAssignment or "RecoverShape"
@@ -40,7 +45,10 @@ function Service:Apply(info: any, assignment: any, context: any, dt: number)
 	local target = assignment.TargetWorld or info.World
 	local targetDistance = PitchConfig.GetDistanceStuds(info.World, target)
 	local closeHoldAssignment = assignmentName == "DefensiveRestBlock" or assignmentName == "PostPressShadow"
-	if (target - state.Target).Magnitude >= 6 then
+	if assignmentName == "ReceivePass" then
+		state.Target = target
+		state.StuckSince = nil
+	elseif (target - state.Target).Magnitude >= 6 then
 		state.Target = target
 		state.StuckSince = nil
 		state.LastPosition = info.World
@@ -56,7 +64,7 @@ function Service:Apply(info: any, assignment: any, context: any, dt: number)
 	end
 
 	local moved = PitchConfig.GetDistanceStuds(info.World, state.LastPosition)
-	local urgentRun = assignmentName == "RunBehind" or assignmentName == "CounterSprint" or assignmentName == "WideOutlet" or assignmentName == "ExtraSupport" or (assignment.MovementUrgency or 0) >= 0.9
+	local urgentRun = assignmentName == "ReceivePass" or assignmentName == "RunBehind" or assignmentName == "CounterSprint" or assignmentName == "WideOutlet" or assignmentName == "ExtraSupport" or (assignment.MovementUrgency or 0) >= 0.9
 	if now - (state.LastMovedAt or now) >= (urgentRun and 0.45 or 0.75) then
 		if targetDistance > (urgentRun and 5 or 8) and moved < (urgentRun and 0.85 or 1.5) then
 			state.StuckSince = state.StuckSince or now
@@ -72,7 +80,9 @@ function Service:Apply(info: any, assignment: any, context: any, dt: number)
 	local distance = PitchConfig.GetDistanceStuds(info.World, state.Target)
 	local pressureAssignment = assignmentName == "PressBallCarrier" or assignmentName == "ContainBallCarrier" or assignmentName == "CloseLongCarryGap" or assignmentName == "TrackRunner" or assignmentName == "PrimaryPressRotation" or assignmentName == "CenterBackPressureStriker" or assignmentName == "FullbackPressureWinger" or assignmentName == "AggressiveCBPressStriker" or assignmentName == "AggressiveFullbackPressWinger" or assignmentName == "AggressiveMidfieldPress" or assignmentName == "AggressiveMidfieldCover" or assignmentName == "AggressiveCBStepOut" or assignmentName == "AggressiveFullbackStepOut" or assignmentName == "MidfielderPressureMidfielder" or assignmentName == "MidfielderPressureCover" or assignmentName == "EarlyCBPressPassTarget" or assignmentName == "EarlyFullbackPressPassTarget" or assignmentName == "EarlyMidfielderPressPassTarget" or assignmentName == "EarlyMidfielderCoverPassTarget" or assignmentName == "EarlyClosePassTargetPressure"
 	local mode = "Jog"
-	if pressureAssignment and distance <= 18 then
+	if assignmentName == "ReceivePass" and assignment.SprintAllowed == true and distance > 5 then
+		mode = "Sprint"
+	elseif pressureAssignment and distance <= 18 then
 		mode = "Jockey"
 	elseif distance > 22 and (assignment.SprintAllowed == true or (assignment.MovementUrgency or 0) >= 0.72) then
 		mode = "Sprint"

@@ -158,7 +158,6 @@ function Service:_kickPass(context: any, passer: any, pass: any): boolean
 	if not passer.Root or not pass then
 		return false
 	end
-	self:_setReceiver(pass)
 	local direction = pass.Target - passer.Root.Position
 	if pass.Receiver and pass.Receiver.Root then
 		local receiverVelocity = flat(pass.Receiver.Root.AssemblyLinearVelocity)
@@ -175,6 +174,7 @@ function Service:_kickPass(context: any, passer: any, pass: any): boolean
 	if direction.Magnitude < 4 then
 		return false
 	end
+	self:_setReceiver(pass)
 	local passKind = pass.PassKind == "Through" and "Through" or (pass.PassKind == "Lofted" or pass.PassKind == "FarPostCross") and "Lofted" or "Ground"
 	local power = math.clamp((pass.Distance or direction.Magnitude) / (passKind == "Through" and 145 or passKind == "Lofted" and 130 or 110), passKind == "Lofted" and 0.32 or 0.12, passKind == "Through" and 0.46 or passKind == "Lofted" and 0.68 or 0.78)
 	passer.Model:SetAttribute("AIPassCentralLane", pass.MiddlePass == true)
@@ -268,7 +268,8 @@ function Service:_carrierDecision(context: any, carrier: any, assignment: any)
 	local wingerWide = carrier.Role == "Winger" and (carrier.Pitch.X < 100 or carrier.Pitch.X > 324)
 	local wingerEndLine = wingerWide and carrier.Pitch.Z > 675
 	local wingerChanceZone = wingerWide and carrier.Pitch.Z >= 610
-	local passTempo = self.Style:Ratio("PassTempo")
+	local passTempo = math.min(self.Style:Ratio("PassTempo"), tonumber(context.FirstMatchPassTempoCap) or 1)
+	local firstMatchAssistance = math.clamp(tonumber(context.FirstMatchAssistance) or 0, 0, 1)
 	local firstTouchDirectness = self.Style:Ratio("FirstTouchDirectness")
 	local holdLimit = pressure.Under and (0.38 - passTempo * 0.2) or (1.05 - passTempo * 0.52 - firstTouchDirectness * 0.22)
 	if defensiveMood == "Passive" then
@@ -334,7 +335,7 @@ function Service:_carrierDecision(context: any, carrier: any, assignment: any)
 		return
 	end
 
-	self.NextDecision[carrier.Model] = now + math.max(0.04, math.min(AIDifficultyService.NextDecisionDelay(self.Difficulty) * (0.72 - passTempo * 0.42), holdLimit * 0.65))
+	self.NextDecision[carrier.Model] = now + math.max(0.04, math.min(AIDifficultyService.NextDecisionDelay(self.Difficulty) * (0.72 - passTempo * 0.42) * (1 + firstMatchAssistance * .35), holdLimit * 0.65))
 
 	if carrier.Role == "Winger" and wingerWide and carrier.Pitch.Z >= 520 and pressure.Closest > 18 then
 		local diagonalX = carrier.Pitch.X < PitchConfig.HALF_WIDTH and 154 or 270
@@ -599,6 +600,9 @@ function Service:_receiverOverrides(context: any, assignmentsBySide: any, onlySi
 			continue
 		end
 		for _, info in ipairs(context.Teams[side].List) do
+			if info.Model:GetAttribute("VTRReceptionContractId") ~= nil then
+				continue
+			end
 			local receiveTarget = info.Model:GetAttribute("VTRReceiveTarget")
 			local receiveUntil = tonumber(info.Model:GetAttribute("VTRReceiveUntil")) or now
 			if context.Owner == info.Model then

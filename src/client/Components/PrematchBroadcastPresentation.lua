@@ -1,5 +1,4 @@
 --!nonstrict
-local DeviceScaleService = require(script:FindFirstAncestor("VTRClient").Services.DeviceScaleService)
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
@@ -15,6 +14,7 @@ local Remotes = require(ReplicatedStorage.VTR.Shared.Remotes)
 local FormationConfig = require(ReplicatedStorage.VTR.Shared.FormationConfig)
 local CardVisualConfig = require(ReplicatedStorage.VTR.Shared.CardVisualConfig)
 local MatchExperienceConfig = require(ReplicatedStorage.VTR.Shared.MatchExperienceConfig)
+local MatchPresentationService = require(script:FindFirstAncestor("VTRClient").Services.MatchPresentationService)
 
 local Presentation = {}
 local TOTAL_DURATION = 66.0
@@ -1421,28 +1421,15 @@ function Presentation.Duration(profile: any?): number
 end
 
 function Presentation.Play(data: any, onComplete: (() -> ())?)
-	local playerGui = Players.LocalPlayer:WaitForChild("PlayerGui")
 	local profile = MatchExperienceConfig.Normalize(data and data.PresentationProfile)
 	local presentation = MatchExperienceConfig.Get(profile)
 	local presentationDuration = math.max(1, tonumber(data and data.PresentationDuration) or tonumber(presentation.Duration) or 8)
-	local presentationKey = tostring((data and (data.MatchSessionId or data.WorldName)) or "")
-	local old = playerGui:FindFirstChild("VTRPrematchBroadcast")
-	if old and old:GetAttribute("VTRMatchSessionId") == presentationKey then return end
-	if old then old:Destroy() end
-	for _, overlayName in ipairs({"VTRMatchTeleport","VTRMatchLoadSyncCover","VTRRankedTeleportFound","VTRRankedTeleportMatchFound","VTRMatchupConfirmed","VTRMatchupConfirm","VTRRankedReservedBoot"}) do
-		local overlay = playerGui:FindFirstChild(overlayName)
-		if overlay then overlay:Destroy() end
+	if profile == "Acquisition" then
+		local createdAt = tonumber(Players.LocalPlayer:GetAttribute("VTRPresentationOverlayCreatedAt")) or os.clock()
+		presentationDuration = math.clamp(presentationDuration - math.max(0, os.clock() - createdAt), 0.65, presentationDuration)
 	end
-
-	local gui = Instance.new("ScreenGui")
-	gui.Name = "VTRPrematchBroadcast"
-	gui:SetAttribute("VTRMatchSessionId", presentationKey)
-	gui:SetAttribute("VTRPresentationProfile", profile)
-	gui.IgnoreGuiInset = true
-	gui.ResetOnSpawn = false
-	gui.DisplayOrder = 92
-	gui.Parent = playerGui
-	DeviceScaleService.Apply(gui)
+	local gui, host, shouldStart = MatchPresentationService.PrepareRuntime(data, profile)
+	if not shouldStart then return gui end
 	startIntroAudio(gui)
 	local cancelled = false
 	local skipUnlockAt = os.clock() + math.max(0, tonumber(data.PrematchSkipDelay) or tonumber(presentation.SkipLock) or 0)
@@ -1462,7 +1449,7 @@ function Presentation.Play(data: any, onComplete: (() -> ())?)
 	root.BackgroundTransparency = 1
 	root.Size = UDim2.fromScale(1, 1)
 	root.ZIndex = 200
-	root.Parent = gui
+	root.Parent = host
 	local actionRemote: RemoteEvent? = nil
 	local skipSent = false
 	local skipButtons: {TextButton} = {}
@@ -1631,7 +1618,7 @@ function Presentation.Play(data: any, onComplete: (() -> ())?)
 		end)
 		schedule(presentationDuration, function()
 			Presentation.StopAudio()
-			if gui.Parent then gui:Destroy() end
+			MatchPresentationService.Complete(false)
 			if onComplete then onComplete() end
 		end)
 		return gui
@@ -1895,7 +1882,7 @@ function Presentation.Play(data: any, onComplete: (() -> ())?)
 	end)
 	schedule(TOTAL_DURATION, function()
 		Presentation.StopAudio()
-		if gui.Parent then gui:Destroy() end
+		MatchPresentationService.Complete(false)
 		if onComplete then onComplete() end
 	end)
 	return gui

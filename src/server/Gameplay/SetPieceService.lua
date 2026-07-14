@@ -1,12 +1,4 @@
 --!strict
-local function vtrLoadShotPowerModel()
-	local ReplicatedStorage = game:GetService("ReplicatedStorage")
-	local vtr = ReplicatedStorage:FindFirstChild("VTR")
-	local shared = (vtr and vtr:FindFirstChild("Shared")) or ReplicatedStorage:FindFirstChild("Shared") or ReplicatedStorage
-	return require(shared:WaitForChild("ShotPowerModel"))
-end
-
-local VTRShotPowerModel = vtrLoadShotPowerModel()
 local VTRGoalPassThrough = require(script.Parent:WaitForChild("GoalShotPassThroughService"))
 local function vtrXGPercent(value)
 	local n = tonumber(value) or 0
@@ -31,6 +23,7 @@ local FormationPositionService = require(script.Parent.FormationPositionService)
 local KickoffPositionService = require(script.Parent.KickoffPositionService)
 local CornerPositioningService=require(script.Parent.CornerPositioningService)
 local Workspace=game:GetService("Workspace")
+local RunService=game:GetService("RunService")
 
 local Service = {}
 Service.__index = Service
@@ -121,8 +114,8 @@ local function face(model:Model,position:Vector3,target:Vector3)
 	local modelRoot=root(model)
 	if not modelRoot then return end
 	model:PivotTo(CFrame.lookAt(Vector3.new(position.X,modelRoot.Position.Y,position.Z),Vector3.new(target.X,modelRoot.Position.Y,target.Z)))
-	modelRoot.AssemblyLinearVelocity=VTRShotPowerModel.ApplyToVelocity(Vector3.zero, vtrRawShotPower or rawPower or shotPower or kickPower or chargePower or inputPower or power or Power)
-	modelRoot.AssemblyAngularVelocity=VTRShotPowerModel.ApplyToVelocity(Vector3.zero, vtrRawShotPower or rawPower or shotPower or kickPower or chargePower or inputPower or power or Power)
+	modelRoot.AssemblyLinearVelocity=Vector3.zero
+	modelRoot.AssemblyAngularVelocity=Vector3.zero
 	local humanoid=model:FindFirstChildOfClass("Humanoid")
 	if humanoid then humanoid:Move(Vector3.zero,false)end
 end
@@ -140,7 +133,7 @@ local function markerPart(names:{string}):BasePart?
 end
 
 local function debugEnabled(): boolean
-	return Workspace:GetAttribute("VTRKickoffDebug") ~= false
+	return Workspace:GetAttribute("VTRKickoffDebug") == true and (RunService:IsStudio() or game.PrivateServerId ~= "")
 end
 
 local function debugKickoff(message: string, ...: any)
@@ -315,7 +308,6 @@ local function cornerAerialScore(model:Model):number
 	local jumping=tonumber(model:GetAttribute("Jumping")) or tonumber(model:GetAttribute("PHY")) or overall
 	local strength=tonumber(model:GetAttribute("Strength")) or tonumber(model:GetAttribute("PHY")) or overall
 	local height=tonumber(model:GetAttribute("Height")) or 70
-	height = VTRShotPowerModel.ApplyToArcHeight(height, vtrRawShotPower or rawPower or shotPower or kickPower or chargePower or inputPower or power or Power)
 	return overall*.18+heading*.36+jumping*.18+strength*.12+math.clamp(height-66,0,16)*1.2
 end
 
@@ -479,8 +471,8 @@ function Service:Start(player: Player, kind: string, restartTeam: string, locati
 	end
 	self.Possession:Reset()
 	self.World.Ball.Anchored = true
-	self.World.Ball.AssemblyLinearVelocity = VTRShotPowerModel.ApplyToVelocity(Vector3.zero, vtrRawShotPower or rawPower or shotPower or kickPower or chargePower or inputPower or power or Power)
-	self.World.Ball.AssemblyAngularVelocity = VTRShotPowerModel.ApplyToVelocity(Vector3.zero, vtrRawShotPower or rawPower or shotPower or kickPower or chargePower or inputPower or power or Power)
+	self.World.Ball.AssemblyLinearVelocity = Vector3.zero
+	self.World.Ball.AssemblyAngularVelocity = Vector3.zero
 	local taker: Model
 	local kickoffPartner: Model? = nil
 	local setPieceCutscene = false
@@ -593,9 +585,6 @@ function Service:Start(player: Player, kind: string, restartTeam: string, locati
 				debugKickoff("auto pass attempt", "taker", taker.Name, "partner", kickoffPartner.Name, "distance", math.floor(offset.Magnitude*10)/10, "userControlled", userControlled==true)
 				if offset.Magnitude>1 then
 					local target=partnerRoot.Position+offset.Unit*2.4
-					if typeof(target) == "Vector3" then
-						target = VTRShotPowerModel.ApplyToTarget(ball and ball.Position or origin or startPosition or shotOrigin or shooterPosition or Vector3.zero, target, vtrRawShotPower or rawPower or shotPower or kickPower or chargePower or inputPower or power or Power)
-					end
 					if self.BallService and self.BallService.Last then self.BallService.Last[taker]={}end
 					kickoffPartner:SetAttribute("VTRForceIdle",nil)
 					kickoffPartner:SetAttribute("VTRFrozenIdle",nil)
@@ -699,8 +688,8 @@ function Service:ReleaseRestartTaker()
 			local modelRoot=root(model)
 			if modelRoot then
 				modelRoot.Anchored=false
-				modelRoot.AssemblyLinearVelocity=VTRShotPowerModel.ApplyToVelocity(Vector3.zero, vtrRawShotPower or rawPower or shotPower or kickPower or chargePower or inputPower or power or Power)
-				modelRoot.AssemblyAngularVelocity=VTRShotPowerModel.ApplyToVelocity(Vector3.zero, vtrRawShotPower or rawPower or shotPower or kickPower or chargePower or inputPower or power or Power)
+				modelRoot.AssemblyLinearVelocity=Vector3.zero
+				modelRoot.AssemblyAngularVelocity=Vector3.zero
 			end
 		end
 	end

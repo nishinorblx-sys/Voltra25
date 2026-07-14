@@ -2,7 +2,6 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local StaminaConfig = require(ReplicatedStorage.VTR.Shared.StaminaConfig)
 local MovementStatsResolver = require(ReplicatedStorage.VTR.Shared.MovementStatsResolver)
-local StaminaService = require(script.Parent.StaminaService)
 local Service = {}
 Service.__index = Service
 
@@ -11,7 +10,7 @@ local function root(model: Model): BasePart?
 end
 
 function Service.new()
-	return setmetatable({Commands = {}, Stamina = StaminaService.new()}, Service)
+	return setmetatable({Commands = {}}, Service)
 end
 
 function Service:SetTarget(model: Model, target: Vector3, urgency: number)
@@ -40,6 +39,8 @@ function Service:Clear(model: Model)
 	if humanoid then humanoid:Move(Vector3.zero, false) end
 	self.Commands[model] = nil
 	model:SetAttribute("VTRMoveDirection", nil)
+	model:SetAttribute("VTRMoveMagnitude", 0)
+	model:SetAttribute("VTRAISprintRequested", false)
 	model:SetAttribute("isStuck", false)
 	model:SetAttribute("executingMovement", false)
 end
@@ -63,6 +64,8 @@ function Service:Step(dt: number)
 			modelRoot.AssemblyLinearVelocity = Vector3.zero
 			modelRoot.AssemblyAngularVelocity = Vector3.zero
 			model:SetAttribute("VTRSprinting", false)
+			model:SetAttribute("VTRMoveMagnitude", 0)
+			model:SetAttribute("VTRAISprintRequested", false)
 			model:SetAttribute("executingMovement", false)
 			continue
 		end
@@ -94,7 +97,11 @@ function Service:Step(dt: number)
 		end
 		local staminaMax = tonumber(StaminaConfig.Maximum) or 100
 		local moving = distance > 0.6 or hasBall or receiving or command.Urgency >= 0.45
-		local reserve,_,sprinting=self.Stamina:Step(model,dt,{SprintRequested=moving and command.Urgency>=0.48,SprintAllowed=true,MoveMagnitude=moving and 1 or 0,CurrentSpeed=velocity.Magnitude,HasBall=hasBall,UserControlled=false,Frozen=model:GetAttribute("VTRForceIdle")==true,Stunned=(tonumber(model:GetAttribute("VTRStunnedUntil"))or 0)>now})
+		local sprintRequested = moving and (receiving and model:GetAttribute("VTRReceiveRouteSprintRequested") == true or not receiving and command.Urgency >= 0.48)
+		model:SetAttribute("VTRMoveMagnitude", moving and 1 or 0)
+		model:SetAttribute("VTRAISprintRequested", sprintRequested)
+		local reserve = math.clamp(tonumber(model:GetAttribute("VTRSprintEnergy")) or staminaMax, 0, staminaMax)
+		local sprinting = model:GetAttribute("VTRSprinting") == true
 		local resolved = MovementStatsResolver.Resolve(model, {MoveMagnitude = moving and 1 or 0, Sprinting = sprinting, StaminaRatio = reserve / staminaMax, HasBall = hasBall, TurnDot = 1, TurnPenalty = 1, UserControlled = false})
 		local previousSpeed = tonumber(command.Speed) or 0
 		local rate = resolved.TargetSpeed > previousSpeed and resolved.AccelerationRate or resolved.DecelerationRate
