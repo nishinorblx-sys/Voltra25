@@ -490,6 +490,8 @@ function UltimateTeamPage.new(context:any):CanvasGroup
 	local function closeMenu(menu:Instance) menu:Destroy() end
 	local function actionMenu()
 		if not selectedCard then return end;local card=selectedCard;local meta=rosterMeta(snapshot,card)
+		local campaignProtected=card.CampaignBound==true or card.QuickSellBlocked==true or meta.CampaignBound==true or meta.CampaignProjectActive==true
+		local campaignProtectionMessage=meta.CampaignProjectActive==true and "Retire this Club Project before changing its protected status."or"Campaign reward players are account-bound."
 		local existing=group:FindFirstChild("PlayerActionOverlay")
 		if existing then existing:Destroy() end
 		local overlay=Instance.new("TextButton");overlay.Name="PlayerActionOverlay";overlay.AutoButtonColor=false;overlay.BackgroundColor3=Theme.Colors.Black;overlay.BackgroundTransparency=.3;overlay.BorderSizePixel=0;overlay.Size=UDim2.fromScale(1,1);overlay.Text="";overlay.ZIndex=60;overlay.Parent=group
@@ -503,7 +505,7 @@ function UltimateTeamPage.new(context:any):CanvasGroup
 		item("SEND TO BENCH",function() local destination=1;for index=1,7 do if not snapshot.Bench[index] or not snapshot.Bench[index].Card then destination=index;break end end;requestMove(card.Id,"Bench",destination) end)
 		item("SEND TO RESERVES",function() requestMove(card.Id,"Reserves",nil) end)
 		item("REMOVE FROM SQUAD",function() requestMove(card.Id,"Club",nil) end)
-		item("QUICK SELL",function()if meta.Locked then toast("Unlock this player before quick selling.","Error")else context.Flow:Confirmation("QUICK SELL "..string.upper(card.Name),"This permanently removes the card. Value scales from 1,000 to 5,000 coins by card quality.","QUICK SELL",function()apply(SquadService:QuickSellCard(card.Id))end)end end)
+		item(campaignProtected and"PROTECTED"or"QUICK SELL",function()if campaignProtected then toast(campaignProtectionMessage,"Error")elseif meta.Locked then toast("Unlock this player before quick selling.","Error")else context.Flow:Confirmation("QUICK SELL "..string.upper(card.Name),"This permanently removes the card. Value scales from 1,000 to 5,000 coins by card quality.","QUICK SELL",function()apply(SquadService:QuickSellCard(card.Id))end)end end)
 		item(meta.Locked and "UNLOCK PLAYER" or "LOCK PLAYER",function() apply(SquadService:SetCardFlag(card.Id,"Locked",not meta.Locked)) end)
 		item(meta.Favorite and "REMOVE FAVORITE" or "FAVORITE PLAYER",function() apply(SquadService:SetCardFlag(card.Id,"Favorite",not meta.Favorite)) end)
 		overlay.Activated:Connect(function() closeMenu(overlay) end)

@@ -8,10 +8,25 @@ local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
 local Theme = require(ReplicatedStorage.VTR.Shared.Theme)
 local BadgePreview = require(script.Parent.Parent.Components.BadgePreview)
-local MatchSetupService = require(script.Parent.Parent.Services.MatchSetupService)
 local AvatarPortraitGenerator = require(script.Parent.Parent.Services.PlayerPortraitService)
-local UIStateService = require(script.Parent.Parent.Services.UIStateService)
 local SettingsRuntimeService = require(script.Parent.Parent.Services.SettingsRuntimeService)
+
+local matchSetupService = nil
+local uiStateService = nil
+
+local function getMatchSetupService()
+	if not matchSetupService then
+		matchSetupService = require(script.Parent.Parent.Services.MatchSetupService)
+	end
+	return matchSetupService
+end
+
+local function getUIStateService()
+	if not uiStateService then
+		uiStateService = require(script.Parent.Parent.Services.UIStateService)
+	end
+	return uiStateService
+end
 
 local Controller = {}
 Controller.__index = Controller
@@ -422,25 +437,22 @@ function Controller.new(data: any)
 	rating.TextXAlignment = Enum.TextXAlignment.Right
 	rating.TextColor3 = Theme.Colors.Silver
 	local stamina = Instance.new("Frame")
+	stamina.Name = "SprintEnergyBar"
 	stamina.Position = UDim2.fromOffset(60, 27)
 	stamina.Size = UDim2.new(1, -72, 0, 6)
 	stamina.BackgroundColor3 = Theme.Colors.Gunmetal
 	stamina.BorderSizePixel = 0
 	stamina.Parent = activePanel
 	corner(stamina, 3)
-	local enduranceFill = Instance.new("Frame")
-	enduranceFill.Size = UDim2.fromScale(1, 1)
-	enduranceFill.BackgroundColor3 = Color3.fromHex("159BD3")
-	enduranceFill.BorderSizePixel = 0
-	enduranceFill.ClipsDescendants=true
-	enduranceFill.Parent = stamina
-	corner(enduranceFill, 3)
+	local sprintLabel = label(activePanel, "SPRINT", UDim2.fromOffset(60, 18), UDim2.fromOffset(52, 9), 6)
+	sprintLabel.TextColor3 = Theme.Colors.Muted
 	local staminaFill = Instance.new("Frame")
-	staminaFill.Position=UDim2.fromScale(0,.25)
-	staminaFill.Size = UDim2.fromScale(1, .5)
+	staminaFill.Name = "SprintEnergyFill"
+	staminaFill.Position=UDim2.fromScale(0,0)
+	staminaFill.Size = UDim2.fromScale(1, 1)
 	staminaFill.BackgroundColor3 = Theme.Colors.Electric
 	staminaFill.BorderSizePixel = 0
-	staminaFill.Parent = enduranceFill
+	staminaFill.Parent = stamina
 	corner(staminaFill, 3)
 
 	local targetPanel = panel(gui, UDim2.new(1, -272, 1, -92), UDim2.fromOffset(250, 64))
@@ -469,6 +481,26 @@ function Controller.new(data: any)
 	charge.Visible = false
 	local chargeLabel = label(charge, "SHOT POWER", UDim2.fromOffset(7, 2), UDim2.new(1, -14, 0, 11), 7)
 	chargeLabel.TextXAlignment = Enum.TextXAlignment.Center
+	local sweetZone = Instance.new("Frame")
+	sweetZone.Name = "ShotSweetZone"
+	sweetZone.Position = UDim2.new(.55, 4, 1, -6)
+	sweetZone.Size = UDim2.new(.2, -4, 0, 4)
+	sweetZone.BackgroundColor3 = Theme.Colors.White
+	sweetZone.BackgroundTransparency = .62
+	sweetZone.BorderSizePixel = 0
+	sweetZone.ZIndex = 19
+	sweetZone.Parent = charge
+	corner(sweetZone, 4)
+	local overhitZone = Instance.new("Frame")
+	overhitZone.Name = "OverhitZone"
+	overhitZone.Position = UDim2.new(.86, 4, 1, -6)
+	overhitZone.Size = UDim2.new(.14, -8, 0, 4)
+	overhitZone.BackgroundColor3 = Theme.Colors.Danger
+	overhitZone.BackgroundTransparency = .42
+	overhitZone.BorderSizePixel = 0
+	overhitZone.ZIndex = 19
+	overhitZone.Parent = charge
+	corner(overhitZone, 4)
 	local chargeFill = Instance.new("Frame")
 	chargeFill.Position = UDim2.new(0, 4, 1, -6)
 	chargeFill.Size = UDim2.new(0, 0, 0, 4)
@@ -486,8 +518,26 @@ function Controller.new(data: any)
 		ColorSequenceKeypoint.new(1, Color3.fromHex("FF1717")),
 	})
 	chargeGradient.Parent = chargeFill
+	local queuedAction = label(gui, "ACTION QUEUED", UDim2.new(0, 22, 1, -50), UDim2.fromOffset(130, 20), 8)
+	queuedAction.Name = "QueuedActionIndicator"
+	queuedAction.BackgroundColor3 = Theme.Colors.Black
+	queuedAction.BackgroundTransparency = .08
+	queuedAction.TextColor3 = Theme.Colors.Electric
+	queuedAction.TextXAlignment = Enum.TextXAlignment.Center
+	queuedAction.Visible = false
+	corner(queuedAction, 4)
+	local diagnostics: TextLabel? = nil
+	if data.DeveloperAccess == true then
+		diagnostics = label(gui, "PLAYABILITY  /  WAITING FOR CONTROL", UDim2.fromOffset(22, 112), UDim2.fromOffset(330, 24), 8)
+		diagnostics.Name = "InteractionTimeDebugPanel"
+		diagnostics.BackgroundColor3 = Theme.Colors.Black
+		diagnostics.BackgroundTransparency = .08
+		diagnostics.TextColor3 = Theme.Colors.Electric
+		diagnostics.TextXAlignment = Enum.TextXAlignment.Center
+		corner(diagnostics, 4)
+	end
 
-	local help = label(gui, "WASD MOVE   SHIFT SPRINT   LMB SHOOT   RMB PASS   ALT MANUAL LOB   CTRL MANUAL PASS   E TACKLE   F SLIDE   R BLOCK   C DRIBBLE   Q SWITCH", UDim2.new(0.5, -520, 1, -31), UDim2.fromOffset(1040, 18), 9)
+	local help = label(gui, "WASD MOVE   SHIFT SPRINT   LMB SHOT   RMB GROUND   E + RMB THROUGH   ALT + RMB LOB   CTRL + RMB MANUAL   Q SWITCH", UDim2.new(0.5, -520, 1, -31), UDim2.fromOffset(1040, 18), 9)
 	help.TextXAlignment = Enum.TextXAlignment.Center
 	help.TextColor3 = Theme.Colors.Silver
 	help.Visible = false
@@ -552,8 +602,14 @@ function Controller.new(data: any)
 		Charge = charge,
 		ChargeFill = chargeFill,
 		ChargeLabel = chargeLabel,
+		QueuedAction = queuedAction,
+		Diagnostics = diagnostics,
 		Fill = staminaFill,
-		EnduranceFill=enduranceFill,
+		SprintBar = stamina,
+		SprintLabel = sprintLabel,
+		ShotSweetZone = sweetZone,
+		OverhitZone = overhitZone,
+		SprintTutorial = data.Setup and data.Setup.WorldCupTutorial == true,
 		ActiveName = activeName,
 		ActiveState = activeState,
 		Rating=rating,
@@ -833,9 +889,13 @@ function Controller:PulseScore()
 end
 
 function Controller:SetCharge(value: number, kind: string?)
-	self.Charge.Visible = value > 0.01
-	self.ChargeFill.Size = UDim2.new(math.clamp(value, 0, 1), 0, 0, 4)
-	self.ChargeLabel.Text = kind == "Pass" and "PASS POWER" or "SHOT POWER"
+	local normalized = math.clamp(value, 0, 1)
+	self.Charge.Visible = normalized > 0.01
+	self.ChargeFill.Size = UDim2.new(normalized, -math.floor(8 * normalized), 0, 4)
+	local labels = {Ground = "GROUND PASS", Through = "THROUGH PASS", Lob = "LOB / CROSS", Clearance = "CLEARANCE", Pass = "PASS POWER"}
+	self.ChargeLabel.Text = labels[kind or ""] or "SHOT POWER"
+	if self.ShotSweetZone then self.ShotSweetZone.Visible = kind == "Shot" or kind == nil end
+	if self.OverhitZone then self.OverhitZone.Visible = true end
 	self.ChargeFill.BackgroundColor3 = Color3.new(1, 1, 1)
 end
 
@@ -912,11 +972,16 @@ end
 
 function Controller:SetStamina(value: number,endurance:number?)
 	local reserveRatio=math.clamp(value,0,1)
-	if self.EnduranceFill then
-		self.EnduranceFill.Visible=false
-		self.EnduranceFill.Size=UDim2.fromScale(1,1)
-	end
 	self.Fill.Size=UDim2.fromScale(reserveRatio,1)
+	self.Fill.BackgroundColor3=reserveRatio<=.08 and Theme.Colors.Danger or reserveRatio<.25 and Theme.Colors.Warning or Theme.Colors.Electric
+	if reserveRatio>=.995 then
+		self.SprintFullAt=self.SprintFullAt or os.clock()
+	else
+		self.SprintFullAt=nil
+	end
+	local visible=self.SprintTutorial==true or self.SprintFullAt==nil or os.clock()-self.SprintFullAt<2
+	if self.SprintBar then self.SprintBar.Visible=visible end
+	if self.SprintLabel then self.SprintLabel.Visible=visible end
 end
 
 function Controller:SetOpponent(model: Model?)
@@ -1540,7 +1605,7 @@ function Controller:SetPaused(paused: boolean, cameraController: any, onReturn: 
 	local function showSettings()
 		clearBody("SETTINGS")
 		content.Size=UDim2.new(.62,0,.78,0);content.Position=UDim2.new(.34,0,.12,0)
-		local uiState=UIStateService:Get()
+	local uiState=getUIStateService():Get()
 		local settings=uiState and uiState.Settings or{}
 		local activeTab=self.PauseSettingsTab or"Controls"
 		local tabs={"Controls","Audio","Camera","Accessibility"}
@@ -1556,7 +1621,8 @@ function Controller:SetPaused(paused: boolean, cameraController: any, onReturn: 
 		local function commitSetting(key:string,value:any)
 			settings[key]=value
 			if SettingsRuntimeService.Apply then SettingsRuntimeService.Apply(settings)end
-			if UIStateService.SetSetting then UIStateService:SetSetting(key,value)end
+			local service=getUIStateService()
+			if service.SetSetting then service:SetSetting(key,value)end
 			if cameraController and (key=="CameraPreset"or key=="CameraSide"or key=="CameraSpeed"or key=="BroadcastHeight"or key=="BroadcastZoom"or key=="CameraZoomMode")then
 				if cameraController.SetMode and key=="CameraPreset"then cameraController:SetMode(value)end
 				if cameraController.ApplySettings then cameraController:ApplySettings(settings)end
@@ -1623,7 +1689,7 @@ function Controller:SetPaused(paused: boolean, cameraController: any, onReturn: 
 		local bar=Instance.new("Frame");bar.Position=UDim2.fromOffset(44,112);bar.Size=UDim2.new(1,-88,0,8);bar.BackgroundColor3=Theme.Colors.Gunmetal;bar.BorderSizePixel=0;bar.ZIndex=162;bar.Parent=box;corner(bar,4)
 		local fill=Instance.new("Frame");fill.Size=UDim2.fromScale(0,1);fill.BackgroundColor3=Color3.fromHex("FF6975");fill.BorderSizePixel=0;fill.ZIndex=163;fill.Parent=bar;corner(fill,4)
 		TweenService:Create(fill,TweenInfo.new(1.15,Enum.EasingStyle.Quad,Enum.EasingDirection.Out),{Size=UDim2.fromScale(1,1)}):Play()
-		task.delay(1.2,function()if onForfeit then onForfeit()else MatchSetupService:ReturnToMenu();onReturn()end end)
+		task.delay(1.2,function()if onForfeit then onForfeit()else getMatchSetupService():ReturnToMenu();onReturn()end end)
 	end
 	local function openTeamManagementPage()
 		menu.Visible=false;content.Visible=false
@@ -2122,6 +2188,16 @@ function Controller:ResolveShotChance(scored:boolean)
 	end)
 end
 
+function Controller:SetActionQueued(queued: boolean)
+	if self.QueuedAction then self.QueuedAction.Visible = queued == true end
+end
+
+function Controller:SetPlayabilityDiagnostics(controlSeconds: number, summary: any?)
+	if not self.Diagnostics then return end
+	local sinceJoin=type(summary)=="table"and tonumber(summary.TimeSinceJoin)or 0
+	self.Diagnostics.Text=string.format("CONTROL %.2fs  /  JOIN %.2fs",math.max(0,controlSeconds),math.max(0,sinceJoin or 0))
+end
+
 function Controller:ShowPenaltyShootout(payload:any)
 	if self.PenaltyShootoutPanel then
 		self.PenaltyShootoutPanel:Destroy()
@@ -2190,6 +2266,30 @@ function Controller:ShowPenaltyShootout(payload:any)
 		pop.Scale=.58
 		pop.Parent=chip
 		TweenService:Create(pop,TweenInfo.new(.2,Enum.EasingStyle.Back,Enum.EasingDirection.Out),{Scale=1}):Play()
+	end
+	if payload.Manual==true then
+		homeTotal=tonumber(payload.PenaltyHome)or 0
+		awayTotal=tonumber(payload.PenaltyAway)or 0
+		score.Text=tostring(homeTotal).." - "..tostring(awayTotal)
+		local phase=tostring(payload.Phase or"")
+		if phase=="ATTEMPT"then
+			local side=tostring(payload.ActiveSide or"")
+			local code=side=="Away"and(self.AwayCode or"AWAY")or(self.HomeCode or"HOME")
+			title.Text=code.." PENALTY"
+		elseif phase=="RESULT"then
+			local side=tostring(payload.ResultSide or"")
+			local code=side=="Away"and(self.AwayCode or"AWAY")or(self.HomeCode or"HOME")
+			title.Text=code.."  "..(payload.Scored==true and"GOAL"or"MISSED")
+		elseif phase=="COMPLETE"then
+			local winner=tostring(payload.Winner or"")
+			title.Text=(winner=="Home"and(self.HomeCode or"HOME")or winner=="Away"and(self.AwayCode or"AWAY")or"WINNER").." WINS ON PENALTIES"
+		end
+		for _,round in ipairs(rounds)do
+			if round.Home~=nil then addMark(self.HomeCode or"HOME",round.Home==true,tonumber(round.HomeTotal)or homeTotal,tonumber(round.AwayTotal)or awayTotal)end
+			if round.Away~=nil then addMark(self.AwayCode or"AWAY",round.Away==true,tonumber(round.HomeTotal)or homeTotal,tonumber(round.AwayTotal)or awayTotal)end
+		end
+		TweenService:Create(root,TweenInfo.new(.18),{BackgroundTransparency=.04}):Play()
+		return
 	end
 	for index,round in ipairs(rounds)do
 		task.delay((index-1)*.78,function()
@@ -2311,7 +2411,8 @@ function Controller:ShowResult(payload: any, onReturn: () -> ())
 		meta.TextColor3 = Theme.Colors.Silver
 	end
 	local tabs=Instance.new("Frame");tabs.Name="ResultTabs";tabs.BackgroundTransparency=1;tabs.Position=UDim2.new(.5,-210,.275,0);tabs.Size=UDim2.fromOffset(420,38);tabs.ZIndex=180;tabs.Parent=overlay;local tabLayout=Instance.new("UIListLayout");tabLayout.FillDirection=Enum.FillDirection.Horizontal;tabLayout.Padding=UDim.new(0,10);tabLayout.Parent=tabs
-	local content=panel(overlay,UDim2.new(.10,0,.33,0),UDim2.new(.80,0,.42,0));content.ZIndex=50;content.BackgroundTransparency=.11
+	local ascensionResult=payload.Reward and payload.Reward.CampaignAscension==true
+	local content=panel(overlay,UDim2.new(.10,0,.33,0),UDim2.new(.80,0,ascensionResult and .33 or .42,0));content.ZIndex=50;content.BackgroundTransparency=.11
 	local function teamValue(source:any,...:string):any
 		for _,key in {...} do
 			local value=source[key]
@@ -2420,10 +2521,46 @@ function Controller:ShowResult(payload: any, onReturn: () -> ())
 	local ratingButton=actionButton(tabs,"MATCH RATINGS",2,function()teamStats.Visible=false;ratings.Visible=true end);ratingButton.Size=UDim2.fromOffset(205,38);ratingButton.ZIndex=182
 	for _,tab in tabs:GetDescendants()do if tab:IsA("GuiObject")then tab.ZIndex=182 end end
 	if payload.Reward then
-		local reward=panel(overlay,UDim2.new(.5,-150,.775,0),UDim2.fromOffset(300,44));reward.ZIndex=70
-		local rewardScale=Instance.new("UIScale");rewardScale.Scale=.4;rewardScale.Parent=reward
-		local rewardText=label(reward,"*  "..string.upper(payload.Reward.Title).."   +"..tostring(payload.Reward.Coins or 0).." COINS   +"..tostring(payload.Reward.XP or 0).." XP",UDim2.fromOffset(8,7),UDim2.new(1,-16,0,22),9);rewardText.TextColor3=Theme.Colors.Electric;rewardText.TextXAlignment=Enum.TextXAlignment.Center
-		TweenService:Create(rewardScale,TweenInfo.new(.45,Enum.EasingStyle.Back,Enum.EasingDirection.Out),{Scale=1}):Play()
+		local rewardData=payload.Reward
+		if rewardData.CampaignAscension==true then
+			local reducedMotion=workspace:GetAttribute("VTRReducedMotion")==true
+			local reward=panel(overlay,UDim2.new(.08,0,.88,-8),UDim2.new(.84,0,0,170));reward.AnchorPoint=Vector2.new(0,1);reward.ZIndex=70;reward.BackgroundTransparency=.05
+			local rewardScale=Instance.new("UIScale");rewardScale.Scale=reducedMotion and 1 or .7;rewardScale.Parent=reward
+			local division=tostring(rewardData.Division or"VOLTRA ASCENSION")
+			local summary=division.."  /  +"..tostring(rewardData.LeaguePoints or 0).." PTS  /  "..tostring(rewardData.SeasonPoints or 0).." SEASON PTS  /  "..tostring(rewardData.SeasonStars or 0).." STARS"
+			local heading=label(reward,summary,UDim2.fromOffset(14,6),UDim2.new(1,-28,0,18),9);heading.TextColor3=Theme.Colors.Electric;heading.TextXAlignment=Enum.TextXAlignment.Center;heading.TextTruncate=Enum.TextTruncate.AtEnd
+			local stars=type(rewardData.Stars)=="table"and rewardData.Stars or{}
+			if #stars>0 then
+				for index,star in stars do
+					local earned=star.Earned==true
+					local starLabel=label(reward,(earned and"*  "or"X  ")..string.upper(tostring(star.Label or"OBJECTIVE")),UDim2.new((index-1)/#stars,8,0,28),UDim2.new(1/#stars,-16,0,18),8);starLabel.TextColor3=earned and Theme.Colors.White or Theme.Colors.Muted;starLabel.TextXAlignment=Enum.TextXAlignment.Center;starLabel.TextTruncate=Enum.TextTruncate.AtEnd
+					local starReason=label(reward,string.upper(tostring(star.Reason or"")),UDim2.new((index-1)/#stars,8,0,47),UDim2.new(1/#stars,-16,0,36),6);starReason.TextColor3=earned and Theme.Colors.Silver or Theme.Colors.Muted;starReason.TextXAlignment=Enum.TextXAlignment.Center;starReason.TextYAlignment=Enum.TextYAlignment.Top;starReason.TextWrapped=true
+				end
+			else
+				local reason=label(reward,string.upper(tostring(rewardData.Reason or rewardData.Contract or rewardData.Result or"MATCH COMPLETE")),UDim2.fromOffset(14,28),UDim2.new(1,-28,0,20),8);reason.TextColor3=Theme.Colors.Silver;reason.TextXAlignment=Enum.TextXAlignment.Center;reason.TextTruncate=Enum.TextTruncate.AtEnd
+			end
+			local breakdown=type(rewardData.RewardBreakdown)=="table"and rewardData.RewardBreakdown or{}
+			local finance=math.max(0,math.floor(((tonumber(breakdown.FinanceModifier)or 1)-1)*100+.5))
+			local economy={"BASE "..tostring(breakdown.BaseCoins or 0),"OBJECTIVE +"..tostring(breakdown.ObjectiveCoins or 0)}
+			local manager=tonumber(breakdown.ManagerModifier)or 1;if manager~=1 then table.insert(economy,"MANAGER "..tostring(math.floor(manager*100+.5)).."%")end
+			local recovery=tonumber(breakdown.RecoveryModifier)or 1;if recovery~=1 then table.insert(economy,"RECOVERY "..tostring(math.floor(recovery*100+.5)).."%")end
+			local retry=tonumber(breakdown.RetryModifier)or 1;if retry~=1 then table.insert(economy,"RETRY "..tostring(math.floor(retry*100+.5)).."%")end
+			if finance>0 then table.insert(economy,"FINANCE +"..tostring(finance).."%")end
+			local vip=tonumber(breakdown.VipModifier)or 1;if vip>1 then table.insert(economy,"VIP X"..tostring(vip))end
+			local economyLabel=label(reward,table.concat(economy,"  /  "),UDim2.fromOffset(14,84),UDim2.new(1,-28,0,32),7);economyLabel.TextColor3=Theme.Colors.Muted;economyLabel.TextXAlignment=Enum.TextXAlignment.Center;economyLabel.TextWrapped=true
+			local footer="+"..tostring(rewardData.Coins or 0).." COINS  /  +"..tostring(rewardData.XP or 0).." XP"
+			if (tonumber(rewardData.ProjectXP)or 0)>0 then footer..="  /  PROJECT +"..tostring(rewardData.ProjectXP).." XP"end
+			if rewardData.ProjectMilestone then footer..="  /  PROJECT NODE "..tostring(rewardData.ProjectMilestone)end
+			local starMilestones=type(rewardData.StarMilestones)=="table"and rewardData.StarMilestones or{};if #starMilestones>0 then footer..="  /  STAR REWARD "..tostring(starMilestones[#starMilestones].Stars)end
+			footer..="  /  "..string.upper(tostring(rewardData.NextCTA or"RETURN TO ASCENSION"))
+			local footerLabel=label(reward,footer,UDim2.fromOffset(14,122),UDim2.new(1,-28,0,38),8);footerLabel.TextColor3=Theme.Colors.Silver;footerLabel.TextXAlignment=Enum.TextXAlignment.Center;footerLabel.TextWrapped=true
+			if not reducedMotion then TweenService:Create(rewardScale,TweenInfo.new(.32,Enum.EasingStyle.Back,Enum.EasingDirection.Out),{Scale=1}):Play()end
+		else
+			local reward=panel(overlay,UDim2.new(.5,-150,.775,0),UDim2.fromOffset(300,44));reward.ZIndex=70
+			local rewardScale=Instance.new("UIScale");rewardScale.Scale=.4;rewardScale.Parent=reward
+			local rewardText=label(reward,"*  "..string.upper(rewardData.Title).."   +"..tostring(rewardData.Coins or 0).." COINS   +"..tostring(rewardData.XP or 0).." XP",UDim2.fromOffset(8,7),UDim2.new(1,-16,0,22),9);rewardText.TextColor3=Theme.Colors.Electric;rewardText.TextXAlignment=Enum.TextXAlignment.Center
+			TweenService:Create(rewardScale,TweenInfo.new(.45,Enum.EasingStyle.Back,Enum.EasingDirection.Out),{Scale=1}):Play()
+		end
 	end
 	local returning = false
 	local button: TextButton?
@@ -2435,7 +2572,7 @@ function Controller:ShowResult(payload: any, onReturn: () -> ())
 		button.AutoButtonColor = false
 		button.Active = false
 		task.spawn(function()
-			local response = MatchSetupService:ReturnToMenu()
+			local response = getMatchSetupService():ReturnToMenu()
 			if payload.Ranked then
 				if type(response) == "table" and response.Success == false then
 					returning = false

@@ -1,4 +1,3 @@
-local MATCHUP_PANEL_DELAY = 0.85
 --!strict
 local ReplicatedStorage=game:GetService("ReplicatedStorage")
 local Players=game:GetService("Players")
@@ -67,6 +66,7 @@ function Service:GetRoster(teamId:string):any return request("GetRoster",{TeamId
 function Service:GetTeams(country:string,league:string):any return request("GetTeams",{Country=country,League=league})end
 function Service:Save(setup:any):any return request("SaveSetup",setup)end
 function Service:StartMatch():any
+	task.spawn(function()request("PlayabilityTelemetry",{Event="TeleportRequested",Scope=game.JobId,Properties={mode="Custom"}})end)
 	if isCampaignSetup()then
 		return startCampaignChoice()
 	end
@@ -88,14 +88,17 @@ function Service:StartShootingPractice():any
 	end)
 end
 function Service:GetWorldCup():any return request("GetWorldCup")end
-function Service:BeginWorldCup(country:string):any return request("BeginWorldCup",{Country=country})end
+function Service:ReportPlayability(eventName:string,properties:any?):any return request("PlayabilityTelemetry",{Event=eventName,Scope=game.JobId,Properties=properties})end
+function Service:PrepareWorldCupTutorial():any return request("PrepareWorldCupTutorial")end
+function Service:BeginWorldCup(country:string,onboarding:boolean?):any return request("BeginWorldCup",{Country=country,Onboarding=onboarding==true})end
 function Service:ResetWorldCup():any return request("ResetWorldCup")end
 function Service:EndWorldCup():any return request("EndWorldCup")end
 function Service:ClaimWorldCupRewards():any return request("ClaimWorldCupRewards")end
 function Service:ClaimWorldCupQuest(questId:string):any return request("ClaimWorldCupQuest",{QuestId=questId})end
-function Service:StartWorldCupMatch():any
+function Service:StartWorldCupMatch(onboarding:boolean?):any
+	task.spawn(function()request("PlayabilityTelemetry",{Event="TeleportRequested",Scope=game.JobId,Properties={mode="WorldCup"}})end)
 	return VoltraMatchTeleport.Run("World Cup Match",function()
-		return request("StartWorldCupMatch",{AIMatchTeleport=true})
+		return request("StartWorldCupMatch",{AIMatchTeleport=true,Onboarding=onboarding==true})
 	end)
 end
 function Service:SimulateWorldCupMatch():any return request("SimulateWorldCupMatch")end
@@ -110,6 +113,7 @@ function Service:JoinRankedQueue():any
 	if player and (player:GetAttribute("VTRInMatch")==true or (tonumber(player:GetAttribute("VTRRankedQueueLockedUntil"))or 0)>os.clock()) then
 		return{Success=false,Message="Finish the current ranked match first."}
 	end
+	task.spawn(function()request("PlayabilityTelemetry",{Event="TeleportRequested",Scope=game.JobId,Properties={mode="Ranked"}})end)
 	return VoltraMatchTeleport.Run("Ranked Queue",function()
 		return request("JoinRankedQueue",{DeviceType=deviceType()})
 	end)

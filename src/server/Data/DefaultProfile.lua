@@ -1,9 +1,17 @@
 --!strict
-local VTRPendingPackAnimation = require(script.Parent.Parent.Services:WaitForChild("PendingPackAnimationService"))
 local ReplicatedStorage=game:GetService("ReplicatedStorage")
 local EconomyConfig=require(ReplicatedStorage.VTR.Shared.EconomyConfig)
+local CampaignAscensionConfig=require(ReplicatedStorage.VTR.Shared.CampaignAscensionConfig)
+local PlayabilitySettingsConfig=require(ReplicatedStorage.VTR.Shared.PlayabilitySettingsConfig)
+local function defaultSettings():any
+	local settings=PlayabilitySettingsConfig.CopyDefaults()
+	settings.ReceiverAssistMode="Newcomer"
+	settings.PassReceiverAutoSwitch="Newcomer"
+	for key,value in {TimedFinishing=true,MenuMusic=true,MotionEffects=true,InvertY=false,HighContrast=false,Crossplay=true,MasterVolume=0.8,PlayerNames="Active Only",Minimap="Medium",MinimapOrientation="Broadcast",BroadcastHeight="178",BroadcastZoom="50",CameraSpeed="1",CameraSide="Near",PauseKey="M",SkipKey="Space",TutorialComplete=false,TutorialStep=1,TutorialDevice=""}do settings[key]=value end
+	return settings
+end
 return table.freeze({
-	Version=13,SchemaVersion=13,CreatedAt=0,LastLogin=0,OnboardingCompleted=false,
+	Version=15,SchemaVersion=15,CreatedAt=0,LastLogin=0,OnboardingCompleted=false,
 	Profile={Level=1,XP=0,SelectedClub="NO CLUB",Avatar={UserId=0,HeadshotType="HeadShot",OutfitId=0}},
 	Currency={Coins=EconomyConfig.StarterCoins,Bolts=EconomyConfig.StarterBolts,VoltraPoints=EconomyConfig.StarterVoltraPoints},Season={Name="SEASON 01",Level=1,XP=0,RequiredXP=1000},
 	Ranked={Division="DIVISION 10",DivisionNumber=10,DivisionWins=0,ProtectedWins=0,VoltraRating=0,Rank="NEW SEASON",PlacementStatus="PLACEMENT READY",Wins=0,Draws=0,Losses=0,RP=0,RequiredRP=10,WinStreak=0,BestWinStreak=0,FlawlessRuns=0,CleanSheets=0,BestPackRating=0,History={},PlayerStats={MatchesPlayed=0,Goals=0,Assists=0,MOTM=0,AverageRating=0,HatTricks=0,PenaltiesScored=0,FreeKickGoals=0}},
@@ -18,8 +26,9 @@ return table.freeze({
 		{objectiveId="milestone_level_5",groupId="milestone",sortOrder=1,title="FIRST SURGE",description="Reach account level 5",progress=1,target=5,reward={Type="Bolts",Amount=150},status="locked",nextObjectiveId=nil,cadence="Milestone"},
 	},
 	RankedRewards={{Id="rookie_welcome",Title="ROOKIE WELCOME",Description="1,000 Coins",Claimed=false}},RewardsInbox={{Id="launch_welcome",Title="WELCOME TO VTR 25",Description="500 Coins + 50 Bolts",Type="Welcome",Claimed=false}},
-	PackInventory={},PlayerCardInventory={},Squad={},Bench={},Reserves={},PlayerCardMeta={},Formation="4-3-3",
-	CampaignProgress={UnlockedDifficulty=1,CompletedTeams={},RewardsClaimed={}},
+	PackInventory={},PlayerCardInventory={},RewardTransactionLedger={},InventoryGrantLedger={},Squad={},Bench={},Reserves={},PlayerCardMeta={},Formation="4-3-3",
+	CampaignProgress=CampaignAscensionConfig.CreateProgress(),
+	PlayabilityProgress={Version=2,CompletedMatches=0,FirstMatchCompleted=false,FirstRewardGranted=false,FirstRewardCardInstanceId="",FirstRewardPlayerName="",SecondMatchCompleted=false,FirstWorldCupRunCompleted=false,LegacyAccessGranted=false},
 	MatchStats={Overall={Played=0,Wins=0,Draws=0,Losses=0},Ranked={Played=0,Wins=0,Draws=0,Losses=0},Campaign={Played=0,Wins=0,Draws=0,Losses=0},WorldCup={Played=0,Wins=0,Draws=0,Losses=0},AppliedResults={},History={}},
 	DailyLogin={WeekKey="",ClaimedDays={},TrackDay=1,LastClaimedAt=0,LastClaimedDayKey=0,LastClaimedTrackDay=0},
 	WorldCup=false,WorldCupPendingMatch=nil,WorldCupHistory={},WorldCupQuests={Progress={},Claimed={}},
@@ -34,7 +43,7 @@ return table.freeze({
 	PlayBuilder={Archetype="Finisher",Role="CF",TraitA="Threaded",TraitB="Explosive Start",Style="Poacher+",Attributes={},Traits={},UpdatedAt=0},
 	StoreOwnership={Kits={"home_kit"},Stadiums={"academy_ground"},Cosmetics={},GamePasses={}},ActiveBoosts={Coins2xUntil=0},PurchaseHistory={},StarCard={Offer=nil,RerollsToday=0,RerollDay=0},Fixtures={{Id="welcome_fixture",HomeTeam="YOUR CLUB",AwayTeam="VOLTRA ACADEMY",Competition="WELCOME SERIES",StartsAt=0,DisplayTime="SOON"},{Id="academy_preview",HomeTeam="NEON FORGE",AwayTeam="YOUR CLUB",Competition="ACADEMY PREVIEW",StartsAt=0,DisplayTime="TBD"}},
 	Onboarding={Complete=false,Step=1,ClubName="",Abbreviation="",PrimaryColor="electric_green",SecondaryColor="pure_black",AccentColor="silver",KitStyle="Solid",BadgePreset="Modern",BadgeShape="Shield",BadgeSymbol="Lightning Bolt",BadgeColorBehavior="Tri Color",IdentityConfigured=false,StarterPackClaimed=false,StarterPackOpened=false,SquadFilled=false,ObjectivesActivated=false},
-	Settings={TimedFinishing=true,MenuMusic=true,MotionEffects=true,PerformanceMode=false,InvertY=false,HighContrast=false,ReducedMotion=false,Crossplay=true,MasterVolume=0.8,CameraPreset="Tactical",CameraZoomMode="Wide",PlayerNames="Active Only",Trainer="Basic",PassReceiverAutoSwitch="Assisted",ManualPassAutoSwitch="Closest",ReceiverAssist="Light",Minimap="Medium",MinimapOrientation="Broadcast",BroadcastHeight="178",BroadcastZoom="50",CameraSpeed="1",CameraSide="Near",PauseKey="M",SkipKey="Space",TutorialComplete=false,TutorialStep=1,TutorialDevice=""},OwnedCosmetics={},
-	MatchSetup={MatchLength=6,Difficulty="Professional",MatchType="Objective Match",HomeTeamId="",AwayTeamId="",HomeKit="Home",AwayKit="Away",StadiumId="voltra_arena",Weather="Clear",Time="Evening",Completed=false,SavedAt=0,KitConflict=false,CampaignTeamId="",CampaignTier=0,CampaignReplay=false},
-	UIState={LastPage="Home",SelectedTabs={},Settings={TimedFinishing=true,MenuMusic=true,MotionEffects=true,PerformanceMode=false,InvertY=false,HighContrast=false,ReducedMotion=false,Crossplay=true,MasterVolume=0.8,CameraPreset="Tactical",CameraZoomMode="Wide",PlayerNames="Active Only",Trainer="Basic",PassReceiverAutoSwitch="Assisted",ManualPassAutoSwitch="Closest",ReceiverAssist="Light",Minimap="Medium",MinimapOrientation="Broadcast",BroadcastHeight="178",BroadcastZoom="50",CameraSpeed="1",CameraSide="Near",PauseKey="M",SkipKey="Space",TutorialComplete=false,TutorialStep=1,TutorialDevice=""},SelectedSquad={},EquippedCosmetics={ActiveKit="home_kit",StadiumTheme="academy_ground",BootStyle="",GoalEffect="",GoalMusic="",CustomGoalMusicId="",CustomGoalMusicStart=0,Walkout="",Celebration="",ProfileFrame="",ClubBanner="",Nameplate=""},CareerSaveSelection=1},
+	Settings=defaultSettings(),OwnedCosmetics={},
+	MatchSetup={MatchFormat="Standard",MatchLength=6,Difficulty="Professional",MatchType="Objective Match",HomeTeamId="",AwayTeamId="",HomeKit="Home",AwayKit="Away",StadiumId="voltra_arena",Weather="Clear",Time="Evening",Completed=false,SavedAt=0,KitConflict=false,CampaignTeamId="",CampaignTier=0,CampaignReplay=false},
+	UIState={LastPage="Home",SelectedTabs={},Settings=defaultSettings(),SelectedSquad={},EquippedCosmetics={ActiveKit="home_kit",StadiumTheme="academy_ground",BootStyle="",GoalEffect="",GoalMusic="",CustomGoalMusicId="",CustomGoalMusicStart=0,Walkout="",Celebration="",ProfileFrame="",ClubBanner="",Nameplate=""},CareerSaveSelection=1},
 })

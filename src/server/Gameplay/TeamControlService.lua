@@ -2,6 +2,8 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local GoalModelResolver = require(ReplicatedStorage.VTR.Shared.GoalModelResolver)
 local GameplayConfig=require(ReplicatedStorage.VTR.Shared.GameplayConfig)
+local ActionTuning=require(ReplicatedStorage.VTR.Shared.ActionTuningConfig)
+local ReceiverAssistConfig=require(ReplicatedStorage.VTR.Shared.ReceiverAssistConfig)
 local PassTargetingService = require(script.Parent.PassTargetingService)
 local PassingService = require(script.Parent.PassingService)
 local ReceiveBallService = require(script.Parent.ReceiveBallService)
@@ -17,14 +19,6 @@ end
 
 local function validDirection(value: any): boolean
 	return typeof(value) == "Vector3" and value.X == value.X and value.Y == value.Y and value.Z == value.Z and value.Magnitude <= 1.1
-end
-
-local function autoSwitchMode(value: any): string
-	return value == "Off" and "Off" or value == "Instant" and "Instant" or "Assisted"
-end
-
-local function receiverAssistMode(value: any): string
-	return "Off"
 end
 
 local function debugEnabled(): boolean
@@ -43,15 +37,16 @@ function Service.new(remote: RemoteEvent, teams: any, ball: BasePart, possession
 		Remote = remote, Teams = teams, Ball = ball, Possession = possession, BallService = ballService,
 		Passing = PassingService.new(ballService, targeting, remote, teams),
 		Receiving = ReceiveBallService.new(ball, possession, remote), Smoothing = MovementSmoothingService.new(),
-		PitchCFrame = pitchCFrame, Width = width, Length = length, Animations = animations, Active = {}, PlayerSides = {}, PendingReceiver = {}, PassIntent = {}, ReceiverAssist = {}, ManualReceiveOverride = {}, LastMovementAt = {}, LastPossessionOwner = nil, ManualSwitchAwayUntil = {}, PendingShots = {}, FixedActive = {},
+		PitchCFrame = pitchCFrame, Width = width, Length = length, Animations = animations, Active = {}, PlayerSides = {}, PendingReceiver = {}, PassIntent = {}, ReceiverAssist = {}, ManualReceiveOverride = {}, LastMovementAt = {}, LastPossessionOwner = nil, ManualSwitchAwayUntil = {}, PendingShots = {}, FixedActive = {}, LastKickSequence = {},
 	}, Service)
 end
 
 function Service:_beginReceiverAssist(player: Player, model: Model, point: Vector3, mode: string)
-	if mode == "Off" then return end
+	mode=ReceiverAssistConfig.Normalize(mode)
+	if mode == "Manual" then return end
 	if self.ManualReceiveOverride[player] == true then return end
 	model:SetAttribute("VTRReceiverAssist", mode)
-	self.ReceiverAssist[player] = {Model = model, Point = point, Until = os.clock() + (mode == "Assisted" and 0.9 or 0.48)}
+	self.ReceiverAssist[player] = {Model = model, Point = point, Until = os.clock() + ReceiverAssistConfig.Get(mode).GuidanceSeconds}
 end
 
 function Service:SetManualReceiveOverride(player: Player, active: boolean)
@@ -112,7 +107,7 @@ function Service:_releaseShotOnMarker(model:Model,animationName:string,release:(
 		release()
 	end
 	if self.Animations and self.Animations.PlayActionWithMarker then
-		self.Animations:PlayActionWithMarker(model,animationName,"Shoot",.62,finish)
+		self.Animations:PlayActionWithMarker(model,animationName,"Shoot",ActionTuning.Profile("Shot").ReleaseFallbackSeconds,finish)
 	else
 		task.delay(.18,finish)
 	end
@@ -325,6 +320,14 @@ function Service:Handle(player: Player, payload: any)
 	local active = self.Active[player]
 	if not active or type(payload) ~= "table" then return end
 	local kind = payload.Type
+	if kind == "Pass" or kind == "Shot" or kind == "Clearance" then
+		local sequence = tonumber(payload.SequenceId)
+		if sequence then
+			local last = tonumber(self.LastKickSequence[player]) or 0
+			if sequence <= last then return end
+			self.LastKickSequence[player] = sequence
+		end
+	end
 	if (kind == "Pass" or kind == "Shot" or kind == "Clearance") and active:GetAttribute("VTRGoalkeeperHolding") == true then
 		if self.BallService and self.BallService.PrepareGoalkeeperBallAction then
 			self.BallService:PrepareGoalkeeperBallAction(active)
@@ -347,10 +350,15 @@ function Service:Handle(player: Player, payload: any)
 			if self.ManualReceiveOverride[player] == true and self.ReceiverAssist[player] then active:SetAttribute("VTRReceiverAssist", nil);self.ReceiverAssist[player] = nil end
 			local receiveAssist = self.ReceiverAssist[player]
 			if receiveAssist and receiveAssist.Model == active and os.clock() < receiveAssist.Until then
+				if magnitude>.55 then
+					active:SetAttribute("VTRReceiverAssist", nil)
+					self.ReceiverAssist[player] = nil
+				else
 				active:SetAttribute("VTRMoveMagnitude", math.max(magnitude, 0.85))
 				active:SetAttribute("VTRMoveDirection", validDirection(payload.Direction) and Vector3.new(payload.Direction.X, 0, payload.Direction.Z) or Vector3.zero)
 				humanoid:MoveTo(Vector3.new(receiveAssist.Point.X, activeRoot.Position.Y, receiveAssist.Point.Z))
 				return
+				end
 			end
 			local ownsBall = self.Possession:GetOwner() == active
 			local sprinting = active:GetAttribute("VTRSprinting") == true
@@ -392,20 +400,26 @@ function Service:Handle(player: Player, payload: any)
 		end
 	elseif kind == "Pass" and validDirection(payload.Direction) then
 		local aimPoint = self:_aimPoint(active, payload.AimPosition, false)
-		if payload.PassType=="Manual"or payload.PassType=="ManualLobbed"then
+		local requestedPass=ActionTuning.NormalizeAction(payload.PassType)
+		local internalPass=if requestedPass=="Lob"then"Lofted"else requestedPass
+		local evaluatedCharge=ActionTuning.EvaluateNormalized(requestedPass,payload.Charge)
+		if payload.ManualAim==true or payload.PassType=="Manual"or payload.PassType=="ManualLobbed"then
 			local activeRoot=root(active)
 			local offset=activeRoot and aimPoint and(aimPoint-activeRoot.Position)or nil
 			if activeRoot and aimPoint and offset and offset.Magnitude>1 then
-				local kicked = self.BallService:Kick(active,"Pass",offset,tonumber(payload.Charge)or 0,nil,payload.PassType=="ManualLobbed"and"Lofted"or"Manual",offset.Magnitude,aimPoint)
+				local kicked = self.BallService:Kick(active,"Pass",offset,evaluatedCharge,nil,internalPass,offset.Magnitude,aimPoint)
 				if kicked then
 					self:_switchDefenseToPassTarget(tostring(active:GetAttribute("VTRTeam") or self.PlayerSides[player] or "Home"), aimPoint)
-					if not self.FixedActive[player] and autoSwitchMode(payload.AutoSwitch) ~= "Off" then
+					local switchMode=ReceiverAssistConfig.Normalize(payload.AutoSwitch,"Manual")
+					if not self.FixedActive[player] and switchMode ~= "Manual" then
 						local receiver = self:_closestTeammateToPoint(player, active, aimPoint)
 						local receiverRoot = root(receiver)
 						if receiver and receiverRoot and (receiverRoot.Position - aimPoint).Magnitude <= 42 then
+							receiver:SetAttribute("VTRReceiverAssistMode","Manual")
 							self.Receiving:Expect(player, receiver, receiverRoot.Position)
-							self.PassIntent[player] = {Model = receiver, Passer = active, Until = os.clock() + 4.2, AutoSwitch = "Assisted"}
+							self.PassIntent[player] = {Model = receiver, Passer = active, Until = os.clock() + 4.2, AutoSwitch = switchMode}
 							self.Remote:FireClient(player, {Type = "SwitchTarget", Model = receiver, ReceivePoint = receiverRoot.Position})
+							self.PendingReceiver[player] = {Model = receiver, Started = os.clock(), ReceivePoint = receiverRoot.Position, InitialDistance = math.max((self.Ball.Position - receiverRoot.Position).Magnitude, 1), AssistMode = "Manual", AutoSwitch = switchMode}
 						end
 					end
 				end
@@ -413,25 +427,23 @@ function Service:Handle(player: Player, payload: any)
 			return
 		end
 		local lockedReceiver = typeof(payload.TargetModel) == "Instance" and payload.TargetModel:IsA("Model") and payload.TargetModel or nil
-		local receiver, receivePoint = self.Passing:Pass(active, payload.Direction, tonumber(payload.Charge) or 0, payload.PassType, aimPoint, lockedReceiver)
+		local receiver, receivePoint = self.Passing:Pass(active, payload.Direction, evaluatedCharge, internalPass, aimPoint, lockedReceiver)
 		if receiver and receivePoint then
 			self:_switchDefenseToPassTarget(tostring(active:GetAttribute("VTRTeam") or self.PlayerSides[player] or "Home"), receivePoint)
 			if not self.FixedActive[player] then
-				local mode = autoSwitchMode(payload.AutoSwitch)
-				if mode == "Off" then mode = "Assisted" end
-				local assistMode = receiverAssistMode(payload.ReceiverAssist)
+				local mode = ReceiverAssistConfig.Normalize(payload.AutoSwitch or payload.ReceiverAssistMode)
+				local assistMode = ReceiverAssistConfig.Normalize(payload.ReceiverAssistMode or payload.ReceiverAssist)
+				receiver:SetAttribute("VTRReceiverAssistMode",assistMode)
 				self.Receiving:Expect(player, receiver, receivePoint)
 				self.PassIntent[player] = {Model = receiver, Passer = active, Until = os.clock() + 4.2, AutoSwitch = mode}
 				self.Remote:FireClient(player, {Type = "SwitchTarget", Model = receiver, ReceivePoint = receivePoint})
-				if mode == "Instant" then
-					self:_set(player, receiver, "PassReceiver")
-					self:_beginReceiverAssist(player, receiver, receivePoint, assistMode)
-				elseif mode == "Assisted" then
-					self.PendingReceiver[player] = {Model = receiver, Started = os.clock(), ReceivePoint = receivePoint, InitialDistance = math.max((self.Ball.Position - receivePoint).Magnitude, 1), AssistMode = assistMode}
+				if mode ~= "Manual" then
+					self.PendingReceiver[player] = {Model = receiver, Started = os.clock(), ReceivePoint = receivePoint, InitialDistance = math.max((self.Ball.Position - receivePoint).Magnitude, 1), AssistMode = assistMode, AutoSwitch = mode}
 				end
 			end
 		end
 	elseif kind == "Shot" and validDirection(payload.Direction) then
+		local shotCharge=ActionTuning.EvaluateNormalized("Shot",payload.Charge)
 		active:SetAttribute("VTRFreeKickCurve", tonumber(payload.FreeKickCurve) or 0)
 		active:SetAttribute("VTRFreeKickLift", tonumber(payload.FreeKickLift) or 0)
 		local practiceShotTarget=payload.PracticeShotTarget==true and typeof(payload.AimPosition)=="Vector3"
@@ -443,7 +455,7 @@ function Service:Handle(player: Player, payload: any)
 		local shotFoot=animationName=="ShootLeft"and"Left"or"Right"
 		if payload.GoalTarget~=true and not practiceShotTarget and not self:_isShotNearGoal(active, aimPoint)then
 			local direction = aimPoint and activeRoot and (aimPoint - activeRoot.Position) or payload.Direction
-			self.BallService:LowClearance(active,direction,payload.Charge)
+			self.BallService:LowClearance(active,direction,shotCharge)
 		else
 			self:_releaseShotOnMarker(active,animationName,function()
 				local currentRoot=root(active)
@@ -451,9 +463,9 @@ function Service:Handle(player: Player, payload: any)
 				active:SetAttribute("VTRShotFoot",shotFoot)
 				local released=false
 				if practiceShotTarget and aimPoint and currentRoot then
-					released=self.BallService:Kick(active,"Shot",aimPoint-currentRoot.Position,payload.Charge,nil,nil,nil,aimPoint)
+					released=self.BallService:Kick(active,"Shot",aimPoint-currentRoot.Position,shotCharge,nil,nil,nil,aimPoint)
 				else
-					released=self.BallService:Kick(active,"Shot",aimPoint and currentRoot and(aimPoint-currentRoot.Position)or payload.Direction,payload.Charge,nil,nil,nil,payload.GoalTarget==true and aimPoint or nil)
+					released=self.BallService:Kick(active,"Shot",aimPoint and currentRoot and(aimPoint-currentRoot.Position)or payload.Direction,shotCharge,nil,nil,nil,payload.GoalTarget==true and aimPoint or nil)
 				end
 				if not released then
 					active:SetAttribute("VTRShotVariant",nil)
@@ -514,7 +526,7 @@ function Service:Step()
 			self.PendingReceiver[player] = nil
 			self.PassIntent[player] = nil
 			if owner == intended then
-				if intent.AutoSwitch ~= "Off" then self:_set(player, intended, "PassReceived") end
+				if intent.AutoSwitch ~= "Manual" then self:_set(player, intended, "PassReceived") end
 			else
 				intended:SetAttribute("VTRReceiverAssist", nil)
 				self.ReceiverAssist[player] = nil
@@ -522,12 +534,13 @@ function Service:Step()
 					-- A teammate collected the pass first. Continue with the collector and
 					-- explicitly suppress an AI pass-back to the old intended receiver.
 					owner:SetAttribute("VTRNoAutoPassUntil", os.clock() + 0.9)
-					if intent.AutoSwitch ~= "Off" then self:_set(player, owner, "AlternateReceiver") end
+					if intent.AutoSwitch ~= "Manual" then self:_set(player, owner, "AlternateReceiver") end
 				else
 					local defender = self:_nearestUseful(player)
 					if defender then self:_set(player, defender, "PassIntercepted") end
 				end
 			end
+			intended:SetAttribute("VTRReceiverAssistMode",nil)
 		end
 	end
 	for player, entry in self.PendingReceiver do
@@ -544,7 +557,12 @@ function Service:Step()
 		local remaining = (self.Ball.Position - entry.ReceivePoint).Magnitude
 		local progress = 1 - math.clamp(remaining / entry.InitialDistance, 0, 1)
 		local elapsed = os.clock() - entry.Started
-		if owner == receiver or elapsed >= 0.18 or progress >= 0.25 then
+		local mode=ReceiverAssistConfig.Normalize(entry.AutoSwitch)
+		if mode=="Manual"then self.PendingReceiver[player]=nil continue end
+		local tuning=ReceiverAssistConfig.Get(mode)
+		local progressThreshold=tuning.SwitchProgress
+		local elapsedThreshold=tuning.SwitchElapsed
+		if owner == receiver or elapsed >= elapsedThreshold or progress >= progressThreshold then
 			self.PendingReceiver[player] = nil
 			self:_set(player, receiver, "PassReceiver")
 			self:_beginReceiverAssist(player, receiver, entry.ReceivePoint, entry.AssistMode or "Light")

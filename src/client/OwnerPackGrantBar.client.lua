@@ -2,6 +2,7 @@
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
 
 local Shared = ReplicatedStorage:WaitForChild("VTR"):WaitForChild("Shared")
@@ -9,6 +10,10 @@ local NetworkConfig = require(Shared:WaitForChild("NetworkConfig"))
 local Theme = require(Shared:WaitForChild("Theme"))
 
 local player = Players.LocalPlayer
+if RunService:IsStudio() and player.UserId <= 0 then
+	return
+end
+
 local remote = ReplicatedStorage:WaitForChild("VTR"):WaitForChild(NetworkConfig.FolderName):WaitForChild(NetworkConfig.DeveloperFunction) :: RemoteFunction
 
 local ok, response = pcall(function()
@@ -27,12 +32,14 @@ local selectedPack = 1
 local selectedPlayer = 1
 local quantity = 1
 local collapsed = false
+local suppressedForOnboarding = player:GetAttribute("VTRForceWorldCupOnboardingRoute") == true
 
 local gui = Instance.new("ScreenGui")
 gui.Name = "OwnerPackGrantBar"
 gui.ResetOnSpawn = false
 gui.IgnoreGuiInset = true
 gui.DisplayOrder = 900
+gui.Enabled = not suppressedForOnboarding
 gui.Parent = player:WaitForChild("PlayerGui")
 
 local bar = Instance.new("Frame")
@@ -133,6 +140,7 @@ local function setStatus(text: string, success: boolean?)
 end
 
 local function refresh()
+	gui.Enabled = not suppressedForOnboarding
 	local pack = selectedPackData()
 	packButton.Text = pack and string.upper(tostring(pack.Name or pack.Id)) or "PACK"
 	qtyLabel.Text = "x" .. tostring(quantity)
@@ -141,6 +149,11 @@ local function refresh()
 		targetBox.Text = tostring(selected.Name)
 	end
 end
+
+player:GetAttributeChangedSignal("VTRForceWorldCupOnboardingRoute"):Connect(function()
+	suppressedForOnboarding = player:GetAttribute("VTRForceWorldCupOnboardingRoute") == true
+	gui.Enabled = not suppressedForOnboarding
+end)
 
 local function cyclePlayer(delta: number)
 	if #players == 0 then return end

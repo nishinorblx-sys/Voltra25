@@ -20,7 +20,7 @@ function Service:_calculateAdded(): number
 end
 
 function Service:Step(dt: number)
-	self.HalfElapsed += dt * 1.6
+	self.HalfElapsed += math.max(0, dt)
 	if self.HalfElapsed >= self.HalfRealDuration then self:_calculateAdded() end
 end
 

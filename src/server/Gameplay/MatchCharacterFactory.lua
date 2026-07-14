@@ -47,7 +47,7 @@ model:SetAttribute("playerId",data.playerId);model:SetAttribute("cardInstanceId"
 	model:SetAttribute("ShotPower",tonumber(data.shotPower)or tonumber(data.ShotPower)or tonumber(detailed.shotPower)or tonumber(detailed.ShotPower)or stat(data,"SHO"))
 	model:SetAttribute("LongShots",tonumber(data.longShots)or tonumber(data.LongShots)or tonumber(detailed.longShots)or tonumber(detailed.LongShots)or stat(data,"SHO"))
 	model:SetAttribute("StandingTackle",tonumber(data.standingTackle)or tonumber(detailed.standingTackle)or stat(data,"DEF"));model:SetAttribute("SlidingTackle",tonumber(data.slidingTackle)or tonumber(detailed.slidingTackle)or stat(data,"DEF"));model:SetAttribute("Dribbling",tonumber(data.dribbling)or tonumber(detailed.dribbling)or stat(data,"DRI"));model:SetAttribute("SkillMoves",tonumber(data.skillMoves)or 1)
-	model:SetAttribute("VTREndurance",100);model:SetAttribute("VTRSprintStamina",100)
+	model:SetAttribute("VTRSprintEnergy",100);model:SetAttribute("VTREndurance",100);model:SetAttribute("VTRSprintStamina",100);model:SetAttribute("VTRStamina",100);model:SetAttribute("VTRSprintLocked",false);model:SetAttribute("VTRSprinting",false)
 	local appearanceOk,appearanceError=pcall(AppearanceApplier.Apply,model,data.appearance);if not appearanceOk then warn("[VTR APPEARANCE] "..tostring(appearanceError))end
 	local avatarUserId=tonumber(data.AppearanceUserId or data.UserId or data.userId)
 	if avatarUserId and avatarUserId>0 then

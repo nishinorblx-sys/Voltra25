@@ -1,5 +1,3 @@
-local VTRPendingPackAnimation = require(script.Parent.Services:WaitForChild("PendingPackAnimationService"))
-local MATCHUP_PANEL_DELAY = 0.85
 --!strict
 
 local Players = game:GetService("Players")
@@ -41,6 +39,8 @@ local TransferMarketService=require(script.Parent.Services.TransferMarketService
 local DailyLoginRewardService = require(script.Parent.Services.DailyLoginRewardService)
 local MonetizationReceiptService = require(script.Parent.Services.MonetizationReceiptService)
 local DeveloperPackGrantService = require(script.Parent.Services.DeveloperPackGrantService)
+local CampaignAscensionService = require(script.Parent.Services.CampaignAscensionService)
+local PlayabilityAnalyticsService = require(script.Parent.Services.PlayabilityAnalyticsService)
 
 local ServerApp = {}
 
@@ -83,6 +83,7 @@ function ServerApp.Start()
 	local uiState = UIStateService.new(profiles, uiStateRemote, publish)
 	local inventory = InventoryService.new(profiles)
 	local progression = ProgressionService.new(profiles, publish, inventory)
+	local analytics = PlayabilityAnalyticsService.new(profiles)
 	local packs = PackService.new(profiles, inventory)
 	local playerDatabase = PlayerDatabaseService.new(inventory)
 	local matchRuntime = MatchRuntimeService.new()
@@ -96,6 +97,11 @@ function ServerApp.Start()
 	if launch.SetRankedProfiles then launch:SetRankedProfiles(rankedProfile) end
 	local rankedSquads=RankedSquadService.new(profiles)
 	local matchSetup = MatchSetupService.new(profiles,publish,progression,matchRuntime,rankedSquads)
+	local campaignAscension=CampaignAscensionService.new(profiles,publish,progression,inventory,rankedSquads)
+	campaignAscension:SetMatchSetup(matchSetup)
+	matchSetup:SetCampaignAscension(campaignAscension)
+	matchRuntime:SetCampaignAscension(campaignAscension)
+	matchRuntime:SetAnalytics(analytics)
 	local rankedQueue = RankedQueueService.new(profiles,matchRuntime,rankedProfile,notifications,rankedSquads,progression,publish)
 	local fiveVFiveQueue = FiveVFiveQueueService.new(matchRuntime, publish, notifications, profiles)
 	local dailyLogin = DailyLoginRewardService.new(profiles,inventory,publish)
@@ -132,8 +138,10 @@ function ServerApp.Start()
 		PlayerDatabase = playerDatabase,
 		MatchSetup = matchSetup,
 		MatchRuntime = matchRuntime,
+		Campaign = campaignAscension,
 	}
 	profiles:Start()
+	analytics:Start()
 	monetization:Start()
 	dailyLogin:Start()
 	transferMarket:Start()
@@ -247,9 +255,10 @@ function ServerApp.Start()
 		return{Success=ok and success,Message=ok and message or"Developer action failed.",Data=ok and data or nil}
 	end
 	local lastMatchAction:{[Player]:number}={}
+	local campaignActions={GetCampaignState=true,GetCampaignEligibleProjects=true,StartCampaignPlacement=true,StartCampaignSeason=true,ChooseCampaignScoutingFocus=true,SelectCampaignProject=true,SkipCampaignProject=true,RetireCampaignProject=true,StartCampaignFixture=true,ResumeCampaignMatch=true,ChooseCampaignProjectUpgrade=true,GenerateCampaignPromotionChoice=true,RerollCampaignPromotionChoice=true,ChooseCampaignPromotionPlayer=true,UpgradeCampaignFacility=true,ApplyCampaignCounterPlan=true,AcknowledgeCampaignPresentation=true,GetCampaignHistory=true,GetCampaignMastery=true,StartCampaignMastery=true,StartCampaignMasteryFixture=true}
 	matchAction.OnServerInvoke=function(player:Player,action:any,payload:any)
-		if type(action)~="string"or#action>32 then return{Success=false,Message="Invalid match action."}end;payload=type(payload)=="table"and payload or{};local now=os.clock();if action~="GetConfig"and action~="GetRoster"and action~="GetTeams"and action~="GetWorldCup"and action~="GetRankedLeaderboards"and now-(lastMatchAction[player]or 0)<.2 then return{Success=false,Message="Please wait."}end;lastMatchAction[player]=now
-		local ok,success,message,data=pcall(function()if action=="GetConfig"then local result=matchSetup:GetClientData(player);if not result and profiles.WaitForProfile then profiles:WaitForProfile(player,8);result=matchSetup:GetClientData(player)end;return result~=nil,result and"Match setup loaded."or"Match setup unavailable.",result elseif action=="GetRoster"then local result=matchSetup:GetRoster(player,payload.TeamId);return result~=nil,result and"Roster loaded."or"Unknown team.",result elseif action=="GetTeams"then local result=matchSetup:GetTeams(player,payload.Country,payload.League);return result~=nil,result and"Teams loaded."or"Invalid country or league.",result elseif action=="SaveSetup"then return matchSetup:Save(player,payload)elseif action=="StartMatch"then return matchSetup:StartMatch(player)elseif action=="WatchMatch"then return matchSetup:WatchMatch(player)elseif action=="StartShootingPractice"then return matchSetup:StartShootingPractice(player,payload) elseif action=="GetWorldCup"then return matchSetup:GetWorldCup(player)elseif action=="BeginWorldCup"then return matchSetup:BeginWorldCup(player,tostring(payload.Country or""))elseif action=="ResetWorldCup"then return matchSetup:ResetWorldCup(player)elseif action=="EndWorldCup"then return matchSetup:EndWorldCup(player)elseif action=="ClaimWorldCupRewards"then return matchSetup:ClaimWorldCupRewards(player)elseif action=="ClaimWorldCupQuest"then return matchSetup:ClaimWorldCupQuest(player,tostring(payload.QuestId or ""))elseif action=="StartWorldCupMatch"then return matchSetup:StartWorldCupMatch(player)elseif action=="SimulateWorldCupMatch"then return matchSetup:SimulateWorldCupMatch(player)elseif action=="SimulateRestOfWorldCup"then return matchSetup:SimulateRestOfWorldCup(player)elseif action=="JoinRankedQueue"then
+		if type(action)~="string"or#action>32 then return{Success=false,Message="Invalid match action."}end;payload=type(payload)=="table"and payload or{};local now=os.clock();if action~="GetConfig"and action~="GetRoster"and action~="GetTeams"and action~="GetWorldCup"and action~="GetRankedLeaderboards"and action~="PlayabilityTelemetry"and now-(lastMatchAction[player]or 0)<.2 then return{Success=false,Message="Please wait."}end;if action~="PlayabilityTelemetry"then lastMatchAction[player]=now end
+		local ok,success,message,data=pcall(function()if campaignActions[action]then return campaignAscension:Handle(player,action,payload)elseif action=="PlayabilityTelemetry"then local accepted=analytics:HandleClientHint(player,payload);return accepted,accepted and"Telemetry accepted."or"Telemetry rejected.",nil elseif action=="GetConfig"then local result=matchSetup:GetClientData(player);if not result and profiles.WaitForProfile then profiles:WaitForProfile(player,8);result=matchSetup:GetClientData(player)end;return result~=nil,result and"Match setup loaded."or"Match setup unavailable.",result elseif action=="GetRoster"then local result=matchSetup:GetRoster(player,payload.TeamId);return result~=nil,result and"Roster loaded."or"Unknown team.",result elseif action=="GetTeams"then local result=matchSetup:GetTeams(player,payload.Country,payload.League);return result~=nil,result and"Teams loaded."or"Invalid country or league.",result elseif action=="SaveSetup"then return matchSetup:Save(player,payload)elseif action=="StartMatch"then return matchSetup:StartMatch(player)elseif action=="WatchMatch"then return matchSetup:WatchMatch(player)elseif action=="StartShootingPractice"then return matchSetup:StartShootingPractice(player,payload) elseif action=="GetWorldCup"then return matchSetup:GetWorldCup(player)elseif action=="PrepareWorldCupTutorial"then return matchSetup:PrepareWorldCupTutorial(player)elseif action=="BeginWorldCup"then return matchSetup:BeginWorldCup(player,tostring(payload.Country or""),payload)elseif action=="ResetWorldCup"then return matchSetup:ResetWorldCup(player)elseif action=="EndWorldCup"then return matchSetup:EndWorldCup(player)elseif action=="ClaimWorldCupRewards"then return matchSetup:ClaimWorldCupRewards(player)elseif action=="ClaimWorldCupQuest"then return matchSetup:ClaimWorldCupQuest(player,tostring(payload.QuestId or ""))elseif action=="StartWorldCupMatch"then return matchSetup:StartWorldCupMatch(player,payload)elseif action=="SimulateWorldCupMatch"then return matchSetup:SimulateWorldCupMatch(player)elseif action=="SimulateRestOfWorldCup"then return matchSetup:SimulateRestOfWorldCup(player)elseif action=="JoinRankedQueue"then
 		if player:GetAttribute("VTRInMatch")==true or (tonumber(player:GetAttribute("VTRRankedQueueLockedUntil"))or 0)>os.clock() then
 			return{Success=false,Message="Finish the current ranked match first."}
 		end
@@ -260,7 +269,7 @@ return rankedQueue:Join(player,payload)elseif action=="LeaveRankedQueue"then ret
 		end
 		return{Success=success,Message=message,Data=data}
 	end
-	Players.PlayerRemoving:Connect(function(player)rankedQueue:PlayerRemoving(player);fiveVFiveQueue:PlayerRemoving(player);if rankedProfile.PlayerRemoving then rankedProfile:PlayerRemoving(player)end;if matchRuntime.PlayerRemoving then matchRuntime:PlayerRemoving(player)else matchSetup:ReturnToMenu(player)end;lastRequest[player] = nil;lastProgressionAction[player]=nil;lastLaunchAction[player]=nil;lastSquadAction[player]=nil;lastPlayerData[player]=nil;lastPackAction[player]=nil;lastInventoryAction[player]=nil;lastDeveloperAction[player]=nil;lastMatchAction[player]=nil end)
+	Players.PlayerRemoving:Connect(function(player)rankedQueue:PlayerRemoving(player);fiveVFiveQueue:PlayerRemoving(player);campaignAscension:PlayerRemoving(player);if rankedProfile.PlayerRemoving then rankedProfile:PlayerRemoving(player)end;if matchRuntime.PlayerRemoving then matchRuntime:PlayerRemoving(player)else matchSetup:ReturnToMenu(player)end;analytics:PlayerRemoving(player);lastRequest[player] = nil;lastProgressionAction[player]=nil;lastLaunchAction[player]=nil;lastSquadAction[player]=nil;lastPlayerData[player]=nil;lastPackAction[player]=nil;lastInventoryAction[player]=nil;lastDeveloperAction[player]=nil;lastMatchAction[player]=nil end)
 
 	-- Public server API for future gameplay systems. Nothing here is exposed as
 	-- a client-controlled mutation remote.

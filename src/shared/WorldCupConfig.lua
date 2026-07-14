@@ -496,7 +496,7 @@ WorldCupConfig.Rankings = {
 	["Transnistria"] = 206,
 	["Somaliland"] = 207,
 	["Western Sahara"] = 208,
-	["SÃ£o TomÃ© and PrÃ­ncipe"] = 209
+	["Saeo Tomao and Pra­ncipe"] = 209
 }
 
 function WorldCupConfig.Ranking(country:string):number

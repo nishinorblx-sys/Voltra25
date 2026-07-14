@@ -6,6 +6,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local GuiService = game:GetService("GuiService")
 local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
 
 local Theme = require(ReplicatedStorage.VTR.Shared.Theme)
 local Config = require(ReplicatedStorage.VTR.Shared.UIConfig)
@@ -44,7 +45,7 @@ local PageModules = {
 	UltimateTeam = require(script.Parent.Parent.Pages.UltimateTeamPage),
 	WorldCup = require(script.Parent.Parent.Pages.WorldCupPage),
 	Inventory = require(script.Parent.Parent.Pages.InventoryPage),
-	Play = require(script.Parent.Parent.Pages.CampaignPage),
+	Campaign = require(script.Parent.Parent.Pages.CampaignPage),
 	MyPlayer = require(script.Parent.Parent.Pages.MyPlayerPage),
 	FiveVFive = require(script.Parent.Parent.Pages.FiveVFivePage),
 	Ranked = require(script.Parent.Parent.Pages.RankedPage),
@@ -56,6 +57,19 @@ local PageModules = {
 
 local UIController = {}
 UIController.__index = UIController
+
+local function normalizeRoute(id: string): string
+	return id == "Play" and "Campaign" or id
+end
+
+local function progressionRouteUnlocked(progression: any, id: string): boolean
+	if id == "Home" or id == "WorldCup" or id == "Settings" then return true end
+	local progress = type(progression) == "table" and progression.PlayabilityProgress or nil
+	if type(progress) ~= "table" then return true end
+	if progress.LegacyAccessGranted == true or progress.FirstWorldCupRunCompleted == true then return true end
+	local completed = math.max(0, math.floor(tonumber(progress.CompletedMatches) or 0))
+	return completed >= 2 and (id == "UltimateTeam" or id == "Inventory")
+end
 
 local function label(text: string, size: number, color: Color3, font: Enum.Font): TextLabel
 	local result = Instance.new("TextLabel")
@@ -151,14 +165,25 @@ function UIController:Start()
 		return
 	end
 	self.Data = data
+	local needsWorldCupOnboarding = data.Progression and data.Progression.Onboarding and data.Progression.Onboarding.Complete ~= true
+	if needsWorldCupOnboarding then
+		root.BackgroundTransparency = 1
+		Players.LocalPlayer:SetAttribute("VTRDailyLoginSuppressed", true)
+		Players.LocalPlayer:SetAttribute("VTRForceWorldCupOnboardingRoute", true)
+	end
 	SettingsRuntimeService.Apply(data.UIState.Settings)
-	MenuMusicService.Start()
+	if needsWorldCupOnboarding then
+		MenuMusicService.Stop()
+	else
+		MenuMusicService.Start()
+	end
 
 	local scale = Instance.new("UIScale")
 	scale.Parent = root
 	self.Scale = scale
 
-	BackgroundEffects.new(root)
+	local backgroundEnergy = BackgroundEffects.new(root)
+	backgroundEnergy.Visible = not needsWorldCupOnboarding
 
 	local sidebar = Instance.new("Frame")
 	sidebar.Name = "Sidebar"
@@ -311,6 +336,27 @@ function UIController:Start()
 	content.Size = UDim2.new(1, -Theme.Layout.SidebarWidth, 1, -Theme.Layout.TopbarHeight)
 	content.Parent = root
 	self.Content = content
+	local onboardingChrome = { sidebar, topbar, content }
+	local function setOnboardingChromeVisible(visible: boolean)
+		root.BackgroundTransparency = visible and 0 or 1
+		if backgroundEnergy and backgroundEnergy.Parent then
+			backgroundEnergy.Visible = visible
+		end
+		if visible then
+			MenuMusicService.Start()
+		else
+			MenuMusicService.Stop()
+		end
+		for _, object in ipairs(onboardingChrome) do
+			if object and object.Parent then
+				object.Visible = visible
+				object:SetAttribute("VTRHiddenForWorldCupOnboarding", visible and nil or true)
+			end
+		end
+	end
+	if needsWorldCupOnboarding then
+		setOnboardingChromeVisible(false)
+	end
 
 	task.spawn(function()
 		local ok, image = pcall(function()
@@ -329,12 +375,19 @@ function UIController:Start()
 	self.Navigation = navigation
 	local order = {}
 	for _, navData in Config.Navigation do
-		table.insert(order, navData.Id)
 		local item = SidebarItem.new(navData, function(id)
+			if not progressionRouteUnlocked(self.Data and self.Data.Progression, id) then
+				self:_showNotification({Title = "KEEP PLAYING", Message = "Complete your opening World Cup run to unlock this section.", Kind = "Info"})
+				return
+			end
 			self.Flow:ModeTransition(id, function() navigation:Navigate(id); UIStateService:SetLastPage(id) end)
 		end)
 		item.Instance.Parent = navHolder
 		navigation:RegisterItem(navData.Id, item)
+		local unlocked = progressionRouteUnlocked(data.Progression, navData.Id)
+		item.Instance.Visible = unlocked
+		item.Instance.Selectable = unlocked
+		if unlocked then table.insert(order, navData.Id) end
 	end
 
 	local context = {
@@ -342,11 +395,27 @@ function UIController:Start()
 		Theme = Theme,
 		Config = Config,
 		Data = data,
-		Navigate = function(id: string) self.Flow:ModeTransition(id, function() navigation:Navigate(id); UIStateService:SetLastPage(id) end) end,
+		Navigate = function(id: string)
+			local route = normalizeRoute(id)
+			if not progressionRouteUnlocked(self.Data and self.Data.Progression, route) then
+				self:_showNotification({Title = "KEEP PLAYING", Message = "Complete your opening World Cup run to unlock this section.", Kind = "Info"})
+				return
+			end
+			self.Flow:ModeTransition(route, function() navigation:Navigate(route); UIStateService:SetLastPage(route) end)
+		end,
 		IsCurrentPage = function(id: string) return navigation.Current == id end,
 		HidePage = function(id: string) navigation:HidePage(id) end,
 		Toast = function(payload: any) self:_showNotification(payload) end,
 		Flow = self.Flow,
+		RevealOnboardingMenu = function()
+			setOnboardingChromeVisible(true)
+		end,
+		HideMenuForMatch = function()
+			MenuMusicService.Stop()
+			if gui.Parent then
+				gui.Enabled = false
+			end
+		end,
 		OpenPlayerDetails = function(cardInstanceId: string)
 			local result = PlayerDatabaseService:GetDetails(cardInstanceId)
 			if not result.Success then self:_showNotification({ Title = "PLAYER DATABASE", Message = result.Message or "Player details unavailable.", Kind = "Error" }); return end
@@ -383,7 +452,12 @@ function UIController:Start()
 	end
 	navigation:FinalizeSelectionOrder(order)
 	local lastPage = tostring(data.UIState.LastPage or "Home")
+	lastPage = normalizeRoute(lastPage)
 	if lastPage == "Shooting" or not PageModules[lastPage] then lastPage = "Home" end
+	if not progressionRouteUnlocked(data.Progression, lastPage) then lastPage = "Home" end
+	if needsWorldCupOnboarding then
+		lastPage="WorldCup"
+	end
 	navigation:Navigate(lastPage)
 	self:_bindDataUpdates()
 	NotificationService.Start(function(payload) self:_showNotification(payload) end)
@@ -392,17 +466,25 @@ function UIController:Start()
 	local function maybeShowTutorial()
 		self:_showNewcomerTutorialIfNeeded()
 	end
-	if not data.Progression.Onboarding.Complete then
+	if needsWorldCupOnboarding then
 		LoadingScreen.complete(loading, function()
-			self.Onboarding = OnboardingController.new(root, self.Flow, data.Progression)
-			self.Onboarding:Start(function()
-				navigation:Navigate("Home")
-				UIStateService:SetLastPage("Home")
-				task.delay(0.35, function() self:_showNewcomerTutorialIfNeeded(true) end)
-			end)
+			task.spawn(function()MatchSetupService:ReportPlayability("FirstMenuVisible",{route="WorldCup"})end)
+			if not RunService:IsStudio() and Players.LocalPlayer:GetAttribute("VTRWorldCupSoloServer") ~= true then
+				local result = MatchSetupService:PrepareWorldCupTutorial()
+				if result and result.Success and result.Data and result.Data.Teleporting == true then
+					return
+				end
+			end
+			navigation:Navigate("WorldCup")
+			UIStateService:SetLastPage("WorldCup")
 		end)
 	else
 		LoadingScreen.complete(loading, function()
+			task.spawn(function()
+				MatchSetupService:ReportPlayability("FirstMenuVisible",{route=tostring(navigation.Current or"Home")})
+				local joinData=Players.LocalPlayer:GetJoinData()
+				if type(joinData.TeleportData)=="table"then MatchSetupService:ReportPlayability("DestinationJoined",{route=tostring(navigation.Current or"Home")})end
+			end)
 			task.delay(0.35, maybeShowTutorial)
 		end)
 	end
@@ -509,6 +591,25 @@ function UIController:_replacePage(id: string)
 	end
 end
 
+function UIController:_syncProgressionNavigation()
+	if not self.Navigation then return end
+	local order = {}
+	for _, navData in Config.Navigation do
+		local item = self.Navigation.Items[navData.Id]
+		local unlocked = progressionRouteUnlocked(self.Data and self.Data.Progression, navData.Id)
+		if item and item.Instance then
+			item.Instance.Visible = unlocked
+			item.Instance.Selectable = unlocked
+		end
+		if unlocked then table.insert(order, navData.Id) end
+	end
+	self.Navigation:FinalizeSelectionOrder(order)
+	if self.Navigation.Current and not progressionRouteUnlocked(self.Data and self.Data.Progression, self.Navigation.Current) then
+		self.Navigation:Navigate("Home")
+		UIStateService:SetLastPage("Home")
+	end
+end
+
 function UIController:_bindDataUpdates()
 	PlayerProfileService:Observe(function(value)
 		self.Data.Profile = value
@@ -557,7 +658,8 @@ function UIController:_bindDataUpdates()
 	end)
 	ProgressionService:Observe(function(value)
 		self.Data.Progression = value
-		for _, id in {"Home","Inventory","Play","Ranked","Store"} do self:_replacePage(id) end
+		self:_syncProgressionNavigation()
+		for _, id in {"Home","Inventory","Campaign","Ranked","Store"} do self:_replacePage(id) end
 	end)
 end
 

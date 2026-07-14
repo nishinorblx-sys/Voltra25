@@ -1201,7 +1201,11 @@ function Service:_begin(attackingSide: string, shotId: number)
 	if penaltyDuel then
 		local guessPoint=keeper:GetAttribute("VTRPenaltyGuessPoint")
 		if typeof(guessPoint)=="Vector3" then target=guessPoint end
-		if typeof(guessPoint)=="Vector3"then self.ActiveSave.PenaltyDiveTarget=guessPoint end
+		if typeof(guessPoint)=="Vector3"then
+			self.ActiveSave.PenaltyDiveTarget=guessPoint
+			self.ActiveSave.PlannedRootTarget=nil
+			keeper:SetAttribute("VTRSaveTarget",guessPoint)
+		end
 	end
 end
 
@@ -1947,9 +1951,12 @@ function Service:Step(dt:number?)
 	end
 	local save = self.ActiveSave
 	if not save then
-		self:_keeperSafety("Home");self:_keeperSafety("Away")
-		self:_positionOnLine("Home")
-		self:_positionOnLine("Away")
+		local homeKeeper=self.Teams and self.Teams.Home and goalkeeper(self.Teams.Home)or nil
+		local awayKeeper=self.Teams and self.Teams.Away and goalkeeper(self.Teams.Away)or nil
+		if not(homeKeeper and homeKeeper:GetAttribute("VTRTutorialFrozen")==true)then self:_keeperSafety("Home")end
+		if not(awayKeeper and awayKeeper:GetAttribute("VTRTutorialFrozen")==true)then self:_keeperSafety("Away")end
+		if not(homeKeeper and homeKeeper:GetAttribute("VTRTutorialFrozen")==true)then self:_positionOnLine("Home")end
+		if not(awayKeeper and awayKeeper:GetAttribute("VTRTutorialFrozen")==true)then self:_positionOnLine("Away")end
 		return
 	end
 	if save.DiveState=="Falling" or save.DiveState=="Landed" or save.DiveState=="Recovering" or save.DiveState=="ReturnHome" then
@@ -2016,7 +2023,7 @@ function Service:Step(dt:number?)
 	local keeperDepth=(keeperRoot.Position-rectangle.PlanePoint):Dot(forward)
 	local rootDepth=(rootTarget-rectangle.PlanePoint):Dot(forward)
 	rootTarget+=forward*(keeperDepth-rootDepth)
-	if save.PlannedRootTarget and save.WillSave~=false then
+	if save.PlannedRootTarget and save.WillSave~=false and not save.PenaltyDiveTarget then
 		rootTarget=save.PlannedRootTarget
 	end
 	local toEndpoint=rootTarget-keeperRoot.Position
@@ -2028,7 +2035,7 @@ function Service:Step(dt:number?)
 	local lateralAxis=save.LateralAxis or candidateAxis
 	save.CenteredDive=save.CenteredDive or centeredDive
 	local diveAim=target
-	if save.WillSave==false then
+	if save.WillSave==false and not save.PenaltyDiveTarget then
 		rootTarget=missedRootTarget(save,keeperRoot,rootTarget,rectangle,lateralAxis,upAxis,forward)
 		diveAim=save.MissAim or(rootTarget+upAxis*1.05)
 	end

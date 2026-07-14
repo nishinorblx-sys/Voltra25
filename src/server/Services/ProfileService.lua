@@ -1,5 +1,4 @@
 --!strict
-local VTRPendingPackAnimation = require(script.Parent:WaitForChild("PendingPackAnimationService"))
 local Players=game:GetService("Players")
 local ReplicatedStorage=game:GetService("ReplicatedStorage")
 local RunService=game:GetService("RunService")
@@ -8,16 +7,20 @@ local EconomyConfig=require(ReplicatedStorage.VTR.Shared.EconomyConfig)
 local DeveloperConfig=require(ReplicatedStorage.VTR.Shared.DeveloperConfig)
 local ClubIdentityConfig=require(ReplicatedStorage.VTR.Shared.ClubIdentityConfig)
 local PlayBuilderConfig=require(ReplicatedStorage.VTR.Shared.PlayBuilderConfig)
+local PlayabilitySettingsConfig=require(ReplicatedStorage.VTR.Shared.PlayabilitySettingsConfig)
+local MatchFormatConfig=require(ReplicatedStorage.VTR.Shared.MatchFormatConfig)
 local ObjectiveDefinitions=require(script.Parent.Parent.Data.Objectives)
 local CardInstanceFactory=require(script.Parent.Parent.Data.CardInstanceFactory)
 local PackInstanceFactory=require(script.Parent.Parent.Data.PackInstanceFactory)
 local DefaultProfile=require(script.Parent.Parent.Data.DefaultProfile)
+local CampaignMigration=require(script.Parent.CampaignMigration)
 local ProfileService={};ProfileService.__index=ProfileService
 
 local function copy(value:any):any if type(value)~="table" then return value end;local result={};for key,child in value do result[key]=copy(child) end;return result end
 
 local function applyStudioDefaultTeam(profile:any,player:Player)
 	if not RunService:IsStudio() then return end
+	if workspace:GetAttribute("VTRStudioUseDefaultTeam")~=true then return end
 	local club=profile.ClubMembership or{}
 	club.ClubId=club.ClubId~=""and club.ClubId or("studio_club_"..tostring(player.UserId))
 	club.Name="STUDIO UNITED"
@@ -135,6 +138,27 @@ local migrations={
 	[10]=function(p:any) p.Version=11;p.SchemaVersion=11;return 11 end,
 	[11]=function(p:any) p.Version=12;p.SchemaVersion=12;return 12 end,
 	[12]=function(p:any) ensureMonetizationFields(p);p.Version=13;p.SchemaVersion=13;return 13 end,
+	[13]=function(p:any) CampaignMigration.Normalize(p);p.Version=14;p.SchemaVersion=14;return 14 end,
+	[14]=function(p:any)
+		p.UIState=type(p.UIState)=="table"and p.UIState or{}
+		local settings,uiSettings=PlayabilitySettingsConfig.Synchronize(p.Settings,p.UIState.Settings)
+		p.Settings=settings
+		p.UIState.Settings=uiSettings
+		p.MatchSetup=type(p.MatchSetup)=="table"and p.MatchSetup or{}
+		p.MatchSetup.MatchFormat=MatchFormatConfig.Normalize(p.MatchSetup.MatchFormat or p.MatchSetup.MatchLength)
+		p.PlayabilityProgress=type(p.PlayabilityProgress)=="table"and p.PlayabilityProgress or{}
+		local progress=p.PlayabilityProgress
+		progress.Version=2
+		progress.LegacyAccessGranted=true
+		progress.CompletedMatches=math.max(3,math.floor(tonumber(progress.CompletedMatches)or 0))
+		progress.FirstMatchCompleted=progress.FirstMatchCompleted==true or progress.CompletedMatches>=1
+		progress.SecondMatchCompleted=progress.SecondMatchCompleted==true or progress.CompletedMatches>=2
+		progress.FirstRewardGranted=true
+		progress.FirstRewardCardInstanceId=tostring(progress.FirstRewardCardInstanceId or"")
+		progress.FirstRewardPlayerName=tostring(progress.FirstRewardPlayerName or"")
+		progress.FirstWorldCupRunCompleted=true
+		p.Version=15;p.SchemaVersion=15;return 15
+	end,
 }
 
 local function normalizePackInstances(profile:any)
@@ -282,6 +306,8 @@ function ProfileService:_migrate(profile:any):any
 	profile.ProClubMembership=profile.ProClubMembership or copy(DefaultProfile.ProClubMembership);profile.ProClubsPlayer=profile.ProClubsPlayer or copy(DefaultProfile.ProClubsPlayer);profile.PlayBuilder=PlayBuilderConfig.Normalize(profile.PlayBuilder or DefaultProfile.PlayBuilder,profile.Profile and profile.Profile.Level or profile.Season and profile.Season.Level or 1)
 	normalizeCardInstances(profile)
 	normalizePackInstances(profile)
+	profile.RewardTransactionLedger=type(profile.RewardTransactionLedger)=="table"and profile.RewardTransactionLedger or{}
+	profile.InventoryGrantLedger=type(profile.InventoryGrantLedger)=="table"and profile.InventoryGrantLedger or{}
 	normalizeObjectives(profile)
 	if not DeveloperConfig.InfiniteCoinsEveryone and (tonumber(profile.Currency.Coins) or 0) >= EconomyConfig.MaximumCoins then
 		profile.Currency.Coins = EconomyConfig.StarterCoins
@@ -289,12 +315,15 @@ function ProfileService:_migrate(profile:any):any
 	if (profile.ClubMembership.Abbreviation==nil or profile.ClubMembership.Abbreviation=="") and type(profile.ClubMembership.Tag)=="string" and profile.ClubMembership.Tag~="" then profile.ClubMembership.Abbreviation=string.upper(profile.ClubMembership.Tag)end;if (profile.ClubMembership.Tag==nil or profile.ClubMembership.Tag=="") and type(profile.ClubMembership.Abbreviation)=="string" and profile.ClubMembership.Abbreviation~="" then profile.ClubMembership.Tag=string.upper(profile.ClubMembership.Abbreviation)end
 	for key,value in ClubIdentityConfig.Default do if profile.ClubMembership[key]==nil or profile.ClubMembership[key]==""then profile.ClubMembership[key]=value end;if profile.Onboarding[key]==nil or profile.Onboarding[key]==""then profile.Onboarding[key]=value end end
 	profile.ClubMembership.KitStyle=ClubIdentityConfig.ResolveStyle(profile.ClubMembership.KitStyle);profile.Onboarding.KitStyle=ClubIdentityConfig.ResolveStyle(profile.Onboarding.KitStyle)
-	profile.UIState=profile.UIState or copy(DefaultProfile.UIState);profile.UIState.Settings=profile.UIState.Settings or {};local matchDefaults={TimedFinishing=true,MenuMusic=true,MotionEffects=true,PerformanceMode=false,InvertY=false,HighContrast=false,ReducedMotion=false,Crossplay=true,MasterVolume=0.8,CameraPreset="Tactical",CameraZoomMode="Wide",PlayerNames="Active Only",Trainer="Basic",PassReceiverAutoSwitch="Assisted",ManualPassAutoSwitch="Closest",ReceiverAssist="Light",Minimap="Medium",MinimapOrientation="Broadcast",BroadcastHeight="178",BroadcastZoom="50",CameraSpeed="1",CameraSide="Near",PauseKey="M",SkipKey="Space",TutorialComplete=false,TutorialStep=1,TutorialDevice=""};profile.Settings=profile.Settings or {};for key,value in matchDefaults do if profile.UIState.Settings[key]==nil then profile.UIState.Settings[key]=value end;if profile.Settings[key]==nil then profile.Settings[key]=profile.UIState.Settings[key]end end;for _,target in{profile.UIState.Settings,profile.Settings}do local preset=tostring(target.CameraPreset or"");if preset=="Broadcast"or preset=="WideBroadcast"or preset=="Wide Broadcast"or preset=="CloseBroadcast"or preset=="Close Broadcast"or preset=="End to End"then target.CameraPreset="Tactical"end end;for _,key in{"Commentary","CommentaryLanguage","CommentaryVolume"}do profile.UIState.Settings[key]=nil;profile.Settings[key]=nil end;ensureMonetizationFields(profile)
+	profile.UIState=profile.UIState or copy(DefaultProfile.UIState);profile.UIState.Settings=profile.UIState.Settings or {};profile.Settings=profile.Settings or{};profile.Settings,profile.UIState.Settings=PlayabilitySettingsConfig.Synchronize(profile.Settings,profile.UIState.Settings);for key,value in DefaultProfile.Settings do if profile.Settings[key]==nil and profile.UIState.Settings[key]==nil then profile.Settings[key]=copy(value);profile.UIState.Settings[key]=copy(value)end end;profile.Settings,profile.UIState.Settings=PlayabilitySettingsConfig.Synchronize(profile.Settings,profile.UIState.Settings);for _,key in{"Commentary","CommentaryLanguage","CommentaryVolume"}do profile.UIState.Settings[key]=nil;profile.Settings[key]=nil end;ensureMonetizationFields(profile)
+	profile.MatchSetup=type(profile.MatchSetup)=="table"and profile.MatchSetup or copy(DefaultProfile.MatchSetup);profile.MatchSetup.MatchFormat=MatchFormatConfig.Normalize(profile.MatchSetup.MatchFormat or profile.MatchSetup.MatchLength)
+	profile.PlayabilityProgress=type(profile.PlayabilityProgress)=="table"and profile.PlayabilityProgress or copy(DefaultProfile.PlayabilityProgress);local playability=profile.PlayabilityProgress;local recordedMatches=math.max(0,math.floor(tonumber(profile.MatchStats and profile.MatchStats.Overall and profile.MatchStats.Overall.Played)or 0));local legacyAccess=playability.LegacyAccessGranted==true;playability.Version=2;playability.LegacyAccessGranted=legacyAccess;playability.CompletedMatches=math.max(legacyAccess and 3 or 0,recordedMatches,math.max(0,math.floor(tonumber(playability.CompletedMatches)or 0)));playability.FirstMatchCompleted=playability.FirstMatchCompleted==true or playability.CompletedMatches>=1;playability.SecondMatchCompleted=playability.SecondMatchCompleted==true or playability.CompletedMatches>=2;playability.FirstRewardGranted=playability.FirstRewardGranted==true or legacyAccess;playability.FirstRewardCardInstanceId=tostring(playability.FirstRewardCardInstanceId or"");playability.FirstRewardPlayerName=tostring(playability.FirstRewardPlayerName or"");playability.FirstWorldCupRunCompleted=playability.FirstWorldCupRunCompleted==true or legacyAccess or(type(profile.WorldCupHistory)=="table"and#profile.WorldCupHistory>0)
 	if profile.Settings.TutorialComplete ~= nil then profile.UIState.Settings.TutorialComplete = profile.Settings.TutorialComplete == true end
 	if tonumber(profile.Settings.TutorialStep) then profile.UIState.Settings.TutorialStep = math.clamp(math.floor(tonumber(profile.Settings.TutorialStep) or 1), 1, 20) end
 	if profile.Settings.TutorialDevice ~= nil then profile.UIState.Settings.TutorialDevice = tostring(profile.Settings.TutorialDevice or ""):sub(1, 32) end
+	local _,campaignChanged=CampaignMigration.Normalize(profile)
 	if DeveloperConfig.InfiniteCoinsEveryone then profile.Currency.Coins=EconomyConfig.MaximumCoins end
-	return profile
+	return profile,campaignChanged
 end
 function ProfileService:Start()
 	local function load(player:Player)
@@ -305,13 +334,14 @@ function ProfileService:Start()
 			self.Store.Sessions[player.UserId]=raw
 		end
 		local isNew=type(raw.CreatedAt)~="number" or raw.CreatedAt<=0
-		local migrateOk,profileOrError=pcall(function()return self:_migrate(raw)end)
+		local loadedVersion=math.min(tonumber(raw.Version)or 1,tonumber(raw.SchemaVersion)or 1)
+		local migrateOk,profileOrError,campaignChanged=pcall(function()return self:_migrate(raw)end)
 		if not migrateOk or type(profileOrError)~="table"then
 			warn("[VTR PROFILE] Migration failed for "..player.Name..": "..tostring(profileOrError))
 			raw=copy(DefaultProfile)
 			self.Store.Sessions[player.UserId]=raw
 			isNew=true
-			profileOrError=self:_migrate(raw)
+			profileOrError,campaignChanged=self:_migrate(raw)
 		end
 		local profile=profileOrError
 		applyStudioDefaultTeam(profile,player)
@@ -327,6 +357,7 @@ function ProfileService:Start()
 		player:SetAttribute("VTRVIP",profile.StoreOwnership and type(profile.StoreOwnership.GamePasses)=="table" and table.find(profile.StoreOwnership.GamePasses,"vip_pass")~=nil)
 		player:SetAttribute("VTRNewProfile",isNew)
 		player:SetAttribute("VTRProfileReady",true)
+		if loadedVersion<Config.ProfileVersion or campaignChanged==true then self.Store:SaveAsync(player.UserId,true)end
 	end
 	Players.PlayerAdded:Connect(load);Players.PlayerRemoving:Connect(function(player) self.Store:Release(player.UserId) end);for _,player in Players:GetPlayers() do task.spawn(load,player) end
 	game:BindToClose(function() for _,player in Players:GetPlayers() do self.Store:SaveAsync(player.UserId,true) end end)
@@ -376,6 +407,12 @@ function ProfileService:RecordMatchResult(player:Player,mode:string,resultId:str
 		bucket.Played=(tonumber(bucket.Played)or 0)+1
 		if result=="Win"then bucket.Wins=(tonumber(bucket.Wins)or 0)+1 elseif result=="Draw"then bucket.Draws=(tonumber(bucket.Draws)or 0)+1 else bucket.Losses=(tonumber(bucket.Losses)or 0)+1 end
 	end
+	profile.PlayabilityProgress=type(profile.PlayabilityProgress)=="table"and profile.PlayabilityProgress or copy(DefaultProfile.PlayabilityProgress)
+	local playability=profile.PlayabilityProgress
+	playability.Version=2
+	playability.CompletedMatches=math.max(tonumber(playability.CompletedMatches)or 0,tonumber(stats.Overall.Played)or 0)
+	playability.FirstMatchCompleted=playability.CompletedMatches>=1
+	playability.SecondMatchCompleted=playability.CompletedMatches>=2
 	if mode=="Campaign"then
 		profile.CampaignProgress=type(profile.CampaignProgress)=="table"and profile.CampaignProgress or{UnlockedDifficulty=1,CompletedTeams={},RewardsClaimed={}}
 		profile.CampaignProgress.Wins=stats.Campaign.Wins

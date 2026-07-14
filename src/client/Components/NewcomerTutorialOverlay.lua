@@ -10,14 +10,7 @@ local Button = require(script.Parent.Button)
 local Tutorial = {}
 
 local TASKS = {
-	{ Page = "Home", Label = "Home", Text = "Click Home. This is your hub for daily rewards, quick actions, objectives, and the fastest way back into your club." },
-	{ Page = "UltimateTeam", Label = "Squad Builder", Text = "Click Squad Builder. Build your XI, check lineups, drag players, auto set your best team, and open Customize for kits, boots, and effects." },
-	{ Page = "Inventory", Label = "Inventory", Text = "Click Inventory. Packs, owned players, kits, stadium items, consumables, and quick sell all live here." },
-	{ Page = "Store", Label = "Store", Text = "Click Store. Buy packs, coins, Voltra Points, kits, boots, goal effects, celebrations, and daily deals." },
-	{ Page = "Play", Label = "Campaign", Text = "Click Campaign. Play AI matches, complete objectives, test your squad, and earn progression rewards." },
-	{ Page = "Ranked", Label = "Ranked", Text = "Click Ranked. Division Path is your competitive route: play the set, climb divisions, then chase leaderboards at the top." },
-	{ Page = "WorldCup", Label = "World Cup", Text = "Click World Cup. Pick a nation, generate groups, play or simulate fixtures, read match news, and push through knockouts." },
-	{ Page = "Settings", Label = "Settings", Text = "Click Settings. Change camera, controls, audio, graphics, trainer, minimap, and replay this tutorial any time." },
+	{ Page = "WorldCup", Label = "World Cup", Text = "Click World Cup. New players get a direct route: essential match preload, quick country choice, Matchday 1 reveal, pass lesson, shooting lesson, defending lesson, then free play." },
 }
 
 local function label(parent: Instance, name: string, value: string, position: UDim2, size: UDim2, textSize: number, color: Color3, font: Enum.Font): TextLabel
@@ -107,9 +100,9 @@ function Tutorial.show(root: Instance, props: any?)
 	panelStroke.Thickness = 1.5
 	panelStroke.Parent = panel
 
-	local kicker = label(panel, "Kicker", "MENU TUTORIAL", UDim2.fromOffset(16, 12), UDim2.new(1, -144, 0, 16), 8, Theme.Colors.Electric, Theme.Fonts.Strong)
+	local kicker = label(panel, "Kicker", "WORLD CUP ONBOARDING", UDim2.fromOffset(16, 12), UDim2.new(1, -144, 0, 16), 8, Theme.Colors.Electric, Theme.Fonts.Strong)
 	local taskText = label(panel, "Task", "", UDim2.fromOffset(16, 34), UDim2.new(1, -32, 0, 72), 14, Theme.Colors.White, Theme.Fonts.Display)
-	local hint = label(panel, "Hint", "Follow the instruction. The panel stays open until that step is complete.", UDim2.fromOffset(16, 112), UDim2.new(1, -32, 0, 24), 8, Theme.Colors.Muted, Theme.Fonts.Strong)
+	local hint = label(panel, "Hint", "Go to World Cup to start the guided first match route.", UDim2.fromOffset(16, 112), UDim2.new(1, -32, 0, 24), 8, Theme.Colors.Muted, Theme.Fonts.Strong)
 	kicker.TextWrapped = false
 	hint.TextWrapped = true
 	taskText.TextScaled = true
@@ -119,7 +112,7 @@ function Tutorial.show(root: Instance, props: any?)
 	taskTextLimit.Parent = taskText
 
 	local skip = Button.new({
-		Text = "SKIP TUTORIAL",
+		Text = "SKIP GUIDE",
 		Variant = "Secondary",
 		Size = UDim2.fromOffset(116, 28),
 		OnActivated = function()

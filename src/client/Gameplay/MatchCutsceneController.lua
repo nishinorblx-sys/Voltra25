@@ -1,4 +1,3 @@
-local MATCHUP_PANEL_DELAY = 0.85
 --!strict
 local PrematchBroadcastPresentation = require(script.Parent.Parent.Components.PrematchBroadcastPresentation)
 
@@ -27,12 +26,12 @@ function Controller:Play(payload: any)
 	self.Camera:BeginCutscene(payload.Kind, payload.Location, duration, payload.GoalPosition)
 end
 
-function Controller:StadiumIntro(payload: any?)
+function Controller:StadiumIntro(payload: any?, onComplete: (() -> ())?)
 	self.HUD:SetPhase("MATCHDAY")
 	if self.HUD.Gui then
 		self.HUD.Gui.Enabled = false
 	end
-	self.Camera:BeginStadiumIntro(PrematchBroadcastPresentation.Duration())
+	self.Camera:BeginStadiumIntro(PrematchBroadcastPresentation.Duration(payload and payload.PresentationProfile))
 	if payload then
 		PrematchBroadcastPresentation.Play(payload, function()
 			if self.HUD then
@@ -41,14 +40,12 @@ function Controller:StadiumIntro(payload: any?)
 				end
 				self.HUD:SetPhase("")
 			end
+			if onComplete then onComplete() end
 		end)
 	end
 end
 
 function Controller:SkipStadiumIntro()
-	if PrematchBroadcastPresentation.StopAudio then
-		PrematchBroadcastPresentation.StopAudio()
-	end
 	local playerGui = game:GetService("Players").LocalPlayer:FindFirstChild("PlayerGui")
 	local gui = playerGui and playerGui:FindFirstChild("VTRPrematchBroadcast")
 	if PrematchBroadcastPresentation.StopAudio then
@@ -84,12 +81,13 @@ end
 function Controller:HalfTime(payload: any)
 	self.HUD:SetPhase("HALF TIME")
 	if self.Camera and self.Camera.BeginHalfTimeWide then
-		self.Camera:BeginHalfTimeWide(30)
+		self.Camera:BeginHalfTimeWide(math.max(2, tonumber(payload.PauseRemaining) or 7))
 	end
 	self.HUD:ShowHalfTime(payload)
 end
 
 function Controller:Destroy()
+	self:SkipStadiumIntro()
 end
 
 return Controller

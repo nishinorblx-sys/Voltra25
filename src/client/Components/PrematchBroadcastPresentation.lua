@@ -1,5 +1,5 @@
-local DeviceScaleService = require(script:FindFirstAncestor("VTRClient").Services.DeviceScaleService)
 --!nonstrict
+local DeviceScaleService = require(script:FindFirstAncestor("VTRClient").Services.DeviceScaleService)
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
@@ -14,6 +14,7 @@ local UISoundService = require(script.Parent.Parent.Services.UISoundService)
 local Remotes = require(ReplicatedStorage.VTR.Shared.Remotes)
 local FormationConfig = require(ReplicatedStorage.VTR.Shared.FormationConfig)
 local CardVisualConfig = require(ReplicatedStorage.VTR.Shared.CardVisualConfig)
+local MatchExperienceConfig = require(ReplicatedStorage.VTR.Shared.MatchExperienceConfig)
 
 local Presentation = {}
 local TOTAL_DURATION = 66.0
@@ -1415,12 +1416,15 @@ local function showEntryGroupPreview(container: Frame, data: any, entries: {any}
 	showPlayerGroupPreview(container, models, players, kits, 1, math.max(1, #entries))
 end
 
-function Presentation.Duration(): number
-	return TOTAL_DURATION
+function Presentation.Duration(profile: any?): number
+	return tonumber(MatchExperienceConfig.Get(profile).Duration) or 8
 end
 
 function Presentation.Play(data: any, onComplete: (() -> ())?)
 	local playerGui = Players.LocalPlayer:WaitForChild("PlayerGui")
+	local profile = MatchExperienceConfig.Normalize(data and data.PresentationProfile)
+	local presentation = MatchExperienceConfig.Get(profile)
+	local presentationDuration = math.max(1, tonumber(data and data.PresentationDuration) or tonumber(presentation.Duration) or 8)
 	local presentationKey = tostring((data and (data.MatchSessionId or data.WorldName)) or "")
 	local old = playerGui:FindFirstChild("VTRPrematchBroadcast")
 	if old and old:GetAttribute("VTRMatchSessionId") == presentationKey then return end
@@ -1429,27 +1433,26 @@ function Presentation.Play(data: any, onComplete: (() -> ())?)
 		local overlay = playerGui:FindFirstChild(overlayName)
 		if overlay then overlay:Destroy() end
 	end
-	for _, overlayName in ipairs({"VTRMatchTeleport","VTRMatchLoadSyncCover","VTRRankedTeleportFound","VTRRankedTeleportMatchFound","VTRMatchupConfirmed","VTRMatchupConfirm","VTRRankedReservedBoot"}) do
-		local overlay = playerGui:FindFirstChild(overlayName)
-		if overlay then overlay:Destroy() end
-	end
 
 	local gui = Instance.new("ScreenGui")
 	gui.Name = "VTRPrematchBroadcast"
 	gui:SetAttribute("VTRMatchSessionId", presentationKey)
+	gui:SetAttribute("VTRPresentationProfile", profile)
 	gui.IgnoreGuiInset = true
 	gui.ResetOnSpawn = false
 	gui.DisplayOrder = 92
 	gui.Parent = playerGui
+	DeviceScaleService.Apply(gui)
 	startIntroAudio(gui)
 	local cancelled = false
-	local skipUnlockAt = os.clock() + math.max(0, tonumber(data.PrematchSkipDelay) or 5)
+	local skipUnlockAt = os.clock() + math.max(0, tonumber(data.PrematchSkipDelay) or tonumber(presentation.SkipLock) or 0)
 	gui.Destroying:Connect(function()
 		cancelled = true
 		Presentation.StopAudio()
 	end)
+	local timelineScale = profile == "Broadcast" and presentationDuration / TOTAL_DURATION or 1
 	local function schedule(delaySeconds: number, callback: () -> ())
-		task.delay(delaySeconds, function()
+		task.delay(math.max(0, delaySeconds * timelineScale), function()
 			if cancelled or not gui.Parent then return end
 			callback()
 		end)
@@ -1567,6 +1570,103 @@ function Presentation.Play(data: any, onComplete: (() -> ())?)
 	local away = tostring(data.Away or "AWAY")
 	local homeColor = color(data.HomeColor, Theme.Colors.Electric)
 	local awayColor = color(data.AwayColor, Theme.Colors.Silver)
+	local setup = type(data.Setup) == "table" and data.Setup or {}
+	if profile ~= "Broadcast" then
+		local shade = Instance.new("Frame")
+		shade.BackgroundColor3 = Theme.Colors.Black
+		shade.BackgroundTransparency = profile == "Acquisition" and .32 or .2
+		shade.BorderSizePixel = 0
+		shade.Size = UDim2.fromScale(1, 1)
+		shade.ZIndex = 201
+		shade.Parent = root
+		local card = Instance.new("CanvasGroup")
+		card.Name = "MatchPresentationCard"
+		card.AnchorPoint = Vector2.new(.5, .5)
+		card.Position = UDim2.fromScale(.5, .5)
+		card.Size = UDim2.fromScale(.72, .42)
+		card.BackgroundColor3 = Theme.Colors.Black
+		card.BackgroundTransparency = .06
+		card.BorderSizePixel = 0
+		card.GroupTransparency = 1
+		card.ZIndex = 204
+		card.Parent = root
+		local constraint = Instance.new("UISizeConstraint")
+		constraint.MinSize = Vector2.new(310, 210)
+		constraint.MaxSize = Vector2.new(920, 440)
+		constraint.Parent = card
+		local stroke = Instance.new("UIStroke")
+		stroke.Color = Theme.Colors.Electric
+		stroke.Thickness = 1
+		stroke.Transparency = .24
+		stroke.Parent = card
+		local rail = Instance.new("Frame")
+		rail.BackgroundColor3 = Theme.Colors.Electric
+		rail.BorderSizePixel = 0
+		rail.Size = UDim2.new(1, 0, 0, 4)
+		rail.ZIndex = 205
+		rail.Parent = card
+		local title = label(card, profile == "Acquisition" and "YOUR FIRST MATCH" or "MATCHDAY", UDim2.fromScale(.08, .06), UDim2.fromScale(.84, .12), 15, Theme.Colors.Electric, Theme.Fonts.Strong)
+		title.TextXAlignment = Enum.TextXAlignment.Center
+		local homeBadge = label(card, tostring(data.HomeLogo or shortCode(home)), UDim2.fromScale(.08, .25), UDim2.fromScale(.18, .28), 26, Theme.Colors.White, Theme.Fonts.Display)
+		homeBadge.BackgroundColor3 = homeColor
+		homeBadge.BackgroundTransparency = 0
+		homeBadge.TextXAlignment = Enum.TextXAlignment.Center
+		applyPresentationBadge(homeBadge, homeColor, tostring(data.HomeLogo or "V"), teamBadgeIdentity(data, "Home"), 3, teamBadgeImage(data, "Home"))
+		local awayBadge = label(card, tostring(data.AwayLogo or shortCode(away)), UDim2.fromScale(.74, .25), UDim2.fromScale(.18, .28), 26, Theme.Colors.White, Theme.Fonts.Display)
+		awayBadge.BackgroundColor3 = awayColor
+		awayBadge.BackgroundTransparency = 0
+		awayBadge.TextXAlignment = Enum.TextXAlignment.Center
+		applyPresentationBadge(awayBadge, awayColor, tostring(data.AwayLogo or "V"), teamBadgeIdentity(data, "Away"), 3, teamBadgeImage(data, "Away"))
+		local homeName = label(card, string.upper(home), UDim2.fromScale(.03, .58), UDim2.fromScale(.3, .12), 19, Theme.Colors.White, Theme.Fonts.Display)
+		homeName.TextXAlignment = Enum.TextXAlignment.Center
+		local awayName = label(card, string.upper(away), UDim2.fromScale(.67, .58), UDim2.fromScale(.3, .12), 19, Theme.Colors.White, Theme.Fonts.Display)
+		awayName.TextXAlignment = Enum.TextXAlignment.Center
+		local versus = label(card, "VS", UDim2.fromScale(.42, .34), UDim2.fromScale(.16, .18), 30, Theme.Colors.Electric, Theme.Fonts.Display)
+		versus.TextXAlignment = Enum.TextXAlignment.Center
+		local meta = label(card, profile == "Acquisition" and "READY TO PLAY" or string.upper(tostring(setup.StadiumName or setup.StadiumId or "VOLTRA ARENA")), UDim2.fromScale(.15, .78), UDim2.fromScale(.7, .1), 12, Theme.Colors.Silver, Theme.Fonts.Strong)
+		meta.TextXAlignment = Enum.TextXAlignment.Center
+		TweenService:Create(card, TweenInfo.new(.24, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {GroupTransparency = 0}):Play()
+		schedule(presentationDuration - .3, function()
+			TweenService:Create(card, TweenInfo.new(.25), {GroupTransparency = 1}):Play()
+		end)
+		schedule(presentationDuration, function()
+			Presentation.StopAudio()
+			if gui.Parent then gui:Destroy() end
+			if onComplete then onComplete() end
+		end)
+		return gui
+	end
+	local stadiumLevel = setup.CampaignAscension == true and math.clamp(math.floor(tonumber(setup.StadiumAscensionLevel) or 0), 0, 3) or 0
+	if stadiumLevel >= 1 then
+		local touch = UserInputService.TouchEnabled
+		local ascensionBanner = Instance.new("CanvasGroup")
+		ascensionBanner.Name = "AscensionBanner"
+		ascensionBanner.AnchorPoint = touch and Vector2.zero or Vector2.new(0.5, 0)
+		ascensionBanner.Position = touch and UDim2.fromOffset(12, 70) or UDim2.fromScale(0.5, 0.035)
+		ascensionBanner.Size = touch and UDim2.new(1, -164, 0, 58) or UDim2.new(0.48, 0, 0, 62)
+		ascensionBanner.BackgroundColor3 = Theme.Colors.Black
+		ascensionBanner.BackgroundTransparency = 0.08
+		ascensionBanner.BorderSizePixel = 0
+		ascensionBanner.GroupTransparency = workspace:GetAttribute("VTRReducedMotion") == true and 0 or 1
+		ascensionBanner.ZIndex = 244
+		ascensionBanner.Parent = root
+		local bannerStroke = Instance.new("UIStroke")
+		bannerStroke.Color = stadiumLevel >= 2 and homeColor or Theme.Colors.Electric
+		bannerStroke.Thickness = stadiumLevel >= 3 and 2 or 1
+		bannerStroke.Transparency = 0.12
+		bannerStroke.Parent = ascensionBanner
+		local bannerTitle = setup.AscensionPromotionFinal == true and stadiumLevel >= 3 and "ASCENSION  |  PROMOTION FINAL" or "VOLTRA ASCENSION"
+		local banner = label(ascensionBanner, bannerTitle, UDim2.fromScale(0.04, 0.05), UDim2.fromScale(0.92, 0.45), touch and 12 or 18, Theme.Colors.White, Theme.Fonts.Display)
+		banner.TextXAlignment = Enum.TextXAlignment.Center
+		local bannerMeta = label(ascensionBanner, "STADIUM LEVEL " .. tostring(stadiumLevel) .. "  |  " .. string.upper(tostring(setup.AscensionObjective or "CLUB DEVELOPMENT")), UDim2.fromScale(0.04, 0.51), UDim2.fromScale(0.92, 0.37), touch and 7 or 9, stadiumLevel >= 3 and Color3.fromHex("F2C94C") or Theme.Colors.Electric, Theme.Fonts.Strong)
+		bannerMeta.TextXAlignment = Enum.TextXAlignment.Center
+		if workspace:GetAttribute("VTRReducedMotion") ~= true then
+			TweenService:Create(ascensionBanner, TweenInfo.new(0.24, Theme.Animation.EasingStyle, Theme.Animation.EasingDirection), {GroupTransparency = 0}):Play()
+			schedule(4.35, function() TweenService:Create(ascensionBanner, TweenInfo.new(0.2), {GroupTransparency = 1}):Play() end)
+		else
+			schedule(4.35, function() ascensionBanner.Visible = false end)
+		end
+	end
 
 	local matchup = Instance.new("CanvasGroup")
 	matchup.Name = "Matchup"

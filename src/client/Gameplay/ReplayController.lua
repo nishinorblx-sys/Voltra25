@@ -8,18 +8,13 @@ local UserInputService = game:GetService("UserInputService")
 
 local Replay = require(ReplicatedStorage.VTR.Shared.Replay)
 local Theme = require(ReplicatedStorage.VTR.Shared.Theme)
+local MatchFormatConfig = require(ReplicatedStorage.VTR.Shared.MatchFormatConfig)
 
 local Controller = {}
 Controller.__index = Controller
 
-local REPLAY_SECONDS = 8
-local BUFFER_SECONDS = 10
 local POST_GOAL_RECORD_SECONDS = 0
 local GOAL_REPLAY_COOLDOWN = 1.25
-local SHOT_PRE_ROLL = 2.25
-local SHOT_POST_ROLL = 3.75
-local SHOT_SLOW_WINDOW = 1
-local SHOT_SLOW_SCALE = 0.34
 local STATIC_PADDING = 90
 local MAX_STATIC_PARTS = 1200
 local SET_PIECE_KINDS = {
@@ -88,6 +83,10 @@ end
 function Controller.new(data: any, ball: BasePart)
 	local self: any = setmetatable({}, Controller)
 	self.Player = Players.LocalPlayer
+	self.Format = MatchFormatConfig.Get(data.MatchFormat or data.Setup and data.Setup.MatchFormat)
+	self.ReplaySeconds = math.max(2, tonumber(self.Format.ReplaySeconds) or 3.5)
+	self.ReplayMaximumSeconds = math.max(self.ReplaySeconds, tonumber(self.Format.ReplayMaximumSeconds) or 6)
+	self.ShotSlowWindow = math.min(.45, self.ReplaySeconds * .12)
 	self.Ball = ball
 	self.World = workspace:FindFirstChild(tostring(data.WorldName or ""))
 	self.ActiveModels = collectTeamModels(data.TeamModels)
@@ -109,7 +108,7 @@ function Controller:_startRecording()
 	self.Replay = Replay.New({
 		FrameFrequency = 3,
 		Rounding = 3,
-		MaxReplayTime = BUFFER_SECONDS,
+		MaxReplayTime = math.max(6, self.ReplayMaximumSeconds + 2),
 	}, self.ActiveModels, self.StaticModels)
 	self.Replay:StartRecording()
 end
@@ -230,7 +229,7 @@ function Controller:_startCinematicReplay(replay: any, startTime: number, endTim
 	local connection: RBXScriptConnection?
 	connection = RunService.RenderStepped:Connect(function(dt)
 		local distanceFromShot = math.abs(currentTime - shotTime)
-		local scale = distanceFromShot <= SHOT_SLOW_WINDOW and SHOT_SLOW_SCALE or 1
+		local scale = distanceFromShot <= self.ShotSlowWindow and .55 or 1
 		currentTime += dt * scale
 		if currentTime < endTime then
 			replay:GoToTime(currentTime, true)
@@ -396,7 +395,7 @@ function Controller:PlayGoalReplay(onFinished: (() -> ())?)
 		local finalTime = replay.Frames[replay.ReplayFrameCount].Time
 		local shotTime = tonumber(self.LastShotReplayTime)
 		local hasShotCinematic = shotTime ~= nil and shotTime >= replay.Frames[1].Time and shotTime <= finalTime
-		local startTime = hasShotCinematic and math.max(replay.Frames[1].Time, (shotTime :: number) - REPLAY_SECONDS) or math.max(replay.Frames[1].Time, finalTime - REPLAY_SECONDS)
+		local startTime = hasShotCinematic and math.max(replay.Frames[1].Time, (shotTime :: number) - self.ReplaySeconds) or math.max(replay.Frames[1].Time, finalTime - self.ReplaySeconds)
 		local endTime = finalTime
 		local gui = self:_makeOverlay()
 		replay:CreateViewport(gui)

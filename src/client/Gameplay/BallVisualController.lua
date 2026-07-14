@@ -2,6 +2,7 @@
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Config = require(ReplicatedStorage.VTR.Shared.GameplayConfig)
+local BallTrajectory = require(ReplicatedStorage.VTR.Shared.BallTrajectory)
 
 local Controller = {}
 Controller.__index = Controller
@@ -96,7 +97,7 @@ end
 
 function Controller:PlayFlightTrail()
 	if not self.ShotTrail then return end
-	self.TrailHeld=false;self.TrailSequence=(self.TrailSequence or 0)+1;self.ShotTrail.Lifetime=.3;self.ShotTrail.Enabled=true
+	self.TrailHeld=false;self.PassTrailUntil=os.clock()+2.35;self.TrailSequence=(self.TrailSequence or 0)+1;self.ShotTrail.Lifetime=.62;self.ShotTrail.Enabled=true
 end
 
 function Controller:HoldShotTrail()
@@ -105,7 +106,7 @@ function Controller:HoldShotTrail()
 end
 
 function Controller:StopShotTrail()
-	self.TrailHeld=false;self.TrailSequence=(self.TrailSequence or 0)+1
+	self.TrailHeld=false;self.PassTrailUntil=nil;self.TrailSequence=(self.TrailSequence or 0)+1
 	if self.ShotTrail then self.ShotTrail.Lifetime=.18;self.ShotTrail.Enabled=false end
 end
 
@@ -132,6 +133,15 @@ function Controller:ClearLock()
 	self.LockedUntil = nil
 end
 
+function Controller:StartTrajectory(data: any)
+	if type(data) ~= "table" or type(data.Id) ~= "number" then return end
+	self.ActiveTrajectory = data
+	self.TrajectoryCorrectionUntil = os.clock() + ((Config.Ball.Flight and Config.Ball.Flight.ReconcileDuration) or 0.1)
+	self.TrajectoryCorrectionFrom = self.PredictedPosition or self.Ball.Position
+	self.PredictedPosition = BallTrajectory.Sample(data, math.clamp((workspace:GetServerTimeNow() - (tonumber(data.StartServerTime) or workspace:GetServerTimeNow())) / math.max(tonumber(data.Duration) or 1, 0.05), 0, 1))
+	self.PredictedVelocity = BallTrajectory.Velocity(data, 0)
+end
+
 function Controller:Update(dt: number, move: Vector3, sprinting: boolean)
 	local ownerName = tostring(self.Ball:GetAttribute("OwnerModel") or "")
 	local owns = self.Ball:GetAttribute("OwnerUserId") == Players.LocalPlayer.UserId or ownerName == self.Model.Name
@@ -149,14 +159,54 @@ function Controller:Update(dt: number, move: Vector3, sprinting: boolean)
 	local authoritativeVelocity=self.Ball.AssemblyLinearVelocity
 	local postGoalActive=(tonumber(self.Ball:GetAttribute("VTRPostGoalPhysicsUntil")) or 0)>os.clock()
 	local motionKind=tostring(self.Ball:GetAttribute("VTRMotionKind") or "")
+	local trajectory=self.ActiveTrajectory
+	if trajectory and tonumber(trajectory.Id)==tonumber(self.Ball:GetAttribute("VTRTrajectoryId")) and self.Ball:GetAttribute("VTRKinematicFlight")==true then
+		local alpha=math.clamp((workspace:GetServerTimeNow()-(tonumber(trajectory.StartServerTime)or workspace:GetServerTimeNow()))/math.max(tonumber(trajectory.Duration)or 1,.05),0,1)
+		local sampled=BallTrajectory.Sample(trajectory,alpha)
+		local velocity=BallTrajectory.Velocity(trajectory,alpha)
+		if trajectory.KickKind=="Pass"and trajectory.PassType~="Lofted"and trajectory.PassType~="ManualLobbed"then
+			local hit=workspace:Raycast(sampled+Vector3.new(0,4,0),Vector3.new(0,-12,0),self.Raycast)
+			if hit and hit.Normal.Y>.55 then
+				local groundY=(hit.Position+hit.Normal*(self.Radius+.012)).Y
+				local maxLift=trajectory.PassType=="Through"and .42 or .18
+				sampled=Vector3.new(sampled.X,math.clamp(sampled.Y,groundY,groundY+maxLift),sampled.Z)
+				velocity=Vector3.new(velocity.X,math.clamp(velocity.Y,-1.5,1.2),velocity.Z)
+			end
+		end
+		local correctionUntil=tonumber(self.TrajectoryCorrectionUntil)or 0
+		if correctionUntil>os.clock() and typeof(self.TrajectoryCorrectionFrom)=="Vector3"then
+			local blend=1-math.clamp((correctionUntil-os.clock())/math.max((Config.Ball.Flight and Config.Ball.Flight.ReconcileDuration)or .1,.02),0,1)
+			sampled=(self.TrajectoryCorrectionFrom :: Vector3):Lerp(sampled,blend)
+		end
+		self.PredictedPosition=sampled
+		self.PredictedVelocity=velocity
+		local travel=Vector3.new(sampled.X-self.LastVisualPosition.X,0,sampled.Z-self.LastVisualPosition.Z)
+		self.LastVisualPosition=sampled
+		if travel.Magnitude>.001 then
+			local axis=Vector3.yAxis:Cross(travel.Unit)
+			self.Orientation=CFrame.fromAxisAngle(axis,travel.Magnitude/self.Radius)*self.Orientation
+		end
+		local desired=CFrame.new(sampled)*self.Orientation.Rotation
+		if self.VisualModel then self.VisualModel:PivotTo(desired)else self.Visual.CFrame=desired end
+		if self.Shadow then
+			local hit=workspace:Raycast(sampled+Vector3.new(0,1,0),Vector3.new(0,-30,0),self.Raycast)
+			if hit then local height=math.max(0,sampled.Y-hit.Position.Y);local scale=math.clamp(1-height/18,.42,1);self.Shadow.Size=Vector3.new(.035,2.1*scale,2.1*scale);self.Shadow.CFrame=CFrame.new(hit.Position+hit.Normal*.035)*CFrame.Angles(0,0,math.pi/2);self.Shadow.Transparency=math.clamp(.56+height/38,.56,.83)else self.Shadow.Transparency=1 end
+		end
+		return
+	elseif trajectory and (tonumber(trajectory.Id)or 0)<=(tonumber(self.Ball:GetAttribute("VTRTrajectoryId"))or 0) then
+		self.ActiveTrajectory=nil
+	end
 	local glidingMotion=motionKind=="Dribble"
 	if self.ShotTrail and self.ShotTrail.Enabled and not self.TrailHeld then
 		if (motionKind=="Shot"or motionKind=="Corner")and authoritativeVelocity.Magnitude<3 then self:StopShotTrail()end
+		local passTrailActive=(tonumber(self.PassTrailUntil)or 0)>os.clock()
+		if (motionKind=="Pass"or motionKind=="Clearance"or passTrailActive)and authoritativeVelocity.Magnitude<2.4 then self:StopShotTrail()end
+		if passTrailActive and motionKind~="Pass"and motionKind~="Clearance"and authoritativeVelocity.Magnitude>=2.4 then self.ShotTrail.Enabled=true end
 	end
 	local predictedPosition:Vector3=self.PredictedPosition or authoritativePosition
 	local predictedVelocity:Vector3=self.PredictedVelocity or authoritativeVelocity
 	local positionError=(authoritativePosition-predictedPosition).Magnitude
-	local snapDistance = postGoalActive and 28 or glidingMotion and 18 or motionKind=="Shot" and 11 or 8
+	local snapDistance = postGoalActive and 28 or glidingMotion and Config.Ball.DribbleHardSnapDistance or motionKind=="Shot" and 11 or 8
 	if positionError > snapDistance then
 		-- Set pieces and genuine corrections should snap. Ordinary replication
 		-- gaps are extrapolated below instead of freezing the visible ball.
@@ -205,7 +255,7 @@ function Controller:Update(dt: number, move: Vector3, sprinting: boolean)
 	if groundHit and groundHit.Normal.Y > 0.55 then
 		local height=(target-groundHit.Position):Dot(groundHit.Normal)
 		local desiredGroundHeight = self.Radius + 0.035
-		if (glidingMotion or owns) and height < self.Radius + 1.45 then
+		if (glidingMotion or owns or motionKind=="Pass"or motionKind=="Clearance") and height < self.Radius + 1.45 then
 			local groundTarget = groundHit.Position + groundHit.Normal * desiredGroundHeight
 			local alpha = 1 - math.exp(-dt / ((motionKind == "Dribble" or owns) and 0.025 or 0.06))
 			target = Vector3.new(target.X, target.Y + (groundTarget.Y - target.Y) * alpha, target.Z)

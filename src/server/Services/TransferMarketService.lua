@@ -3,6 +3,7 @@ local DataStoreService=game:GetService("DataStoreService")
 local HttpService=game:GetService("HttpService")
 local Players=game:GetService("Players")
 local ReplicatedStorage=game:GetService("ReplicatedStorage")
+local CardProgressionResolver=require(ReplicatedStorage.VTR.Shared.CardProgressionResolver)
 local EconomyConfig=require(ReplicatedStorage.VTR.Shared.EconomyConfig)
 local DeveloperConfig=require(ReplicatedStorage.VTR.Shared.DeveloperConfig)
 local PlayerDatabase=require(script.Parent.Parent.Data.PlayerDatabase)
@@ -45,7 +46,7 @@ end
 function Service:_write(id:string,listing:any):boolean local listingOk=false;if hasBudget(Enum.DataStoreRequestType.SetIncrementAsync)then listingOk=pcall(function()self.Listings:SetAsync(id,listing)end)end;local indexOk=false;if listingOk and hasBudget(Enum.DataStoreRequestType.SetIncrementSortedAsync)then indexOk=pcall(function()self.Index:SetAsync(id,listing.EndsAt)end)end;if not listingOk or not indexOk then self.Local[id]=listing end;return true end
 function Service:CreateListing(player:Player,cardId:string,startPrice:number,duration:number):(boolean,string,any?)
 	startPrice=math.floor(tonumber(startPrice)or 0);duration=math.floor(tonumber(duration)or 0);if startPrice<1000 or startPrice>EconomyConfig.MaximumCoins or not VALID_DURATIONS[duration]then return false,"Use a price of at least 1,000 and a valid auction duration.",nil end
-	local profile=self.Profiles:GetProfile(player);local card=profile and findCard(profile,cardId);if not profile or not card then return false,"Player card is not owned.",nil end;local meta=profile.PlayerCardMeta[card.Id]or{};if meta.Locked or meta.Loan then return false,"Locked and loan cards cannot enter the market.",nil end;if card.location=="transfer_list"then return false,"Card is already transfer listed.",nil end
+	local profile=self.Profiles:GetProfile(player);local card=profile and findCard(profile,cardId);if not profile or not card then return false,"Player card is not owned.",nil end;local instanceId=card.cardInstanceId or card.Id;local meta=profile.PlayerCardMeta[instanceId]or{};if meta.Locked or meta.Loan then return false,"Locked and loan cards cannot enter the market.",nil end;local active=profile.CampaignProgress and profile.CampaignProgress.ActiveProject;if active and active.CardInstanceId==instanceId then return false,"Club Project players cannot be transfer listed.",nil end;if CardProgressionResolver.IsBound(meta)then return false,"Campaign reward players are account-bound.",nil end;if card.location=="transfer_list"then return false,"Card is already transfer listed.",nil end
 	local moved,message=self.Squad:MovePlayer(player,card.Id,"TransferList",nil);if not moved then return false,message,nil end
 	local id="listing_"..HttpService:GenerateGUID(false);local listing={ListingId=id,SellerUserId=player.UserId,SellerName=player.Name,CardInstanceId=card.Id,PlayerId=card.playerId or card.PlayerId,Name=card.Name,Rating=card.Rating,Position=card.Position,Rarity=card.Rarity,CardType=card.CardType,StartPrice=startPrice,CurrentBid=0,CurrentBidderUserId=0,CurrentBidderName="",CreatedAt=os.time(),EndsAt=os.time()+duration,Status="Active"};self:_write(id,listing);return true,"Player listed on the global market.",listing
 end

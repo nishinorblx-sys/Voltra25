@@ -16,6 +16,15 @@ local function isNetPart(instance: Instance): boolean
 	return false
 end
 
+local function hasRealNetParts(): boolean
+	for _, item in workspace:GetDescendants() do
+		if item:IsA("BasePart") and isNetPart(item) and not string.find(item.Name, "GoalNetBackstop", 1, true) then
+			return true
+		end
+	end
+	return false
+end
+
 local function disableGoalCollision(instance: Instance?)
 	if not instance then return end
 	if instance:IsA("BasePart") and not isNetPart(instance) then
@@ -82,9 +91,10 @@ function Service.new(ball: BasePart, pitchCFrame: CFrame, width: number, length:
 		disableGoalCollision(goal.Hitbox)
 	end
 	local volumeParent = ball:FindFirstAncestorWhichIsA("Folder") or ball.Parent
+	local realNetsAvailable = ball:GetAttribute("VTRTutorialPhysics") == true and hasRealNetParts()
 	for _, goal in goals do
 		goal.Volume = createVolume(volumeParent, goal.Team, goal.Rectangle)
-		goal.NetBackstop = createNetBackstop(volumeParent, goal.Team, goal.Rectangle)
+		goal.NetBackstop = if realNetsAvailable then nil else createNetBackstop(volumeParent, goal.Team, goal.Rectangle)
 		goal.WasInside=false
 	end
 	return setmetatable({Ball = ball, OnGoal = onGoal, Locked = false, Goals = goals, PreviousBallPosition = ball.Position, PreviousStepClock = os.clock(), PreviousBallVelocity = ball.AssemblyLinearVelocity}, Service)

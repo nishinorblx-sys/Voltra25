@@ -110,6 +110,7 @@ function Service.Build(teams: any, formations: any, pitchCFrame: CFrame, width: 
 		OwnerSide = ownerSide,
 		LooseBall = loose,
 		PassInFlight = passInFlight,
+		WorldCupFirstPassPending = ball:GetAttribute("VTRWorldCupFirstPassPending")==true,
 		MotionKind = motionKind,
 		Now = os.clock(),
 	}

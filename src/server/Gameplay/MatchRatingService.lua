@@ -16,7 +16,7 @@ end
 local function rounded(value:number):number return math.floor(value*10+.5)/10 end
 function Service.new(models:{Model})
 	local entries={}
-	for _,model in models do entries[model]={Model=model,playerId=model:GetAttribute("playerId"),Name=model:GetAttribute("DisplayName")or model.Name,Position=model:GetAttribute("position")or"CM",Team=model:GetAttribute("VTRTeam")or"Home",Number=model:GetAttribute("ShirtNumber")or 0,Delta=0,Events={}}end
+	for _,model in models do entries[model]={Model=model,playerId=model:GetAttribute("playerId"),cardInstanceId=model:GetAttribute("cardInstanceId"),Name=model:GetAttribute("DisplayName")or model.Name,Position=model:GetAttribute("position")or"CM",Team=model:GetAttribute("VTRTeam")or"Home",Number=model:GetAttribute("ShirtNumber")or 0,Delta=0,Events={}}end
 	return setmetatable({Entries=entries},Service)
 end
 function Service:Record(model:Model,event:string,count:number?)
@@ -38,7 +38,7 @@ function Service:Serialize(gameSeconds:number,homeScore:number,awayScore:number)
 		if role(entry.Position)=="GK"and(events.Save or 0)>=5 and(entry.Team=="Home"and awayScore or homeScore)<=1 then delta+=.5 end
 		if minutes>=60 and(entry.Team=="Home"and awayScore or homeScore)==0 then local clean={GK=1,CB=.7,FB=.6,CDM=.4,CM=.2,CAM=.2,W=.1,ST=.1};delta+=clean[role(entry.Position)]or 0 end
 		local rating=rounded(math.clamp(Config.Base+delta*scale,Config.Minimum,Config.Maximum))
-		local serialized={playerId=entry.playerId,Name=entry.Name,Position=entry.Position,Team=entry.Team,Number=entry.Number,Rating=rating,Events=table.clone(events),Goals=events.Goal or 0,Assists=events.Assist or 0,DefensiveActions=defensive,Saves=events.Save or 0}
+		local serialized={playerId=entry.playerId,cardInstanceId=entry.cardInstanceId,Name=entry.Name,Position=entry.Position,Team=entry.Team,Number=entry.Number,Rating=rating,Events=table.clone(events),Goals=events.Goal or 0,Assists=events.Assist or 0,DefensiveActions=defensive,Saves=events.Save or 0}
 		table.insert(result,serialized)
 		if not best or rating>best.Rating or rating==best.Rating and((serialized.Goals+serialized.Assists)>(best.Goals+best.Assists)or serialized.DefensiveActions>best.DefensiveActions or serialized.Saves>best.Saves)then best=serialized end
 	end

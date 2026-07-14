@@ -585,7 +585,7 @@ function Service:Start(player: Player, kind: string, restartTeam: string, locati
 				self.BallService:Kick(taker,"Pass",offset,math.clamp(offset.Magnitude/85,.25,.68),best,"Lofted",offset.Magnitude,receiverRoot.Position)
 			end
 		end
-		if kind=="Kickoff" and kickoffPartner and kickoffPartner.Parent then
+		if kind=="Kickoff" and kickoffPartner and kickoffPartner.Parent and self.OnboardingNoAutoKickoff~=true then
 			local takerRoot=root(taker)
 			local partnerRoot=root(kickoffPartner)
 			if takerRoot and partnerRoot then
@@ -627,7 +627,7 @@ function Service:Start(player: Player, kind: string, restartTeam: string, locati
 			debugKickoff("release restart taker complete", "owner", self.Possession:GetOwner() and self.Possession:GetOwner().Name or "nil")
 		end
 		onReady()
-		if kind=="Kickoff" and kickoffPartner and kickoffPartner.Parent and userControlled==true and player and player.Parent then
+		if kind=="Kickoff" and kickoffPartner and kickoffPartner.Parent and self.OnboardingNoAutoKickoff~=true and userControlled==true and player and player.Parent then
 			task.defer(function()
 				if kickoffPartner.Parent then
 					self.TeamControl:SetActive(player,kickoffPartner,"KickoffReceiver")

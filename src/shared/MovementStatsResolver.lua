@@ -14,24 +14,22 @@ function Resolver.Resolve(model: Model, state: any): any
 	local turnDot = math.clamp(tonumber(state.TurnDot) or 1, -1, 1)
 	local sprinting = state.Sprinting == true
 	local hasBall = state.HasBall == true
-	local paceAlpha = math.clamp((pace - 35) / 64, 0, 1) ^ 1.18
-	local accelerationAlpha = math.clamp((acceleration - 35) / 64, 0, 1) ^ 1.12
+	local paceAlpha = math.clamp((pace - 35) / 64, 0, 1)
+	local accelerationAlpha = math.clamp((acceleration - 35) / 64, 0, 1)
 	local jog = Tuning.JogMin + (Tuning.JogMax - Tuning.JogMin) * paceAlpha
 	local sprint = Tuning.SprintMin + (Tuning.SprintMax - Tuning.SprintMin) * paceAlpha
-	local staminaMultiplier = 1
-	if staminaRatio < 0.15 then staminaMultiplier = 0.58 + staminaRatio / 0.15 * 0.17
-	elseif staminaRatio < 0.35 then staminaMultiplier = 0.75 + (staminaRatio - 0.15) / 0.2 * 0.15
-	elseif staminaRatio < 0.7 then staminaMultiplier = 0.9 + (staminaRatio - 0.35) / 0.35 * 0.1 end
-	local turnMultiplier = sprinting and turnDot < Tuning.SharpTurnDot and Tuning.SprintTurnPenalty + (math.max(-1, turnDot) + 1) * 0.05 or 1
+	local staminaMultiplier = if staminaRatio < Tuning.LowEnergyThreshold / 100 then Tuning.LowEnergyMinimumMultiplier + (1 - Tuning.LowEnergyMinimumMultiplier) * staminaRatio / (Tuning.LowEnergyThreshold / 100) else 1
+	local turnMultiplier = sprinting and turnDot < Tuning.SharpTurnDot and Tuning.SprintTurnPenalty or 1
 	turnMultiplier = math.min(turnMultiplier, tonumber(state.TurnPenalty) or 1)
 	local ballControlModifier = 1
 	if hasBall then
-		ballControlModifier = sprinting and (Tuning.DribbleSprintMultiplier + dribbling / 990) or (Tuning.DribbleJogMultiplier + dribbling / 1415)
+		local controlAlpha = math.clamp((dribbling - 35) / 64, 0, 1)
+		ballControlModifier = if sprinting then Tuning.DribbleSprintMinMultiplier + (Tuning.DribbleSprintMaxMultiplier - Tuning.DribbleSprintMinMultiplier) * controlAlpha else Tuning.DribbleJogMinMultiplier + (Tuning.DribbleJogMaxMultiplier - Tuning.DribbleJogMinMultiplier) * controlAlpha
 	end
 	local sprintMultiplier = sprinting and staminaMultiplier * turnMultiplier or 1
 	local targetSpeed = (sprinting and sprint or jog) * moveMagnitude * sprintMultiplier * ballControlModifier
 	local accelerationRate = Tuning.AccelerationMin + (Tuning.AccelerationMax - Tuning.AccelerationMin) * accelerationAlpha
-	if state.UserControlled == true then accelerationRate *= 1.18 end
+	if state.UserControlled == true then accelerationRate *= 1.12 end
 	return {
 		TargetSpeed = targetSpeed,
 		AccelerationRate = accelerationRate,

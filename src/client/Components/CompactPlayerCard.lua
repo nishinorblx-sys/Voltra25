@@ -34,6 +34,7 @@ function CompactPlayerCard.new(props: any): TextButton
 	root.Selectable = false
 	root.Parent = props.Parent
 	local visual = CardSurface.apply(root, card.Rarity or card.rarity, card.CardType or card.cardType, 7)
+	CardSurface.decorateAscension(root, card, horizontal and "Horizontal" or "Compact")
 
 	if horizontal then
 		local portrait = AvatarPortraitGenerator.new(root, card, UDim2.fromOffset(38, 38), false)

@@ -33,6 +33,7 @@ function WidePlayerCard.new(props: any): TextButton
 	root.Selectable = false
 	root.Parent = props.Parent
 	local visual = CardSurface.apply(root, card.Rarity or card.rarity, card.CardType or card.cardType, 9)
+	CardSurface.decorateAscension(root, card, "Wide")
 
 	local portrait = AvatarPortraitGenerator.new(root, card, UDim2.fromOffset(82, 92), false)
 	portrait.Position = UDim2.fromOffset(8, 10)

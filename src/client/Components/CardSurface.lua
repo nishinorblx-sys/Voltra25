@@ -3,6 +3,7 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
 local CardVisualConfig = require(ReplicatedStorage.VTR.Shared.CardVisualConfig)
+local Theme = require(ReplicatedStorage.VTR.Shared.Theme)
 
 local CardSurface = {}
 
@@ -145,6 +146,68 @@ function CardSurface.apply(root: GuiObject, rarity: string?, cardType: string?, 
 		TweenService:Create(glowStroke, TweenInfo.new(1.25, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true), { Transparency = 0.28 }):Play()
 	end
 	return visual
+end
+
+function CardSurface.decorateAscension(root: GuiObject, card: any, layout: string?)
+	local meta = type(card) == "table" and (card.Meta or card) or {}
+	local progression = type(meta.CampaignProgression) == "table" and meta.CampaignProgression or {}
+	local variant = card.CampaignVariant or meta.CampaignVariant or progression.CampaignVariant
+	if variant ~= "Ascension" then return end
+	local visualTier = card.CampaignVisualTier or meta.CampaignVisualTier or progression.VisualTier
+	local shade = Instance.new("Frame")
+	shade.Name = "AscensionShade"
+	shade.BackgroundColor3 = Theme.Colors.Graphite
+	shade.BackgroundTransparency = 0.7
+	shade.BorderSizePixel = 0
+	shade.Size = UDim2.fromScale(1, 1)
+	shade.ZIndex = root.ZIndex + 2
+	shade.Parent = root
+	local shadeGradient = Instance.new("UIGradient")
+	shadeGradient.Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.9), NumberSequenceKeypoint.new(0.62, 0.58), NumberSequenceKeypoint.new(1, 0.82) })
+	shadeGradient.Rotation = 115
+	shadeGradient.Parent = shade
+	local edge = Instance.new("Frame")
+	edge.Name = "AscensionEdge"
+	edge.BackgroundColor3 = Theme.Colors.Electric
+	edge.BorderSizePixel = 0
+	edge.Position = UDim2.fromOffset(0, 3)
+	edge.Size = UDim2.new(0, visualTier == "AscendedII" and 4 or 2, 1, -6)
+	edge.ZIndex = root.ZIndex + 8
+	edge.Parent = root
+	local border = Instance.new("UIStroke")
+	border.Name = "AscensionBorder"
+	border.Color = Theme.Colors.Electric
+	border.Thickness = visualTier == "AscendedII" and 2.5 or 1.5
+	border.Transparency = visualTier and 0.08 or 0.28
+	border.Parent = root
+	local tag = Instance.new("TextLabel")
+	tag.Name = "AscensionLabel"
+	tag.BackgroundColor3 = Theme.Colors.Black
+	tag.BackgroundTransparency = 0.18
+	tag.BorderSizePixel = 0
+	tag.Text = "ASCENSION"
+	tag.TextColor3 = visualTier == "AscendedII" and Theme.Colors.White or Theme.Colors.Electric
+	tag.TextSize = layout == "Compact" and 5 or 6
+	tag.Font = Theme.Fonts.Strong
+	tag.TextXAlignment = Enum.TextXAlignment.Center
+	tag.ZIndex = root.ZIndex + 9
+	if layout == "Wide" then
+		tag.Position = UDim2.fromOffset(140, 94)
+		tag.Size = UDim2.fromOffset(96, 12)
+	elseif layout == "Horizontal" then
+		tag.Position = UDim2.fromOffset(51, 54)
+		tag.Size = UDim2.new(1, -59, 0, 10)
+	else
+		tag.Position = UDim2.fromOffset(5, 53)
+		tag.Size = UDim2.new(1, -10, 0, 10)
+	end
+	tag.Parent = root
+	local tagCorner = Instance.new("UICorner")
+	tagCorner.CornerRadius = UDim.new(0, 3)
+	tagCorner.Parent = tag
+	if visualTier and workspace:GetAttribute("VTRReducedMotion") ~= true then
+		TweenService:Create(border, TweenInfo.new(1.15, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true), { Transparency = visualTier == "AscendedII" and 0.34 or 0.48 }):Play()
+	end
 end
 
 return CardSurface

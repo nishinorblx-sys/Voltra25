@@ -5,6 +5,7 @@ local Players=game:GetService("Players")
 local TweenService=game:GetService("TweenService")
 local MarketplaceService=game:GetService("MarketplaceService")
 local RunService=game:GetService("RunService")
+local ContentProvider=game:GetService("ContentProvider")
 local Theme=require(ReplicatedStorage.VTR.Shared.Theme)
 local Catalog=require(ReplicatedStorage.VTR.Shared.Catalog)
 local WorldCupConfig=require(ReplicatedStorage.VTR.Shared.WorldCupConfig)
@@ -543,7 +544,7 @@ local function showWorldCupMatchLoading(message:string?):ScreenGui
 	fill.Size=UDim2.fromScale(.18,1)
 	fill.ZIndex=982
 	fill.Parent=bar
-	TweenService:Create(fill,TweenInfo.new(.9,Enum.EasingStyle.Sine,Enum.EasingDirection.InOut,-1,true),{Position=UDim2.fromScale(.82,0)}):Play()
+	TweenService:Create(fill,TweenInfo.new(.38,Enum.EasingStyle.Sine,Enum.EasingDirection.InOut,-1,true),{Position=UDim2.fromScale(.82,0)}):Play()
 	return gui
 end
 
@@ -551,9 +552,247 @@ local function completeWorldCupLoading(gui:ScreenGui?)
 	if not gui or not gui.Parent then return end
 	local overlay=gui:FindFirstChild("Overlay")
 	if overlay and overlay:IsA("CanvasGroup")then
-		TweenService:Create(overlay,TweenInfo.new(.16),{GroupTransparency=1}):Play()
+		TweenService:Create(overlay,TweenInfo.new(.06),{GroupTransparency=1}):Play()
 	end
-	task.delay(.18,function()if gui and gui.Parent then gui:Destroy()end end)
+	task.delay(.07,function()if gui and gui.Parent then gui:Destroy()end end)
+end
+
+local QUICK_WORLD_CUP_COUNTRIES={"Argentina","Brazil","England","France","Germany","Portugal","Spain"}
+
+local function onboardingCameraFocus(): (Vector3, number)
+	local preferred = {"Pitch","Field","FootballPitch","Stadium","VTRPitch","MatchPitch"}
+	for _, name in ipairs(preferred) do
+		local found = workspace:FindFirstChild(name, true)
+		if found then
+			if found:IsA("Model") then
+				local cf, size = found:GetBoundingBox()
+				return cf.Position, math.max(size.X, size.Z, 96)
+			elseif found:IsA("BasePart") then
+				return found.Position, math.max(found.Size.X, found.Size.Z, 96)
+			end
+		end
+	end
+	return Vector3.new(0, 4, 0), 132
+end
+
+local function startWorldCupOnboardingCamera(): (boolean?) -> ()
+	local camera = workspace.CurrentCamera
+	if not camera then return function()end end
+	local previousType = camera.CameraType
+	local previousCFrame = camera.CFrame
+	local previousFov = camera.FieldOfView
+	local previousSubject = camera.CameraSubject
+	local hidden:{[Instance]:number}={}
+	local characterConnection:RBXScriptConnection?=nil
+	local function hideCharacter(character:Model?)
+		if not character then return end
+		for _,descendant in character:GetDescendants()do
+			if descendant:IsA("BasePart")then
+				if hidden[descendant]==nil then hidden[descendant]=descendant.LocalTransparencyModifier end
+				descendant.LocalTransparencyModifier=1
+			elseif descendant:IsA("Decal")or descendant:IsA("Texture")then
+				if hidden[descendant]==nil then hidden[descendant]=descendant.Transparency end
+				descendant.Transparency=1
+			end
+		end
+	end
+	local center, span = onboardingCameraFocus()
+	local radius = math.clamp(span * 1.75, 210, 430)
+	local started = os.clock()
+	local alive = true
+	camera.CameraType = Enum.CameraType.Scriptable
+	camera.FieldOfView = 50
+	hideCharacter(Players.LocalPlayer.Character)
+	characterConnection=Players.LocalPlayer.CharacterAdded:Connect(function(character)
+		task.defer(function()
+			if alive then hideCharacter(character)end
+		end)
+	end)
+	local connection = RunService.RenderStepped:Connect(function(delta)
+		if not alive or not camera.Parent then return end
+		local elapsed = os.clock() - started
+		local angle = elapsed * 0.16
+		local height = math.clamp(span * 0.46, 58, 118) + math.sin(elapsed * 0.34) * 3
+		local target = center + Vector3.new(0, 12, 0)
+		local position = center + Vector3.new(math.cos(angle) * radius, height, math.sin(angle) * radius)
+		local desired = CFrame.lookAt(position, target)
+		camera.CFrame = camera.CFrame:Lerp(desired, 1 - math.exp(-2.8 * delta))
+	end)
+	return function(restore:boolean?)
+		alive = false
+		if connection then connection:Disconnect()end
+		if characterConnection then characterConnection:Disconnect()end
+		for instance,value in hidden do
+			if instance and instance.Parent then
+				if instance:IsA("BasePart")then
+					instance.LocalTransparencyModifier=value
+				elseif instance:IsA("Decal")or instance:IsA("Texture")then
+					instance.Transparency=value
+				end
+			end
+		end
+		if restore and camera and camera.Parent then
+			camera.CameraType = previousType
+			camera.CFrame = previousCFrame
+			camera.FieldOfView = previousFov
+			camera.CameraSubject = previousSubject
+		end
+	end
+end
+
+local function worldCupMatchLabel(state:any?):string
+	if type(state)~="table"then return"GROUP STAGE  /  MATCHDAY 1"end
+	if state.Stage=="Knockout"then
+		return string.upper(tostring(WorldCupConfig.KnockoutRounds[tonumber(state.Knockout and state.Knockout.Round)or 1]or"KNOCKOUT"))
+	end
+	local fixture=state.NextFixture
+	return"GROUP STAGE  /  MATCHDAY "..tostring(fixture and fixture.Matchday or state.GroupMatchIndex or 1)
+end
+
+local function showWorldCupOpponentReveal(root:Instance,state:any?,done:()->())
+	local old=root:FindFirstChild("WorldCupOpponentReveal")
+	if old then old:Destroy()end
+	local selected=tostring(state and state.SelectedCountry or"Argentina")
+	local fixture=state and state.NextFixture
+	local home=tostring(fixture and fixture.Home or selected)
+	local away=tostring(fixture and fixture.Away or"Portugal")
+	local overlay=Instance.new("CanvasGroup")
+	overlay.Name="WorldCupOpponentReveal";overlay.Active=true;overlay.BackgroundColor3=Color3.fromHex("020402");overlay.BackgroundTransparency=1;overlay.BorderSizePixel=0;overlay.GroupTransparency=1;overlay.Size=UDim2.fromScale(1,1);overlay.ZIndex=960;overlay.Parent=root
+	local glow=Instance.new("Frame");glow.AnchorPoint=Vector2.new(.5,.5);glow.BackgroundColor3=Color3.fromHex("A8FF00");glow.BackgroundTransparency=.82;glow.BorderSizePixel=0;glow.Position=UDim2.fromScale(.5,.5);glow.Size=UDim2.fromScale(.52,.012);glow.ZIndex=961;glow.Parent=overlay
+	local match=text(overlay,string.upper(home).."  vs  "..string.upper(away),UDim2.fromScale(.08,.4),UDim2.fromScale(.84,.1),42,Theme.Colors.White,Theme.Fonts.Display);match.TextXAlignment=Enum.TextXAlignment.Center;match.ZIndex=962
+	local label=text(overlay,worldCupMatchLabel(state),UDim2.fromScale(.18,.51),UDim2.fromScale(.64,.04),12,Theme.Colors.Electric,Theme.Fonts.Strong);label.TextXAlignment=Enum.TextXAlignment.Center;label.ZIndex=962
+	TweenService:Create(overlay,TweenInfo.new(.2),{GroupTransparency=0}):Play()
+	TweenService:Create(glow,TweenInfo.new(.45,Enum.EasingStyle.Quad,Enum.EasingDirection.Out),{Size=UDim2.fromScale(.74,.012),BackgroundTransparency=.55}):Play()
+	task.delay(2.1,function()
+		if overlay.Parent then TweenService:Create(overlay,TweenInfo.new(.18),{GroupTransparency=1}):Play()end
+		task.delay(.2,function()
+			if overlay.Parent then overlay:Destroy()end
+			done()
+		end)
+	end)
+end
+
+local function showWorldCupOnboardingRoute(root:Instance,initialCountry:string,onCountryChanged:(string)->(),onMore:()->(),onContinue:(string)->())
+	local old=root:FindFirstChild("WorldCupOnboardingRoute")
+	if old then old:Destroy()end
+	local selected=initialCountry~=""and initialCountry or"Argentina"
+	local stopCamera=startWorldCupOnboardingCamera()
+	local overlay=Instance.new("CanvasGroup")
+	overlay.Name="WorldCupOnboardingRoute";overlay.Active=true;overlay.BackgroundColor3=Color3.fromHex("020402");overlay.BackgroundTransparency=1;overlay.BorderSizePixel=0;overlay.GroupTransparency=0;overlay.Size=UDim2.fromScale(1,1);overlay.ZIndex=940;overlay.Parent=root
+	local top=Instance.new("Frame");top.Name="WorldCupQuickHeader";top.BackgroundColor3=Theme.Colors.Black;top.BackgroundTransparency=.18;top.BorderSizePixel=0;top.Position=UDim2.fromScale(.035,.05);top.Size=UDim2.fromScale(.35,.105);top.ZIndex=941;top.Parent=overlay;corner(top,8)
+	local topStroke=Instance.new("UIStroke");topStroke.Color=Theme.Colors.Electric;topStroke.Transparency=.22;topStroke.Thickness=1;topStroke.Parent=top
+	local brand=text(top,"VOLTRA  /  WORLD CUP",UDim2.fromScale(.055,.13),UDim2.fromScale(.9,.25),11,Theme.Colors.Electric,Theme.Fonts.Strong);brand.ZIndex=942
+	local heading=text(top,"SELECT NATIONAL TEAM",UDim2.fromScale(.055,.39),UDim2.fromScale(.9,.44),22,Theme.Colors.White,Theme.Fonts.Display);heading.ZIndex=942
+	local chooser=Instance.new("Frame");chooser.Name="CountryChooser";chooser.BackgroundColor3=Theme.Colors.Black;chooser.BackgroundTransparency=.25;chooser.BorderSizePixel=0;chooser.Position=UDim2.fromScale(.035,.68);chooser.Size=UDim2.fromScale(.70,.22);chooser.ZIndex=943;chooser.Parent=overlay;corner(chooser,8)
+	local chooserStroke=Instance.new("UIStroke");chooserStroke.Color=Theme.Colors.Electric;chooserStroke.Transparency=.36;chooserStroke.Thickness=1;chooserStroke.Parent=chooser
+	local sub=text(chooser,"QUICK START",UDim2.fromScale(.025,.08),UDim2.fromScale(.2,.12),10,Theme.Colors.Electric,Theme.Fonts.Strong);sub.ZIndex=944
+	local grid=Instance.new("Frame");grid.BackgroundTransparency=1;grid.Position=UDim2.fromScale(.025,.26);grid.Size=UDim2.fromScale(.95,.62);grid.ZIndex=944;grid.Parent=chooser
+	local layout=Instance.new("UIGridLayout");layout.CellSize=UDim2.new(.125,-8,1,0);layout.CellPadding=UDim2.fromOffset(8,0);layout.SortOrder=Enum.SortOrder.LayoutOrder;layout.Parent=grid
+	local buttons:{[string]:TextButton}={}
+	local function refreshTiles()
+		for country,button in buttons do
+			local chosen=country==selected
+			button.BackgroundColor3=chosen and Theme.Colors.Electric or Color3.fromHex("101813")
+			button.BackgroundTransparency=chosen and 0 or .08
+			local stroke=button:FindFirstChildOfClass("UIStroke");if stroke then stroke.Color=chosen and Theme.Colors.White or Theme.Colors.Electric;stroke.Transparency=chosen and .05 or .62 end
+			for _,child in button:GetChildren()do
+				if child:IsA("TextLabel")then child.TextColor3=chosen and Theme.Colors.Black or Theme.Colors.White end
+				if child:IsA("ImageLabel")then child.ImageTransparency=chosen and 0 or .08 end
+			end
+		end
+	end
+	for index,country in ipairs(QUICK_WORLD_CUP_COUNTRIES)do
+		local tile=Instance.new("TextButton");tile.Name="Quick_"..country:gsub("%W","");tile.AutoButtonColor=true;tile.BorderSizePixel=0;tile.Text="";tile.LayoutOrder=index;tile.ZIndex=944;tile.Parent=grid;corner(tile,8)
+		local stroke=Instance.new("UIStroke");stroke.Thickness=2;stroke.Parent=tile
+		local tileFlag=flag(tile,country,UDim2.fromScale(.23,.09),UDim2.fromScale(.54,.43))
+		tileFlag.ZIndex=945
+		local name=text(tile,string.upper(country),UDim2.fromScale(.06,.58),UDim2.fromScale(.88,.30),10,Theme.Colors.White,Theme.Fonts.Display);name.TextXAlignment=Enum.TextXAlignment.Center;name.ZIndex=945
+		buttons[country]=tile
+		tile.Activated:Connect(function()
+			selected=country;onCountryChanged(country);refreshTiles()
+		end)
+	end
+	local selectedName:TextLabel?=nil
+	local fullSelector:CanvasGroup?=nil
+	local function showFullCountrySelector()
+		if fullSelector and fullSelector.Parent then fullSelector:Destroy()end
+		local panel=Instance.new("CanvasGroup")
+		panel.Name="AllCountriesSelector";panel.Active=true;panel.BackgroundColor3=Theme.Colors.Black;panel.BackgroundTransparency=.12;panel.BorderSizePixel=0;panel.GroupTransparency=1;panel.Size=UDim2.fromScale(1,1);panel.ZIndex=970;panel.Parent=overlay
+		fullSelector=panel
+		TweenService:Create(panel,TweenInfo.new(.16),{GroupTransparency=0}):Play()
+		local header=Instance.new("Frame");header.BackgroundTransparency=1;header.Position=UDim2.fromScale(.055,.045);header.Size=UDim2.fromScale(.89,.12);header.ZIndex=971;header.Parent=panel
+		local kicker=text(header,"VOLTRA  /  WORLD CUP",UDim2.fromScale(0,0),UDim2.fromScale(.48,.24),11,Theme.Colors.Electric,Theme.Fonts.Strong);kicker.ZIndex=972
+		local title=text(header,"CHOOSE YOUR NATIONAL TEAM",UDim2.fromScale(0,.24),UDim2.fromScale(.58,.52),30,Theme.Colors.White,Theme.Fonts.Display);title.ZIndex=972
+		local search=Instance.new("TextBox");search.Name="CountrySearch";search.AnchorPoint=Vector2.new(1,.5);search.BackgroundColor3=Color3.fromHex("071008");search.BackgroundTransparency=.04;search.BorderSizePixel=0;search.ClearTextOnFocus=false;search.Font=Theme.Fonts.Strong;search.PlaceholderText="SEARCH TEAMS";search.PlaceholderColor3=Theme.Colors.Muted;search.Position=UDim2.fromScale(1,.53);search.Size=UDim2.fromOffset(360,46);search.Text="";search.TextColor3=Theme.Colors.White;search.TextSize=13;search.TextXAlignment=Enum.TextXAlignment.Left;search.ZIndex=972;search.Parent=header;corner(search,8)
+		local searchPad=Instance.new("UIPadding");searchPad.PaddingLeft=UDim.new(0,16);searchPad.PaddingRight=UDim.new(0,16);searchPad.Parent=search
+		local searchStroke=Instance.new("UIStroke");searchStroke.Color=Theme.Colors.Electric;searchStroke.Transparency=.34;searchStroke.Thickness=1;searchStroke.Parent=search
+		local scroll=Instance.new("ScrollingFrame");scroll.Name="CountryResults";scroll.BackgroundTransparency=1;scroll.BorderSizePixel=0;scroll.Position=UDim2.fromScale(.055,.18);scroll.Size=UDim2.fromScale(.89,.66);scroll.AutomaticCanvasSize=Enum.AutomaticSize.Y;scroll.CanvasSize=UDim2.new();scroll.ScrollBarThickness=4;scroll.ScrollBarImageColor3=Theme.Colors.Electric;scroll.ZIndex=971;scroll.Parent=panel
+		local resultGrid=Instance.new("UIGridLayout");resultGrid.CellSize=UDim2.new(.125,-10,0,96);resultGrid.CellPadding=UDim2.fromOffset(10,10);resultGrid.SortOrder=Enum.SortOrder.LayoutOrder;resultGrid.Parent=scroll
+		local function makeResult(country:string,index:number)
+			local tile=Instance.new("TextButton");tile.Name="All_"..country:gsub("%W","");tile.AutoButtonColor=true;tile.BackgroundColor3=country==selected and Theme.Colors.Electric or Color3.fromHex("101813");tile.BackgroundTransparency=country==selected and 0 or .04;tile.BorderSizePixel=0;tile.LayoutOrder=index;tile.Text="";tile.ZIndex=972;tile.Parent=scroll;corner(tile,8)
+			local stroke=Instance.new("UIStroke");stroke.Color=country==selected and Theme.Colors.White or Theme.Colors.Electric;stroke.Transparency=country==selected and .05 or .68;stroke.Thickness=1;stroke.Parent=tile
+			local tileFlag=flag(tile,country,UDim2.fromScale(.24,.12),UDim2.fromScale(.52,.42));tileFlag.ZIndex=973
+			local name=text(tile,string.upper(country),UDim2.fromScale(.06,.59),UDim2.fromScale(.88,.30),10,country==selected and Theme.Colors.Black or Theme.Colors.White,Theme.Fonts.Display);name.TextXAlignment=Enum.TextXAlignment.Center;name.ZIndex=973
+			tile.Activated:Connect(function()
+				selected=country;onCountryChanged(country);refreshTiles()
+				if selectedName then selectedName.Text=string.upper(selected)end
+				showFullCountrySelector()
+			end)
+		end
+		local function renderResults()
+			for _,child in scroll:GetChildren()do
+				if child:IsA("GuiObject")then child:Destroy()end
+			end
+			local query=string.lower(search.Text or"")
+			local count=0
+			for _,country in ipairs(WorldCupConfig.Countries)do
+				if query==""or string.find(string.lower(country),query,1,true)then
+					count+=1
+					makeResult(country,count)
+				end
+			end
+		end
+		search:GetPropertyChangedSignal("Text"):Connect(renderResults)
+		local close=Button.new({Text="CLOSE",Variant="Secondary",Size=UDim2.fromOffset(150,48),OnActivated=function()
+			if panel.Parent then TweenService:Create(panel,TweenInfo.new(.14),{GroupTransparency=1}):Play();task.delay(.15,function()if panel.Parent then panel:Destroy()end end)end
+		end})
+		close.AnchorPoint=Vector2.new(1,1);close.Position=UDim2.fromScale(.79,.94);close.ZIndex=974;close.Parent=panel
+		local fullContinue=Button.new({Text="CONTINUE",Variant="Primary",Size=UDim2.fromOffset(220,54),OnActivated=function()
+			overlay.Active=false
+			stopCamera(false)
+			TweenService:Create(overlay,TweenInfo.new(.16),{GroupTransparency=1}):Play()
+			task.delay(.18,function()if overlay.Parent then overlay:Destroy()end;onContinue(selected)end)
+		end})
+		fullContinue.AnchorPoint=Vector2.new(1,1);fullContinue.Position=UDim2.fromScale(.965,.945);fullContinue.ZIndex=974;fullContinue.Parent=panel
+		renderResults()
+		task.defer(function()if search.Parent then search:CaptureFocus()end end)
+	end
+	local more=Button.new({Text="MORE",Variant="Secondary",Size=UDim2.fromOffset(92,54),OnActivated=function()
+		showFullCountrySelector()
+	end})
+	more.LayoutOrder=8;more.ZIndex=946;more.Parent=grid
+	local selectedCard=Instance.new("Frame");selectedCard.Name="SelectedTeam";selectedCard.AnchorPoint=Vector2.new(1,1);selectedCard.BackgroundColor3=Theme.Colors.Black;selectedCard.BackgroundTransparency=.18;selectedCard.BorderSizePixel=0;selectedCard.Position=UDim2.fromScale(.965,.90);selectedCard.Size=UDim2.fromOffset(280,86);selectedCard.ZIndex=944;selectedCard.Parent=overlay;corner(selectedCard,8)
+	local selectedStroke=Instance.new("UIStroke");selectedStroke.Color=Theme.Colors.Electric;selectedStroke.Transparency=.26;selectedStroke.Thickness=1;selectedStroke.Parent=selectedCard
+	local selectedKicker=text(selectedCard,"SELECTED",UDim2.fromOffset(18,12),UDim2.new(1,-36,0,18),9,Theme.Colors.Electric,Theme.Fonts.Strong);selectedKicker.ZIndex=945
+	selectedName=text(selectedCard,string.upper(selected),UDim2.fromOffset(18,32),UDim2.new(1,-36,0,32),22,Theme.Colors.White,Theme.Fonts.Display);selectedName.ZIndex=945
+	local continueButton=Button.new({Text="CONTINUE",Variant="Primary",Size=UDim2.fromOffset(220,54),OnActivated=function()
+		overlay.Active=false
+		stopCamera(false)
+		TweenService:Create(overlay,TweenInfo.new(.16),{GroupTransparency=1}):Play()
+		task.delay(.18,function()if overlay.Parent then overlay:Destroy()end;onContinue(selected)end)
+	end})
+	continueButton.AnchorPoint=Vector2.new(1,1);continueButton.Position=UDim2.fromScale(.965,.965);continueButton.ZIndex=946;continueButton.Parent=overlay
+	local oldRefresh=refreshTiles
+	refreshTiles=function()
+		oldRefresh()
+		if selectedName then selectedName.Text=string.upper(selected)end
+	end
+	refreshTiles()
+	task.spawn(function()
+		local assets={WorldCupConfig.Flag("Argentina"),WorldCupConfig.Flag("Brazil"),WorldCupConfig.Flag("England"),WorldCupConfig.Flag("France"),WorldCupConfig.Flag("Germany"),WorldCupConfig.Flag("Portugal"),WorldCupConfig.Flag("Spain")}
+		pcall(function()ContentProvider:PreloadAsync(assets)end)
+	end)
+	return overlay
 end
 
 local function showWorldCupRewardOverlay(reward:any,granted:any,done:()->())
@@ -1236,7 +1475,7 @@ function Page.new(context:any):CanvasGroup
 	local history=type(data.History)=="table"and data.History or{}
 	local quests=type(data.Quests)=="table"and data.Quests or{}
 	local titleCounts=type(data.TitleCounts)=="table"and data.TitleCounts or{}
-	local selected=state and state.SelectedCountry or WorldCupConfig.Countries[1]
+	local selected=state and state.SelectedCountry or "Argentina"
 	local terminalState=isTerminalWorldCup(state)
 	local knockoutIntroSeen=state and state.Stage=="Knockout" and seenKnockoutIntroByRun[worldCupRunKey(state)]==true or false
 	local countryButtons:{[string]:TextButton}={}
@@ -1381,12 +1620,15 @@ function Page.new(context:any):CanvasGroup
 					task.spawn(function()
 						local playerGui=Players.LocalPlayer:FindFirstChildOfClass("PlayerGui")
 						local started=os.clock()
-						while matchLoading and matchLoading.Parent and os.clock()-started<20 do
+						while matchLoading and matchLoading.Parent and os.clock()-started<2.5 do
 							if playerGui and playerGui:FindFirstChild("VTRPrematchBroadcast")then
 								completeWorldCupLoading(matchLoading)
 								break
 							end
-							task.wait(.12)
+							task.wait(.04)
+						end
+						if matchLoading and matchLoading.Parent then
+							completeWorldCupLoading(matchLoading)
 						end
 					end)
 				else
@@ -1591,7 +1833,7 @@ function Page.new(context:any):CanvasGroup
 		state=nil
 		terminalState=false
 		knockoutIntroSeen=false
-		selected=WorldCupConfig.Countries[1]
+		selected="Argentina"
 		searchBox.Text=""
 		applyCountrySearch()
 		setSelectorMode(nil)
@@ -1696,6 +1938,89 @@ function Page.new(context:any):CanvasGroup
 		if group.Visible then queueWorldCupRefresh()end
 	end))
 	if group.Visible or localPlayer:GetAttribute("VTRWorldCupResultPending")==true then queueWorldCupRefresh()end
+	local function selectWorldCupCountry(country:string)
+		if state then return end
+		selected=country
+		title.Text="READY FOR THE DRAW"
+		selectedFlag.Image=WorldCupConfig.Flag(country)
+		selectedFlag.ImageTransparency=0
+		selectedFlag.BackgroundColor3=Theme.Colors.Electric
+		updateNextFixtureDisplay(nil)
+		for c,button in countryButtons do
+			local chosen=c==country
+			button.BackgroundColor3=chosen and Theme.Colors.Electric or Theme.Colors.Raised
+			button.TextColor3=chosen and Theme.Colors.Black or Theme.Colors.White
+			local label=button:FindFirstChildWhichIsA("TextLabel")
+			if label then label.TextColor3=chosen and Theme.Colors.Black or Theme.Colors.White end
+		end
+	end
+	local function startWorldCupOnboardingMatch(country:string)
+		if launchBusy then return end
+		launchBusy=true
+		selectWorldCupCountry(country)
+		startButton.Text="CREATING GROUPS..."
+		local beginResult=MatchSetupService:BeginWorldCup(country,true)
+		if not beginResult or not beginResult.Success then
+			launchBusy=false
+			startButton.Text=startButtonText()
+			context.Toast({Title="WORLD CUP",Message=beginResult and(beginResult.Message or beginResult.Error)or"World Cup unavailable.",Kind="Error"})
+			return
+		end
+		local newState=beginResult.Data and beginResult.Data.State
+		if newState then applyReturnedState(newState)end
+		showWorldCupOpponentReveal(context.Root,newState,function()
+			local fixture=newState and newState.NextFixture
+			local opponent=fixture and ((fixture.Home==country and fixture.Away)or fixture.Home)or nextOpponent
+			local matchLoading=showWorldCupMatchLoading("LOADING "..string.upper(tostring(opponent or"OPENING MATCH")))
+			startButton.Text="LOADING MATCH..."
+			local result=MatchSetupService:StartWorldCupMatch(true)
+			if result and result.Success then
+				localPlayer:SetAttribute("VTRForceWorldCupOnboardingRoute",nil)
+				localPlayer:SetAttribute("VTRDailyLoginSuppressed",nil)
+				if context.HideMenuForMatch then context.HideMenuForMatch()end
+				local data=result.Data or{}
+				if data.Teleporting==true or data.AIMatchTeleport==true or data.AlreadyQueued==true or data.AlreadyStarting==true or data.AlreadyStarted==true then
+					task.spawn(function()
+						local playerGui=Players.LocalPlayer:FindFirstChildOfClass("PlayerGui")
+						local started=os.clock()
+						while matchLoading and matchLoading.Parent and os.clock()-started<.75 do
+							if playerGui and(playerGui:FindFirstChild("VTRPrematchBroadcast")or playerGui:FindFirstChild("VTRGameplayHUD"))then
+								completeWorldCupLoading(matchLoading)
+								break
+							end
+							task.wait(.03)
+						end
+						if matchLoading and matchLoading.Parent then
+							completeWorldCupLoading(matchLoading)
+						end
+					end)
+				else
+					completeWorldCupLoading(matchLoading)
+					launchBusy=false
+					startButton.Text=startButtonText()
+				end
+			else
+				completeWorldCupLoading(matchLoading)
+				launchBusy=false
+				startButton.Text=startButtonText()
+				context.Toast({Title="WORLD CUP",Message=result and(result.Message or result.Error)or"World Cup match failed.",Kind="Error"})
+			end
+		end)
+	end
+	local forceWorldCupOnboarding=localPlayer:GetAttribute("VTRForceWorldCupOnboardingRoute")==true
+	if state==nil and (forceWorldCupOnboarding or(#history==0 and localPlayer:GetAttribute("VTRWorldCupOnboardingRouteSeen")~=true))then
+		localPlayer:SetAttribute("VTRWorldCupOnboardingRouteSeen",true)
+		task.defer(function()
+			local standaloneOnboarding=localPlayer:GetAttribute("VTRForceWorldCupOnboardingRoute")==true
+			local tutorialServerReady=RunService:IsStudio() or localPlayer:GetAttribute("VTRWorldCupSoloServer")==true
+			if tutorialServerReady and group.Parent and (group.Visible or standaloneOnboarding) and (standaloneOnboarding or not context.IsCurrentPage or context.IsCurrentPage("WorldCup"))then
+				showWorldCupOnboardingRoute(context.Root,selected,selectWorldCupCountry,function()
+					localPlayer:SetAttribute("VTRForceWorldCupOnboardingRoute",nil)
+					if context.RevealOnboardingMenu then context.RevealOnboardingMenu()end
+				end,startWorldCupOnboardingMatch)
+			end
+		end)
+	end
 	maybeShowTournamentComplete(state)
 	if state and state.Stage=="Knockout"and not knockoutIntroSeen then
 		task.defer(function()

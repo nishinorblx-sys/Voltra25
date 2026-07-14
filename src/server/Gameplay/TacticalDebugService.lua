@@ -1,4 +1,5 @@
 --!strict
+local RunService = game:GetService("RunService")
 local Service = {}
 Service.__index = Service
 
@@ -39,7 +40,7 @@ function Service:_clear()
 end
 
 function Service:Update(assignmentsBySide: any)
-	if workspace:GetAttribute("TacticalDebug") ~= true then
+	if (not RunService:IsStudio() and game.PrivateServerId == "") or workspace:GetAttribute("TacticalDebug") ~= true then
 		if self.Folder then
 			self:_clear()
 		end

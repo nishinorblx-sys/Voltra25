@@ -281,6 +281,9 @@ function Service:Show(player: Player)
 		if type(teleportData) == "table" and (teleportData.MatchMode == "Ranked1v1" or teleportData.MatchMode == "AICampaignSolo" or teleportData.MatchMode == "WorldCupSolo" or teleportData.WorldCup == true) then
 			return
 		end
+		if profile.Onboarding and profile.Onboarding.Complete ~= true then
+			return
+		end
 		task.wait(1.15)
 		if player.Parent == Players then
 			local payload = self:_payload(player, profile)

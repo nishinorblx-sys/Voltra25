@@ -47,6 +47,7 @@ end
 
 local function candidateScore(instance: Instance, pitchCFrame: CFrame, targetZ: number): number?
 	local name = string.lower(instance.Name)
+	if string.find(name, "goalkeeper", 1, true) or string.find(name, "keeper", 1, true) or instance:GetAttribute("IsGoalkeeper") == true or instance:GetAttribute("Goalkeeper") == true or instance:GetAttribute("VTRGoalkeeper") == true then return nil end
 	if not string.find(name, "goal", 1, true) and not string.find(name, "net", 1, true) then return nil end
 	local parts = partsOf(instance)
 	if #parts == 0 then return nil end

@@ -550,6 +550,9 @@ function Service:_carrierDecision(context: any, carrier: any, assignment: any)
 end
 
 function Service:_defensiveActions(context: any, assignmentsBySide: any, onlySide: string?)
+	if context.WorldCupFirstPassPending==true then
+		return
+	end
 	local owner = context.Owner
 	local carrier = owner and context.Players[owner]
 	if not carrier then

@@ -1,4 +1,5 @@
 --!strict
+local RunService = game:GetService("RunService")
 local PitchConfig = require(script.Parent.PitchConfig)
 local AIContextBuilder = require(script.Parent.AIContextBuilder)
 
@@ -79,6 +80,10 @@ function Service:_clear()
 end
 
 function Service:Update(context: any, assignmentsBySide: any)
+	if not RunService:IsStudio() and game.PrivateServerId == "" then
+		if self.Folder then self:_clear() end
+		return
+	end
 	local fullDebug=workspace:GetAttribute("VTRAIDebug")==true
 	local debugWidth=workspace:GetAttribute("TacticalDebugWidth")==true
 	local debugDepth=workspace:GetAttribute("TacticalDebugDepth")==true

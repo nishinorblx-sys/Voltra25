@@ -1,8 +1,8 @@
 --!strict
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local GameplayConfig = require(ReplicatedStorage.VTR.Shared.GameplayConfig)
 local StaminaConfig = require(ReplicatedStorage.VTR.Shared.StaminaConfig)
 local MovementStatsResolver = require(ReplicatedStorage.VTR.Shared.MovementStatsResolver)
+local StaminaService = require(script.Parent.StaminaService)
 local Service = {}
 Service.__index = Service
 
@@ -11,7 +11,7 @@ local function root(model: Model): BasePart?
 end
 
 function Service.new()
-	return setmetatable({Commands = {}}, Service)
+	return setmetatable({Commands = {}, Stamina = StaminaService.new()}, Service)
 end
 
 function Service:SetTarget(model: Model, target: Vector3, urgency: number)
@@ -92,32 +92,10 @@ function Service:Step(dt: number)
 				direction = Vector3.new(0, 0, team == "Home" and -1 or 1)
 			end
 		end
-		local reserve = tonumber(model:GetAttribute("VTRSprintStamina")) or tonumber(model:GetAttribute("VTRStamina")) or GameplayConfig.Stamina.Maximum
-		local endurance = tonumber(model:GetAttribute("VTREndurance")) or GameplayConfig.Stamina.Maximum
-		local sprintLocked = model:GetAttribute("VTRSprintLocked") == true
-		if sprintLocked and reserve >= StaminaConfig.ExhaustedRecoveryThreshold then
-			sprintLocked = false
-		end
+		local staminaMax = tonumber(StaminaConfig.Maximum) or 100
 		local moving = distance > 0.6 or hasBall or receiving or command.Urgency >= 0.45
-		local sprinting = moving and not sprintLocked and reserve > GameplayConfig.Stamina.MinimumToSprint and command.Urgency >= 0.48
-		if sprinting then
-			local drain = (StaminaConfig.SprintReserveDrainMin + (StaminaConfig.SprintReserveDrainMax - StaminaConfig.SprintReserveDrainMin) * math.clamp(command.Urgency, 0, 1)) * dt
-			reserve = math.max(0, reserve - drain)
-			endurance = math.max(0, endurance - StaminaConfig.SprintEnduranceDrainPerRealSecond * dt * GameplayConfig.Stamina.Maximum)
-			if reserve <= 0 then
-				sprintLocked = true
-				sprinting = false
-			end
-		else
-			local recover = (moving and StaminaConfig.JogRecoveryMin or StaminaConfig.IdleRecoveryMin) * dt
-			reserve = math.min(endurance, reserve + recover)
-		end
-		model:SetAttribute("VTRSprintStamina", reserve)
-		model:SetAttribute("VTRStamina", reserve)
-		model:SetAttribute("VTREndurance", endurance)
-		model:SetAttribute("VTRSprintLocked", sprintLocked)
-		model:SetAttribute("VTRSprinting", sprinting)
-		local resolved = MovementStatsResolver.Resolve(model, {MoveMagnitude = moving and 1 or 0, Sprinting = sprinting, StaminaRatio = reserve / GameplayConfig.Stamina.Maximum, HasBall = hasBall, TurnDot = 1, TurnPenalty = 1, UserControlled = false})
+		local reserve,_,sprinting=self.Stamina:Step(model,dt,{SprintRequested=moving and command.Urgency>=0.48,SprintAllowed=true,MoveMagnitude=moving and 1 or 0,CurrentSpeed=velocity.Magnitude,HasBall=hasBall,UserControlled=false,Frozen=model:GetAttribute("VTRForceIdle")==true,Stunned=(tonumber(model:GetAttribute("VTRStunnedUntil"))or 0)>now})
+		local resolved = MovementStatsResolver.Resolve(model, {MoveMagnitude = moving and 1 or 0, Sprinting = sprinting, StaminaRatio = reserve / staminaMax, HasBall = hasBall, TurnDot = 1, TurnPenalty = 1, UserControlled = false})
 		local previousSpeed = tonumber(command.Speed) or 0
 		local rate = resolved.TargetSpeed > previousSpeed and resolved.AccelerationRate or resolved.DecelerationRate
 		command.Speed = previousSpeed + math.clamp(resolved.TargetSpeed - previousSpeed, -rate * dt, rate * dt)

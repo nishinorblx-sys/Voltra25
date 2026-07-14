@@ -7,6 +7,8 @@ local MarketplaceService=game:GetService("MarketplaceService")
 local RunService=game:GetService("RunService")
 local TeleportService=game:GetService("TeleportService")
 local MatchConfig=require(ReplicatedStorage.VTR.Shared.MatchConfig)
+local MatchFormatConfig=require(ReplicatedStorage.VTR.Shared.MatchFormatConfig)
+local MatchExperienceConfig=require(ReplicatedStorage.VTR.Shared.MatchExperienceConfig)
 local VTRLiteConfig=require(ReplicatedStorage.VTR.Shared.VTRLiteConfig)
 local Catalog=require(ReplicatedStorage.VTR.Shared.Catalog)
 local WorldCupConfig=require(ReplicatedStorage.VTR.Shared.WorldCupConfig)
@@ -77,20 +79,27 @@ local function questContinent(title:any):string?
 	return nil
 end
 function Service.new(profiles:any,publish:(Player,string,any)->(),progression:any,runtime:any,rankedSquads:any?)
-	local self=setmetatable({Profiles=profiles,Publish=publish,Progression=progression,Runtime=runtime,RankedSquads=rankedSquads,SoloTeleportConnections={},WorldCupTeleportLocks={},WorldCupStartLocks={}},Service)
+	local self=setmetatable({Profiles=profiles,Publish=publish,Progression=progression,Runtime=runtime,RankedSquads=rankedSquads,CampaignAscension=nil,SoloTeleportConnections={},WorldCupTeleportLocks={},WorldCupStartLocks={},AscensionTeleportLocks={}},Service)
 	task.defer(function()
 		for _,player in Players:GetPlayers()do self:HandleSoloCampaignTeleport(player)end
 		table.insert(self.SoloTeleportConnections,Players.PlayerAdded:Connect(function(player)task.defer(function()self:HandleSoloCampaignTeleport(player)end)end))
 	end)
 	return self
 end
-function Service:_ensure(profile:any):any local setup=profile.MatchSetup;if not setup or not TeamDatabase.Get(setup.HomeTeamId)or not TeamDatabase.Get(setup.AwayTeamId)or(setup.HomeTeamId==setup.AwayTeamId and setup.MatchType~="Friendly")then local home,away=TeamDatabase.Teams[1],TeamDatabase.Teams[2];setup={MatchLength=6,Difficulty="Professional",MatchType="Objective Match",HomeTeamId=home.teamId,AwayTeamId=away.teamId,HomeKit="Home",AwayKit="Away",StadiumId="voltra_arena",Weather="Clear",Time="Evening",Completed=false,SavedAt=0,KitConflict=false,CampaignTeamId="",CampaignTier=0,CampaignReplay=false};profile.MatchSetup=setup end;setup.CampaignTeamId=setup.CampaignTeamId or"";setup.CampaignTier=tonumber(setup.CampaignTier)or 0;setup.CampaignReplay=setup.CampaignReplay==true;return setup end
+function Service:SetCampaignAscension(service:any)self.CampaignAscension=service end
+function Service:_ensure(profile:any):any local setup=profile.MatchSetup;if not setup or not TeamDatabase.Get(setup.HomeTeamId)or not TeamDatabase.Get(setup.AwayTeamId)or(setup.HomeTeamId==setup.AwayTeamId and setup.MatchType~="Friendly")then local home,away=TeamDatabase.Teams[1],TeamDatabase.Teams[2];setup={MatchFormat="Standard",MatchLength=6,Difficulty="Professional",MatchType="Objective Match",HomeTeamId=home.teamId,AwayTeamId=away.teamId,HomeKit="Home",AwayKit="Away",StadiumId="voltra_arena",Weather="Clear",Time="Evening",Completed=false,SavedAt=0,KitConflict=false,CampaignTeamId="",CampaignTier=0,CampaignReplay=false};profile.MatchSetup=setup end;setup.MatchFormat=MatchFormatConfig.Normalize(setup.MatchFormat or setup.MatchLength);setup.CampaignTeamId=setup.CampaignTeamId or"";setup.CampaignTier=tonumber(setup.CampaignTier)or 0;setup.CampaignReplay=setup.CampaignReplay==true;return setup end
 function Service:_validate(setup:any):(boolean,string)
-	if not contains(MatchConfig.MatchLengths,setup.MatchLength)then return false,"Invalid match length."end;if not contains(MatchConfig.Difficulties,setup.Difficulty)then return false,"Invalid difficulty."end;if not contains(MatchConfig.MatchTypes,setup.MatchType)then return false,"Invalid match type."end;if not contains(MatchConfig.Weather,setup.Weather)or not contains(MatchConfig.Times,setup.Time)then return false,"Invalid presentation settings."end
+	if not contains(MatchConfig.MatchFormats,MatchFormatConfig.Normalize(setup.MatchFormat or setup.MatchLength))then return false,"Invalid match format."end;if not contains(MatchConfig.Difficulties,setup.Difficulty)then return false,"Invalid difficulty."end;if not contains(MatchConfig.MatchTypes,setup.MatchType)then return false,"Invalid match type."end;if not contains(MatchConfig.Weather,setup.Weather)or not contains(MatchConfig.Times,setup.Time)then return false,"Invalid presentation settings."end
 	local home,away=TeamDatabase.Get(setup.HomeTeamId),TeamDatabase.Get(setup.AwayTeamId);if not home or not away then return false,"Select two valid teams."end;if home.teamId==away.teamId and setup.MatchType~="Friendly"then return false,"Mirror matches are only available in Friendly mode."end;if not kit(home,setup.HomeKit)or not kit(away,setup.AwayKit)then return false,"Invalid kit selection."end;local venue=stadium(setup.StadiumId);if not venue or not contains(venue.WeatherSupport,setup.Weather)then return false,"Selected stadium does not support this weather."end;return true,"Match setup valid."
 end
 function Service:_isCampaignMatch(setup:any):boolean
 	return type(setup)=="table" and type(setup.CampaignTeamId)=="string" and setup.CampaignTeamId~=""
+end
+function Service:_runtimeSetup(profile:any,setup:any):any
+	local launch=table.clone(setup)
+	launch.MatchFormat=MatchFormatConfig.Normalize(launch.MatchFormat or launch.MatchLength)
+	launch.PresentationProfile=MatchExperienceConfig.Resolve(launch,profile)
+	return launch
 end
 
 function Service:_worldCupMatchFixtureFromEnded(state:any,ended:any):any?
@@ -162,7 +171,8 @@ end
 
 function Service:_commitWorldCupPlayedMatch(player:Player,ended:any):boolean
 	ended=type(ended)=="table"and ended or{}
-	if ended.WorldCupResultCommitted==true then return false end
+	ended.WorldCupResultCommittedByUserId=type(ended.WorldCupResultCommittedByUserId)=="table"and ended.WorldCupResultCommittedByUserId or{}
+	if ended.WorldCupResultCommittedByUserId[player.UserId]==true then return false end
 	local current=self.Profiles:GetProfile(player);if not current or type(current.WorldCup)~="table"then return false end
 	local pending=type(ended.WorldCupPendingMatch)=="table"and ended.WorldCupPendingMatch or type(current.WorldCupPendingMatch)=="table"and current.WorldCupPendingMatch or type(current.WorldCup.PendingMatch)=="table"and current.WorldCup.PendingMatch or nil
 	if pending then ended.WorldCupPendingMatch=pending end
@@ -181,6 +191,7 @@ function Service:_commitWorldCupPlayedMatch(player:Player,ended:any):boolean
 		current.WorldCupPendingMatch=nil
 		current.WorldCup.PendingMatch=nil
 		current.WorldCup.PendingMatchId=nil
+		ended.WorldCupResultCommittedByUserId[player.UserId]=true
 		ended.WorldCupResultCommitted=true
 		player:SetAttribute("VTRWorldCupPendingId",nil)
 		if self.Profiles.Save then self.Profiles:Save(player,true)end
@@ -205,6 +216,41 @@ function Service:_commitWorldCupPlayedMatch(player:Player,ended:any):boolean
 		homeScore=readAwayScore
 		awayScore=readHomeScore
 	end
+	if current.WorldCup.Stage=="Knockout" and homeScore==awayScore then
+		local runtimeWinner=tostring(ended.PenaltyShootoutWinner or ended.WorldCupPenaltyWinner or "")
+		local opponent=tostring(pending and pending.Opponent or(currentFixture.Home==selectedCountry and currentFixture.Away or currentFixture.Home))
+		local winnerCountry=nil
+		if runtimeWinner=="Home"or runtimeWinner=="Away"then
+			local runtimeHomeCountry=(pending and pending.RuntimeHomeIsSelected==false)and opponent or selectedCountry
+			local runtimeAwayCountry=runtimeHomeCountry==selectedCountry and opponent or selectedCountry
+			winnerCountry=runtimeWinner=="Home"and runtimeHomeCountry or runtimeAwayCountry
+		elseif type(ended.PenaltyShootout)=="table"then
+			local hp=tonumber(ended.PenaltyShootout.Home)or tonumber(ended.PenaltyShootout.PenaltyHome)or 0
+			local ap=tonumber(ended.PenaltyShootout.Away)or tonumber(ended.PenaltyShootout.PenaltyAway)or 0
+			if hp~=ap then
+				local runtimeHomeCountry=(pending and pending.RuntimeHomeIsSelected==false)and opponent or selectedCountry
+				local runtimeAwayCountry=runtimeHomeCountry==selectedCountry and opponent or selectedCountry
+				winnerCountry=hp>ap and runtimeHomeCountry or runtimeAwayCountry
+			end
+		end
+		if not winnerCountry or winnerCountry==""then
+			local resolution=self:_worldCupResolveKnockoutTie(current.WorldCup,currentFixture,homeScore,awayScore)
+			winnerCountry=resolution and resolution.Winner
+			currentFixture.ExtraTime=resolution and resolution.ExtraTime or true
+			currentFixture.Penalties=resolution and resolution.Penalties or false
+			currentFixture.Shootout=resolution and resolution.Shootout or nil
+		else
+			currentFixture.ExtraTime=ended.ExtraTimeStarted==true or ended.ExtraTimeCompleted==true or currentFixture.ExtraTime==true
+			currentFixture.Penalties=true
+			currentFixture.Shootout=ended.PenaltyShootout
+		end
+		if winnerCountry==currentFixture.Home then
+			homeScore+=1
+		elseif winnerCountry==currentFixture.Away then
+			awayScore+=1
+		end
+		currentFixture.Winner=winnerCountry
+	end
 	currentFixture.UserPlayedResultKey=resultKey
 	current.WorldCup.ResultLedger[resultKey]=true
 	current.WorldCup.PlayedMatches=(tonumber(current.WorldCup.PlayedMatches)or 0)+1
@@ -218,20 +264,35 @@ function Service:_commitWorldCupPlayedMatch(player:Player,ended:any):boolean
 	current.WorldCupPendingMatch=nil
 	current.WorldCup.PendingMatch=nil
 	current.WorldCup.PendingMatchId=nil
-	self:_archiveWorldCup(current)
 	if self.Profiles.Save then self.Profiles:Save(player,true)end
-	self.Publish(player,"Progression",self.Progression:GetClientData(player))
-	self.Publish(player,"WorldCup",current.WorldCup)
 	player:SetAttribute("VTRLastWorldCupCommittedAt",os.time())
 	player:SetAttribute("VTRLastWorldCupCommittedScore",tostring(readHomeScore).."-"..tostring(readAwayScore))
 	player:SetAttribute("VTRWorldCupPendingId",nil)
 	if self._clearWorldCupRuntimeResult then self:_clearWorldCupRuntimeResult(player)end
+	ended.WorldCupResultCommittedByUserId[player.UserId]=true
 	ended.WorldCupResultCommitted=true
+	local archiveOk,archiveErr=pcall(function()
+		self:_archiveWorldCup(current)
+	end)
+	if not archiveOk then warn("[VTR WORLDCUP RESULT] archive failed after commit: "..tostring(archiveErr))end
+	if self.Profiles.Save then self.Profiles:Save(player,true)end
+	if self.Publish then
+		local progressionOk,progressionErr=pcall(function()
+			self.Publish(player,"Progression",self.Progression:GetClientData(player))
+		end)
+		if not progressionOk then warn("[VTR WORLDCUP RESULT] progression publish failed: "..tostring(progressionErr))end
+		local worldCupOk,worldCupErr=pcall(function()
+			self.Publish(player,"WorldCup",current.WorldCup)
+		end)
+		if not worldCupOk then warn("[VTR WORLDCUP RESULT] world cup publish failed: "..tostring(worldCupErr))end
+	end
 	return true
 end
 
 function Service:_grantWorldCupMatchReward(player:Player,ended:any):any?
-	if ended.WorldCupRewardGranted==true then return ended.WorldCupRewardPayload end
+	ended.WorldCupRewardGrantedByUserId=type(ended.WorldCupRewardGrantedByUserId)=="table"and ended.WorldCupRewardGrantedByUserId or{}
+	ended.WorldCupRewardPayloadByUserId=type(ended.WorldCupRewardPayloadByUserId)=="table"and ended.WorldCupRewardPayloadByUserId or{}
+	if ended.WorldCupRewardGrantedByUserId[player.UserId]==true then return ended.WorldCupRewardPayloadByUserId[player.UserId] end
 	local homeScore=tonumber(ended and ended.World and ended.World.HomeScore and ended.World.HomeScore.Value)or 0
 	local awayScore=tonumber(ended and ended.World and ended.World.AwayScore and ended.World.AwayScore.Value)or 0
 	local won=homeScore>awayScore
@@ -242,6 +303,8 @@ function Service:_grantWorldCupMatchReward(player:Player,ended:any):any?
 		XP=won and 160 or drew and 110 or 80,
 	}
 	local reward=self.Progression and self.Progression.GrantMatchRewards and self.Progression:GrantMatchRewards(player,payload)or payload
+	ended.WorldCupRewardGrantedByUserId[player.UserId]=true
+	ended.WorldCupRewardPayloadByUserId[player.UserId]=reward
 	ended.WorldCupRewardGranted=true
 	ended.WorldCupRewardPayload=reward
 	player:SetAttribute("VTRLastWorldCupRewardAt",os.time())
@@ -275,6 +338,25 @@ function Service:_consumeWorldCupRuntimeResult(player:Player,profile:any?):boole
 		self:_clearWorldCupRuntimeResult(player)
 	end
 	return committed
+end
+
+function Service:_scheduleWorldCupResultRetry(player:Player,reason:string?)
+	if not player or player.Parent~=Players then return end
+	local delays={.75,2,5,10}
+	for _,delaySeconds in ipairs(delays)do
+		task.delay(delaySeconds,function()
+			if not player or player.Parent~=Players then return end
+			if player:GetAttribute("VTRWorldCupResultPending")~=true then return end
+			local ok,committed=pcall(function()
+				return self:_consumeWorldCupRuntimeResult(player)
+			end)
+			if not ok then
+				warn("[VTR WORLDCUP RESULT] retry failed",player.Name,tostring(reason or"unknown"),tostring(committed))
+			elseif committed==true then
+				warn("[VTR WORLDCUP RESULT] retry committed pending result",player.Name,tostring(reason or"unknown"))
+			end
+		end)
+	end
 end
 
 function Service:_commitCampaignWin(player:Player,teamId:string,tierIndex:number,replay:boolean?):any?
@@ -1571,7 +1653,7 @@ function Service:_worldCupAdvanceAfterMatch(state:any,homeGoals:number,awayGoals
 	else
 		local selected=state.SelectedCountry
 		local resolvedWinner=type(fixture.Winner)=="string"and fixture.Winner or nil
-		local userWon=resolvedWinner and resolvedWinner==selected or (fixture.Home==selected and homeGoals>awayGoals)or(fixture.Away==selected and awayGoals>homeGoals)or homeGoals==awayGoals
+		local userWon=resolvedWinner and resolvedWinner==selected or (fixture.Home==selected and homeGoals>awayGoals)or(fixture.Away==selected and awayGoals>homeGoals)
 		fixture.Winner=resolvedWinner or(userWon and selected or(fixture.Home==selected and fixture.Away or fixture.Home))
 		if not userWon then state.Stage="Eliminated";state.NextFixture=nil;return end
 		self:_worldCupPrepareNextKnockout(state)
@@ -1642,6 +1724,9 @@ function Service:_archiveWorldCup(profile:any)
 	local state=type(profile.WorldCup)=="table"and profile.WorldCup or nil
 	if not state or state.Archived==true then return end
 	if state.Stage~="Champion"and state.Stage~="Eliminated"then return end
+	profile.PlayabilityProgress=type(profile.PlayabilityProgress)=="table"and profile.PlayabilityProgress or{}
+	profile.PlayabilityProgress.Version=2
+	profile.PlayabilityProgress.FirstWorldCupRunCompleted=true
 	profile.WorldCupHistory=type(profile.WorldCupHistory)=="table"and profile.WorldCupHistory or{}
 	self:_recordWorldCupQuestCareer(profile,state)
 	state.Archived=true
@@ -1694,9 +1779,12 @@ function Service:ClaimWorldCupQuest(player:Player,questId:string):(boolean,strin
 	return true,"World Cup quest reward claimed.",{WorldCup=self:_worldCupPublic(profile),QuestId=definition.Id,Granted=granted}
 end
 
-function Service:BeginWorldCup(player:Player,country:string):(boolean,string,any?)
+local WORLD_CUP_ONBOARDING_COUNTRIES={"Argentina","Brazil","England","France","Germany","Portugal","Spain"}
+
+function Service:BeginWorldCup(player:Player,country:string,payload:any?):(boolean,string,any?)
 	local profile=self.Profiles:GetProfile(player);if not profile then return false,"Profile unavailable.",nil end
 	if type(country)~="string"or not table.find(WorldCupConfig.Countries,country)then return false,"Choose a valid World Cup nation.",nil end
+	local onboarding=type(payload)=="table"and payload.Onboarding==true
 	local random=Random.new(os.time()+player.UserId)
 	local ranked=table.clone(WorldCupConfig.Countries)
 	table.sort(ranked,function(a:string,b:string)
@@ -1707,9 +1795,18 @@ function Service:BeginWorldCup(player:Player,country:string):(boolean,string,any
 	end)
 	local countries={}
 	local included:{[string]:boolean}={}
+	if onboarding then
+		local opponentPool={}
+		for _,candidate in ipairs(WORLD_CUP_ONBOARDING_COUNTRIES)do
+			if candidate~=country and table.find(WorldCupConfig.Countries,candidate)then table.insert(opponentPool,candidate)end
+		end
+		local opponent=opponentPool[math.max(1,random:NextInteger(1,math.max(1,#opponentPool)))]or"Brazil"
+		table.insert(countries,country);included[country]=true
+		if not included[opponent]then table.insert(countries,opponent);included[opponent]=true end
+	end
 	for _,rankedCountry in ipairs(ranked)do
 		if #countries>=13 then break end
-		if table.find(WorldCupConfig.Countries,rankedCountry)then
+		if table.find(WorldCupConfig.Countries,rankedCountry)and not included[rankedCountry]then
 			table.insert(countries,rankedCountry)
 			included[rankedCountry]=true
 		end
@@ -1728,9 +1825,11 @@ function Service:BeginWorldCup(player:Player,country:string):(boolean,string,any
 		table.insert(countries,candidate)
 		included[candidate]=true
 	end
-	for index=#countries,2,-1 do
-		local swap=random:NextInteger(1,index)
-		countries[index],countries[swap]=countries[swap],countries[index]
+	if not onboarding then
+		for index=#countries,2,-1 do
+			local swap=random:NextInteger(1,index)
+			countries[index],countries[swap]=countries[swap],countries[index]
+		end
 	end
 	local state={Active=true,SelectedCountry=country,SelectedCode=wcCode(country),Seed=os.time()+player.UserId,Stage="Group",Groups={},Fixtures={},Standings={},TeamIds={},TeamOverall={},GroupMatchIndex=1,CreatedAt=os.time(),SimIndex=0}
 	for index,groupName in WorldCupConfig.GroupNames do state.Groups[groupName]={};state.Fixtures[groupName]={};for slot=1,4 do local teamCountry=countries[(index-1)*4+slot];local roster=buildWorldCupNationalRoster(teamCountry);table.insert(state.Groups[groupName],teamCountry);state.TeamIds[teamCountry]=roster.Team.teamId;state.TeamOverall[teamCountry]=tonumber(roster.Team.overall)or 76;self:_worldCupEnsureStanding(state,teamCountry)end end
@@ -1778,6 +1877,32 @@ function Service:_teleportWorldCupMatch(player:Player):(boolean,string,any?)
 	return true,"World Cup match queued.",{Teleporting=true,WorldCup=true}
 end
 
+function Service:_teleportWorldCupTutorialSelect(player:Player):(boolean,string,any?)
+	if RunService:IsStudio() or game.PrivateServerId~="" or player:GetAttribute("VTRWorldCupSoloServer")==true then return false,"",nil end
+	local lockedUntil=tonumber(self.WorldCupTeleportLocks[player])or 0
+	if lockedUntil>os.clock() then return true,"World Cup tutorial already queued.",{Teleporting=true,WorldCup=true,TutorialSelect=true,AlreadyQueued=true}end
+	self.WorldCupTeleportLocks[player]=os.clock()+18
+	local code=nil
+	local ok,err=pcall(function()code=TeleportService:ReserveServer(game.PlaceId)end)
+	if not ok or not code then self.WorldCupTeleportLocks[player]=nil;return false,"Could not reserve a World Cup tutorial server.",nil end
+	local options=Instance.new("TeleportOptions")
+	options.ReservedServerAccessCode=code
+	options:SetTeleportData({MatchMode="WorldCupSolo",Action="TutorialSelect",ReturnPlaceId=game.PlaceId,AutoStart=false,DirectIntro=true,WorldCup=true,TutorialSelect=true})
+	local sent,teleportErr=pcall(function()TeleportService:TeleportAsync(game.PlaceId,{player},options)end)
+	if not sent then self.WorldCupTeleportLocks[player]=nil;return false,tostring(teleportErr),nil end
+	return true,"World Cup tutorial queued.",{Teleporting=true,WorldCup=true,TutorialSelect=true}
+end
+
+function Service:PrepareWorldCupTutorial(player:Player):(boolean,string,any?)
+	local profile=self.Profiles:GetProfile(player);if not profile then return false,"Profile unavailable.",nil end
+	local onboarding=profile.Onboarding
+	if type(onboarding)=="table"and onboarding.Complete==true then return true,"Tutorial already complete.",{Complete=true}end
+	if player:GetAttribute("VTRWorldCupSoloServer")==true or RunService:IsStudio() then
+		return true,"Tutorial server ready.",{Ready=true,WorldCup=true,TutorialSelect=true}
+	end
+	return self:_teleportWorldCupTutorialSelect(player)
+end
+
 function Service:_teleportSoloCampaign(player:Player,action:string):(boolean,string,any?)
 	if RunService:IsStudio() or game.PrivateServerId~="" or player:GetAttribute("VTRAICampaignSoloServer")==true then return false,"",nil end
 	local code=nil
@@ -1793,6 +1918,55 @@ function Service:_teleportSoloCampaign(player:Player,action:string):(boolean,str
 	return true,"Teleporting to solo campaign server.",{Teleporting=true,SoloCampaign=true,Action=action}
 end
 
+function Service:_teleportCampaignAscension(player:Player,pendingId:string):(boolean,string,any?)
+	if RunService:IsStudio()or player:GetAttribute("VTRAscensionSoloServer")==true then return false,"",nil end
+	local profile=self.Profiles:GetProfile(player)
+	local pending=profile and profile.CampaignProgress and profile.CampaignProgress.PendingMatch
+	if type(pending)~="table"or pending.PendingId~=pendingId then return false,"The saved Ascension fixture changed before teleport.",{PendingRecoverable=true}end
+	local lockedUntil=tonumber(self.AscensionTeleportLocks[player])or 0
+	if lockedUntil>os.clock()then return true,"Ascension match already queued.",{Teleporting=true,CampaignAscension=true,PendingId=pendingId,AlreadyQueued=true}end
+	self.AscensionTeleportLocks[player]=os.clock()+18
+	local code=nil
+	local reserved,reserveError=pcall(function()code=TeleportService:ReserveServer(game.PlaceId)end)
+	if not reserved or not code then self.AscensionTeleportLocks[player]=nil;return false,"Could not reserve an Ascension match server.",{PendingRecoverable=true,Error=tostring(reserveError)}end
+	local options=Instance.new("TeleportOptions")
+	options.ReservedServerAccessCode=code
+	options:SetTeleportData({MatchMode="AscensionSolo",PendingId=pendingId,SeasonId=pending.SeasonId,FixtureId=pending.FixtureId,ReturnPlaceId=game.PlaceId,DirectIntro=true})
+	local sent,teleportError=pcall(function()TeleportService:TeleportAsync(game.PlaceId,{player},options)end)
+	if not sent then self.AscensionTeleportLocks[player]=nil;return false,"Ascension teleport failed.",{PendingRecoverable=true,Error=tostring(teleportError)}end
+	return true,"Teleporting to your Ascension fixture.",{Teleporting=true,CampaignAscension=true,PendingId=pendingId}
+end
+
+function Service:_launchCampaignAscension(player:Player,pendingId:string):(boolean,string,any?)
+	if not self.CampaignAscension then return false,"Ascension service is unavailable.",nil end
+	local valid,message,runtimeData=self.CampaignAscension:BuildPendingRuntime(player,pendingId)
+	if not valid or not runtimeData then return false,message,nil end
+	local profile=self.Profiles:GetProfile(player)
+	if not profile then return false,"Profile unavailable.",nil end
+	local success,text,data=self.Runtime:StartMatch(player,self:_runtimeSetup(profile,runtimeData.Setup),nil,nil,runtimeData.HomeRoster,runtimeData.AwayRoster)
+	if not success then return false,text,nil end
+	local session=self.Runtime:GetSession(player)
+	if not session then return false,"Ascension runtime did not initialize.",nil end
+	self:_tagSoloCampaignSession(player,session)
+	local attached,attachMessage=self.CampaignAscension:AttachRuntime(player,session,pendingId)
+	if not attached then self.Runtime:ReturnToMenu(player);return false,attachMessage,nil end
+	if data then
+		data.AIMatchTeleport=true
+		data.MatchLaunchType=runtimeData.Pending.Mode=="Manage"and"AscensionManage"or"AscensionManual"
+		data.CampaignAscension=true
+		data.AscensionPendingId=pendingId
+		data.Objective=runtimeData.Fixture.ObjectiveTitle
+		data.ObjectiveCompletedNow=false
+	end
+	return true,"Ascension fixture loaded.",data
+end
+
+function Service:StartCampaignAscension(player:Player,pendingId:string):(boolean,string,any?)
+	if type(pendingId)~="string"or#pendingId>96 then return false,"Invalid Ascension pending match.",nil end
+	if RunService:IsStudio()or player:GetAttribute("VTRAscensionSoloServer")==true then return self:_launchCampaignAscension(player,pendingId)end
+	return self:_teleportCampaignAscension(player,pendingId)
+end
+
 function Service:_tagSoloCampaignSession(player:Player,session:any?)
 	if not session or player:GetAttribute("VTRAICampaignSoloServer")~=true then return end
 	session.PrivateAICampaignMatch=true
@@ -1803,10 +1977,12 @@ end
 function Service:HandleSoloCampaignTeleport(player:Player):boolean
 	local joinData=player:GetJoinData()
 	local teleportData=joinData and joinData.TeleportData
-	if type(teleportData)~="table" or(teleportData.MatchMode~="AICampaignSolo"and teleportData.MatchMode~="WorldCupSolo")then return false end
+	if type(teleportData)~="table" or(teleportData.MatchMode~="AICampaignSolo"and teleportData.MatchMode~="WorldCupSolo"and teleportData.MatchMode~="AscensionSolo")then return false end
+	local ascensionSolo=teleportData.MatchMode=="AscensionSolo"
 	local worldCupSolo=teleportData.MatchMode=="WorldCupSolo"
 	player:SetAttribute("VTRAICampaignSoloServer",true)
 	player:SetAttribute("VTRWorldCupSoloServer",worldCupSolo)
+	player:SetAttribute("VTRAscensionSoloServer",ascensionSolo)
 	player:SetAttribute("VTRAICampaignAutoStarting",true)
 	player:SetAttribute("VTRAICampaignReturnPlaceId",tonumber(teleportData.ReturnPlaceId) or game.PlaceId)
 	task.spawn(function()
@@ -1815,6 +1991,18 @@ function Service:HandleSoloCampaignTeleport(player:Player):boolean
 		while player.Parent==Players and os.clock()-started<45 do
 			local profile=self.Profiles:GetProfile(player)
 			if profile then
+				if ascensionSolo then
+					local pendingId=tostring(teleportData.PendingId or"")
+					local pending=profile.CampaignProgress and profile.CampaignProgress.PendingMatch
+					local seasonMatches=type(pending)=="table"and(teleportData.SeasonId==nil or tostring(teleportData.SeasonId)==tostring(pending.SeasonId))
+					local fixtureMatches=type(pending)=="table"and(teleportData.FixtureId==nil or tostring(teleportData.FixtureId)==tostring(pending.FixtureId))
+					if self.CampaignAscension and pendingId~=""and seasonMatches and fixtureMatches then
+						local ok=self:_launchCampaignAscension(player,pendingId)
+						if ok then player:SetAttribute("VTRAICampaignAutoStarting",false);player:SetAttribute("VTRAICampaignDirectIntro",true);return end
+					end
+					task.wait(.35)
+					continue
+				end
 				if type(teleportData.Setup)=="table" then
 					profile.MatchSetup=table.clone(teleportData.Setup)
 					profile.MatchSetup.Completed=true
@@ -1823,6 +2011,11 @@ function Service:HandleSoloCampaignTeleport(player:Player):boolean
 				if character and character:FindFirstChildOfClass("Humanoid") then
 					local ok,message,data
 					if worldCupSolo then
+						if action=="TutorialSelect" then
+							player:SetAttribute("VTRAICampaignAutoStarting",false)
+							player:SetAttribute("VTRAICampaignDirectIntro",true)
+							return
+						end
 						if player:GetAttribute("VTRWorldCupMatchStarting")==true or player:GetAttribute("VTRWorldCupMatchStarted")==true then
 							player:SetAttribute("VTRAICampaignAutoStarting",false)
 							player:SetAttribute("VTRAICampaignDirectIntro",true)
@@ -1848,10 +2041,10 @@ function Service:HandleSoloCampaignTeleport(player:Player):boolean
 	return true
 end
 
-function Service:GetClientData(player:Player):any?local profile=self.Profiles:GetProfile(player);if not profile then return nil end;local setup=self:_ensure(profile);local home,away=TeamDatabase.Get(setup.HomeTeamId),TeamDatabase.Get(setup.AwayTeamId);return{Setup=table.clone(setup),Teams={TeamDatabase.Summary(home),TeamDatabase.Summary(away)},Countries=TeamDatabase.GetCountries(),TeamCount=TeamDatabase.Count,Stadiums=MatchConfig.Stadiums,Options={MatchLengths=MatchConfig.MatchLengths,Difficulties=MatchConfig.Difficulties,MatchTypes=MatchConfig.MatchTypes,Weather=MatchConfig.Weather,Times=MatchConfig.Times,KitTypes=MatchConfig.KitTypes}}end
+function Service:GetClientData(player:Player):any?local profile=self.Profiles:GetProfile(player);if not profile then return nil end;local setup=self:_ensure(profile);local home,away=TeamDatabase.Get(setup.HomeTeamId),TeamDatabase.Get(setup.AwayTeamId);return{Setup=table.clone(setup),Teams={TeamDatabase.Summary(home),TeamDatabase.Summary(away)},Countries=TeamDatabase.GetCountries(),TeamCount=TeamDatabase.Count,Stadiums=MatchConfig.Stadiums,Options={MatchFormats=MatchConfig.MatchFormats,MatchLengths=MatchConfig.MatchLengths,Difficulties=MatchConfig.Difficulties,MatchTypes=MatchConfig.MatchTypes,Weather=MatchConfig.Weather,Times=MatchConfig.Times,KitTypes=MatchConfig.KitTypes}}end
 function Service:GetRoster(_player:Player,teamId:string):any?return TeamDatabase.GetRoster(teamId)end
 function Service:GetTeams(_player:Player,country:any,league:any):any?if type(country)~="string"or#country>50 or type(league)~="string"or#league>60 then return nil end;return TeamDatabase.GetSummaries(country,league)end
-function Service:Save(player:Player,payload:any):(boolean,string,any?)local profile=self.Profiles:GetProfile(player);if not profile or type(payload)~="table"then return false,"Profile unavailable.",nil end;local nextSetup=table.clone(self:_ensure(profile));for key,value in payload do if nextSetup[key]~=nil then nextSetup[key]=value end end;local valid,message=self:_validate(nextSetup);if not valid then return false,message,nil end;nextSetup.Completed=true;nextSetup.SavedAt=os.time();local home,away=TeamDatabase.Get(nextSetup.HomeTeamId),TeamDatabase.Get(nextSetup.AwayTeamId);nextSetup.KitConflict=colorDistance(home.kits[nextSetup.HomeKit].Primary,away.kits[nextSetup.AwayKit].Primary)<.35;profile.MatchSetup=nextSetup;if self.Profiles.Save then self.Profiles:Save(player)end;return true,"Match settings saved.",table.clone(nextSetup)end
+function Service:Save(player:Player,payload:any):(boolean,string,any?)local profile=self.Profiles:GetProfile(player);if not profile or type(payload)~="table"then return false,"Profile unavailable.",nil end;local nextSetup=table.clone(self:_ensure(profile));for key,value in payload do if nextSetup[key]~=nil then nextSetup[key]=value end end;nextSetup.MatchFormat=MatchFormatConfig.Normalize(nextSetup.MatchFormat or nextSetup.MatchLength);local valid,message=self:_validate(nextSetup);if not valid then return false,message,nil end;nextSetup.Completed=true;nextSetup.SavedAt=os.time();local home,away=TeamDatabase.Get(nextSetup.HomeTeamId),TeamDatabase.Get(nextSetup.AwayTeamId);nextSetup.KitConflict=colorDistance(home.kits[nextSetup.HomeKit].Primary,away.kits[nextSetup.AwayKit].Primary)<.35;profile.MatchSetup=nextSetup;profile.Settings.MatchFormat=nextSetup.MatchFormat;profile.UIState.Settings.MatchFormat=nextSetup.MatchFormat;if self.Profiles.Save then self.Profiles:Save(player)end;return true,"Match settings saved.",table.clone(nextSetup)end
 function Service:StartMatch(player:Player):(boolean,string,any?)
 	local profile=self.Profiles:GetProfile(player);if not profile then return false,"Profile unavailable.",nil end;local setup=self:_ensure(profile);local valid,message=self:_validate(setup);if not valid or not setup.Completed then return false,message,nil end
 	if self:_isCampaignMatch(setup) and player:GetAttribute("VTRAICampaignSoloServer")~=true then
@@ -1868,7 +2061,7 @@ function Service:StartMatch(player:Player):(boolean,string,any?)
 		launchSetup.HomeTeamId=roster.Team.teamId
 		launchSetup.HomeKit="Home"
 	end
-	local success,text,data=self.Runtime:StartMatch(player,launchSetup,nil,nil,homeRoster,nil);if not success then return false,text,nil end;if data then data.AIMatchTeleport=true;data.MatchLaunchType="Manual"end
+	local success,text,data=self.Runtime:StartMatch(player,self:_runtimeSetup(profile,launchSetup),nil,nil,homeRoster,nil);if not success then return false,text,nil end;if data then data.AIMatchTeleport=true;data.MatchLaunchType="Manual"end
 	local session=self.Runtime:GetSession(player);if session then
 		self:_tagSoloCampaignSession(player,session)
 		local campaignTeamId=tostring(launchSetup.CampaignTeamId or"")
@@ -1932,13 +2125,13 @@ function Service:StartShootingPractice(player:Player,payload:any?):(boolean,stri
 	setup.AwayKit="Away"
 	setup.CampaignTeamId=""
 	setup.CampaignReplay=false
-	local success,text,data=self.Runtime:StartMatch(player,setup,nil,nil,homeRoster,awayRoster)
+	local success,text,data=self.Runtime:StartMatch(player,self:_runtimeSetup(profile,setup),nil,nil,homeRoster,awayRoster)
 	if not success then return false,text,nil end
 	if data then data.AIMatchTeleport=true;data.MatchLaunchType="ShootingPractice";data.PracticeMode=true;data.ObjectiveCompletedNow=false end
 	return true,text,data
 end
 
-function Service:StartWorldCupMatch(player:Player):(boolean,string,any?)
+function Service:StartWorldCupMatch(player:Player,payload:any?):(boolean,string,any?)
 	local profile=self.Profiles:GetProfile(player);if not profile then return false,"Profile unavailable.",nil end
 	self:_consumeWorldCupRuntimeResult(player,profile)
 	local state=type(profile.WorldCup)=="table"and profile.WorldCup or nil
@@ -1963,10 +2156,20 @@ function Service:StartWorldCupMatch(player:Player):(boolean,string,any?)
 	local setup=table.clone(self:_ensure(profile));local fixture=state.NextFixture
 	local selected=tostring(state.SelectedCountry or"");local opponent=fixture.Home==selected and fixture.Away or fixture.Home
 	local homeRoster=buildWorldCupNationalRoster(selected);local awayRoster=buildWorldCupNationalRoster(opponent)
-	setup.HomeTeamId=homeRoster.Team.teamId;setup.HomeKit="Home";setup.AwayTeamId=awayRoster.Team.teamId;setup.AwayKit="Away";setup.MatchType="Objective Match";setup.Difficulty="Professional";setup.Completed=true;setup.CampaignTeamId="";setup.WorldCup=true;setup.WorldCupOpponent=opponent;setup.WorldCupStage=state.Stage;setup.WorldCupGroup=state.Stage=="Group";setup.WorldCupKnockout=state.Stage=="Knockout"
+	local onboarding=type(payload)=="table"and payload.Onboarding==true
+	if onboarding then
+		local onboardingState=profile.Onboarding or{}
+		onboardingState.Complete=true
+		onboardingState.Step=10
+		onboardingState.ObjectivesActivated=true
+		profile.Onboarding=onboardingState
+		profile.OnboardingCompleted=true
+		if self.Profiles.Save then self.Profiles:Save(player,true)end
+	end
+	setup.HomeTeamId=homeRoster.Team.teamId;setup.HomeKit="Home";setup.AwayTeamId=awayRoster.Team.teamId;setup.AwayKit="Away";setup.MatchType="Objective Match";setup.Difficulty=onboarding and"Beginner"or"Professional";setup.Completed=true;setup.CampaignTeamId="";setup.WorldCup=true;setup.WorldCupOnboarding=onboarding;setup.WorldCupTutorial=onboarding;setup.NoPrematch=onboarding or setup.NoPrematch==true;setup.WorldCupOpponent=opponent;setup.WorldCupStage=state.Stage;setup.WorldCupRound=fixture.RoundName or fixture.Name or fixture.Round;setup.WorldCupGroup=state.Stage=="Group";setup.WorldCupKnockout=state.Stage=="Knockout"
 	local pending=self:_worldCupStorePendingMatch(player,profile,state,fixture,opponent)
 	if pending then setup.WorldCupPendingMatchId=pending.Id end
-	local success,text,data=self.Runtime:StartMatch(player,setup,nil,nil,homeRoster,awayRoster);if not success then profile.WorldCupPendingMatch=nil;if state then state.PendingMatch=nil;state.PendingMatchId=nil end;if self.Profiles.Save then self.Profiles:Save(player,true)end;self.WorldCupStartLocks[player]=nil;player:SetAttribute("VTRWorldCupPendingId",nil);player:SetAttribute("VTRWorldCupMatchStarting",nil);return false,text,nil end
+	local success,text,data=self.Runtime:StartMatch(player,self:_runtimeSetup(profile,setup),nil,nil,homeRoster,awayRoster);if not success then profile.WorldCupPendingMatch=nil;if state then state.PendingMatch=nil;state.PendingMatchId=nil end;if self.Profiles.Save then self.Profiles:Save(player,true)end;self.WorldCupStartLocks[player]=nil;player:SetAttribute("VTRWorldCupPendingId",nil);player:SetAttribute("VTRWorldCupMatchStarting",nil);return false,text,nil end
 	self.WorldCupStartLocks[player]=nil
 	player:SetAttribute("VTRWorldCupMatchStarting",nil)
 	player:SetAttribute("VTRWorldCupMatchStarted",true)
@@ -1979,22 +2182,33 @@ function Service:StartWorldCupMatch(player:Player):(boolean,string,any?)
 		session.OnWorldCupCompleted=function(ended:any)
 			ended.WorldCupPendingMatch=ended.WorldCupPendingMatch or session.WorldCupPendingMatch
 			ended.WorldCupFixtureSnapshot=ended.WorldCupFixtureSnapshot or session.WorldCupFixtureSnapshot
-			local committed=self:_commitWorldCupPlayedMatch(player,ended)
-			if not committed then
-				warn("[VTR WORLDCUP RESULT] result hook did not commit",player.Name,tostring(fixture.Home),tostring(fixture.Away),ended.World and ended.World.HomeScore and ended.World.HomeScore.Value,ended.World and ended.World.AwayScore and ended.World.AwayScore.Value)
+			local ok,committed=pcall(function()
+				return self:_commitWorldCupPlayedMatch(player,ended)
+			end)
+			if not ok or not committed then
+				warn("[VTR WORLDCUP RESULT] result hook did not commit",player.Name,tostring(fixture.Home),tostring(fixture.Away),ended.World and ended.World.HomeScore and ended.World.HomeScore.Value,ended.World and ended.World.AwayScore and ended.World.AwayScore.Value,not ok and tostring(committed)or"")
+				self:_scheduleWorldCupResultRetry(player,"completion-hook")
 			end
 		end
 		session.OnBeforeResult=function(ended:any)
 			ended.WorldCupPendingMatch=ended.WorldCupPendingMatch or session.WorldCupPendingMatch
 			ended.WorldCupFixtureSnapshot=ended.WorldCupFixtureSnapshot or session.WorldCupFixtureSnapshot
-			self:_commitWorldCupPlayedMatch(player,ended)
+			local ok,committed=pcall(function()
+				return self:_commitWorldCupPlayedMatch(player,ended)
+			end)
+			if not ok then warn("[VTR WORLDCUP RESULT] before-result commit failed: "..tostring(committed))end
+			if not ok or not committed then self:_scheduleWorldCupResultRetry(player,"before-result")end
 			local reward=self:_grantWorldCupMatchReward(player,ended)
 			return reward and{[player.UserId]=reward}or{}
 		end
 		session.OnCompleted=function(ended:any)
 			ended.WorldCupPendingMatch=ended.WorldCupPendingMatch or session.WorldCupPendingMatch
 			ended.WorldCupFixtureSnapshot=ended.WorldCupFixtureSnapshot or session.WorldCupFixtureSnapshot
-			self:_commitWorldCupPlayedMatch(player,ended)
+			local ok,committed=pcall(function()
+				return self:_commitWorldCupPlayedMatch(player,ended)
+			end)
+			if not ok then warn("[VTR WORLDCUP RESULT] completed commit failed: "..tostring(committed))end
+			if not ok or not committed then self:_scheduleWorldCupResultRetry(player,"completed-hook")end
 		end
 	end
 	return true,"World Cup match loaded.",data
@@ -2079,7 +2293,7 @@ function Service:WatchMatch(player:Player):(boolean,string,any?)
 		watchSetup.HomeTeamId=roster.Team.teamId
 		watchSetup.HomeKit="Home"
 	end
-	local success,text,data=self.Runtime:StartMatch(player,watchSetup,nil,nil,homeRoster,nil);if not success then return false,text,nil end;if data then data.AIMatchTeleport=true;data.MatchLaunchType="Manage"end
+	local success,text,data=self.Runtime:StartMatch(player,self:_runtimeSetup(profile,watchSetup),nil,nil,homeRoster,nil);if not success then return false,text,nil end;if data then data.AIMatchTeleport=true;data.MatchLaunchType="Manage"end
 	local session=self.Runtime:GetSession(player)
 	self:_tagSoloCampaignSession(player,session)
 	if session and type(watchSetup.CampaignTeamId)=="string" and watchSetup.CampaignTeamId~="" then

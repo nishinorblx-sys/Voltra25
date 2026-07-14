@@ -47,38 +47,21 @@ local function activeRoot(model: Model?): BasePart?
 	return model and model:FindFirstChild("HumanoidRootPart") :: BasePart?
 end
 
-local function modelRootByName(name: string): BasePart?
-	if name == "" then return nil end
-	for _, inst in workspace:GetDescendants() do
-		if inst:IsA("Model") and inst.Name == name then
-			local root = activeRoot(inst)
-			if root then return root end
-		end
-	end
-	return nil
+local function modelRootByName(name: string, cache: {[string]: Model}): BasePart?
+	return activeRoot(cache[name])
 end
 
-local function modelByName(name: string): Model?
-	if name == "" then return nil end
-	for _, inst in workspace:GetDescendants() do
-		if inst:IsA("Model") and inst.Name == name then
-			return inst
-		end
-	end
-	return nil
-end
-
-local function ballFocusPosition(ball: BasePart, active: Model?): Vector3
+local function ballFocusPosition(ball: BasePart, active: Model?, cache: {[string]: Model}): Vector3
 	if ball:GetAttribute("VTRGoalkeeperHeld") == true then
 		local ownerName = tostring(ball:GetAttribute("OwnerModel") or "")
-		local root = active and active.Name == ownerName and activeRoot(active) or modelRootByName(ownerName)
+		local root = active and active.Name == ownerName and activeRoot(active) or modelRootByName(ownerName, cache)
 		if root then
 			return root.Position + Vector3.new(0, 2.8, 0)
 		end
 	end
 	local ownerName = tostring(ball:GetAttribute("OwnerModel") or "")
 	if ownerName ~= "" then
-		local root = active and active.Name == ownerName and activeRoot(active) or modelRootByName(ownerName)
+		local root = active and active.Name == ownerName and activeRoot(active) or modelRootByName(ownerName, cache)
 		if root then
 			local movement = root.Parent and root.Parent:GetAttribute("VTRMoveDirection")
 			local direction = typeof(movement) == "Vector3" and movement.Magnitude > 0.1 and Vector3.new(movement.X, 0, movement.Z) or Vector3.new(root.CFrame.LookVector.X, 0, root.CFrame.LookVector.Z)
@@ -113,12 +96,12 @@ local function predictedBallPosition(ball: BasePart): Vector3?
 	return nil
 end
 
-local function cameraBallFocusPosition(ball: BasePart, active: Model?): Vector3
+local function cameraBallFocusPosition(ball: BasePart, active: Model?, cache: {[string]: Model}): Vector3
 	local predicted = predictedBallPosition(ball)
 	if predicted then
 		return predicted
 	end
-	return ballFocusPosition(ball, active)
+	return ballFocusPosition(ball, active, cache)
 end
 
 local function vectorAttribute(part: BasePart, name: string): Vector3?
@@ -135,11 +118,11 @@ local function markerCFrame(name: string): CFrame?
 	return nil
 end
 
-local function presentationGroupCenter(states: {[string]: boolean}): Vector3?
+local function presentationGroupCenter(states: {[string]: boolean}, models: {Model}): Vector3?
 	local total = Vector3.zero
 	local count = 0
-	for _, inst in workspace:GetDescendants() do
-		if not inst:IsA("Model") then continue end
+	for _, inst in models do
+		if not inst.Parent then continue end
 		local state = inst:GetAttribute("VTRPresentationState")
 		if type(state) ~= "string" or not states[state] then continue end
 		local root = inst:FindFirstChild("HumanoidRootPart")
@@ -229,9 +212,9 @@ local function attackingGoalSign(active: Model?, half: number): number
 	return side == "Home" and (half >= 2 and 1 or -1) or (half >= 2 and -1 or 1)
 end
 
-local function goalkeeperRootForSide(side: string): BasePart?
-	for _, inst in workspace:GetDescendants() do
-		if inst:IsA("Model") and inst:GetAttribute("VTRTeam") == side and inst:GetAttribute("position") == "GK" then
+local function goalkeeperRootForSide(side: string, models: {Model}): BasePart?
+	for _, inst in models do
+		if inst.Parent and inst:GetAttribute("VTRTeam") == side and inst:GetAttribute("position") == "GK" then
 			local root = activeRoot(inst)
 			if root then
 				return root
@@ -244,6 +227,17 @@ end
 function Controller.new(pitchCFrame: CFrame, width: number, length: number, ball: BasePart, active: Model)
 	local cameraPoint=workspace:FindFirstChild("BroadcastCameraPoint",true)
 	if cameraPoint and not cameraPoint:IsA("BasePart")then cameraPoint=nil end
+	local modelCache: {[string]: Model} = {}
+	local matchModels: {Model} = {}
+	local world = ball.Parent
+	if world then
+		for _, instance in world:GetDescendants() do
+			if instance:IsA("Model") and activeRoot(instance) then
+				modelCache[instance.Name] = instance
+				table.insert(matchModels, instance)
+			end
+		end
+	end
 	return setmetatable({
 		Camera = workspace.CurrentCamera,
 		PitchCFrame = pitchCFrame,
@@ -251,6 +245,8 @@ function Controller.new(pitchCFrame: CFrame, width: number, length: number, ball
 		Length = length,
 		Ball = ball,
 		Active = active,
+		ModelCache = modelCache,
+		MatchModels = matchModels,
 		Mode = "Tactical",
 		SideSign = 1,
 		HeightOffset = 0,
@@ -278,8 +274,11 @@ function Controller.new(pitchCFrame: CFrame, width: number, length: number, ball
 		TacticalHeight = math.max(length * 0.82, 150),
 		TacticalDistance = math.max(width * 0.28, 110),
 		ShootingFocus = false,
+		ForcedShootingGoalSign = nil,
 		ShootingFocusCameraPosition = nil,
 		ShootingFocusCameraTarget = nil,
+		FreeKickPan = Vector2.zero,
+		FreeKickPanTarget = Vector2.zero,
 	}, Controller)
 end
 
@@ -305,7 +304,7 @@ function Controller:Start()
 		end
 	end))
 	local root = activeRoot(self.Active)
-	local presentationCenter = presentationGroupCenter({WalkForward = true, LineupIdle = true, KickoffReady = true})
+	local presentationCenter = presentationGroupCenter({WalkForward = true, LineupIdle = true, KickoffReady = true}, self.MatchModels)
 	local initial = presentationCenter or self.PitchCFrame:PointToWorldSpace(Vector3.new(0, 8, 0))
 	if not presentationCenter and root then
 		local localRoot = self.PitchCFrame:PointToObjectSpace(root.Position)
@@ -470,6 +469,10 @@ function Controller:SetShootingFocus(active: boolean): boolean
 	return self.ShootingFocus
 end
 
+function Controller:SetForcedShootingGoalSign(goalSign: number?)
+	self.ForcedShootingGoalSign = tonumber(goalSign)
+end
+
 function Controller:ToggleShootingFocus(): boolean
 	return self:SetShootingFocus(not self.ShootingFocus)
 end
@@ -538,7 +541,7 @@ function Controller:_updatePro(dt: number, root: BasePart)
 	local forwardSpeed = velocity:Dot(attackDirection)
 	local backRun = math.clamp(-forwardSpeed, 0, 40)
 	local goalkeeperTransition = self.Ball:GetAttribute("VTRGoalkeeperHeld") == true
-	local ballPosition = self:_safeBallFocusPosition(cameraBallFocusPosition(self.Ball, self.Active), dt, goalkeeperTransition)
+	local ballPosition = self:_safeBallFocusPosition(cameraBallFocusPosition(self.Ball, self.Active, self.ModelCache), dt, goalkeeperTransition)
 
 	local ballOffset = Vector3.new(ballPosition.X - root.Position.X, 0, ballPosition.Z - root.Position.Z)
 	local ballForward = ballOffset:Dot(attackDirection)
@@ -550,8 +553,8 @@ function Controller:_updatePro(dt: number, root: BasePart)
 
 	local behindPoint: Vector3? = nil
 	local behindScore = math.huge
-	for _, model in ipairs(workspace:GetDescendants()) do
-		if model:IsA("Model") and model ~= self.Active then
+	for _, model in self.MatchModels do
+		if model.Parent and model ~= self.Active then
 			local modelRoot = model:FindFirstChild("HumanoidRootPart")
 			local humanoid = model:FindFirstChildOfClass("Humanoid")
 			if modelRoot and modelRoot:IsA("BasePart") and humanoid and humanoid.Health > 0 then
@@ -645,7 +648,7 @@ function Controller:_updatePlayThirdPerson(dt: number, root: BasePart)
 	local ownerName = tostring(self.Ball:GetAttribute("OwnerModel") or "")
 	local hasBall = self.Active and ownerName == self.Active.Name
 	local attackSign = attackingGoalSign(self.Active, tonumber(workspace:GetAttribute("VTRMatchHalf")) or 1)
-	local ballPosition = cameraBallFocusPosition(self.Ball, self.Active)
+	local ballPosition = cameraBallFocusPosition(self.Ball, self.Active, self.ModelCache)
 	local goalTarget = self.PitchCFrame:PointToWorldSpace(Vector3.new(0, 5.5, attackSign * self.Length * .5))
 	local target = hasBall and goalTarget or (ballPosition + Vector3.new(0, 2.4, 0))
 	local flat = Vector3.new(target.X - root.Position.X, 0, target.Z - root.Position.Z)
@@ -675,7 +678,7 @@ end
 
 function Controller:_updateShootingFocus(dt: number, root: BasePart)
 	local half = tonumber(workspace:GetAttribute("VTRMatchHalf")) or 1
-	local attackSign = attackingGoalSign(self.Active, half)
+	local attackSign = tonumber(self.ForcedShootingGoalSign) or attackingGoalSign(self.Active, half)
 	local attackDirection = self.PitchCFrame:VectorToWorldSpace(Vector3.new(0, 0, attackSign))
 	attackDirection = Vector3.new(attackDirection.X, 0, attackDirection.Z)
 	attackDirection = attackDirection.Magnitude > .1 and attackDirection.Unit or Vector3.zAxis
@@ -685,8 +688,8 @@ function Controller:_updateShootingFocus(dt: number, root: BasePart)
 
 	local side = tostring(self.Active and self.Active:GetAttribute("VTRTeam") or "Home")
 	local defendingSide = side == "Home" and "Away" or "Home"
-	local keeperRoot = goalkeeperRootForSide(defendingSide)
-	local rawBallPosition = cameraBallFocusPosition(self.Ball, self.Active)
+	local keeperRoot = goalkeeperRootForSide(defendingSide, self.MatchModels)
+	local rawBallPosition = cameraBallFocusPosition(self.Ball, self.Active, self.ModelCache)
 	local goalkeeperTransition = self.Ball:GetAttribute("VTRGoalkeeperHeld") == true
 	local ballPosition = self:_safeBallFocusPosition(rawBallPosition, dt, goalkeeperTransition)
 	local goalCenter = self.PitchCFrame:PointToWorldSpace(Vector3.new(0, 5.4, attackSign * self.Length * .5))
@@ -714,6 +717,7 @@ end
 
 function Controller:SetActive(model: Model)
 	self.Active = model
+	if self.ModelCache[model.Name]~=model then self.ModelCache[model.Name]=model;table.insert(self.MatchModels,model)end
 	if self.Mode == "Roblox" then
 		self:_useRobloxCamera()
 	end
@@ -784,6 +788,24 @@ function Controller:BeginCutscene(kind: string, location: Vector3, duration: num
 	if kind == "FreeKick" or kind == "Penalty" then
 		self.CutsceneUntil = os.clock() + math.clamp(duration, 1, 60)
 	end
+	if kind == "FreeKick" then
+		self.FreeKickPan = Vector2.zero
+		self.FreeKickPanTarget = Vector2.zero
+	end
+end
+
+function Controller:ApplyFreeKickPan(input: Vector2?, dt: number)
+	local vector = input or Vector2.zero
+	if vector.Magnitude > 1 then vector = vector.Unit end
+	local strength = math.clamp(tonumber(workspace:GetAttribute("VTRFreeKickCameraPanStrength")) or 1, 0, 2)
+	local rate = math.clamp(tonumber(workspace:GetAttribute("VTRFreeKickCameraPanRate")) or 1.7, 0.2, 4)
+	local currentTarget = self.FreeKickPanTarget or Vector2.zero
+	local target = Vector2.new(math.clamp(currentTarget.X + vector.X * rate * strength * dt, -1, 1), math.clamp(currentTarget.Y + vector.Y * rate * strength * dt, -0.65, 0.75))
+	if vector.Magnitude <= 0.02 then
+		target = currentTarget:Lerp(Vector2.zero, 1 - math.exp(-dt / 1.3))
+	end
+	self.FreeKickPanTarget = target
+	self.FreeKickPan = (self.FreeKickPan or Vector2.zero):Lerp(target, 1 - math.exp(-dt / 0.12))
 end
 
 function Controller:BeginStadiumIntro(duration: number?)
@@ -842,7 +864,7 @@ function Controller:ReturnToLive()
 		return
 	end
 	self.SmoothedPresentationTarget = nil
-	local focus = self.Ball and self.Ball.Parent and cameraBallFocusPosition(self.Ball, self.Active) or self.PitchCFrame.Position
+	local focus = self.Ball and self.Ball.Parent and cameraBallFocusPosition(self.Ball, self.Active, self.ModelCache) or self.PitchCFrame.Position
 	self.SafeBallPosition = focus
 	self.SmoothedTarget = self.PitchCFrame:PointToObjectSpace(focus)
 	self.SmoothedLookTarget = focus
@@ -910,8 +932,8 @@ end
 function Controller:_nearbyTacticalShapeLocal(ballLocal: Vector3, attackSign: number, team: string): Vector3?
 	local total = Vector3.zero
 	local weight = 0
-	for _, inst in workspace:GetDescendants() do
-		if not inst:IsA("Model") then continue end
+	for _, inst in self.MatchModels do
+		if not inst.Parent then continue end
 		local root = activeRoot(inst)
 		if not root then continue end
 		local localPosition = self.PitchCFrame:PointToObjectSpace(root.Position)
@@ -944,10 +966,10 @@ function Controller:_updateTacticalLive(dt: number, root: BasePart, preset: any)
 		self.GoalkeeperReleaseCameraUntil = os.clock() + 0.75
 	end
 	local goalkeeperTransition = goalkeeperHeld or goalkeeperReleaseUntil > os.clock() or (tonumber(self.GoalkeeperReleaseCameraUntil) or 0) > os.clock()
-	local ballPosition = self:_safeBallFocusPosition(cameraBallFocusPosition(self.Ball, self.Active), dt, goalkeeperTransition)
+	local ballPosition = self:_safeBallFocusPosition(cameraBallFocusPosition(self.Ball, self.Active, self.ModelCache), dt, goalkeeperTransition)
 	local ballLocal = self.PitchCFrame:PointToObjectSpace(ballPosition)
 	local ownerName = tostring(self.Ball:GetAttribute("OwnerModel") or "")
-	local ownerModel = ownerName ~= "" and modelByName(ownerName) or nil
+	local ownerModel = ownerName ~= "" and self.ModelCache[ownerName] or nil
 	local phaseModel = ownerModel or self.Active
 	local team = tostring(phaseModel and phaseModel:GetAttribute("VTRTeam") or self.Active:GetAttribute("VTRTeam") or "Home")
 	local half = tonumber(workspace:GetAttribute("VTRMatchHalf")) or 1
@@ -1075,9 +1097,9 @@ function Controller:_updateCutscene(dt: number): boolean
 				local forward = tunnelToAnthem.Magnitude > .1 and tunnelToAnthem.Unit or self.PitchCFrame.LookVector
 				local right = forward:Cross(Vector3.yAxis)
 				if right.Magnitude < .1 then right = self.PitchCFrame.RightVector else right = right.Unit end
-				local lineupCenter = presentationGroupCenter({LineupIdle = true})
-				local kickoffCenter = presentationGroupCenter({KickoffReady = true})
-				local walkingCenter = presentationGroupCenter({WalkForward = true, TunnelIdle = true})
+				local lineupCenter = presentationGroupCenter({LineupIdle = true}, self.MatchModels)
+				local kickoffCenter = presentationGroupCenter({KickoffReady = true}, self.MatchModels)
+				local walkingCenter = presentationGroupCenter({WalkForward = true, TunnelIdle = true}, self.MatchModels)
 				if walkingCenter then
 					self.SmoothedPresentationTarget = self.SmoothedPresentationTarget and self.SmoothedPresentationTarget:Lerp(walkingCenter, 1 - math.exp(-dt / 0.34)) or walkingCenter
 				elseif lineupCenter or kickoffCenter then
@@ -1180,8 +1202,12 @@ function Controller:_updateCutscene(dt: number): boolean
 		local toGoalSign = goalZ >= localFocus.Z and 1 or -1
 		local behind = kind == "Penalty" and 34 or 44
 		local height = kind == "Penalty" and 13 or 18
-		local cameraLocal = Vector3.new(localFocus.X, localFocus.Y + height, localFocus.Z - toGoalSign * behind)
-		local targetLocal = Vector3.new(0, localFocus.Y + (kind == "Penalty" and 3.3 or 5.5), goalZ)
+		local pan = kind == "FreeKick" and (self.FreeKickPan or Vector2.zero) or Vector2.zero
+		local sidePan = pan.X * self.Width * 0.34
+		local heightPan = pan.Y * 10
+		local targetSidePan = pan.X * self.Width * 0.18
+		local cameraLocal = Vector3.new(localFocus.X + sidePan, localFocus.Y + height + heightPan, localFocus.Z - toGoalSign * behind)
+		local targetLocal = Vector3.new(targetSidePan, localFocus.Y + (kind == "Penalty" and 3.3 or 5.5) + heightPan * 0.22, goalZ)
 		local desired = self.PitchCFrame:PointToWorldSpace(cameraLocal)
 		local target = self.PitchCFrame:PointToWorldSpace(targetLocal)
 		local desiredFrame = CFrame.lookAt(desired, target)
@@ -1249,7 +1275,7 @@ function Controller:Update(dt: number)
 		self.GoalkeeperReleaseCameraUntil = os.clock() + 0.75
 	end
 	local goalkeeperTransition = goalkeeperHeld or goalkeeperReleaseUntil > os.clock() or (tonumber(self.GoalkeeperReleaseCameraUntil) or 0) > os.clock()
-	local ballPosition = self:_safeBallFocusPosition(cameraBallFocusPosition(self.Ball, self.Active), dt, goalkeeperTransition)
+	local ballPosition = self:_safeBallFocusPosition(cameraBallFocusPosition(self.Ball, self.Active, self.ModelCache), dt, goalkeeperTransition)
 	if not self.SmoothedLookTarget then
 		self.SmoothedLookTarget = ballPosition
 	end

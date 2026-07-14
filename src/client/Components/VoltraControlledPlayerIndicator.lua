@@ -50,7 +50,7 @@ local function makeBillboard(): BillboardGui
 	return gui
 end
 
-local function makeRing(): Part
+local function makeRing(options: any?): Part
 	local ring = Instance.new("Part")
 	ring.Name = "VTRControlledPlayerRing"
 	ring.Shape = Enum.PartType.Cylinder
@@ -61,23 +61,26 @@ local function makeRing(): Part
 	ring.CanQuery = false
 	ring.CastShadow = false
 	ring.Material = Enum.Material.Neon
-	ring.Color = Color3.fromHex("B7FF1A")
-	ring.Transparency = 0.42
+	ring.Color = options and options.RingColor or Color3.fromHex("B7FF1A")
+	ring.Transparency = options and options.RingTransparency or 0.42
 	ring.Parent = workspace
 	return ring
 end
 
-function Indicator.new(modelGetter: () -> Model?)
+function Indicator.new(modelGetter: () -> Model?, options: any?)
 	local self = setmetatable({}, Indicator)
 	self.ModelGetter = modelGetter
+	self.Options = options or {}
 	for _, item in ipairs(workspace:GetDescendants()) do
 		if item.Name == "VTRControlledPlayerHighlight" or item.Name == "VTRControlledPlayerRing" then
 			item:Destroy()
 		end
 	end
-	self.Tag = makeBillboard()
-	self.Tag.Parent = Players.LocalPlayer:WaitForChild("PlayerGui")
-	self.Ring = makeRing()
+	if self.Options.HideTag ~= true then
+		self.Tag = makeBillboard()
+		self.Tag.Parent = Players.LocalPlayer:WaitForChild("PlayerGui")
+	end
+	self.Ring = makeRing(self.Options)
 	self.Connection = RunService.RenderStepped:Connect(function()
 		self:_step()
 	end)
@@ -88,14 +91,14 @@ function Indicator:_step()
 	local model = self.ModelGetter and self.ModelGetter() or nil
 	local root = model and model:FindFirstChild("HumanoidRootPart")
 	if not model or not root or not root:IsA("BasePart") then
-		self.Tag.Adornee = nil
+		if self.Tag then self.Tag.Adornee = nil end
 		if self.Ring then self.Ring.Transparency = 1 end
 		return
 	end
-	self.Tag.Adornee = root
+	if self.Tag then self.Tag.Adornee = root end
 	if self.Ring then
-		self.Ring.Transparency = 0.42
-		self.Ring.CFrame = CFrame.new(root.Position - Vector3.new(0, 2.85, 0)) * CFrame.Angles(0, 0, math.pi / 2)
+		self.Ring.Transparency = self.Options.RingTransparency or 0.42
+		self.Ring.CFrame = CFrame.new(root.Position - Vector3.new(0, self.Options.FloorOffset or 2.95, 0)) * CFrame.Angles(0, 0, math.pi / 2)
 	end
 end
 

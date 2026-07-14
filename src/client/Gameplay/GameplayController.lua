@@ -16,10 +16,11 @@ local Debris=game:GetService("Debris")
 local GuiService=game:GetService("GuiService")
 local UserInputService=game:GetService("UserInputService")
 local ContextActionService=game:GetService("ContextActionService")
-local Lighting=game:GetService("Lighting")
 local ReplicatedStorage=game:GetService("ReplicatedStorage")
 local Config=require(ReplicatedStorage.VTR.Shared.GameplayConfig)
 local LiteConfig=require(ReplicatedStorage.VTR.Shared.VTRLiteConfig)
+local DeviceGameplayConfig=require(ReplicatedStorage.VTR.Shared.DeviceGameplayConfig)
+local PlayabilitySettingsConfig=require(ReplicatedStorage.VTR.Shared.PlayabilitySettingsConfig)
 local Remotes=require(ReplicatedStorage.VTR.Shared.Remotes)
 local InputController=require(script.Parent.InputController)
 local BroadcastCameraController=require(script.Parent.BroadcastCameraController)
@@ -45,8 +46,10 @@ local MatchSoundController=require(script.Parent.MatchSoundController)
 local CelebrationPoseController=require(script.Parent.CelebrationPoseController)
 local VoltraControlledPlayerIndicator=require(script.Parent.Parent.Components.VoltraControlledPlayerIndicator)
 local VoltraPackRoulette=require(script.Parent.Parent.Components.VoltraPackRoulette)
+local AscensionManagerPanel=require(script.Parent.Parent.Components.AscensionManagerPanel)
 local UIStateService=require(script.Parent.Parent.Services.UIStateService)
 local UISoundService=require(script.Parent.Parent.Services.UISoundService)
+local MatchVisualCleanupService=require(script.Parent.Parent.Services.MatchVisualCleanupService)
 local PenaltyConfig=require(ReplicatedStorage.VTR.Shared.PenaltyConfig)
 local GoalModelResolver=require(ReplicatedStorage.VTR.Shared.GoalModelResolver)
 local Controller={};Controller.__index=Controller
@@ -75,10 +78,10 @@ local function goalPointFromStick(pitchCFrame:CFrame,width:number,length:number,
 	end
 	return GoalModelResolver.Point(rectangle,rectangle.Left+goalWidth*xAlpha,rectangle.Bottom+goalHeight*yAlpha)
 end
-local function penaltySlotFromVector(vector:Vector2?,fallback:string?,goalSign:number):string
+local function penaltySlotFromVector(vector:Vector2?,fallback:string?,goalSign:number,defending:boolean?):string
 	local current=PenaltyConfig.NormalizeSlot(fallback)or"MIDDLE"
 	if not vector or vector.Magnitude<=.08 then return current end
-	local x=math.clamp(vector.X,-1,1)*(goalSign<0 and 1 or-1)
+	local x=math.clamp(vector.X,-1,1)*(defending and 1 or(goalSign<0 and 1 or-1))
 	if math.abs(x)<.34 then return"MIDDLE"end
 	return(x<0 and"LEFT"or"RIGHT").."_"..(vector.Y>=0 and"UP"or"DOWN")
 end
@@ -91,75 +94,6 @@ local function celebrationGoalMinute(seconds:any,inAddedTime:any,addedElapsed:an
 	end
 	return tostring(math.max(1,math.floor(value/60)+1)).."'"
 end
-local function clearGreenScreenEffects()
-	for _, item in ipairs(workspace:GetDescendants()) do
-		if item.Name == "VTRControlledPlayerHighlight" or item.Name == "VTRControlledPlayerRing" then
-			item:Destroy()
-		end
-	end
-	for _, inst in ipairs(Lighting:GetChildren()) do
-		if inst:IsA("ColorCorrectionEffect") then
-			local tint = inst.TintColor
-			local greenTint = tint.G > tint.R + .08 and tint.G > tint.B + .08
-			local named = string.find(string.lower(inst.Name), "green") or string.find(string.lower(inst.Name), "setpiece") or string.find(string.lower(inst.Name), "vtr")
-			if greenTint or named then
-				inst.Enabled = false
-				inst.TintColor = Color3.new(1, 1, 1)
-				inst.Saturation = 0
-				inst.Contrast = 0
-				inst.Brightness = 0
-			end
-		end
-	end
-	if Lighting.ColorShift_Top.G > Lighting.ColorShift_Top.R + .08 and Lighting.ColorShift_Top.G > Lighting.ColorShift_Top.B + .08 then
-		Lighting.ColorShift_Top = Color3.new(0, 0, 0)
-	end
-	if Lighting.ColorShift_Bottom.G > Lighting.ColorShift_Bottom.R + .08 and Lighting.ColorShift_Bottom.G > Lighting.ColorShift_Bottom.B + .08 then
-		Lighting.ColorShift_Bottom = Color3.new(0, 0, 0)
-	end
-end
-local function clearGreenScreenEffects()
-	local function cleanContainer(container: Instance)
-		for _, inst in ipairs(container:GetDescendants()) do
-			if inst:IsA("ColorCorrectionEffect") then
-				inst.Enabled = false
-				inst.TintColor = Color3.new(1,1,1)
-				inst.Saturation = 0
-				inst.Contrast = 0
-				inst.Brightness = 0
-			elseif inst:IsA("Atmosphere") then
-				local color = inst.Color
-				local decay = inst.Decay
-				if color.G > color.R + .06 and color.G > color.B + .06 then
-					inst.Color = Color3.fromRGB(198, 198, 198)
-				end
-				if decay.G > decay.R + .06 and decay.G > decay.B + .06 then
-					inst.Decay = Color3.fromRGB(106, 112, 120)
-				end
-			end
-		end
-	end
-	cleanContainer(Lighting)
-	if workspace.CurrentCamera then cleanContainer(workspace.CurrentCamera) end
-	Lighting.ColorShift_Top = Color3.new(0,0,0)
-	Lighting.ColorShift_Bottom = Color3.new(0,0,0)
-	local playerGui = Players.LocalPlayer:FindFirstChild("PlayerGui")
-	if playerGui then
-		local screenSize = workspace.CurrentCamera and workspace.CurrentCamera.ViewportSize or Vector2.new(1920,1080)
-		for _, item in ipairs(playerGui:GetDescendants()) do
-			if item:IsA("GuiObject") then
-				local color = item.BackgroundColor3
-				local huge = item.AbsoluteSize.X >= screenSize.X * .72 and item.AbsoluteSize.Y >= screenSize.Y * .72
-				local green = color.G > color.R + .08 and color.G > color.B + .08
-				if huge and green and item.BackgroundTransparency < 1 then
-					item.BackgroundTransparency = 1
-					item.Visible = false
-				end
-			end
-		end
-	end
-end
-
 local KEEPER_TUNING={{Key="Reaction",Label="Reaction Speed",Min=.05,Max=1.75,Default=1},{Key="DiveSpeed",Label="Dive Speed",Min=.05,Max=1.65,Default=1},{Key="Reach",Label="Reach",Min=.05,Max=1.65,Default=1},{Key="Handling",Label="Handling",Min=.05,Max=1.65,Default=1},{Key="SaveBias",Label="Save Bias",Min=.05,Max=1.65,Default=1}}
 local SHOOTING_TUNING={{Key="Speed",Label="Shot Speed",Min=.55,Max=1.55,Default=1},{Key="Accuracy",Label="Accuracy",Min=.55,Max=1.55,Default=1},{Key="Lift",Label="Lift",Min=.55,Max=1.55,Default=1.2},{Key="Curve",Label="Curve",Min=.55,Max=1.55,Default=1},{Key="FinesseCurve",Label="Finesse Curve",Min=0,Max=100,Default=0,Format="Percent"},{Key="Power",Label="Power Scale",Min=.55,Max=1.55,Default=1}}
 local function formatSliderValue(value:number,spec:any?):string return spec and spec.Format=="Percent"and tostring(math.floor(value+.5))or string.format("%.2fx",value)end
@@ -438,8 +372,15 @@ function Controller:_bindFootballer(model:Model,name:string?,position:string?)
 	if not self.Ball or not self.Camera or not self.TeamControl or not self.Indicators or not self.Minimap or not self.MouseAim or not self.AimLine then
 		return
 	end
-	self.Visual=BallVisualController.new(self.Ball,model);self.Camera:SetActive(model);self.TeamControl:SetActive(model,name,position);self.Indicators:SetActive(model);if self.Trainer and not UserInputService.TouchEnabled then self.Trainer:SetActive(model)end;self.Minimap:SetActive(model);self.MouseAim:SetActive(model);self.AimLine:SetActive(model)
-	self.Stamina=tonumber(model:GetAttribute("VTRSprintStamina"))or tonumber(model:GetAttribute("VTRStamina"))or Config.Stamina.Maximum;self.Endurance=tonumber(model:GetAttribute("VTREndurance"))or Config.Stamina.Maximum;if self.HUD then self.HUD:SetStamina(self.Stamina/Config.Stamina.Maximum,self.Endurance/Config.Stamina.Maximum)end
+	self.Visual=BallVisualController.new(self.Ball,model);self.Camera:SetActive(model);self.TeamControl:SetActive(model,name,position);self.Indicators:SetActive(model);if self.Trainer and(self.WorldCupOnboardingTrainer or not UserInputService.TouchEnabled)then self.Trainer:SetActive(model)end;self.Minimap:SetActive(model);self.MouseAim:SetActive(model);self.AimLine:SetActive(model)
+	self.Stamina=tonumber(model:GetAttribute("VTRSprintEnergy"))or tonumber(model:GetAttribute("VTRSprintStamina"))or tonumber(model:GetAttribute("VTRStamina"))or Config.Stamina.Maximum;self.Endurance=self.Stamina;if self.HUD then self.HUD:SetStamina(self.Stamina/Config.Stamina.Maximum)end
+	if self.PendingTutorialStage and self.WorldCupOnboardingTrainer then
+		local queued=self.PendingTutorialStage
+		self.PendingTutorialStage=nil
+		task.defer(function()
+			if self.Active then self:_state(queued)end
+		end)
+	end
 end
 function Controller:_ensureControlledSideActive()
 	if self.WatchMode or not self.TeamModels then return end
@@ -486,7 +427,7 @@ function Controller:_mobileAimPayload(kind:string?,charge:number?,root:BasePart)
 	if (kind=="Shot"or kind=="GamepadShot") and (self.SetPieceMode=="Penalty"or self.SetPieceMode=="PenaltyDefense") and self.Camera and self.Camera.PitchCFrame then
 		if not vector or vector.Magnitude<=.08 then return nil end
 		local goalSign=tonumber(self.Ball:GetAttribute("VTRPenaltyGoalSign"))or self.SetPieceGoalSign or(self.ControlledSide=="Home"and-1 or 1)
-		self.PenaltyAimSlot=penaltySlotFromVector(vector,self.PenaltyAimSlot,goalSign)
+		self.PenaltyAimSlot=penaltySlotFromVector(vector,self.PenaltyAimSlot,goalSign,self.SetPieceMode=="PenaltyDefense")
 		local position=PenaltyConfig.PointForSlot(self.Camera.PitchCFrame,self.Camera.Length,goalSign,self.PenaltyAimSlot,self.Camera.Width)
 		self.PenaltyAimPoint=position
 		local direction=(position-root.Position).Magnitude>.01 and(position-root.Position).Unit or self.Camera:Aim("Shot")
@@ -601,7 +542,7 @@ function Controller:_aimPayload(kind:string?,shotCharge:number?):any
 	if typeof(goalTarget) == "Vector3" then
 		goalTarget = VTRShotPowerModel.ApplyToTarget(ball and ball.Position or origin or startPosition or shotOrigin or shooterPosition or Vector3.zero, goalTarget, vtrRawShotPower or rawPower or shotPower or kickPower or chargePower or inputPower or power or Power)
 	end
-	if self.PracticeMode and kind=="Shot"then local practiceTarget,practiceOnTarget=self:_practiceGoalPoint(shotCharge or 0);if practiceTarget then position=practiceTarget;goalTarget=practiceOnTarget==true end end
+	if (self.PracticeMode or self.TutorialShootingMode==true) and kind=="Shot"then local practiceTarget,practiceOnTarget=self:_practiceGoalPoint(shotCharge or 0);if practiceTarget then position=practiceTarget;goalTarget=practiceOnTarget==true end end
 	if kind=="Shot"and self.SetPieceMode=="DirectShotFreeKick"and self.SetPieceGoalSign and position and self.Camera and self.Camera.PitchCFrame then
 		local rectangle=GoalModelResolver.ResolveByAttackSign(self.SetPieceGoalSign,self.Camera.PitchCFrame,self.Camera.Width,self.Camera.Length)
 		position=GoalModelResolver.ClampPoint(rectangle,position)
@@ -649,6 +590,7 @@ function Controller:_setPrematchSkipProgress(readyCount:number?,totalCount:numbe
 	if mobile and mobile:IsA("TextButton")then mobile.Text=text end
 end
 function Controller:_practiceGoalSign():number
+	if self.TutorialShootingMode==true and tonumber(self.TutorialGoalSign)then return tonumber(self.TutorialGoalSign) :: number end
 	local half=tonumber(workspace:GetAttribute("VTRMatchHalf"))or 1
 	local team=tostring(self.ActiveModel and self.ActiveModel:GetAttribute("VTRTeam")or"Home")
 	return team=="Home"and(half>=2 and 1 or-1)or(half>=2 and-1 or 1)
@@ -688,6 +630,367 @@ function Controller:_playPracticeResetTransition(result:string)
 	TweenService:Create(flash,TweenInfo.new(.32,Enum.EasingStyle.Quart,Enum.EasingDirection.Out),{Position=UDim2.fromScale(1.24,.5),Size=UDim2.fromScale(.34,1.6)}):Play()
 	task.delay(.38,function()if not gui.Parent then return end;TweenService:Create(overlay,TweenInfo.new(.14),{GroupTransparency=1}):Play();task.delay(.16,function()if gui.Parent then gui:Destroy()end end)end)
 end
+function Controller:_hideTutorialStartButton()
+	if self.TutorialStartGui then self.TutorialStartGui:Destroy();self.TutorialStartGui=nil end
+end
+function Controller:_setTutorialHudOnly(active:boolean)
+	if not self.HUD or not self.HUD.Gui then return end
+	self.TutorialHudOnly=active
+	if active then
+		self.TutorialHiddenGuiVisibility=self.TutorialHiddenGuiVisibility or{}
+		for _,child in self.HUD.Gui:GetChildren()do
+			if child:IsA("GuiObject")and child.Name~="WorldCupTutorialOverlay"and child.Name~="VTRTrainerPrompt"then
+				if self.TutorialHiddenGuiVisibility[child]==nil then self.TutorialHiddenGuiVisibility[child]=child.Visible end
+				child.Visible=false
+			end
+		end
+	else
+		for child,visible in self.TutorialHiddenGuiVisibility or{}do
+			if child and child.Parent and child:IsA("GuiObject")then child.Visible=visible==true end
+		end
+		self.TutorialHiddenGuiVisibility=nil
+	end
+	local tutorialAim=self.WorldCupOnboardingTrainer==true and self.TutorialAcknowledged==true and self.TutorialInputBlocked~=true
+	if self.Minimap then self.Minimap:SetMatchActive(not active and self.MatchInPlay and self.WatchMode~=true)end
+	if self.AimLine then self.AimLine:SetMatchActive((not active or tutorialAim) and self.MatchInPlay and self.WatchMode~=true)end
+	if self.GoalTarget then self.GoalTarget:SetMatchActive((not active or tutorialAim) and self.MatchInPlay and self.WatchMode~=true)end
+end
+function Controller:_setTutorialInputBlocked(blocked:boolean)
+	self.TutorialInputBlocked=blocked==true
+	if self.Input then
+		self.Input:SetSuppressed(self.WatchMode==true or self.TutorialInputBlocked==true)
+		if self.Input.MobileControls and self.Input.MobileControls.SetVisible then
+			self.Input.MobileControls:SetVisible(self.MatchInPlay and self.WatchMode~=true and self.TutorialInputBlocked~=true)
+		end
+	end
+end
+function Controller:_tutorialInputLabel(action:any):string
+	local actionName=tostring(action or"")
+	local last=UserInputService:GetLastInputType()
+	local gamepad=string.find(last.Name,"Gamepad")~=nil
+	local touch=UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled
+	if actionName=="Pass"then return touch and"PASS"or(gamepad and"A"or"RIGHT CLICK")end
+	if actionName=="Move"then return touch and"MOVE"or(gamepad and"LEFT STICK"or"WASD")end
+	if actionName=="Sprint"then return touch and"SPRINT"or(gamepad and"R2"or"SHIFT")end
+	if actionName=="Shoot"then return touch and"SHOT"or(gamepad and"B"or"MOUSE CLICK")end
+	if actionName=="ShootingFocus"then return touch and"FOCUS"or(gamepad and"Y"or"1")end
+	if actionName=="Switch"then return touch and"SWITCH"or(gamepad and"L1"or"Q")end
+	if actionName=="Tackle"then return touch and"TACKLE"or(gamepad and"A"or"E")end
+	return actionName~=""and string.upper(actionName)or""
+end
+function Controller:_setTutorialOverlayCompact(compact:boolean)
+	local overlay=self.TutorialOverlay
+	local panel=overlay and overlay:FindFirstChild("Panel")
+	if not overlay or not panel or not panel:IsA("GuiObject")then return end
+	overlay.Active=not compact
+	overlay.BackgroundTransparency=compact and 1 or .24
+	panel.AnchorPoint=Vector2.new(.5,compact and 0 or .5)
+	panel.Position=compact and UDim2.fromScale(.5,.035)or UDim2.fromScale(.5,.5)
+	panel.Size=compact and UDim2.fromOffset(520,70)or UDim2.fromOffset(560,190)
+	local title=panel:FindFirstChild("Title")
+	local body=panel:FindFirstChild("Body")
+	local key=panel:FindFirstChild("Key")
+	local ok=panel:FindFirstChild("Ok")
+	local progress=panel:FindFirstChild("Progress")
+	if title and title:IsA("TextLabel")then title.Visible=not compact end
+	if body and body:IsA("TextLabel")then
+		body.Position=compact and UDim2.fromOffset(18,13)or UDim2.fromOffset(24,58)
+		body.Size=compact and UDim2.new(1,-210,0,24)or UDim2.new(1,-48,0,58)
+		body.TextSize=compact and 17 or 27
+		body.TextXAlignment=compact and Enum.TextXAlignment.Left or Enum.TextXAlignment.Center
+	end
+	if key and key:IsA("TextLabel")then
+		key.AnchorPoint=compact and Vector2.new(1,.5)or Vector2.new(.5,1)
+		key.Position=compact and UDim2.new(1,-18,.5,0)or UDim2.new(.5,0,1,-24)
+		key.Size=compact and UDim2.fromOffset(155,34)or UDim2.fromOffset(180,38)
+		key.TextSize=compact and 14 or 16
+	end
+	if ok and ok:IsA("GuiObject")then ok.Visible=not compact end
+	if progress and progress:IsA("GuiObject")then
+		progress.Visible=compact
+		progress.Position=compact and UDim2.fromOffset(18,47)or UDim2.fromOffset(24,122)
+		progress.Size=compact and UDim2.new(1,-210,0,7)or UDim2.new(1,-48,0,9)
+	end
+end
+function Controller:_setTutorialProgress(count:any,target:any)
+	local overlay=self.TutorialOverlay
+	local panel=overlay and overlay:FindFirstChild("Panel")
+	local progress=panel and panel:FindFirstChild("Progress")
+	local fill=progress and progress:FindFirstChild("Fill")
+	local c=math.clamp(tonumber(count)or 0,0,tonumber(target)or 0)
+	local t=math.max(1,tonumber(target)or 1)
+	if fill and fill:IsA("GuiObject")then
+		TweenService:Create(fill,TweenInfo.new(.22,Enum.EasingStyle.Quart,Enum.EasingDirection.Out),{Size=UDim2.fromScale(math.clamp(c/t,0,1),1)}):Play()
+	end
+end
+function Controller:_showTutorialStepComplete(titleText:string?)
+	if not self.HUD or not self.HUD.Gui then return end
+	local old=self.HUD.Gui:FindFirstChild("TutorialStepComplete")
+	if old then old:Destroy()end
+	local title=string.upper(titleText or"STEP COMPLETE")
+	local subtitle=title=="STEP 2 COMPLETE"and"SHOOTING DRILL CLEARED"or(title=="STEP 3 COMPLETE"and"DEFENDING DRILL CLEARED"or"PASSING DRILL CLEARED")
+	local group=Instance.new("CanvasGroup");group.Name="TutorialStepComplete";group.BackgroundTransparency=1;group.GroupTransparency=1;group.Size=UDim2.fromScale(1,1);group.ZIndex=240;group.Parent=self.HUD.Gui
+	local burst=Instance.new("Frame");burst.AnchorPoint=Vector2.new(.5,.5);burst.BackgroundColor3=Color3.fromHex("B7FF1A");burst.BackgroundTransparency=.18;burst.BorderSizePixel=0;burst.Position=UDim2.fromScale(.5,.5);burst.Size=UDim2.fromOffset(0,5);burst.ZIndex=241;burst.Parent=group
+	local burstCorner=Instance.new("UICorner");burstCorner.CornerRadius=UDim.new(1,0);burstCorner.Parent=burst
+	local label=Instance.new("TextLabel");label.AnchorPoint=Vector2.new(.5,.5);label.BackgroundTransparency=1;label.Position=UDim2.fromScale(.5,.5);label.Size=UDim2.fromOffset(620,90);label.Text=title;label.TextColor3=Color3.fromHex("FFFFFF");label.TextStrokeColor3=Color3.fromHex("000000");label.TextStrokeTransparency=.18;label.TextSize=38;label.Font=Enum.Font.GothamBlack;label.ZIndex=242;label.Parent=group
+	local sub=Instance.new("TextLabel");sub.AnchorPoint=Vector2.new(.5,.5);sub.BackgroundTransparency=1;sub.Position=UDim2.fromScale(.5,.57);sub.Size=UDim2.fromOffset(440,28);sub.Text=subtitle;sub.TextColor3=Color3.fromHex("B7FF1A");sub.TextSize=14;sub.Font=Enum.Font.GothamBlack;sub.ZIndex=242;sub.Parent=group
+	TweenService:Create(group,TweenInfo.new(.16),{GroupTransparency=0}):Play()
+	TweenService:Create(burst,TweenInfo.new(.36,Enum.EasingStyle.Quart,Enum.EasingDirection.Out),{Size=UDim2.fromOffset(840,5),BackgroundTransparency=.32}):Play()
+	task.delay(1.22,function()
+		if group.Parent then TweenService:Create(group,TweenInfo.new(.24),{GroupTransparency=1}):Play();task.delay(.26,function()if group.Parent then group:Destroy()end end)end
+	end)
+end
+
+function Controller:_playTutorialStepTransition(titleText:string?)
+	self:_showTutorialStepComplete(titleText)
+	if not self.HUD or not self.HUD.Gui then return end
+	local old=self.HUD.Gui:FindFirstChild("TutorialStageFade")
+	if old then old:Destroy()end
+	local fade=Instance.new("Frame");fade.Name="TutorialStageFade";fade.BackgroundColor3=Color3.new(0,0,0);fade.BackgroundTransparency=1;fade.BorderSizePixel=0;fade.Size=UDim2.fromScale(1,1);fade.ZIndex=260;fade.Parent=self.HUD.Gui
+	task.delay(1.05,function()
+		if not fade.Parent then return end
+		TweenService:Create(fade,TweenInfo.new(.26,Enum.EasingStyle.Quad,Enum.EasingDirection.Out),{BackgroundTransparency=0}):Play()
+		task.delay(.48,function()
+			if not fade.Parent then return end
+			TweenService:Create(fade,TweenInfo.new(.34,Enum.EasingStyle.Quad,Enum.EasingDirection.Out),{BackgroundTransparency=1}):Play()
+			task.delay(.36,function()if fade.Parent then fade:Destroy()end end)
+		end)
+	end)
+end
+function Controller:_hideTutorialPassPointer()
+	if self.TutorialPassPointerStep then self.TutorialPassPointerStep:Disconnect();self.TutorialPassPointerStep=nil end
+	if self.TutorialPassPointer then self.TutorialPassPointer:Destroy();self.TutorialPassPointer=nil end
+	if self.TutorialPassPointers then
+		for _,gui in self.TutorialPassPointers do
+			if gui and gui.Parent then gui:Destroy()end
+		end
+		self.TutorialPassPointers=nil
+	end
+	self.TutorialPassPointerTarget=nil
+end
+function Controller:_hideTutorialMovementLane()
+	if self.TutorialMovementLaneStep then self.TutorialMovementLaneStep:Disconnect();self.TutorialMovementLaneStep=nil end
+	if self.TutorialMovementLane then self.TutorialMovementLane:Destroy();self.TutorialMovementLane=nil end
+	if self.TutorialMovementLaneEnd then self.TutorialMovementLaneEnd:Destroy();self.TutorialMovementLaneEnd=nil end
+	if self.TutorialMovementRouteFolder then self.TutorialMovementRouteFolder:Destroy();self.TutorialMovementRouteFolder=nil end
+	if self.TutorialStaminaGui then self.TutorialStaminaGui:Destroy();self.TutorialStaminaGui=nil end
+	self.TutorialMovementLaneTarget=nil
+	self.TutorialMovementRoutePoints=nil
+	self.TutorialMovementCurrentPoint=nil
+	self.TutorialMovementHelpLevel=nil
+	self.TutorialCameraNudgeTarget=nil
+	self.TutorialCameraNudgeUntil=nil
+end
+function Controller:_showTutorialMovementLane(target:Vector3?,helpLevel:any,routePoints:any?,currentPoint:any?,showStamina:boolean?)
+	if typeof(target)~="Vector3"then self:_hideTutorialMovementLane();return end
+	self.TutorialMovementLaneTarget=target
+	self.TutorialMovementRoutePoints=type(routePoints)=="table"and routePoints or self.TutorialMovementRoutePoints
+	self.TutorialMovementCurrentPoint=math.max(1,math.floor(tonumber(currentPoint)or tonumber(self.TutorialMovementCurrentPoint)or 1))
+	self.TutorialMovementHelpLevel=tonumber(helpLevel)or 0
+	if not self.TutorialMovementRouteFolder then
+		local folder=Instance.new("Folder");folder.Name="VTRTutorialMovementRoute";folder.Parent=workspace;self.TutorialMovementRouteFolder=folder
+	end
+	if self.TutorialMovementRouteFolder and type(self.TutorialMovementRoutePoints)=="table"then
+		self.TutorialMovementRouteFolder:ClearAllChildren()
+		for index,point in self.TutorialMovementRoutePoints do
+			if typeof(point)=="Vector3"then
+				local current=self.TutorialMovementCurrentPoint or 1
+				local active=index==current
+				local marker=Instance.new("Part");marker.Name="Point"..tostring(index);marker.Anchored=true;marker.CanCollide=false;marker.CanTouch=false;marker.CanQuery=false;marker.Material=Enum.Material.Neon;marker.Color=Color3.fromHex("B7FF1A");marker.Transparency=index<current and .82 or(active and .22 or .58);marker.Shape=Enum.PartType.Cylinder;marker.Size=Vector3.new(.14,active and 10 or 6,active and 10 or 6);marker.CFrame=CFrame.new(point+Vector3.new(0,.12,0))*CFrame.Angles(0,0,math.rad(90));marker.Parent=self.TutorialMovementRouteFolder
+			end
+		end
+	end
+	if showStamina==true and self.ActiveModel then
+		local root=self.ActiveModel:FindFirstChild("HumanoidRootPart")::BasePart?
+		if root and not self.TutorialStaminaGui then
+			local gui=Instance.new("BillboardGui");gui.Name="VTRTutorialStaminaBar";gui.AlwaysOnTop=true;gui.Size=UDim2.fromOffset(78,6);gui.StudsOffset=Vector3.new(0,4.85,0);gui.Adornee=root;gui.Parent=root;self.TutorialStaminaGui=gui
+			local back=Instance.new("Frame");back.Name="Back";back.BackgroundColor3=Color3.fromHex("061006");back.BackgroundTransparency=.18;back.BorderSizePixel=0;back.Size=UDim2.fromScale(1,1);back.Parent=gui
+			local corner=Instance.new("UICorner");corner.CornerRadius=UDim.new(0,2);corner.Parent=back
+			local stroke=Instance.new("UIStroke");stroke.Color=Color3.fromHex("B7FF1A");stroke.Transparency=.22;stroke.Thickness=1;stroke.Parent=back
+			local fill=Instance.new("Frame");fill.Name="Fill";fill.BackgroundColor3=Color3.fromHex("B7FF1A");fill.BorderSizePixel=0;fill.Size=UDim2.fromScale(.8,1);fill.Parent=back
+			local fillCorner=Instance.new("UICorner");fillCorner.CornerRadius=UDim.new(0,2);fillCorner.Parent=fill
+		end
+	end
+	if not self.TutorialMovementLane or not self.TutorialMovementLane.Parent then
+		local lane=Instance.new("Part");lane.Name="VTRTutorialMovementLane";lane.Anchored=true;lane.CanCollide=false;lane.CanTouch=false;lane.CanQuery=false;lane.Material=Enum.Material.Neon;lane.Color=Color3.fromHex("B7FF1A");lane.Transparency=.66;lane.Size=Vector3.new(1.15,.05,18);lane.Parent=workspace;self.TutorialMovementLane=lane
+		local endpoint=Instance.new("Part");endpoint.Name="VTRTutorialMovementLaneEnd";endpoint.Anchored=true;endpoint.CanCollide=false;endpoint.CanTouch=false;endpoint.CanQuery=false;endpoint.Material=Enum.Material.Neon;endpoint.Color=Color3.fromHex("B7FF1A");endpoint.Transparency=.48;endpoint.Shape=Enum.PartType.Cylinder;endpoint.Size=Vector3.new(.1,4.4,4.4);endpoint.Parent=workspace;self.TutorialMovementLaneEnd=endpoint
+	end
+	if (tonumber(helpLevel)or 0)>0 and self.Input and self.Input.MobileControls and self.Input.MobileControls.PulseMovement then
+		self.Input.MobileControls:PulseMovement((tonumber(helpLevel)or 0)+1)
+	end
+	if (tonumber(helpLevel)or 0)>=2 then
+		self.TutorialCameraNudgeTarget=target
+		self.TutorialCameraNudgeUntil=os.clock()+2.5
+	end
+	if not self.TutorialMovementLaneStep then
+		self.TutorialMovementLaneStep=RunService.RenderStepped:Connect(function()
+			local lane=self.TutorialMovementLane
+			local endpoint=self.TutorialMovementLaneEnd
+			local active=self.ActiveModel
+			local root=active and active:FindFirstChild("HumanoidRootPart")::BasePart?
+			local targetPoint=self.TutorialMovementLaneTarget
+			if not lane or not lane.Parent or typeof(targetPoint)~="Vector3"or not root then self:_hideTutorialMovementLane();return end
+			local start=Vector3.new(root.Position.X,root.Position.Y-2.86,root.Position.Z)
+			local finish=Vector3.new(targetPoint.X,start.Y,targetPoint.Z)
+			local delta=finish-start
+			local length=math.max(delta.Magnitude,1)
+			local help=tonumber(self.TutorialMovementHelpLevel)or 0
+			local pulse=(math.sin(os.clock()*5.6)+1)*.5
+			lane.Size=Vector3.new(1.05+help*.35,.05,length)
+			lane.Transparency=math.clamp(.72-help*.12-pulse*.06,.34,.78)
+			lane.CFrame=CFrame.lookAt(start+delta*.5,finish)
+			if endpoint then
+				endpoint.Transparency=math.clamp(.5-help*.16-pulse*.1,.16,.62)
+				endpoint.CFrame=CFrame.new(finish+Vector3.new(0,.08,0))*CFrame.Angles(0,0,math.rad(90))
+			end
+			if self.TutorialStaminaGui then
+				local back=self.TutorialStaminaGui:FindFirstChild("Back")
+				local fill=back and back:FindFirstChild("Fill")
+				if fill and fill:IsA("GuiObject")then fill.Size=UDim2.fromScale(math.clamp((self.Stamina or 100)/(Config.Stamina.Maximum or 100),0,1)*.8,1)end
+			end
+		end)
+	end
+end
+function Controller:_applyTutorialCameraNudge(dt:number)
+	local target=self.TutorialCameraNudgeTarget
+	if typeof(target)~="Vector3"or (tonumber(self.TutorialCameraNudgeUntil)or 0)<os.clock()then return end
+	local camera=workspace.CurrentCamera
+	if not camera then return end
+	local desired=CFrame.lookAt(camera.CFrame.Position,target+Vector3.new(0,3.4,0),Vector3.yAxis)
+	camera.CFrame=camera.CFrame:Lerp(desired,math.clamp(dt*1.6,0,.12))
+end
+function Controller:_showTutorialPassPointer(model:Model?)
+	if not model or not model.Parent then self:_hideTutorialPassPointer();return end
+	if self.TutorialPassPointerTarget==model and self.TutorialPassPointer then return end
+	self:_hideTutorialPassPointer()
+	local root=model:FindFirstChild("HumanoidRootPart")::BasePart?
+	if not root then return end
+	local gui=Instance.new("BillboardGui");gui.Name="VTRTutorialPassPointer";gui.AlwaysOnTop=true;gui.Size=UDim2.fromOffset(118,62);gui.StudsOffset=Vector3.new(0,6.2,0);gui.Adornee=root;gui.Parent=root
+	local label=Instance.new("TextLabel");label.AnchorPoint=Vector2.new(.5,.5);label.BackgroundColor3=Color3.fromHex("B7FF1A");label.BorderSizePixel=0;label.Position=UDim2.fromScale(.5,.32);label.Size=UDim2.fromOffset(86,28);label.Text="PASS!";label.TextColor3=Color3.fromHex("050505");label.TextSize=16;label.Font=Enum.Font.GothamBlack;label.ZIndex=2;label.Parent=gui
+	local corner=Instance.new("UICorner");corner.CornerRadius=UDim.new(1,0);corner.Parent=label
+	local stroke=Instance.new("UIStroke");stroke.Color=Color3.fromHex("FFFFFF");stroke.Thickness=2;stroke.Transparency=.08;stroke.Parent=label
+	local arrow=Instance.new("TextLabel");arrow.AnchorPoint=Vector2.new(.5,.5);arrow.BackgroundTransparency=1;arrow.Position=UDim2.fromScale(.5,.76);arrow.Size=UDim2.fromOffset(60,30);arrow.Text="▼";arrow.TextColor3=Color3.fromHex("B7FF1A");arrow.TextStrokeColor3=Color3.fromHex("050505");arrow.TextStrokeTransparency=.15;arrow.TextSize=28;arrow.Font=Enum.Font.GothamBlack;arrow.ZIndex=2;arrow.Parent=gui
+	self.TutorialPassPointer=gui
+	self.TutorialPassPointerTarget=model
+	local started=os.clock()
+	self.TutorialPassPointerStep=RunService.RenderStepped:Connect(function()
+		if not gui.Parent or not model.Parent then self:_hideTutorialPassPointer();return end
+		local pulse=(math.sin((os.clock()-started)*7)+1)*.5
+		gui.StudsOffset=Vector3.new(0,6.1+pulse*.55,0)
+		label.Rotation=math.sin((os.clock()-started)*5)*2.5
+	end)
+end
+function Controller:_showTutorialPassPointers(models:any)
+	local targets={}
+	if typeof(models)=="Instance"then
+		table.insert(targets,models)
+	elseif type(models)=="table"then
+		for _,model in models do
+			if typeof(model)=="Instance"and model:IsA("Model")and model.Parent then table.insert(targets,model)end
+		end
+	end
+	if #targets<=0 then self:_hideTutorialPassPointer();return end
+	self:_hideTutorialPassPointer()
+	self.TutorialPassPointers={}
+	for _,model in targets do
+		local root=model:FindFirstChild("HumanoidRootPart")::BasePart?
+		if root then
+			local gui=Instance.new("BillboardGui");gui.Name="VTRTutorialPassPointer";gui.AlwaysOnTop=true;gui.Size=UDim2.fromOffset(118,62);gui.StudsOffset=Vector3.new(0,6.2,0);gui.Adornee=root;gui.Parent=root
+			local label=Instance.new("TextLabel");label.Name="PassLabel";label.AnchorPoint=Vector2.new(.5,.5);label.BackgroundColor3=Color3.fromHex("B7FF1A");label.BorderSizePixel=0;label.Position=UDim2.fromScale(.5,.32);label.Size=UDim2.fromOffset(86,28);label.Text="PASS!";label.TextColor3=Color3.fromHex("050505");label.TextSize=16;label.Font=Enum.Font.GothamBlack;label.ZIndex=2;label.Parent=gui
+			local corner=Instance.new("UICorner");corner.CornerRadius=UDim.new(1,0);corner.Parent=label
+			local stroke=Instance.new("UIStroke");stroke.Color=Color3.fromHex("FFFFFF");stroke.Thickness=2;stroke.Transparency=.08;stroke.Parent=label
+			local arrow=Instance.new("TextLabel");arrow.AnchorPoint=Vector2.new(.5,.5);arrow.BackgroundTransparency=1;arrow.Position=UDim2.fromScale(.5,.76);arrow.Size=UDim2.fromOffset(60,30);arrow.Text="v";arrow.TextColor3=Color3.fromHex("B7FF1A");arrow.TextStrokeColor3=Color3.fromHex("050505");arrow.TextStrokeTransparency=.15;arrow.TextSize=28;arrow.Font=Enum.Font.GothamBlack;arrow.ZIndex=2;arrow.Parent=gui
+			table.insert(self.TutorialPassPointers,gui)
+		end
+	end
+	if #self.TutorialPassPointers<=0 then return end
+	self.TutorialPassPointer=self.TutorialPassPointers[1]
+	self.TutorialPassPointerTarget=targets[1]
+	local started=os.clock()
+	self.TutorialPassPointerStep=RunService.RenderStepped:Connect(function()
+		if not self.TutorialPassPointers or #self.TutorialPassPointers<=0 then self:_hideTutorialPassPointer();return end
+		local pulse=(math.sin((os.clock()-started)*7)+1)*.5
+		for _,gui in self.TutorialPassPointers do
+			if not gui.Parent then self:_hideTutorialPassPointer();return end
+			gui.StudsOffset=Vector3.new(0,6.1+pulse*.55,0)
+			local label=gui:FindFirstChild("PassLabel")
+			if label and label:IsA("GuiObject")then label.Rotation=math.sin((os.clock()-started)*5)*2.5 end
+		end
+	end)
+end
+function Controller:_showTutorialOverlay(message:any,action:any,count:any,target:any,requiresOk:boolean?)
+	if not self.HUD or not self.HUD.Gui then return end
+	local text=string.upper(tostring(message or""))
+	local actionText=self:_tutorialInputLabel(action)
+	local c=tonumber(count)or 0
+	local t=tonumber(target)or 0
+	local overlay=self.TutorialOverlay
+	if not overlay or not overlay.Parent then
+		overlay=Instance.new("CanvasGroup");overlay.Name="WorldCupTutorialOverlay";overlay.BackgroundColor3=Color3.fromHex("000000");overlay.BackgroundTransparency=.24;overlay.BorderSizePixel=0;overlay.GroupTransparency=1;overlay.Size=UDim2.fromScale(1,1);overlay.ZIndex=220;overlay.Parent=self.HUD.Gui;self.TutorialOverlay=overlay
+		local vignette=Instance.new("Frame");vignette.Name="Panel";vignette.AnchorPoint=Vector2.new(.5,.5);vignette.BackgroundColor3=Color3.fromHex("050505");vignette.BackgroundTransparency=.08;vignette.BorderSizePixel=0;vignette.Position=UDim2.fromScale(.5,.5);vignette.Size=UDim2.fromOffset(560,190);vignette.ZIndex=221;vignette.Parent=overlay
+		local corner=Instance.new("UICorner");corner.CornerRadius=UDim.new(0,10);corner.Parent=vignette
+		local stroke=Instance.new("UIStroke");stroke.Color=Color3.fromHex("B7FF1A");stroke.Thickness=2;stroke.Transparency=.18;stroke.Parent=vignette
+		local title=Instance.new("TextLabel");title.Name="Title";title.BackgroundTransparency=1;title.Position=UDim2.fromOffset(24,22);title.Size=UDim2.new(1,-48,0,26);title.Text="WORLD CUP TRAINING";title.TextColor3=Color3.fromHex("B7FF1A");title.TextSize=13;title.Font=Enum.Font.GothamBlack;title.TextXAlignment=Enum.TextXAlignment.Left;title.ZIndex=222;title.Parent=vignette
+		local body=Instance.new("TextLabel");body.Name="Body";body.BackgroundTransparency=1;body.Position=UDim2.fromOffset(24,58);body.Size=UDim2.new(1,-48,0,58);body.TextColor3=Color3.fromHex("FFFFFF");body.TextSize=27;body.Font=Enum.Font.GothamBlack;body.TextWrapped=true;body.ZIndex=222;body.Parent=vignette
+		local key=Instance.new("TextLabel");key.Name="Key";key.AnchorPoint=Vector2.new(.5,1);key.BackgroundColor3=Color3.fromHex("B7FF1A");key.BorderSizePixel=0;key.Position=UDim2.new(.5,0,1,-24);key.Size=UDim2.fromOffset(180,38);key.TextColor3=Color3.fromHex("050505");key.TextSize=16;key.Font=Enum.Font.GothamBlack;key.ZIndex=222;key.Parent=vignette
+		local keyCorner=Instance.new("UICorner");keyCorner.CornerRadius=UDim.new(1,0);keyCorner.Parent=key
+		local progress=Instance.new("Frame");progress.Name="Progress";progress.BackgroundColor3=Color3.fromHex("182112");progress.BorderSizePixel=0;progress.Position=UDim2.fromOffset(24,122);progress.Size=UDim2.new(1,-48,0,9);progress.ZIndex=222;progress.Parent=vignette
+		local progressCorner=Instance.new("UICorner");progressCorner.CornerRadius=UDim.new(1,0);progressCorner.Parent=progress
+		local fill=Instance.new("Frame");fill.Name="Fill";fill.BackgroundColor3=Color3.fromHex("B7FF1A");fill.BorderSizePixel=0;fill.Size=UDim2.fromScale(0,1);fill.ZIndex=223;fill.Parent=progress
+		local fillCorner=Instance.new("UICorner");fillCorner.CornerRadius=UDim.new(1,0);fillCorner.Parent=fill
+		local ok=Instance.new("TextButton");ok.Name="Ok";ok.AnchorPoint=Vector2.new(.5,1);ok.BackgroundColor3=Color3.fromHex("FFFFFF");ok.BorderSizePixel=0;ok.Position=UDim2.new(.5,0,1,-24);ok.Size=UDim2.fromOffset(170,42);ok.Text="OK";ok.TextColor3=Color3.fromHex("050505");ok.TextSize=17;ok.Font=Enum.Font.GothamBlack;ok.ZIndex=223;ok.Parent=vignette
+		local okCorner=Instance.new("UICorner");okCorner.CornerRadius=UDim.new(1,0);okCorner.Parent=ok
+		ok.Activated:Connect(function()
+			self.TutorialAcknowledged=true
+			self:_setTutorialInputBlocked(false)
+			self:_setTutorialOverlayCompact(true)
+			if self.AimLine then self.AimLine:SetMatchActive(self.MatchInPlay and self.WatchMode~=true)end
+			if self.GoalTarget then self.GoalTarget:SetMatchActive(self.MatchInPlay and self.WatchMode~=true)end
+			if self.Action then self.Action:FireServer({Type="TutorialReady"})end
+		end)
+	end
+	local panel=overlay:FindFirstChild("Panel")
+	local body=panel and panel:FindFirstChild("Body")
+	local key=panel and panel:FindFirstChild("Key")
+	local ok=panel and panel:FindFirstChild("Ok")
+	if body and body:IsA("TextLabel")then body.Text=text end
+	if key and key:IsA("TextLabel")then
+		local suffix=t>1 and("  "..tostring(c).."/"..tostring(t))or""
+		key.Text=actionText~=""and(actionText..suffix)or suffix
+		key.Visible=key.Text~=""
+	end
+	local needsOk=requiresOk==true and self.TutorialAcknowledged~=true
+	if ok and ok:IsA("GuiObject")then ok.Visible=needsOk end
+	if key and key:IsA("GuiObject")then key.Visible=not needsOk and key.Visible end
+	overlay.Visible=true
+	TweenService:Create(overlay,TweenInfo.new(.16,Enum.EasingStyle.Quad,Enum.EasingDirection.Out),{GroupTransparency=0}):Play()
+	self:_setTutorialHudOnly(true)
+	self:_setTutorialOverlayCompact(not needsOk)
+	self:_setTutorialProgress(c,t)
+	self:_setTutorialInputBlocked(needsOk)
+end
+function Controller:_hideTutorialOverlay()
+	if self.TutorialOverlay then self.TutorialOverlay:Destroy();self.TutorialOverlay=nil end
+	self:_hideTutorialPassPointer()
+	self:_hideTutorialMovementLane()
+	self.TutorialAcknowledged=nil
+	self:_setTutorialInputBlocked(false)
+	self:_setTutorialHudOnly(false)
+end
+function Controller:_showTutorialStartButton()
+	if self.TutorialStartGui and self.TutorialStartGui.Parent then return end
+	local gui=Instance.new("ScreenGui");gui.Name="VTRTutorialStartMatch";gui.IgnoreGuiInset=true;gui.ResetOnSpawn=false;gui.DisplayOrder=140;gui.Parent=Players.LocalPlayer.PlayerGui;DeviceScaleService.Apply(gui)
+	self.TutorialStartGui=gui
+	local button=Instance.new("TextButton");button.AnchorPoint=Vector2.new(.5,.5);button.BackgroundColor3=Color3.fromHex("B7FF1A");button.BorderSizePixel=0;button.Position=UDim2.fromScale(.5,.78);button.Size=UDim2.fromOffset(260,58);button.Text="START MATCH";button.TextColor3=Color3.fromHex("050505");button.TextSize=18;button.Font=Enum.Font.GothamBlack;button.ZIndex=141;button.Parent=gui
+	local corner=Instance.new("UICorner");corner.CornerRadius=UDim.new(0,10);corner.Parent=button
+	local stroke=Instance.new("UIStroke");stroke.Color=Color3.fromHex("F4F5F1");stroke.Transparency=.18;stroke.Thickness=2;stroke.Parent=button
+	local scale=Instance.new("UIScale");scale.Scale=.92;scale.Parent=button
+	TweenService:Create(scale,TweenInfo.new(.22,Enum.EasingStyle.Back,Enum.EasingDirection.Out),{Scale=1}):Play()
+	button.Activated:Connect(function()
+		self:_hideTutorialStartButton()
+		if self.Action then self.Action:FireServer({Type="TutorialStartMatch"})end
+	end)
+end
 function Controller:_ensurePracticeTuning()
 	if self.PracticeTuning then return end
 	local keeper={};for _,spec in KEEPER_TUNING do keeper[spec.Key]=spec.Default end
@@ -695,6 +998,7 @@ function Controller:_ensurePracticeTuning()
 	self.PracticeTuning={Keeper=keeper,Shooting=shooting}
 end
 function Controller:_emitPracticeTuning(force:boolean?)
+	if not self.MatchData or self.MatchData.DeveloperAccess~=true then return end
 	if not self.PracticeMode or not self.Action then return end
 	self:_ensurePracticeTuning()
 	self.PracticeTuningSeq=(self.PracticeTuningSeq or 0)+1
@@ -736,6 +1040,7 @@ function Controller:_addPracticeSlider(parent:Instance,spec:any,values:any,layou
 	setValue(values[spec.Key]or spec.Default,false)
 end
 function Controller:_createPracticeTuningPanel()
+	if not self.MatchData or self.MatchData.DeveloperAccess~=true then return end
 	if self.PracticeTuningGui then return end
 	self:_ensurePracticeTuning()
 	self.PracticeTuningConnections={}
@@ -844,7 +1149,7 @@ function Controller:_renderTacticalPanel()
 	end
 end
 function Controller:_activate(data:any)
-	clearGreenScreenEffects()
+	MatchVisualCleanupService.Apply(workspace:FindFirstChild(tostring(data.WorldName or"")))
 	local activationKey=matchStartKey(data)
 	if self.Active and self.MatchStartKey==activationKey then
 		if self.ActivatingMatchKey==activationKey then self.ActivatingMatchKey=nil end
@@ -895,8 +1200,22 @@ function Controller:_activate(data:any)
 		end
 		if bootCover.Parent then bootCover:Destroy() end
 	end)
-	self.Active=true;self.MatchStartKey=activationKey;self.ActivatingMatchKey=nil;self.MatchActivationRunningKey=nil;self.Ball=ball;self.TeamModels=data.TeamModels;self.ControlledSide=data.ControlledSide or"Home";self.WatchMode=data.WatchMode==true;self.PracticeMode=data.PracticeMode==true;local noPrematch=data.NoPrematch==true;self.Paused=false;self.Ranked=data.Ranked==true;self.MatchInPlay=self.PracticeMode or noPrematch;self.PrematchActive=not self.PracticeMode and not noPrematch;self.PrematchSkipRequested=noPrematch;self.PrematchSkipUnlockAt=os.clock()+math.max(0,tonumber(data.PrematchSkipDelay)or 5);self.TacticalMode=false;self.TacticalPanelOpen=false;GuiService.SelectedObject=nil;local playerModule=require(player.PlayerScripts:WaitForChild("PlayerModule", 15));self.Controls=playerModule:GetControls();self.Controls:Disable();self.HUD=MatchHUDController.new(data);if self.HUD and self.HUD.SetSecondHalfResetCallback then self.HUD:SetSecondHalfResetCallback(function()if self.Action then self.Action:FireServer({Type="SecondHalfWatchdogReset"})end;if self.Camera and self.Camera.ReturnToLive then self.Camera:ReturnToLive()elseif self.Camera and self.Camera.EndCutscene then self.Camera:EndCutscene()end;if self.HUD then self.HUD:Flash("RESETTING SECOND HALF",1.0)end end)end;self.Commentary=nil;self.Celebrations=CelebrationPoseController.new();self.CrowdAmbience=CrowdAmbienceController.new();self.CrowdAmbience:Start();self.MatchSounds=MatchSoundController.new(ball,data.TeamModels);self.MatchSounds:Start();self.Camera=BroadcastCameraController.new(data.PitchCFrame,data.PitchWidth,data.PitchLength,ball,active);self.Camera.ForcedMode=data.ForceCameraMode;self.MouseAim=MouseAimController.new(workspace.CurrentCamera,data.PitchCFrame,data.PitchWidth,data.PitchLength);self.Input=InputController.new(self.Action,function(kind,charge)return self:_aimPayload(kind,charge)end);self.InputLock=MatchInputLockController.new(self.Action);self.TeamControl=TeamControlController.new(self.Action,self.Camera,self.HUD,active);self.BallRoll=BallRollVisualController.new(ball)
+	self.Active=true;self.MatchStartKey=activationKey;self.MatchData=data;self.PresentationStarted=false;self.PresentationReadySent=false;self.ActivatingMatchKey=nil;self.MatchActivationRunningKey=nil;self.Ball=ball;self.TeamModels=data.TeamModels;self.ControlledSide=data.ControlledSide or"Home";self.WatchMode=data.WatchMode==true;self.PracticeMode=data.PracticeMode==true;local noPrematch=data.NoPrematch==true;self.Paused=false;self.Ranked=data.Ranked==true;self.MatchInPlay=self.PracticeMode or noPrematch;self.PrematchActive=not self.PracticeMode and not noPrematch;self.PrematchSkipRequested=noPrematch;self.PrematchSkipUnlockAt=os.clock()+math.max(0,tonumber(data.PrematchSkipDelay)or 0);self.TacticalMode=false;self.TacticalPanelOpen=false;GuiService.SelectedObject=nil;local playerModule=require(player.PlayerScripts:WaitForChild("PlayerModule", 15));self.Controls=playerModule:GetControls();self.Controls:Disable();self.HUD=MatchHUDController.new(data);if self.HUD and self.HUD.SetSecondHalfResetCallback then self.HUD:SetSecondHalfResetCallback(function()if self.Action then self.Action:FireServer({Type="SecondHalfWatchdogReset"})end;if self.Camera and self.Camera.ReturnToLive then self.Camera:ReturnToLive()elseif self.Camera and self.Camera.EndCutscene then self.Camera:EndCutscene()end;if self.HUD then self.HUD:Flash("RESETTING SECOND HALF",1.0)end end)end;self.Commentary=nil;self.Celebrations=CelebrationPoseController.new();self.CrowdAmbience=CrowdAmbienceController.new();self.CrowdAmbience:Start();self.MatchSounds=MatchSoundController.new(ball,data.TeamModels);self.MatchSounds:Start();self.Camera=BroadcastCameraController.new(data.PitchCFrame,data.PitchWidth,data.PitchLength,ball,active);self.Camera.ForcedMode=data.ForceCameraMode;self.MouseAim=MouseAimController.new(workspace.CurrentCamera,data.PitchCFrame,data.PitchWidth,data.PitchLength);self.Input=InputController.new(self.Action,function(kind,charge)return self:_aimPayload(kind,charge)end);self.InputLock=MatchInputLockController.new(self.Action);self.TeamControl=TeamControlController.new(self.Action,self.Camera,self.HUD,active);self.BallRoll=BallRollVisualController.new(ball)
+	self.WorldCupOnboardingTrainer=data.Setup and data.Setup.WorldCupOnboarding==true or false
 	self.HUD:SetPauseButtonCallback(function()self:_setPaused(true)end)
+	if data.Setup and data.Setup.CampaignAscension==true and self.WatchMode then
+		local initialTactics=type(data.Setup.TeamTactics)=="table"and data.Setup.TeamTactics or{}
+		self.AscensionManagerPanel=AscensionManagerPanel.new(self.HUD.Gui,{
+			Objective=data.Setup.AscensionObjective,
+			InitialMentality=initialTactics.Identity or"Balanced",
+			InitialFormation=data.HomeFormation or data.Setup.HomeFormation or"4-3-3",
+			SelectOnOpen=UserInputService.GamepadEnabled,
+			OnAction=function(action:string,value:string?)
+				if self.Action then self.Action:FireServer({Type="CampaignManagerAction",Action=action,Value=value})end
+			end,
+			OnSubstitutions=function()self:_setPaused(true)end,
+		})
+	end
 	if self.WatchMode then
 		if self.ControlledIndicator then self.ControlledIndicator:Destroy();self.ControlledIndicator=nil end
 	elseif not self.ControlledIndicator then
@@ -904,7 +1223,7 @@ function Controller:_activate(data:any)
 			if self.WatchMode or not self.MatchInPlay or self.PrematchActive then return nil end
 			if self.ActiveModel and tostring(self.ActiveModel:GetAttribute("VTRTeam")or"")~=tostring(self.ControlledSide or"")then return nil end
 			return self.ActiveModel
-		end)
+		end,self.WorldCupOnboardingTrainer and{HideTag=true,RingColor=Color3.fromHex("19A7FF"),RingTransparency=.18,FloorOffset=2.95}or nil)
 	end
 	self.HUD:SetManualSubstitutionCallback(function(benchIndex:number,outgoingModel:Model,outgoingName:string)
 		self.Action:FireServer({Type="ManualSubstitution",BenchIndex=benchIndex,OutgoingModel=outgoingModel,OutgoingName=outgoingName})
@@ -912,25 +1231,55 @@ function Controller:_activate(data:any)
 	self.HUD:SetManualPositionSwapCallback(function(modelA:Model,modelB:Model)
 		self.Action:FireServer({Type="ManualPositionSwap",ModelA=modelA,ModelB=modelB})
 	end)
-	local uiState=UIStateService:Get();local settings=uiState and uiState.Settings or {};settings.ManualPassKey=settings.ManualPassKey or "LeftControl";settings.LobbedPassKey=settings.LobbedPassKey or "LeftAlt";settings.ChangePlayerKey=settings.ChangePlayerKey or "Q";settings.TackleKey=settings.TackleKey or "E";settings.SlideTackleKey=settings.SlideTackleKey or "F";self.PauseKey=keyCodeFromSetting(settings.PauseKey,Enum.KeyCode.M);self.Input:SetAutoSwitch(UserInputService.TouchEnabled and "Instant" or settings.PassReceiverAutoSwitch or "Assisted");self.Input:SetReceiverAssist(UserInputService.TouchEnabled and "Assisted" or settings.ReceiverAssist or "Light");if self.Input.SetControlsSettings then self.Input:SetControlsSettings(settings)end;if self.Input.SetShotModeChanged then self.Input:SetShotModeChanged(function(mode)if self.HUD and self.HUD.SetShotMode then self.HUD:SetShotMode(mode)end end)end;self.Indicators=PlayerIndicatorController.new(data.TeamModels,ball,self.HUD,"Off");self.Trainer=TrainerController.new(self.HUD.Gui,ball,settings.Trainer or "Basic");self.Minimap=MinimapController.new(self.HUD.Gui,data.PitchCFrame,data.PitchWidth,data.PitchLength,data.TeamModels,ball,settings.Minimap or "Medium",settings.MinimapOrientation or "Broadcast",settings.CameraSide or "Near",self.ControlledSide);self.AimLine=AimLineController.new(data.TeamModels,ball);self.GoalTarget=GoalReticleController.new(workspace.CurrentCamera,ball);self.FlightMarker=BallFlightMarkerController.new(ball);self.Cutscenes=MatchCutsceneController.new(self.Camera,self.HUD);self.Camera:SetMode(data.ForceCameraMode or settings.CameraPreset or "Broadcast");self.Camera:ApplySettings(settings);if self.PracticeMode and self.Camera.SetShootingFocus then self.Camera:SetShootingFocus(true);self:_createPracticeTuningPanel()end
+	local uiState=UIStateService:Get();local settings=PlayabilitySettingsConfig.Normalize(uiState and uiState.Settings or{});settings.ManualPassKey=settings.ManualPassKey or"LeftControl";settings.LobbedPassKey=settings.LobbedPassKey or"LeftAlt";settings.ChangePlayerKey=settings.ChangePlayerKey or"Q";settings.TackleKey=settings.TackleKey or"E";settings.SlideTackleKey=settings.SlideTackleKey or"F";self.PlayabilitySettings=settings;self.PauseKey=keyCodeFromSetting(settings.PauseKey,Enum.KeyCode.M);self.Input:SetAutoSwitch(settings.PassReceiverAutoSwitch);self.Input:SetManualPassAutoSwitch(settings.ManualPassAutoSwitch);self.Input:SetReceiverAssist(settings.ReceiverAssistMode);if self.Input.SetControlsSettings then self.Input:SetControlsSettings(settings)end;if self.Input.SetShotModeChanged then self.Input:SetShotModeChanged(function(mode)if self.HUD and self.HUD.SetShotMode then self.HUD:SetShotMode(mode)end end)end;self.Indicators=PlayerIndicatorController.new(data.TeamModels,ball,self.HUD,"Off");local trainerMode=data.Setup and data.Setup.WorldCupOnboarding==true and"WorldCupOnboarding"or settings.Trainer or"Basic";self.Trainer=TrainerController.new(self.HUD.Gui,ball,trainerMode);self.Minimap=MinimapController.new(self.HUD.Gui,data.PitchCFrame,data.PitchWidth,data.PitchLength,data.TeamModels,ball,settings.Minimap or"Medium",settings.MinimapOrientation or"Broadcast",settings.CameraSide or"Near",self.ControlledSide);self.AimLine=AimLineController.new(data.TeamModels,ball);self.GoalTarget=GoalReticleController.new(workspace.CurrentCamera,ball);self.FlightMarker=BallFlightMarkerController.new(ball);self.Cutscenes=MatchCutsceneController.new(self.Camera,self.HUD);local deviceDefaults=UserInputService.TouchEnabled and DeviceGameplayConfig.Camera.Mobile or(UserInputService.GamepadEnabled and not UserInputService.KeyboardEnabled and DeviceGameplayConfig.Camera.Gamepad or DeviceGameplayConfig.Camera.Desktop);local automaticCamera=settings.CameraPreset=="Auto";local cameraMode=data.ForceCameraMode or(automaticCamera and deviceDefaults.Preset or settings.CameraPreset);if automaticCamera then settings.CameraZoomMode=deviceDefaults.ZoomMode end;self.Camera:SetMode(cameraMode);self.Camera:ApplySettings(settings);if self.PracticeMode and self.Camera.SetShootingFocus then self.Camera:SetShootingFocus(true);if data.DeveloperAccess==true then self:_createPracticeTuningPanel()end end
 	self.AnimationCache={};for _,side in data.TeamModels do for _,footballer in side do self.AnimationCache[footballer]=AnimationController.new(footballer)end end
 	if self.ReplayController then self.ReplayController:Destroy()end;self.ReplayController=ReplayController.new(data,ball)
 	self.HUD:SetResumeCallback(function()self:_setPaused(false)end);ContextActionService:BindActionAtPriority(PAUSE_ACTION,function(_,state)if state==Enum.UserInputState.Begin and self.Active then self:_setPaused(not self.Paused)end;return Enum.ContextActionResult.Sink end,false,Enum.ContextActionPriority.High.Value+200,Enum.KeyCode.ButtonSelect,Enum.KeyCode.ButtonStart);self.PauseConnection=UserInputService.InputBegan:Connect(function(input,processed)
 		if not self.Active then return end
 		if input.KeyCode==(self.PauseKey or Enum.KeyCode.M) then self:_setPaused(not self.Paused);return end
 		if input.KeyCode==Enum.KeyCode.One and not processed and self.Camera and self.Camera.ToggleShootingFocus and self.MatchInPlay and not self.Paused and self.WatchMode~=true then
-			local enabled=self.Camera:ToggleShootingFocus()
+			local enabled:boolean
+			if self.WorldCupOnboardingTrainer and self.Camera.SetShootingFocus then
+				enabled=self.Camera:SetShootingFocus(true)
+			else
+				enabled=self.Camera:ToggleShootingFocus()
+			end
 			if self.HUD then self.HUD:Flash(enabled and"SHOOTING FOCUS CAMERA"or"WIDE BROADCAST CAMERA",.75)end
+			if self.WorldCupOnboardingTrainer and self.Action then self.Action:FireServer({Type="ShootingFocus"})end
 			return
 		end
 		if (input.KeyCode==Enum.KeyCode.Space or input.KeyCode==Enum.KeyCode.ButtonA) and self.PrematchActive and not self.PrematchSkipRequested then local remaining=math.ceil((tonumber(self.PrematchSkipUnlockAt)or 0)-os.clock());if remaining>0 then if self.HUD then self.HUD:Flash("SKIP IN "..tostring(remaining),.55)end;return end;self.PrematchSkipRequested=true;self.Action:FireServer({Type="PrematchSkip"});self:_setPrematchSkipProgress(1,self.Ranked and 2 or 1);if self.HUD then self.HUD:Flash(self.Ranked and"SKIP QUEUED"or"SKIPPING INTRO",.9)end;return end
 	end)
-	self.Camera:Start();if not self.PracticeMode and not noPrematch then if self.Camera.BeginStadiumIntro then self.Camera:BeginStadiumIntro(6.2)end;self.Cutscenes:StadiumIntro(data)end;self.InputLock:Start(false);self.Input:Start();if self.Input and self.Input.SetShootingOnly then self.Input:SetShootingOnly(self.PracticeMode)end;if self.Input and self.Input.MobileControls and self.Input.MobileControls.SetVisible then self.Input.MobileControls:SetVisible((self.PracticeMode or noPrematch) and self.WatchMode~=true or false)end;if self.WatchMode then self.Input:SetSuppressed(true);if self.Input.MobileControls then self.Input.MobileControls:Destroy();self.Input.MobileControls=nil end end;self:_bindFootballer(active,active:GetAttribute("DisplayName"),active:GetAttribute("position"));if self.PracticeMode then if self.GoalTarget then self.GoalTarget:SetMode("Shot");self.GoalTarget:SetDefenseSource(nil);self.GoalTarget:SetMatchActive(self.WatchMode~=true);local target=self:_practiceGoalPoint(0);if target then self.GoalTarget:Lock(target)end end;if self.HUD then self.HUD:SetPhase("SHOOTING PRACTICE")end;self:_emitPracticeTuning(true)end
+	self.FreeKickTouchPanVector=Vector2.zero;self.FreeKickTouchPanInput=nil;self.FreeKickTouchPanLast=nil;self.FreeKickTouchConnections={}
+	table.insert(self.FreeKickTouchConnections,UserInputService.TouchStarted:Connect(function(input,processed)
+		if processed or self.SetPieceMode~="DirectShotFreeKick"or self.WatchMode==true then return end
+		if self.FreeKickTouchPanInput~=nil then return end
+		local viewport=workspace.CurrentCamera and workspace.CurrentCamera.ViewportSize or Vector2.new(1920,1080)
+		local pos=Vector2.new(input.Position.X,input.Position.Y)
+		if pos.X<viewport.X*.28 or (pos.X>viewport.X*.72 and pos.Y>viewport.Y*.58)then return end
+		self.FreeKickTouchPanInput=input
+		self.FreeKickTouchPanLast=pos
+		self.FreeKickTouchPanVector=Vector2.zero
+	end))
+	table.insert(self.FreeKickTouchConnections,UserInputService.TouchMoved:Connect(function(input,processed)
+		if input~=self.FreeKickTouchPanInput then return end
+		local pos=Vector2.new(input.Position.X,input.Position.Y)
+		local last=self.FreeKickTouchPanLast or pos
+		local delta=pos-last
+		self.FreeKickTouchPanLast=pos
+		self.FreeKickTouchPanVector=Vector2.new(math.clamp(delta.X/42,-1,1),math.clamp(-delta.Y/42,-1,1))
+	end))
+	table.insert(self.FreeKickTouchConnections,UserInputService.TouchEnded:Connect(function(input,processed)
+		if input~=self.FreeKickTouchPanInput then return end
+		self.FreeKickTouchPanInput=nil
+		self.FreeKickTouchPanLast=nil
+		self.FreeKickTouchPanVector=Vector2.zero
+	end))
+	self.Camera:Start();self.InputLock:Start(false);self.Input:Start();self.Input:SetSprintAllowed(false);self.Input:SetSuppressed(not self.PracticeMode or self.WatchMode==true);if self.Input and self.Input.SetShootingOnly then self.Input:SetShootingOnly(self.PracticeMode)end;if self.Input and self.Input.MobileControls and self.Input.MobileControls.SetVisible then self.Input.MobileControls:SetVisible(self.PracticeMode and self.WatchMode~=true)end;if self.WatchMode then if self.Input.MobileControls then self.Input.MobileControls:Destroy();self.Input.MobileControls=nil end end;self:_bindFootballer(active,active:GetAttribute("DisplayName"),active:GetAttribute("position"));if self.PracticeMode then self.Input:SetSuppressed(self.WatchMode==true);self.Input:SetSprintAllowed(self.WatchMode~=true);if self.GoalTarget then self.GoalTarget:SetMode("Shot");self.GoalTarget:SetDefenseSource(nil);self.GoalTarget:SetMatchActive(self.WatchMode~=true);local target=self:_practiceGoalPoint(0);if target then self.GoalTarget:Lock(target)end end;if self.HUD then self.HUD:SetPhase("SHOOTING PRACTICE")end;if data.DeveloperAccess==true then self:_emitPracticeTuning(true)end end
 	task.spawn(function()
-		while self.Active do
-			clearGreenScreenEffects()
-			task.wait(.35)
-		end
+		local deadline=os.clock()+6
+		while self.Active and player:GetAttribute("VTREssentialMatchReady")==false and os.clock()<deadline do task.wait(.03)end
+		if self.Active and self.MatchStartKey==activationKey and self.Action then local device=UserInputService.TouchEnabled and"Touch"or(UserInputService.GamepadEnabled and not UserInputService.KeyboardEnabled and"Gamepad"or"KeyboardMouse");self.Action:FireServer({Type="ClientReady",MatchSessionId=data.MatchSessionId or data.WorldName,Device=device,ReceiverAssistMode=settings.ReceiverAssistMode,CameraPreset=cameraMode})end
 	end)
 	RunService:BindToRenderStep("VTRMatchGameplay",Enum.RenderPriority.Camera.Value+1,function(dt)self:_update(dt)end)
 end
@@ -1010,6 +1359,31 @@ function Controller:_updateSecondHalfWatchdog(dt:number)
 	watchdog.LastCameraPosition=cameraFrame.Position
 	watchdog.LastLookVector=cameraFrame.LookVector
 end
+function Controller:_freeKickCameraPanInput(dt:number):Vector2
+	if self.SetPieceMode~="DirectShotFreeKick"or self.WatchMode==true or self.Paused==true or self.PrematchActive==true then
+		self.FreeKickTouchPanVector=Vector2.zero
+		return Vector2.zero
+	end
+	local vector=Vector2.zero
+	if self.Input and self.Input.GamepadAim and self.Input.GamepadAim.Magnitude>.08 then
+		vector+=self.Input.GamepadAim
+	end
+	if UserInputService.TouchEnabled then
+		vector+=self.FreeKickTouchPanVector or Vector2.zero
+	elseif UserInputService.MouseEnabled and not UserInputService:GetFocusedTextBox()then
+		local camera=workspace.CurrentCamera
+		local viewport=camera and camera.ViewportSize or Vector2.new(1920,1080)
+		local mouse=UserInputService:GetMouseLocation()
+		local margin=math.clamp(math.min(viewport.X,viewport.Y)*.08,34,84)
+		local x=0
+		local y=0
+		if mouse.X<=margin then x=-(1-mouse.X/margin)elseif mouse.X>=viewport.X-margin then x=(mouse.X-(viewport.X-margin))/margin end
+		if mouse.Y<=margin then y=(1-mouse.Y/margin)elseif mouse.Y>=viewport.Y-margin then y=-(mouse.Y-(viewport.Y-margin))/margin end
+		vector+=Vector2.new(math.clamp(x,-1,1),math.clamp(y,-1,1))
+	end
+	if vector.Magnitude>1 then vector=vector.Unit end
+	return vector
+end
 function Controller:_updateCameraWatchdog(dt:number)
 	if not self.Active or not self.MatchInPlay or self.Paused or self.PrematchActive or self.HalfTimePauseActive or self.CornerCamera or not self.Ball or not self.Ball.Parent then
 		self:_resetCameraWatchdog()
@@ -1060,7 +1434,11 @@ function Controller:_updateCameraWatchdog(dt:number)
 end
 function Controller:_update(dt:number)
 	if not self.Active or not self.ActiveModel or not self.ActiveModel.Parent then return end
+	if self.Camera and self.Camera.ApplyFreeKickPan then
+		self.Camera:ApplyFreeKickPan(self:_freeKickCameraPanInput(dt),dt)
+	end
 	self.Camera:Update(dt)
+	self:_applyTutorialCameraNudge(dt)
 	self:_updateCameraWatchdog(dt)
 	self:_updateSecondHalfWatchdog(dt)
 	if self.CornerAim then
@@ -1075,8 +1453,13 @@ function Controller:_update(dt:number)
 			forcedGoalSign=tonumber(self.Ball:GetAttribute("VTRPenaltyGoalSign"))or self.SetPieceGoalSign
 		elseif self.SetPieceMode=="DirectShotFreeKick"then
 			forcedGoalSign=self.SetPieceGoalSign
+		elseif self.TutorialShootingMode==true then
+			forcedGoalSign=tonumber(self.TutorialGoalSign)
 		end
 		self.MouseAim:SetForcedGoalSign(forcedGoalSign)
+		if self.Camera and self.Camera.SetForcedShootingGoalSign then
+			self.Camera:SetForcedShootingGoalSign(forcedGoalSign)
+		end
 	end
 	self.MouseAim:Update()
 	local root=self.ActiveModel:FindFirstChild("HumanoidRootPart")::BasePart?
@@ -1088,13 +1471,14 @@ function Controller:_update(dt:number)
 	local receivingPass=not hasBall and passReceiver~="" and passReceiver==self.ActiveModel.Name and passAge>=0 and passAge<5.8
 	if self.Input and self.Input.SetActionContext then self.Input:SetActionContext(hasBall,receivingPass)end
 	if self.Input and self.Input.SetMobileDefending then self.Input:SetMobileDefending(not(hasBall or receivingPass or attackingSetPiece))end
+	if self.HUD and self.HUD.SetActionQueued and self.Input then self.HUD:SetActionQueued(self.Input:IsActionQueued())end
 	local charge=self.Input:ChargeValue()
 	local chargeKind=self.Input:ChargeKind()
 	local aimingAtGoal=self.MouseAim:IsAimingAtGoal()
 	local goalPoint=self.MouseAim:GetGoalAimPoint(chargeKind=="Shot"and charge or 0)
 	local aimPosition=aimingAtGoal and goalPoint or self.MouseAim:GetAimWorldPosition()
 	local shotOnTarget:boolean?=aimingAtGoal
-	if self.PracticeMode and root and hasBall then
+	if (self.PracticeMode or self.TutorialShootingMode==true) and root and hasBall then
 		local practiceTarget,practiceOnTarget=self:_practiceGoalPoint(chargeKind=="Shot"and charge or 0)
 		if practiceTarget then goalPoint=practiceTarget;aimPosition=practiceTarget;aimingAtGoal=practiceOnTarget==true;shotOnTarget=practiceOnTarget==true end
 	end
@@ -1105,7 +1489,7 @@ function Controller:_update(dt:number)
 		aimingAtGoal=mobilePreview.GoalTarget
 		shotOnTarget=mobilePreview.GoalTarget==true
 	end
-	if self.PracticeMode and root and hasBall and not aimingAtGoal then
+	if (self.PracticeMode or self.TutorialShootingMode==true) and root and hasBall and not aimingAtGoal then
 		local practiceTarget,practiceOnTarget=self:_practiceGoalPoint(chargeKind=="Shot"and charge or 0)
 		if practiceTarget then goalPoint=practiceTarget;aimPosition=practiceTarget;aimingAtGoal=practiceOnTarget==true;shotOnTarget=practiceOnTarget==true end
 	end
@@ -1143,12 +1527,13 @@ function Controller:_update(dt:number)
 	local preview=self.AimLine:Update(dt,aimPosition,hasBall or receivingPass,chargeKind,charge,aimingAtGoal,freeKickCurve,freeKickLift,self.SetPieceMode,lineShotOnTarget)
 	self.LockedPassTarget=preview
 	self.Indicators:SetPassTarget(preview,self.AimLine:IsTargetFallback())
-	local shotReticleContext=self.PracticeMode or aimingAtGoal or self.SetPieceMode=="Penalty"or self.SetPieceMode=="PenaltyDefense"or self.SetPieceMode=="DirectShotFreeKick"
-	if self.PracticeMode and hasBall and aimPosition and self.GoalTarget then
+	local tutorialShooting=self.TutorialShootingMode==true
+	local shotReticleContext=self.PracticeMode or tutorialShooting or aimingAtGoal or self.SetPieceMode=="Penalty"or self.SetPieceMode=="PenaltyDefense"or self.SetPieceMode=="DirectShotFreeKick"
+	if (self.PracticeMode or tutorialShooting) and hasBall and aimPosition and self.GoalTarget then
 		self.GoalTarget:Lock(aimPosition)
 	end
-	self.GoalTarget:Update(hasBall,shotReticleContext,aimingAtGoal or self.PracticeMode,aimPosition)
-	if self.Trainer and not UserInputService.TouchEnabled then
+	self.GoalTarget:Update(hasBall,shotReticleContext,aimingAtGoal or self.PracticeMode or tutorialShooting,aimPosition)
+	if self.Trainer and(self.WorldCupOnboardingTrainer or not UserInputService.TouchEnabled)then
 		self.Trainer:SetBusy(chargeKind~=""or self.ActiveModel:GetAttribute("VTRSprinting")==true)
 		self.Trainer:Update()
 	end
@@ -1163,7 +1548,7 @@ function Controller:_update(dt:number)
 		self.HUD:SetCharge(charge,chargeKind)
 		return
 	end
-	local input=self.WatchMode and Vector2.zero or self.Input:Move();if not self.WatchMode then self.TeamControl:Update(dt,input)end;local movement=self.Camera:Movement(input);local sprinting=self.ActiveModel:GetAttribute("VTRSprinting")==true;self.Visual:Update(dt,movement,sprinting);self.BallRoll:Update(dt,hasBall);if self.FlightMarker then self.FlightMarker:Update(dt)end;if not(self.ActiveModel:GetAttribute("VTRCelebrating")==true or self.ActiveModel:GetAttribute("VTRCelebratingLocal")==true)then if root and Vector3.new(root.AssemblyLinearVelocity.X,0,root.AssemblyLinearVelocity.Z).Magnitude>.6 then self.Animation:Play(hasBall and"Dribble"or(sprinting and"Sprint"or"Jog"))else self.Animation:Play("Idle")end end;self:_updateTeamAnimations();self.HUD:SetStamina(self.Stamina/Config.Stamina.Maximum,self.Endurance/Config.Stamina.Maximum);self.HUD:SetCharge(charge,chargeKind);local owner=self.Ball:GetAttribute("OwnerModel");self.HUD:SetState(self.WatchMode and"WATCHING AI VS AI"or(owner==self.ActiveModel.Name and(sprinting and"Sprinting"or"Dribbling")or owner==""and"Loose Ball"or"Defending"))
+	local input=self.WatchMode and Vector2.zero or self.Input:Move();if not self.WatchMode then self.TeamControl:Update(dt,input)end;local movement=self.Camera:Movement(input);local sprinting=self.ActiveModel:GetAttribute("VTRSprinting")==true;self.Visual:Update(dt,movement,sprinting);self.BallRoll:Update(dt,hasBall);if self.FlightMarker then self.FlightMarker:Update(dt)end;if not(self.ActiveModel:GetAttribute("VTRCelebrating")==true or self.ActiveModel:GetAttribute("VTRCelebratingLocal")==true)then if root and Vector3.new(root.AssemblyLinearVelocity.X,0,root.AssemblyLinearVelocity.Z).Magnitude>.6 then self.Animation:Play(hasBall and"Dribble"or(sprinting and"Sprint"or"Jog"))else self.Animation:Play("Idle")end end;self:_updateTeamAnimations();self.HUD:SetStamina(self.Stamina/Config.Stamina.Maximum);self.HUD:SetCharge(charge,chargeKind);local owner=self.Ball:GetAttribute("OwnerModel");self.HUD:SetState(self.WatchMode and"WATCHING AI VS AI"or(owner==self.ActiveModel.Name and(sprinting and"Sprinting"or"Dribbling")or owner==""and"Loose Ball"or"Defending"))
 end
 function Controller:_flushReplayPayloads()
 	local pending=self.ReplayQueuedPayloads or{}
@@ -1179,7 +1564,7 @@ function Controller:_flushReplayPayloads()
 end
 function Controller:_finishGoalPresentation(payload:any)
 	if not self.Active then return end
-	if self.Action then self.Action:FireServer({Type="ReplayFinished"})end
+	if self.Action then self.Action:FireServer({Type="ReplayFinished",ReplayId=payload.ReplayId})end
 	self.Cutscenes:Goal(payload)
 	self:_flushReplayPayloads()
 end
@@ -1209,7 +1594,27 @@ function Controller:_state(payload:any)
 		if self.TacticalStatus then self.TacticalStatus.Text=side.." APPLIED"end
 		return
 	end
-	if self.ReplayBlocking and payload.Type~="Goal"then
+	if payload.Type=="CampaignManagerState"then
+		if self.AscensionManagerPanel then self.AscensionManagerPanel:Update(payload.Manager,payload.Objective)end
+		return
+	end
+	if payload.Type=="PresentationStart"then
+		if self.PresentationStarted then return end
+		self.PresentationStarted=true
+		self.PrematchActive=true
+		self.PrematchSkipRequested=false
+		self.PrematchSkipUnlockAt=os.clock()+math.max(0,tonumber(payload.PrematchSkipDelay)or 0)
+		if self.Input then self.Input:SetSuppressed(true);self.Input:SetSprintAllowed(false)end
+		if self.Cutscenes then
+			self.Cutscenes:StadiumIntro(payload,function()
+				if not self.Active or self.PresentationReadySent or not self.Action then return end
+				self.PresentationReadySent=true
+				self.Action:FireServer({Type="PresentationReady",MatchSessionId=payload.MatchSessionId or payload.WorldName})
+			end)
+		end
+		return
+	end
+	if self.ReplayBlocking and payload.Type~="Goal"and payload.Type~="MatchEnded"then
 		if payload.Type=="Clock"then
 			self.ReplayQueuedClock=payload
 		else
@@ -1218,33 +1623,106 @@ function Controller:_state(payload:any)
 		end
 		return
 	end
-	if payload.Type=="ActivePlayer"and payload.Model and payload.Model:IsA("Model")then if payload.Reason=="KickoffReceiver"and self.Input then self.Input:SetSuppressed(self.WatchMode==true)end;if workspace:GetAttribute("VTRKickoffDebug") ~= false then print("[VTR KICKOFF][Client] ActivePlayer",payload.Model.Name,"reason",payload.Reason or"","inputSuppressed",self.Input and self.Input.Suppressed)end;self:_bindFootballer(payload.Model,payload.Name,payload.Position);if payload.Reason=="PenaltyDefense"then self.SetPieceMode="PenaltyDefense";self.MatchInPlay=false;if typeof(payload.PenaltyLocation)=="Vector3"and self.Camera and self.Camera.BeginCutscene then self.Camera:BeginCutscene("Penalty",payload.PenaltyLocation,45,typeof(payload.GoalPosition)=="Vector3"and payload.GoalPosition or nil)end;if self.AimLine then self.AimLine:SetMatchActive(true)end;if self.GoalTarget then self.GoalTarget:SetMatchActive(true);self.GoalTarget:SetMode("PenaltyDefense");self.GoalTarget:SetDefenseSource(payload.Model)end end
+	if self.Input then
+		if payload.Type=="SetPiece"or payload.Type=="HalfTime"or payload.Type=="Goal"or payload.Type=="MatchEnded"then
+			self.Input:SetSprintAllowed(false)
+		elseif payload.Type=="Phase"then
+			self.Input:SetSprintAllowed((payload.Phase=="IN PLAY"or payload.Phase=="SHOOTING PRACTICE")and self.Paused~=true and self.WatchMode~=true)
+		elseif payload.Type=="Clock"then
+			self.Input:SetSprintActual(payload.SprintActual==true,payload.SprintLocked==true)
+		end
+	end
+	if payload.Type=="ActivePlayer"and payload.Model and payload.Model:IsA("Model")then if payload.Reason=="KickoffReceiver"and self.Input then self.Input:SetSuppressed(self.WatchMode==true)end;if workspace:GetAttribute("VTRKickoffDebug") ~= false then print("[VTR KICKOFF][Client] ActivePlayer",payload.Model.Name,"reason",payload.Reason or"","inputSuppressed",self.Input and self.Input.Suppressed)end;self:_bindFootballer(payload.Model,payload.Name,payload.Position);if payload.Reason=="PenaltyDefense"then self.SetPieceMode="PenaltyDefense";self.SetPieceGoalSign=tonumber(payload.GoalSign)or tonumber(self.Ball and self.Ball:GetAttribute("VTRPenaltyGoalSign"))or self.SetPieceGoalSign;self.MatchInPlay=false;if typeof(payload.PenaltyLocation)=="Vector3"and self.Camera and self.Camera.BeginCutscene then self.Camera:BeginCutscene("Penalty",payload.PenaltyLocation,45,typeof(payload.GoalPosition)=="Vector3"and payload.GoalPosition or nil)end;if self.AimLine then self.AimLine:SetMatchActive(true)end;if self.GoalTarget then self.GoalTarget:SetMatchActive(true);self.GoalTarget:SetMode("PenaltyDefense");self.GoalTarget:SetDefenseSource(payload.Model)end end
 	elseif payload.Type=="PauseQueued"then self.HUD:ShowPauseQueue(Players.LocalPlayer.Name,true)
 	elseif payload.Type=="PauseQueue"then self.HUD:ShowPauseQueue(tostring(payload.PlayerName or"PLAYER"),payload.Queued==true)
-	elseif payload.Type=="PauseState"then payload.ControlledSide=self.ControlledSide;self.Paused=payload.Paused==true;self.InputLock:SetSprintEnabled(not self.Paused);local visible=not self.Paused and self.MatchInPlay==true;if self.Trainer then self.Trainer:SetMatchActive(not UserInputService.TouchEnabled and visible)end;self.Minimap:SetMatchActive(visible);self.AimLine:SetMatchActive(visible);self.GoalTarget:SetMatchActive(visible);self.HUD:SetPaused(self.Paused,self.Camera,function()self:_cleanup(true)end,payload,function()self.Action:FireServer({Type="Forfeit"})end)
+	elseif payload.Type=="PauseState"then payload.ControlledSide=self.ControlledSide;self.Paused=payload.Paused==true;self.InputLock:SetSprintEnabled(not self.Paused);if self.Input then self.Input:SetSprintAllowed(not self.Paused and self.MatchInPlay==true)end;local visible=not self.Paused and self.MatchInPlay==true;if self.Trainer then self.Trainer:SetMatchActive((self.WorldCupOnboardingTrainer or not UserInputService.TouchEnabled)and visible)end;self.Minimap:SetMatchActive(visible);self.AimLine:SetMatchActive(visible);self.GoalTarget:SetMatchActive(visible);self.HUD:SetPaused(self.Paused,self.Camera,function()self:_cleanup(true)end,payload,function()self.Action:FireServer({Type="Forfeit"})end)
 	elseif payload.Type=="PauseTimer"then self.HUD:SetPauseTimer(payload.Remaining or 0)
 	elseif payload.Type=="PauseResumeVote"then if payload.Ready~=true then self.HUD:Flash(tostring(payload.PlayerName or"PLAYER").." READY TO RESUME",1.0)end
 	elseif payload.Type=="PrematchSkipLocked"then self.PrematchSkipRequested=false;if self.HUD then self.HUD:Flash("SKIP IN "..tostring(math.max(1,math.floor(tonumber(payload.Remaining)or 1))),.7)end
 	elseif payload.Type=="PrematchSkipQueued"then self:_setPrematchSkipProgress(payload.ReadyCount,payload.TotalCount);if self.HUD then local total=math.max(1,math.floor(tonumber(payload.TotalCount)or 2));local count=math.clamp(math.floor(tonumber(payload.ReadyCount)or 1),0,total);self.HUD:Flash(payload.Ready and"INTRO SKIPPED"or(string.format("SKIP %d/%d",count,total)),1.0)end
-	elseif payload.Type=="PrematchSkip"then self.PrematchActive=false;self.PrematchSkipRequested=true;if UISoundService.StopTransitions then UISoundService.StopTransitions()end;if self.Cutscenes then self.Cutscenes:SkipStadiumIntro()end;self:_playPrematchSkipTransition()
-	elseif payload.Type=="PracticeReset"then self.PracticeMode=true;self.PrematchActive=false;self.MatchInPlay=true;self.Paused=false;self:_createPracticeTuningPanel();if payload.Shooter and payload.Shooter:IsA("Model")then self:_bindFootballer(payload.Shooter,payload.Shooter:GetAttribute("DisplayName"),payload.Shooter:GetAttribute("position"))end;if self.Input then if self.Input.SetShootingOnly then self.Input:SetShootingOnly(true)end;self.Input:SetSuppressed(false);if self.Input.MobileControls and self.Input.MobileControls.SetVisible then self.Input.MobileControls:SetVisible(self.WatchMode~=true)end end;if self.Camera and self.Camera.SetShootingFocus then self.Camera:SetShootingFocus(true)end;if self.CrowdAmbience then self.CrowdAmbience:SetMatchActive(true)end;if self.MatchSounds then self.MatchSounds:SetMatchActive(true)end;if self.Trainer then self.Trainer:SetMatchActive(not UserInputService.TouchEnabled and self.WatchMode~=true)end;if self.Minimap then self.Minimap:SetMatchActive(true)end;if self.AimLine then self.AimLine:SetMatchActive(self.WatchMode~=true)end;if self.GoalTarget then self.GoalTarget:SetMode("Shot");self.GoalTarget:SetDefenseSource(nil);self.GoalTarget:SetMatchActive(self.WatchMode~=true);local target=self:_practiceGoalPoint(0);if target then self.GoalTarget:Lock(target)end end;if self.HUD then self.HUD:SetPhase("SHOOTING PRACTICE");if payload.Reason=="START"then self.HUD:Flash("SHOOTING PRACTICE",.9)end end;self:_emitPracticeTuning(true)
+	elseif payload.Type=="PrematchSkip"then self.PrematchActive=false;self.PrematchSkipRequested=true;if self.Input then self.Input:SetSprintAllowed(false)end;if UISoundService.StopTransitions then UISoundService.StopTransitions()end;if self.Cutscenes then self.Cutscenes:SkipStadiumIntro()end;self:_playPrematchSkipTransition()
+	elseif payload.Type=="PrematchCancelled"then self.PrematchActive=false;self.PrematchSkipRequested=true;if self.Input then self.Input:SetSprintAllowed(false)end;if UISoundService.StopTransitions then UISoundService.StopTransitions()end;if self.Cutscenes then self.Cutscenes:SkipStadiumIntro()end;if self.HUD then self.HUD:Flash("MATCH ENDED",.8)end
+	elseif payload.Type=="TutorialStage"then
+		if self.WorldCupOnboardingTrainer and (not self.ActiveModel or not self.ActiveModel.Parent)then self.PendingTutorialStage=payload;return end
+		local message=tostring(payload.Message or"")
+		local action=tostring(payload.Action or"")
+		if self.Input then self.Input:SetSuppressed(self.WatchMode==true);self.Input:SetSprintAllowed(self.WatchMode~=true and(action=="Sprint"or action=="Move"))end
+		if self.Trainer and self.Trainer.SetTutorialPrompt then self.Trainer:SetTutorialPrompt(payload.Message,payload.Action,payload.Count,payload.Target)end
+		if action=="Move"or action=="Sprint"then
+			self:_hideTutorialPassPointer()
+			self:_showTutorialMovementLane(payload.LaneTarget, payload.HelpLevel, payload.RoutePoints, payload.CurrentPoint, action=="Sprint")
+		elseif action=="Pass"and type(payload.TargetModels)=="table"then
+			self:_hideTutorialMovementLane()
+			self:_showTutorialPassPointers(payload.TargetModels)
+		elseif action=="Pass"and payload.TargetModel and payload.TargetModel:IsA("Model")then
+			self:_hideTutorialMovementLane()
+			self:_showTutorialPassPointer(payload.TargetModel)
+		elseif string.find(message,"COMPLETE",1,true)then
+			self:_hideTutorialPassPointer()
+			self:_hideTutorialMovementLane()
+		elseif action~="Move"then
+			self:_hideTutorialMovementLane()
+		end
+		if self.WorldCupOnboardingTrainer and action=="Shoot"then
+			self.TutorialShootingMode=true
+			self.TutorialGoalSign=tonumber(payload.GoalSign)or -1
+			if self.Camera and self.Camera.SetShootingFocus then self.Camera:SetShootingFocus(true)end
+			if self.GoalTarget then
+				self.GoalTarget:SetMode("Shot")
+				self.GoalTarget:SetDefenseSource(nil)
+				self.GoalTarget:SetMatchActive(self.WatchMode~=true)
+				local target=self:_practiceGoalPoint(0)
+				if target then self.GoalTarget:Lock(target)end
+			end
+		elseif self.WorldCupOnboardingTrainer and action~="ShootingFocus"then
+			self.TutorialShootingMode=false
+			self.TutorialGoalSign=nil
+			if self.GoalTarget and not self.PracticeMode then self.GoalTarget:Unlock()end
+			if self.Camera and self.Camera.SetShootingFocus then self.Camera:SetShootingFocus(false)end
+		end
+		if message==""and action==""then
+			self:_hideTutorialStartButton()
+			self:_hideTutorialOverlay()
+		elseif action=="StartMatch"then
+			self:_showTutorialOverlay(payload.Message,payload.Action,payload.Count,payload.Target,false)
+			self:_showTutorialStartButton()
+		elseif message=="SECOND HALF KICKOFF"then
+			self.TutorialShootingMode=false
+			self.TutorialGoalSign=nil
+			self:_hideTutorialStartButton()
+			self:_hideTutorialOverlay()
+		else
+			self:_hideTutorialStartButton()
+			self:_showTutorialOverlay(payload.Message,payload.Action,payload.Count,payload.Target,payload.RequiresOk==true)
+			if message=="PASSING COMPLETE"then
+				self:_playTutorialStepTransition("STEP 1 COMPLETE")
+			elseif message=="SHOOTING COMPLETE"then
+				self:_playTutorialStepTransition("STEP 2 COMPLETE")
+			elseif message=="DEFENDING COMPLETE"then
+				self:_playTutorialStepTransition("STEP 3 COMPLETE")
+			end
+		end
+	elseif payload.Type=="TutorialRestart"then self:_playPracticeResetTransition("RESTART")
+	elseif payload.Type=="PlayabilityDiagnostics"then if self.HUD and self.HUD.SetPlayabilityDiagnostics then self.HUD:SetPlayabilityDiagnostics(tonumber(payload.ControlSeconds)or 0,payload.Summary)end
+	elseif payload.Type=="PracticeReset"then self.PracticeMode=true;self.PrematchActive=false;self.MatchInPlay=true;self.Paused=false;self:_createPracticeTuningPanel();if payload.Shooter and payload.Shooter:IsA("Model")then self:_bindFootballer(payload.Shooter,payload.Shooter:GetAttribute("DisplayName"),payload.Shooter:GetAttribute("position"))end;if self.Input then if self.Input.SetShootingOnly then self.Input:SetShootingOnly(true)end;self.Input:SetSuppressed(false);self.Input:SetSprintAllowed(self.WatchMode~=true);if self.Input.MobileControls and self.Input.MobileControls.SetVisible then self.Input.MobileControls:SetVisible(self.WatchMode~=true)end end;if self.Camera and self.Camera.SetShootingFocus then self.Camera:SetShootingFocus(true)end;if self.CrowdAmbience then self.CrowdAmbience:SetMatchActive(true)end;if self.MatchSounds then self.MatchSounds:SetMatchActive(true)end;if self.Trainer then self.Trainer:SetMatchActive((self.WorldCupOnboardingTrainer or not UserInputService.TouchEnabled)and self.WatchMode~=true)end;if self.Minimap then self.Minimap:SetMatchActive(true)end;if self.AimLine then self.AimLine:SetMatchActive(self.WatchMode~=true)end;if self.GoalTarget then self.GoalTarget:SetMode("Shot");self.GoalTarget:SetDefenseSource(nil);self.GoalTarget:SetMatchActive(self.WatchMode~=true);local target=self:_practiceGoalPoint(0);if target then self.GoalTarget:Lock(target)end end;if self.HUD then self.HUD:SetPhase("SHOOTING PRACTICE");if payload.Reason=="START"then self.HUD:Flash("SHOOTING PRACTICE",.9)end end;self:_emitPracticeTuning(true)
 	elseif payload.Type=="PracticeShotResult"then local result=tostring(payload.Result or"MISS");self:_playPracticeResetTransition(result);if self.HUD then self.HUD:ResolveShotChance(result=="GOAL");self.HUD:Flash(result=="GOAL"and"GOAL"or result=="SAVE"and"SAVED"or"MISS",.85)end;if self.MatchSounds and result=="GOAL"and self.MatchSounds.PlayGoalPreview then self.MatchSounds:PlayGoalPreview()end;if self.Visual then if result=="GOAL"then self.Visual:HoldShotTrail()else self.Visual:StopShotTrail()end end;if self.GoalTarget then self.GoalTarget:Unlock()end
+	elseif payload.Type=="BallTrajectory"then if self.Visual and self.Visual.StartTrajectory then self.Visual:StartTrajectory(payload.Trajectory)end
 	elseif payload.Type=="SwitchTarget"then self.TeamControl:SetSwitchTarget(payload.Model);self.Indicators:SetNextSwitch(payload.Model)
-	elseif payload.Type=="Possession"then if self.HUD then self.HUD:SetPossession(payload.Owner or"",payload.OwnerUserId==Players.LocalPlayer.UserId)end;if self.Indicators then self.Indicators:SetBallCarrier(payload.Model)end;if self.Minimap then self.Minimap:SetBallCarrier(payload.Model)end;if payload.Model then if self.Visual then self.Visual:StopShotTrail()end;if self.GoalTarget then if self.PracticeMode and payload.Model==self.ActiveModel then local target=self:_practiceGoalPoint(0);if target then self.GoalTarget:Lock(target)end else self.GoalTarget:Unlock()end end end
+	elseif payload.Type=="Possession"then if self.HUD then self.HUD:SetPossession(payload.Owner or"",payload.OwnerUserId==Players.LocalPlayer.UserId)end;if self.Indicators then self.Indicators:SetBallCarrier(payload.Model)end;if self.Minimap then self.Minimap:SetBallCarrier(payload.Model)end;if payload.Model then if self.Visual and self.Ball and tostring(self.Ball:GetAttribute("VTRMotionKind")or"")~="Pass"then self.Visual:StopShotTrail()end;if self.GoalTarget then if (self.PracticeMode or self.TutorialShootingMode==true) and payload.Model==self.ActiveModel then local target=self:_practiceGoalPoint(0);if target then self.GoalTarget:Lock(target)end else self.GoalTarget:Unlock()end end end
 	elseif payload.Type=="PassTarget"then self.Indicators:SetPassTarget(payload.Model)
 	elseif payload.Type=="SetPiece"then if self.ReplayController then self.ReplayController:MarkSetPieceStarted(payload.ActualKind or payload.Kind)end;local userRestart=payload.UserControlled==true and payload.WatchOnly~=true;if not userRestart then self:_ensureControlledSideActive()end;if self.Input and payload.Kind~="Corner" then self.Input:SetSuppressed(self.WatchMode==true or not userRestart)end;if self.Input and self.Input.SetDirectFreeKick then self.Input:SetDirectFreeKick(userRestart and payload.Mode=="DirectShotFreeKick")elseif self.Input and self.Input.ResetFreeKickModifiers and payload.Mode=="DirectShotFreeKick"then self.Input:ResetFreeKickModifiers()end;local actualKind=payload.ActualKind or payload.Kind;if userRestart and self.Input and self.Input.LockActions and (actualKind=="FreeKick"or actualKind=="Penalty"or actualKind=="ThrowIn"or actualKind=="GoalKick")then self.Input:LockActions(2)end;self.SetPieceGoalSign=userRestart and payload.GoalSign or nil;self.PenaltyAimSlot=userRestart and actualKind=="Penalty"and"MIDDLE"or self.PenaltyAimSlot;self.PenaltyAimPoint=userRestart and actualKind=="Penalty"and nil or self.PenaltyAimPoint;self.GamepadShotAimPoint=nil;self.FreeKickAimVector=userRestart and payload.Mode=="DirectShotFreeKick"and Vector2.new(0,.22)or self.FreeKickAimVector;local mobileRestart=(actualKind=="FreeKick"or actualKind=="ThrowIn"or actualKind=="Penalty"or actualKind=="GoalKick")and userRestart;if self.Input and self.Input.MobileControls and self.Input.MobileControls.SetVisible then self.Input.MobileControls:SetVisible(mobileRestart and self.WatchMode~=true)end;self.MatchInPlay=false;self.SetPieceMode=userRestart and payload.Mode or nil;self.SetPieceKind=userRestart and actualKind or nil;if payload.Kind=="Offside"and self.HUD then self.HUD:Flash("OFFSIDE",1.05)end;if userRestart and payload.Taker and payload.Taker:IsA("Model")then self:_bindFootballer(payload.Taker,payload.Taker:GetAttribute("DisplayName"),payload.Taker:GetAttribute("position"))end;if self.Visual then self.Visual:ClearLock();self.Visual:StopShotTrail()end;if self.GoalTarget then self.GoalTarget:Unlock()end;if self.Trainer then self.Trainer:SetMatchActive(false)end;self.Minimap:SetMatchActive(true);local aimingRestart=mobileRestart and self.WatchMode~=true;self.AimLine:SetMatchActive(aimingRestart);self.GoalTarget:SetMatchActive(aimingRestart);if actualKind=="Kickoff"then self.PendingKickoffSound=true;self.PendingFoulRestartWhistle=false;if self.Camera and self.Camera.ReturnToLive then self.Camera:ReturnToLive()end else self.PendingKickoffSound=false end;if self.FoulRestartWhistlePending and (actualKind=="FreeKick"or actualKind=="Penalty")then self.PendingFoulRestartWhistle=true;self.FoulRestartWhistlePending=false elseif actualKind~="FreeKick"and actualKind~="Penalty"then self.FoulRestartWhistlePending=false end;if payload.Kind=="Kickoff"and self.HUD then self.HUD:PlayMatchHudIntro();self.HUD:ShowKickoffScorer()end;self.Cutscenes:Play(payload)
 	elseif payload.Type=="CornerMode"then if self.ReplayController then self.ReplayController:MarkSetPieceStarted("Corner")end;self.Input:SetSuppressed(true);local takerAnimation=self.AnimationCache and self.AnimationCache[payload.Taker];if takerAnimation then takerAnimation:Play("Idle")end;if self.CornerAim then self.CornerAim:Destroy()end;if self.CornerCamera then self.CornerCamera:Destroy()end;self.CornerCamera=CornerCameraController.new(payload);self.CornerAim=CornerAimController.new(payload,self.Action,self.HUD);self.HUD:SetPhase("CORNER KICK")
 	elseif payload.Type=="CornerReleased"then self.Input:SetSuppressed(false);if self.CornerAim then self.CornerAim:Destroy();self.CornerAim=nil end;if self.CornerCamera then self.CornerCamera:Destroy();self.CornerCamera=nil end;self.HUD:Flash(string.upper(payload.Delivery or"CROSS"),.7)
-	elseif payload.Type=="Phase"then self.PrematchActive=false;if self.Input then if self.Input.SetShootingOnly then self.Input:SetShootingOnly(payload.Phase=="SHOOTING PRACTICE")end;self.Input:SetSuppressed(self.WatchMode==true);if self.Input.SetDirectFreeKick then self.Input:SetDirectFreeKick(false)end end;if workspace:GetAttribute("VTRKickoffDebug") ~= false then print("[VTR KICKOFF][Client] Phase",payload.Phase or"nil","active",self.ActiveModel and self.ActiveModel.Name or"nil","inputSuppressed",self.Input and self.Input.Suppressed)end;if self.Camera and payload.HoldCutscene~=true then if payload.Phase=="IN PLAY"and self.Camera.ReturnToLive then self.Camera:ReturnToLive()elseif self.Camera.EndCutscene then self.Camera:EndCutscene()end end;if self.Visual then self.Visual:ClearLock()end;self.SetPieceMode=nil;self.SetPieceKind=nil;self.SetPieceGoalSign=nil;self.PenaltyAimSlot=nil;self.PenaltyAimPoint=nil;self.GamepadShotAimPoint=nil;self.MatchInPlay=payload.Phase=="IN PLAY"or payload.Phase=="SHOOTING PRACTICE";if payload.Phase=="SHOOTING PRACTICE"then self.PracticeMode=true;self:_createPracticeTuningPanel();if self.Camera and self.Camera.SetShootingFocus then self.Camera:SetShootingFocus(true)end end;if self.Input and self.Input.MobileControls and self.Input.MobileControls.SetVisible then self.Input.MobileControls:SetVisible(self.MatchInPlay and self.WatchMode~=true)end;if self.CrowdAmbience then self.CrowdAmbience:SetMatchActive(self.MatchInPlay)end;if self.MatchSounds then self.MatchSounds:SetMatchActive(self.MatchInPlay)end;if self.Trainer then self.Trainer:SetMatchActive(not UserInputService.TouchEnabled and self.MatchInPlay and self.WatchMode~=true)end;self.Minimap:SetMatchActive(self.MatchInPlay);self.AimLine:SetMatchActive(self.MatchInPlay and self.WatchMode~=true);self.GoalTarget:SetMode("Shot");self.GoalTarget:SetDefenseSource(nil);self.GoalTarget:SetMatchActive(self.MatchInPlay and self.WatchMode~=true);if self.PracticeMode and self.MatchInPlay then local target=self:_practiceGoalPoint(0);if target then self.GoalTarget:Lock(target)end end;self.HUD:SetPhase(payload.Phase or"IN PLAY")
-	elseif payload.Type=="HalfTime"then self:_resetSecondHalfWatchdog();if self.HUD and self.HUD.SetSecondHalfResetVisible then self.HUD:SetSecondHalfResetVisible(false)end;self.MatchInPlay=false;self.HalfTimePauseActive=true;self.Paused=true;if self.Trainer then self.Trainer:SetMatchActive(false)end;self.Minimap:SetMatchActive(false);self.AimLine:SetMatchActive(false);self.GoalTarget:SetMatchActive(false);self.Cutscenes:HalfTime(payload);payload.ControlledSide=self.ControlledSide;task.delay(12,function()if self.Active and self.HalfTimePauseActive and self.HUD then self.HUD:SetPaused(true,self.Camera,function()self:_cleanup(true)end,payload,function()self.Action:FireServer({Type="Forfeit"})end)end end)
+	elseif payload.Type=="Phase"then self.PrematchActive=false;if self.Input then if self.Input.SetShootingOnly then self.Input:SetShootingOnly(payload.Phase=="SHOOTING PRACTICE")end;self.Input:SetSuppressed(self.WatchMode==true);if self.Input.SetDirectFreeKick then self.Input:SetDirectFreeKick(false)end end;if workspace:GetAttribute("VTRKickoffDebug") ~= false then print("[VTR KICKOFF][Client] Phase",payload.Phase or"nil","active",self.ActiveModel and self.ActiveModel.Name or"nil","inputSuppressed",self.Input and self.Input.Suppressed)end;if self.Camera and payload.HoldCutscene~=true then if payload.Phase=="IN PLAY"and self.Camera.ReturnToLive then self.Camera:ReturnToLive()elseif self.Camera.EndCutscene then self.Camera:EndCutscene()end end;if self.Visual then self.Visual:ClearLock()end;self.SetPieceMode=nil;self.SetPieceKind=nil;self.SetPieceGoalSign=nil;self.PenaltyAimSlot=nil;self.PenaltyAimPoint=nil;self.GamepadShotAimPoint=nil;self.MatchInPlay=payload.Phase=="IN PLAY"or payload.Phase=="SHOOTING PRACTICE";if payload.Phase=="SHOOTING PRACTICE"then self.PracticeMode=true;self:_createPracticeTuningPanel();if self.Camera and self.Camera.SetShootingFocus then self.Camera:SetShootingFocus(true)end end;if self.Input and self.Input.MobileControls and self.Input.MobileControls.SetVisible then self.Input.MobileControls:SetVisible(self.MatchInPlay and self.WatchMode~=true)end;if self.CrowdAmbience then self.CrowdAmbience:SetMatchActive(self.MatchInPlay)end;if self.MatchSounds then self.MatchSounds:SetMatchActive(self.MatchInPlay)end;if self.Trainer then self.Trainer:SetMatchActive((self.WorldCupOnboardingTrainer or not UserInputService.TouchEnabled)and self.MatchInPlay and self.WatchMode~=true)end;self.Minimap:SetMatchActive(self.MatchInPlay);self.AimLine:SetMatchActive(self.MatchInPlay and self.WatchMode~=true);self.GoalTarget:SetMode("Shot");self.GoalTarget:SetDefenseSource(nil);self.GoalTarget:SetMatchActive(self.MatchInPlay and self.WatchMode~=true);if self.PracticeMode and self.MatchInPlay then local target=self:_practiceGoalPoint(0);if target then self.GoalTarget:Lock(target)end end;self.HUD:SetPhase(payload.Phase or"IN PLAY")
+	elseif payload.Type=="HalfTime"then self:_resetSecondHalfWatchdog();if self.AscensionManagerPanel then self.AscensionManagerPanel:SetHalf(2)end;if self.HUD and self.HUD.SetSecondHalfResetVisible then self.HUD:SetSecondHalfResetVisible(false)end;self.MatchInPlay=false;self.HalfTimePauseActive=true;self.Paused=true;if self.Trainer then self.Trainer:SetMatchActive(false)end;self.Minimap:SetMatchActive(false);self.AimLine:SetMatchActive(false);self.GoalTarget:SetMatchActive(false);self.Cutscenes:HalfTime(payload);payload.ControlledSide=self.ControlledSide;task.delay(12,function()if self.Active and self.HalfTimePauseActive and self.HUD then self.HUD:SetPaused(true,self.Camera,function()self:_cleanup(true)end,payload,function()self.Action:FireServer({Type="Forfeit"})end)end end)
 	elseif payload.Type=="HalfTimeTimer"then if self.HUD then self.HUD:SetPauseTimer(payload.Remaining or 0)end
 	elseif payload.Type=="HalfTimeResumeVote"then if self.HUD and payload.Ready~=true then self.HUD:Flash(tostring(payload.PlayerName or"PLAYER").." READY FOR SECOND HALF",1.0)end
 	elseif payload.Type=="HalfTimeResume"then self.HalfTimePauseActive=false;self.Paused=false;self:_startSecondHalfWatchdog();if self.Camera and self.Camera.ReturnToLive then self.Camera:ReturnToLive()elseif self.Camera and self.Camera.EndCutscene then self.Camera:EndCutscene()end;if self.HUD then self.HUD:ClearPause();if self.HUD.SetSecondHalfResetVisible then self.HUD:SetSecondHalfResetVisible(true)end end
-	elseif payload.Type=="Pass"then if self.MatchSounds then if self.PendingKickoffSound then self.PendingKickoffSound=false;self.PendingFoulRestartWhistle=false;self.MatchSounds:PlayKickoff()else self.PendingFoulRestartWhistle=false;self.MatchSounds:PlayKick()end end;if self.HUD then self.HUD:HideKickoffScorer()end;if self.Visual then self.Visual:ClearLock();self.Visual:SnapTo(self.Ball.Position,self.Ball.AssemblyLinearVelocity);self.Visual:PlayFlightTrail()end;local controller=self.AnimationCache and self.AnimationCache[payload.Actor];if controller then controller:Play("Pass")end;if payload.Actor==self.ActiveModel and self.Trainer and not UserInputService.TouchEnabled then self.Trainer:NotifyAction("Pass")end
+	elseif payload.Type=="Pass"then if self.MatchSounds then if self.PendingKickoffSound then self.PendingKickoffSound=false;self.PendingFoulRestartWhistle=false;self.MatchSounds:PlayKickoff()else self.PendingFoulRestartWhistle=false;self.MatchSounds:PlayKick()end end;if self.HUD then self.HUD:HideKickoffScorer()end;if self.Visual then self.Visual:ClearLock();self.Visual:SnapTo(self.Ball.Position,self.Ball.AssemblyLinearVelocity);self.Visual:PlayFlightTrail()end;local controller=self.AnimationCache and self.AnimationCache[payload.Actor];if controller then controller:Play("Pass")end;if payload.Actor==self.ActiveModel and self.Trainer and(self.WorldCupOnboardingTrainer or not UserInputService.TouchEnabled)then self.Trainer:NotifyAction("Pass")end
 	elseif payload.Type=="CornerKick"then local controller=self.AnimationCache and self.AnimationCache[payload.Actor];if controller then controller:Play("Pass")end;if self.Visual then self.Visual:PlayFlightTrail()end
-	elseif payload.Type=="Shot"then self.PendingKickoffSound=false;if self.MatchSounds then self.PendingFoulRestartWhistle=false;self.MatchSounds:PlayKick()end;if (self.SetPieceKind=="FreeKick"or self.SetPieceKind=="Penalty") and self.Camera and self.Camera.EndCutscene then task.delay(self.SetPieceKind=="Penalty"and 1.15 or .35,function()if self.Camera then self.Camera:EndCutscene()end end)end;if self.CrowdAmbience then self.CrowdAmbience:Boost(0.9)end;if self.ReplayController then self.ReplayController:MarkShot(payload.Actor)end;local controller=self.AnimationCache and self.AnimationCache[payload.Actor];if controller then controller:Play("Shoot")end;if self.Visual then self.Visual:PlayShotTrail()end;if self.HUD then self.HUD:ShowShotChance({XG=payload.ShotQuality or payload.ShotXG or payload.ScoringChance or payload.ScoringChancePercent},payload.Actor)end;if payload.Actor==self.ActiveModel and self.Trainer and not UserInputService.TouchEnabled then self.Trainer:NotifyAction("Shoot")end
+	elseif payload.Type=="Shot"then self.PendingKickoffSound=false;if self.MatchSounds then self.PendingFoulRestartWhistle=false;self.MatchSounds:PlayKick()end;if (self.SetPieceKind=="FreeKick"or self.SetPieceKind=="Penalty") and self.Camera and self.Camera.EndCutscene then task.delay(self.SetPieceKind=="Penalty"and 1.15 or .35,function()if self.Camera then self.Camera:EndCutscene()end end)end;if self.CrowdAmbience then self.CrowdAmbience:Boost(0.9)end;if self.ReplayController then self.ReplayController:MarkShot(payload.Actor)end;local controller=self.AnimationCache and self.AnimationCache[payload.Actor];if controller then controller:Play("Shoot")end;if self.Visual then self.Visual:PlayShotTrail()end;if self.HUD then self.HUD:ShowShotChance({XG=payload.ShotQuality or payload.ShotXG or payload.ScoringChance or payload.ScoringChancePercent},payload.Actor)end;if payload.Actor==self.ActiveModel and self.Trainer and(self.WorldCupOnboardingTrainer or not UserInputService.TouchEnabled)then self.Trainer:NotifyAction("Shoot")end
 	elseif payload.Type=="ReceiveBall"and payload.Model==self.ActiveModel then self.Animation:Play("Receive")
-	elseif payload.Type=="Tackle"then local controller=self.AnimationCache and self.AnimationCache[payload.Actor];if controller then controller:Play("Tackle")end;if payload.Actor==self.ActiveModel and self.Trainer and not UserInputService.TouchEnabled then self.Trainer:NotifyAction("Tackle")end
+	elseif payload.Type=="Tackle"then local controller=self.AnimationCache and self.AnimationCache[payload.Actor];if controller then controller:Play("Tackle")end;if payload.Actor==self.ActiveModel and self.Trainer and(self.WorldCupOnboardingTrainer or not UserInputService.TouchEnabled)then self.Trainer:NotifyAction("Tackle")end
 	elseif payload.Type=="SlideTackle"then local controller=self.AnimationCache and self.AnimationCache[payload.Actor];if controller then controller:Play("SlideTackle")end;self.HUD:Flash("SLIDE TACKLE",.55)
 	elseif payload.Type=="DribbleMove"then local controller=self.AnimationCache and self.AnimationCache[payload.Actor];if controller then controller:Play(payload.Animation or"DribbleMove1")end
 	elseif payload.Type=="Block"then if self.HUD then self.HUD:ResolveShotChance(false)end;self.HUD:Flash("SHOT BLOCKED",.6)
@@ -1255,7 +1733,7 @@ function Controller:_state(payload:any)
 	elseif payload.Type=="GoalkeeperSave"then if self.HUD then self.HUD:ResolveShotChance(false)end;if self.Visual then self.Visual:StopShotTrail();self.Visual:SnapTo(self.Ball.Position,Vector3.zero,.18);task.delay(.08,function()if self.Visual and self.Ball then self.Visual:SnapTo(self.Ball.Position,Vector3.zero,.14)end end)end;if self.GoalTarget then self.GoalTarget:Unlock()end;if self.Camera and self.Camera.EndCutscene then task.delay(self.SetPieceKind=="Penalty"and .65 or 1.5,function()if self.Camera then self.Camera:EndCutscene()end end)end;self.HUD:Flash("GREAT SAVE",.9)
 	elseif payload.Type=="GoalkeeperClaim"then if self.Visual then self.Visual:StopShotTrail();self.Visual:SnapTo(self.Ball.Position,Vector3.zero,.18);task.delay(.08,function()if self.Visual and self.Ball then self.Visual:SnapTo(self.Ball.Position,Vector3.zero,.14)end end)end;if self.GoalTarget then self.GoalTarget:Unlock()end
 	elseif payload.Type=="GoalkeeperMiss"then if self.Camera and self.Camera.EndCutscene then task.delay(self.SetPieceKind=="Penalty"and .65 or 1.0,function()if self.Camera then self.Camera:EndCutscene()end end)end
-	elseif payload.Type=="Clock"then workspace:SetAttribute("VTRMatchHalf",tonumber(payload.Half)or 1);self.MatchGameSeconds=tonumber(payload.GameSeconds)or self.MatchGameSeconds;if tonumber(payload.Half)~=2 then self:_resetSecondHalfWatchdog()end;if self.HUD and self.HUD.SetSecondHalfResetVisible then self.HUD:SetSecondHalfResetVisible((tonumber(payload.Half)or 1)==2 and (tonumber(payload.GameSeconds)or 0)<=3000 and self.HalfTimePauseActive~=true)end;self.Stamina=tonumber(payload.Stamina)or self.Stamina;self.Endurance=tonumber(payload.Endurance)or self.Endurance;self.HUD:SetClock(payload.GameSeconds or 0,payload.Home,payload.Away,payload.AddedMinutes,payload.InAddedTime,payload.AddedElapsed);self.HUD:UpdateActiveRating()
+	elseif payload.Type=="Clock"then workspace:SetAttribute("VTRMatchHalf",tonumber(payload.Half)or 1);self.MatchGameSeconds=tonumber(payload.GameSeconds)or self.MatchGameSeconds;if self.AscensionManagerPanel then self.AscensionManagerPanel:SetHalf(tonumber(payload.Half)or 1)end;if tonumber(payload.Half)~=2 then self:_resetSecondHalfWatchdog()end;if self.HUD and self.HUD.SetSecondHalfResetVisible then self.HUD:SetSecondHalfResetVisible((tonumber(payload.Half)or 1)==2 and (tonumber(payload.GameSeconds)or 0)<=3000 and self.HalfTimePauseActive~=true)end;self.Stamina=tonumber(payload.Stamina)or self.Stamina;self.Endurance=tonumber(payload.Endurance)or self.Endurance;self.HUD:SetClock(payload.GameSeconds or 0,payload.Home,payload.Away,payload.AddedMinutes,payload.InAddedTime,payload.AddedElapsed);self.HUD:UpdateActiveRating()
 	elseif payload.Type=="Kickoff"then if self.Visual then self.Visual:StopShotTrail()end;self.HUD:Flash("Kick Off",1)
 	elseif payload.Type=="GoalSoundPreview"then if self.MatchSounds and self.MatchSounds.PlayGoalPreview then self.MatchSounds:PlayGoalPreview()end
 	elseif payload.Type=="GoalSoundPreview"then if self.MatchSounds and self.MatchSounds.PlayGoalPreview then self.MatchSounds:PlayGoalPreview()end
@@ -1264,7 +1742,16 @@ function Controller:_state(payload:any)
 	elseif payload.Type=="Info"then if payload.Important==true then self.HUD:Flash(payload.Message,1.3)end
 	elseif payload.Type=="PenaltyShootout"then if self.HUD and self.HUD.ShowPenaltyShootout then self.HUD:ShowPenaltyShootout(payload)end
 	elseif payload.Type=="MatchEnded"then
+		if self.AscensionManagerPanel then self.AscensionManagerPanel:Destroy();self.AscensionManagerPanel=nil end
+		self.PrematchActive=false
+		self.PrematchSkipRequested=true
+		self.ReplayBlocking=false
+		self.ReplayQueuedPayloads=nil
+		self.ReplayQueuedClock=nil
+		if self.Cutscenes then self.Cutscenes:SkipStadiumIntro()end
 		self:_hideGoalCelebrationOverlay()
+		self:_hideTutorialStartButton()
+		self:_hideTutorialOverlay()
 		if self.MatchSounds then self.MatchSounds:PlayFinalWhistle()end
 		RunService:UnbindFromRenderStep("VTRMatchGameplay")
 		self:_destroyPracticeTuningPanel()
@@ -1286,6 +1773,7 @@ function Controller:_state(payload:any)
 		self.AimLine:Destroy();self.AimLine=nil
 		self.GoalTarget:Destroy();self.GoalTarget=nil
 		self.Cutscenes:Destroy();self.Cutscenes=nil
+		for _,connection in self.FreeKickTouchConnections or{}do connection:Disconnect()end;self.FreeKickTouchConnections=nil;self.FreeKickTouchPanInput=nil;self.FreeKickTouchPanLast=nil;self.FreeKickTouchPanVector=nil
 		ContextActionService:UnbindAction(PAUSE_ACTION)
 		if self.PauseConnection then self.PauseConnection:Disconnect();self.PauseConnection=nil end
 		local function showResult()
@@ -1310,11 +1798,12 @@ function Controller:_state(payload:any)
 	end
 end
 function Controller:_cleanup(restoreMenu:boolean)
-	RunService:UnbindFromRenderStep("VTRMatchGameplay");ContextActionService:UnbindAction(PAUSE_ACTION);if self.PauseConnection then self.PauseConnection:Disconnect();self.PauseConnection=nil end;self:_hideGoalCelebrationOverlay();self:_destroyPracticeTuningPanel();if self.CornerAim then self.CornerAim:Destroy();self.CornerAim=nil end;if self.CornerCamera then self.CornerCamera:Destroy();self.CornerCamera=nil end;if self.Input then self.Input:Destroy()end;if self.InputLock then self.InputLock:Destroy()end;if self.Camera then self.Camera:Destroy()end;if self.Visual then self.Visual:Destroy()end;if self.BallRoll then self.BallRoll:Destroy()end;if self.FlightMarker then self.FlightMarker:Destroy();self.FlightMarker=nil end;if self.ReplayController then self.ReplayController:Destroy();self.ReplayController=nil end;if self.MatchSounds then self.MatchSounds:Destroy();self.MatchSounds=nil end;if self.CrowdAmbience then self.CrowdAmbience:Destroy();self.CrowdAmbience=nil end;if self.Commentary then self.Commentary:Destroy();self.Commentary=nil end;for _,controller in self.AnimationCache or{}do controller:Destroy()end;self.AnimationCache={};self.Animation=nil;if self.TeamControl then self.TeamControl:Destroy()end;if self.Indicators then self.Indicators:Destroy()end;if self.Trainer then self.Trainer:Destroy()end;if self.Minimap then self.Minimap:Destroy()end;if self.AimLine then self.AimLine:Destroy()end;if self.GoalTarget then self.GoalTarget:Destroy()end;if self.Cutscenes then self.Cutscenes:Destroy()end;if self.HUD then self.HUD:Destroy()end;if self.Controls then self.Controls:Enable()end;self.Active=false;self.MatchStartKey=nil;self.ActivatingMatchKey=nil;self.MatchActivationRunningKey=nil
+	if self.AscensionManagerPanel then self.AscensionManagerPanel:Destroy();self.AscensionManagerPanel=nil end
+	RunService:UnbindFromRenderStep("VTRMatchGameplay");ContextActionService:UnbindAction(PAUSE_ACTION);if self.PauseConnection then self.PauseConnection:Disconnect();self.PauseConnection=nil end;for _,connection in self.FreeKickTouchConnections or{}do connection:Disconnect()end;self.FreeKickTouchConnections=nil;self.FreeKickTouchPanInput=nil;self.FreeKickTouchPanLast=nil;self.FreeKickTouchPanVector=nil;self.TutorialShootingMode=false;self.TutorialGoalSign=nil;self:_hideGoalCelebrationOverlay();self:_hideTutorialStartButton();self:_hideTutorialOverlay();self:_destroyPracticeTuningPanel();if self.CornerAim then self.CornerAim:Destroy();self.CornerAim=nil end;if self.CornerCamera then self.CornerCamera:Destroy();self.CornerCamera=nil end;if self.Input then self.Input:Destroy()end;if self.InputLock then self.InputLock:Destroy()end;if self.Camera then self.Camera:Destroy()end;if self.Visual then self.Visual:Destroy()end;if self.BallRoll then self.BallRoll:Destroy()end;if self.FlightMarker then self.FlightMarker:Destroy();self.FlightMarker=nil end;if self.ReplayController then self.ReplayController:Destroy();self.ReplayController=nil end;if self.MatchSounds then self.MatchSounds:Destroy();self.MatchSounds=nil end;if self.CrowdAmbience then self.CrowdAmbience:Destroy();self.CrowdAmbience=nil end;if self.Commentary then self.Commentary:Destroy();self.Commentary=nil end;for _,controller in self.AnimationCache or{}do controller:Destroy()end;self.AnimationCache={};self.Animation=nil;if self.TeamControl then self.TeamControl:Destroy()end;if self.Indicators then self.Indicators:Destroy()end;if self.Trainer then self.Trainer:Destroy()end;if self.Minimap then self.Minimap:Destroy()end;if self.AimLine then self.AimLine:Destroy()end;if self.GoalTarget then self.GoalTarget:Destroy()end;if self.Cutscenes then self.Cutscenes:Destroy()end;if self.HUD then self.HUD:Destroy()end;if self.Controls then self.Controls:Enable()end;self.Active=false;self.MatchStartKey=nil;self.ActivatingMatchKey=nil;self.MatchActivationRunningKey=nil
 	if restoreMenu then
 		Players.LocalPlayer:SetAttribute("VTRInMatch",false)
 		setMenuVisible(true)
-		clearGreenScreenEffects()
+		MatchVisualCleanupService.Apply(nil)
 	end
 end
 local function vtrClearSetPiecePreviewObjects()

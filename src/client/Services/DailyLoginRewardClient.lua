@@ -15,6 +15,8 @@ local showing = false
 local Client = {}
 
 local function suppressDailyLogin(): boolean
+	local player = game:GetService("Players").LocalPlayer
+	if player and player:GetAttribute("VTRDailyLoginSuppressed") == true then return true end
 	local data = TeleportService:GetLocalPlayerTeleportData()
 	if type(data) ~= "table" then return false end
 	return data.MatchMode == "Ranked1v1" or data.MatchMode == "AICampaignSolo" or data.MatchMode == "WorldCupSolo" or data.WorldCup == true

@@ -1,72 +1,163 @@
 --!strict
-local UserInputService = game:GetService("UserInputService")
+
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local Config = require(ReplicatedStorage.VTR.Shared.GameplayConfig)
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+
+local ActionTuning = require(ReplicatedStorage.VTR.Shared.ActionTuningConfig)
+local ReceiverAssistConfig = require(ReplicatedStorage.VTR.Shared.ReceiverAssistConfig)
 local VoltraLiteMobileControls = require(script:FindFirstAncestor("VTRClient").Components.VoltraLiteMobileControls)
-local DeviceScaleService = require(script:FindFirstAncestor("VTRClient").Services.DeviceScaleService)
 
 local Controller = {}
 Controller.__index = Controller
 
-local function keyFromSetting(value:any,fallback:Enum.KeyCode):Enum.KeyCode
-	if typeof(value)=="EnumItem" and value.EnumType==Enum.KeyCode then return value end
-	if type(value)~="string"or value==""then return fallback end
-	local map={Ctrl=Enum.KeyCode.LeftControl,Control=Enum.KeyCode.LeftControl,Alt=Enum.KeyCode.LeftAlt,Shift=Enum.KeyCode.LeftShift,MouseRight=Enum.KeyCode.Unknown}
-	local mapped=map[value]
-	if mapped then return mapped end
-	local ok,key=pcall(function()return Enum.KeyCode[value]end)
-	return ok and key or fallback
+local movementKeys = {
+	[Enum.KeyCode.W] = true,
+	[Enum.KeyCode.A] = true,
+	[Enum.KeyCode.S] = true,
+	[Enum.KeyCode.D] = true,
+}
+
+local modifierKeys = {
+	[Enum.KeyCode.LeftAlt] = true,
+	[Enum.KeyCode.RightAlt] = true,
+	[Enum.KeyCode.LeftControl] = true,
+	[Enum.KeyCode.RightControl] = true,
+	[Enum.KeyCode.LeftShift] = true,
+	[Enum.KeyCode.RightShift] = true,
+}
+
+local function keyFromSetting(value: any, fallback: Enum.KeyCode): Enum.KeyCode
+	if typeof(value) == "EnumItem" and value.EnumType == Enum.KeyCode then
+		return value
+	end
+	if type(value) ~= "string" or value == "" then
+		return fallback
+	end
+	local aliases = {Ctrl = Enum.KeyCode.LeftControl, Control = Enum.KeyCode.LeftControl, Alt = Enum.KeyCode.LeftAlt, Shift = Enum.KeyCode.LeftShift}
+	if aliases[value] then
+		return aliases[value]
+	end
+	local ok, key = pcall(function()
+		return Enum.KeyCode[value]
+	end)
+	return if ok then key else fallback
 end
 
-local function down(keys:{[Enum.KeyCode]:boolean},key:Enum.KeyCode):boolean
-	return key~=Enum.KeyCode.Unknown and keys[key]==true
+local function keyDown(keys: {[Enum.KeyCode]: boolean}, left: Enum.KeyCode, right: Enum.KeyCode): boolean
+	return keys[left] == true or keys[right] == true
 end
 
-function Controller.new(remote: RemoteEvent, aim: (string?,number?) -> any)
-	return setmetatable({Remote = remote, Aim = aim, Keys = {}, Charge = nil, PendingAction = nil, Connections = {}, AutoSwitch = "Assisted", ReceiverAssist = "Light", FreeKickCurve = 0, FreeKickLift = 0, LastFreeKickAt = 0, ManualPassKey = Enum.KeyCode.LeftControl, LobbedPassKey = Enum.KeyCode.LeftAlt, ChangePlayerKey = Enum.KeyCode.Q, TackleKey = Enum.KeyCode.E, SlideTackleKey = Enum.KeyCode.F, GamepadMove = Vector2.zero, GamepadAim = Vector2.zero, Defending = false, HasBall = false, ReceivingPass = false, SprintToggle = false, ShootingOnly = false, ActionLockedUntil = 0, IgnoredActionKeys = {}, ShotMode = "Normal", LastActionSent = {}}, Controller)
+function Controller.new(remote: RemoteEvent, aim: (string?, number?) -> any)
+	return setmetatable({
+		Remote = remote,
+		Aim = aim,
+		Keys = {},
+		Charge = nil,
+		PendingAction = nil,
+		Connections = {},
+		AutoSwitch = "Standard",
+		ManualPassAutoSwitch = "Manual",
+		ReceiverAssist = "Standard",
+		FreeKickCurve = 0,
+		FreeKickLift = 0,
+		LastFreeKickAt = 0,
+		ManualPassKey = Enum.KeyCode.LeftControl,
+		LobbedPassKey = Enum.KeyCode.LeftAlt,
+		ThroughPassKey = Enum.KeyCode.E,
+		ChangePlayerKey = Enum.KeyCode.Q,
+		TackleKey = Enum.KeyCode.E,
+		SlideTackleKey = Enum.KeyCode.F,
+		GamepadMove = Vector2.zero,
+		GamepadAim = Vector2.zero,
+		Defending = false,
+		HasBall = false,
+		ReceivingPass = false,
+		ReceiveArrivalSeconds = nil,
+		SprintRequested = false,
+		SprintAllowed = false,
+		SprintActual = false,
+		SprintToggle = false,
+		SprintKeepaliveAt = 0,
+		ShootingOnly = false,
+		ActionLockedUntil = 0,
+		IgnoredActionKeys = {},
+		ShotMode = "Normal",
+		LastActionSent = {},
+		KickSequence = 0,
+	}, Controller)
 end
 
-function Controller:SetShotModeChanged(callback:any)
-	self.ShotModeChanged=callback
-	if callback then callback(self.ShotMode)end
+function Controller:SetShotModeChanged(callback: any)
+	self.ShotModeChanged = callback
+	if callback then
+		callback(self.ShotMode)
+	end
 end
 
-function Controller:SetShotMode(mode:string)
-	mode=mode=="Finesse"and"Finesse"or mode=="LowDriven"and"LowDriven"or"Normal"
-	if self.ShotMode==mode then return end
-	self.ShotMode=mode
-	if self.ShotModeChanged then self.ShotModeChanged(mode)end
+function Controller:SetShotMode(mode: string)
+	mode = if mode == "Finesse" then "Finesse" elseif mode == "LowDriven" then "LowDriven" else "Normal"
+	if self.ShotMode == mode then
+		return
+	end
+	self.ShotMode = mode
+	if self.ShotModeChanged then
+		self.ShotModeChanged(mode)
+	end
 end
 
 function Controller:SetAutoSwitch(mode: string?)
-	self.AutoSwitch = mode == "Off" and "Off" or mode == "Instant" and "Instant" or "Assisted"
+	self.AutoSwitch = ReceiverAssistConfig.Normalize(mode)
 end
 
 function Controller:SetManualPassAutoSwitch(mode: string?)
-	self.ManualPassAutoSwitch = mode == "Off" and "Off" or "Closest"
+	self.ManualPassAutoSwitch = ReceiverAssistConfig.Normalize(mode, "Manual")
 end
 
 function Controller:SetReceiverAssist(mode: string?)
-	self.ReceiverAssist = mode == "Off" and "Off" or mode == "Assisted" and "Assisted" or "Light"
+	self.ReceiverAssist = ReceiverAssistConfig.Normalize(mode)
 end
 
-function Controller:SetControlsSettings(settings:any)
-	settings=settings or{}
-	self.ManualPassKey=keyFromSetting(settings.ManualPassKey or settings.ManualPassModifier or settings.ManualPass,Enum.KeyCode.LeftControl)
-	self.LobbedPassKey=keyFromSetting(settings.LobbedPassKey or settings.LobPassKey or settings.LobbedPass,Enum.KeyCode.LeftAlt)
-	self.ChangePlayerKey=keyFromSetting(settings.ChangePlayerKey or settings.SwitchPlayerKey or settings.SwitchKey,Enum.KeyCode.Q)
-	self.TackleKey=keyFromSetting(settings.TackleKey,Enum.KeyCode.E)
-	self.SlideTackleKey=keyFromSetting(settings.SlideTackleKey or settings.SlideKey,Enum.KeyCode.F)
-	self:SetManualPassAutoSwitch(settings.ManualPassAutoSwitch or "Closest")
+function Controller:SetControlsSettings(settings: any)
+	settings = settings or {}
+	self.ManualPassKey = keyFromSetting(settings.ManualPassKey or settings.ManualPassModifier or settings.ManualPass, Enum.KeyCode.LeftControl)
+	self.LobbedPassKey = keyFromSetting(settings.LobbedPassKey or settings.LobPassKey or settings.LobbedPass, Enum.KeyCode.LeftAlt)
+	self.ThroughPassKey = keyFromSetting(settings.ThroughPassKey, Enum.KeyCode.E)
+	self.ChangePlayerKey = keyFromSetting(settings.ChangePlayerKey or settings.SwitchPlayerKey or settings.SwitchKey, Enum.KeyCode.Q)
+	self.TackleKey = keyFromSetting(settings.TackleKey, Enum.KeyCode.E)
+	self.SlideTackleKey = keyFromSetting(settings.SlideTackleKey or settings.SlideKey, Enum.KeyCode.F)
+	self:SetAutoSwitch(settings.PassReceiverAutoSwitch or settings.ReceiverAssistMode)
+	self:SetManualPassAutoSwitch(settings.ManualPassAutoSwitch)
+	self:SetReceiverAssist(settings.ReceiverAssistMode or settings.ReceiverAssist)
+	self.MobileSprintMode = settings.MobileSprintMode == "Hold" and "Hold" or "Toggle"
+	self.MobileControlHandedness = settings.MobileControlHandedness == "Left" and "Left" or "Right"
+	if self.MobileControls then
+		self.MobileControls:SetPreferences(self.MobileSprintMode, self.MobileControlHandedness)
+	end
 end
 
-function Controller:SetSuppressed(suppressed:boolean)
-	self.Suppressed=suppressed
-	if suppressed then
-		self.Charge=nil
+function Controller:_cancelPending(reason: string, report: boolean?)
+	if not self.PendingAction then
+		return
+	end
+	self.PendingAction = nil
+	if report ~= false then
+		self.Remote:FireServer({Type = "ActionQueueCancelled", Reason = string.sub(reason, 1, 32)})
+	end
+end
+
+function Controller:SetSuppressed(suppressed: boolean)
+	self.Suppressed = suppressed == true
+	if self.Suppressed then
+		self.Charge = nil
+		self:_cancelPending("suppressed")
+		self:SetSprintRequested(false)
 	else
-		for _,key in {Enum.KeyCode.W, Enum.KeyCode.A, Enum.KeyCode.S, Enum.KeyCode.D, Enum.KeyCode.LeftShift, Enum.KeyCode.RightShift, Enum.KeyCode.LeftAlt, Enum.KeyCode.RightAlt, Enum.KeyCode.LeftControl, Enum.KeyCode.RightControl} do
+		for key in movementKeys do
+			self.Keys[key] = UserInputService:IsKeyDown(key) or nil
+		end
+		for key in modifierKeys do
 			self.Keys[key] = UserInputService:IsKeyDown(key) or nil
 		end
 	end
@@ -82,7 +173,8 @@ end
 function Controller:LockActions(duration: number?)
 	self.ActionLockedUntil = math.max(self.ActionLockedUntil or 0, os.clock() + math.max(0, duration or 0))
 	self.Charge = nil
-	self.PendingAction = nil
+	self:_cancelPending("action_locked")
+	self:SetSprintRequested(false)
 	table.clear(self.IgnoredActionKeys)
 	for _, key in {Enum.KeyCode.ButtonA, Enum.KeyCode.ButtonB, Enum.KeyCode.ButtonX, Enum.KeyCode.ButtonY} do
 		if UserInputService:IsKeyDown(key) then
@@ -91,18 +183,18 @@ function Controller:LockActions(duration: number?)
 	end
 end
 
-function Controller:SetShootingOnly(active:boolean)
+function Controller:SetShootingOnly(active: boolean)
 	self.ShootingOnly = active == true
 	if self.ShootingOnly then
-		if self.Charge and self.Charge.Kind ~= "Shot" then self.Charge = nil end
-		self.PendingAction = nil
-		self.SprintToggle = false
-		table.clear(self.Keys)
-		if self.MobileControls and self.MobileControls.SetShootingOnly then
-			self.MobileControls:SetShootingOnly(true)
+		if self.Charge and self.Charge.Kind ~= "Shot" then
+			self.Charge = nil
 		end
-	elseif self.MobileControls and self.MobileControls.SetShootingOnly then
-		self.MobileControls:SetShootingOnly(false)
+		self:_cancelPending("shooting_only")
+		self:SetSprintRequested(false)
+		table.clear(self.Keys)
+	end
+	if self.MobileControls then
+		self.MobileControls:SetShootingOnly(self.ShootingOnly)
 	end
 end
 
@@ -110,8 +202,8 @@ function Controller:ActionsLocked(): boolean
 	return os.clock() < (self.ActionLockedUntil or 0)
 end
 
-function Controller:_aim(kind: string,charge:number?): any
-	local value = self.Aim(kind,charge)
+function Controller:_aim(kind: string, charge: number?): any
+	local value = self.Aim(kind, charge)
 	if type(value) == "table" then
 		return value
 	end
@@ -119,258 +211,304 @@ function Controller:_aim(kind: string,charge:number?): any
 end
 
 function Controller:_chargeStart(kind: string, options: any?)
-	if self:ActionsLocked() then return end
-	if self.ShootingOnly and kind ~= "Shot" then return end
+	if self:ActionsLocked() or self.Suppressed then
+		return
+	end
+	if self.ShootingOnly and kind ~= "Shot" then
+		return
+	end
 	if not self.Charge then
 		self.Charge = {Kind = kind, Started = os.clock(), Options = options or {}}
 	end
 end
 
-function Controller:_passKeyMode(key: Enum.KeyCode): string?
-	if key == self.ManualPassKey or key == Enum.KeyCode.LeftControl or key == Enum.KeyCode.RightControl then
-		return "Manual"
+function Controller:_chargeAction(charge: any): string
+	if charge.Kind == "Shot" then
+		return "Shot"
 	end
+	return ActionTuning.NormalizeAction(charge.Options and charge.Options.PassMode or "Ground")
+end
 
-	if key == self.LobbedPassKey or key == Enum.KeyCode.LeftAlt or key == Enum.KeyCode.RightAlt then
-		return "ManualLobbed"
+function Controller:_chargeScalar(charge: any): number
+	return ActionTuning.NormalizedCharge(self:_chargeAction(charge), os.clock() - charge.Started)
+end
+
+function Controller:_selectedDesktopPass(): (string, boolean)
+	local alt = keyDown(self.Keys, Enum.KeyCode.LeftAlt, Enum.KeyCode.RightAlt)
+	local control = keyDown(self.Keys, Enum.KeyCode.LeftControl, Enum.KeyCode.RightControl)
+	local through = self.Keys[self.ThroughPassKey] == true
+	if alt then
+		return "Lob", control
 	end
-
-	return nil
+	if through then
+		return "Through", false
+	end
+	return "Ground", control
 end
 
 function Controller:_chargeEnd(kind: string)
-	if self:ActionsLocked() then self.Charge = nil;return end
 	local current = self.Charge
 	if not current or current.Kind ~= kind then
 		return
 	end
-	local charge = math.clamp((os.clock() - current.Started) / (Config.Ball.MaxChargeTime / 3), 0, 1)
 	self.Charge = nil
+	if self:ActionsLocked() or self.Suppressed then
+		return
+	end
 	local options = current.Options or {}
-	local aimKind = options.AimKind or kind
-	local aim = self:_aim(aimKind,charge)
+	local normalized = self:_chargeScalar(current)
+	local aim = self:_aim(options.AimKind or kind, normalized)
 	if kind == "Shot" then
 		if aim.PenaltyDefense == true then
 			self:_commitAction({Type = "PenaltyGuess", AimPosition = aim.Position, PenaltySlot = aim.PenaltySlot})
 			return
 		end
 		if options.ClearanceIfFar and aim.GoalTarget ~= true then
-			self:_commitAction({Type = "Clearance", Direction = aim.Direction, Charge = charge})
+			self:_commitAction({Type = "Clearance", Direction = aim.Direction, Charge = normalized, ActionFamily = "Clearance"})
 			return
 		end
-		self:_commitAction({Type = "Shot", Direction = aim.Direction, AimPosition = aim.Position, GoalTarget = aim.GoalTarget, Charge = charge, FreeKickCurve = aim.FreeKickCurve, FreeKickLift = aim.FreeKickLift, PenaltySlot = aim.PenaltySlot, ShotVariant = self.ShotMode})
-	else
-		local altDown = down(self.Keys,self.LobbedPassKey) or self.Keys[Enum.KeyCode.RightAlt] == true
-		local ctrlDown = down(self.Keys,self.ManualPassKey) or self.Keys[Enum.KeyCode.RightControl] == true
-		local manualLobbed = altDown
-		local manual = ctrlDown and not manualLobbed
-		local lofted = false
-		local through=not manualLobbed and not manual and not lofted and self.Keys[Enum.KeyCode.W] == true and charge >= 0.18
-		local mobileMode = self:MobilePassMode()
-		local forcedMode = options.PassMode
-		if forcedMode == "Manual" and self.Keys[Enum.KeyCode.ButtonR1] == true then
-			forcedMode = "ManualLobbed"
-		end
-		local passType=forcedMode or mobileMode or manualLobbed and"ManualLobbed"or manual and"Manual"or lofted and"Lofted"or through and"Through"or"Ground"
-		local isMobile = self.MobileControls ~= nil
-		local isManual = passType == "Manual" or passType == "ManualLobbed" or manual or manualLobbed or self:MobileManualAim("Pass")
-		local autoSwitch = isMobile and "Instant" or (isManual and (self.ManualPassAutoSwitch or "Off") or self.AutoSwitch)
-		local receiverAssist = isMobile and "Assisted" or (isManual and "Off" or self.ReceiverAssist)
-		self:_commitAction({Type = "Pass", Direction = aim.Direction, AimPosition = aim.Position, TargetModel = isManual and nil or aim.TargetModel, Charge = charge, PassType = passType, AutoSwitch = autoSwitch, ReceiverAssist = receiverAssist})
+		self:_commitAction({Type = "Shot", Direction = aim.Direction, AimPosition = aim.Position, GoalTarget = aim.GoalTarget, Charge = normalized, FreeKickCurve = aim.FreeKickCurve, FreeKickLift = aim.FreeKickLift, CurveAxis = math.clamp(tonumber(aim.FreeKickCurve) or 0, -1, 1), PenaltySlot = aim.PenaltySlot, ShotVariant = self.ShotMode, ActionFamily = "Shot"})
+		return
 	end
+	local mobileMode = self:MobilePassMode()
+	local passType = ActionTuning.NormalizeAction(mobileMode or options.PassMode or "Ground")
+	local manualAim = options.ManualAim == true or self:MobileManualAim("Pass")
+	local autoSwitch = if manualAim then self.ManualPassAutoSwitch else self.AutoSwitch
+	local receiverAssist = if manualAim then "Manual" else self.ReceiverAssist
+	self:_commitAction({Type = "Pass", Direction = aim.Direction, AimPosition = aim.Position, TargetModel = if manualAim then nil else aim.TargetModel, Charge = normalized, PassType = passType, AutoSwitch = autoSwitch, ReceiverAssistMode = receiverAssist, ReceiverAssist = receiverAssist, ManualAim = manualAim, CurveAxis = 0, ActionFamily = passType})
 end
 
 function Controller:_commitAction(payload: any)
-	if self:ActionsLocked() then return end
-	if self.ShootingOnly and payload.Type ~= "Shot" and payload.Type ~= "PenaltyGuess" then return end
+	if self:ActionsLocked() or self.Suppressed then
+		return
+	end
+	if self.ShootingOnly and payload.Type ~= "Shot" and payload.Type ~= "PenaltyGuess" then
+		return
+	end
 	local actionType = tostring(payload.Type or "")
-	if actionType == "Pass" or actionType == "Shot" or actionType == "Clearance" then
+	local needsPossession = actionType == "Pass" or actionType == "Shot" or actionType == "Clearance"
+	if needsPossession then
 		local now = os.clock()
 		local last = tonumber(self.LastActionSent[actionType]) or 0
 		if now - last < 0.08 then
 			return
 		end
 		self.LastActionSent[actionType] = now
+		self.KickSequence += 1
+		payload.SequenceId = self.KickSequence
+		payload.ClientTime = now
+		if self.HasBall then
+			self.Remote:FireServer(payload)
+		elseif self.ReceivingPass then
+			local duration = if self.ReceiveArrivalSeconds and self.ReceiveArrivalSeconds <= ActionTuning.QueueImminentArrivalSeconds then ActionTuning.QueueImminentSeconds else ActionTuning.QueueNormalSeconds
+			self.PendingAction = {Payload = payload, CreatedAt = now, ExpiresAt = now + duration}
+		end
+		return
 	end
-	if self.HasBall then
-		self.Remote:FireServer(payload)
-	elseif self.ReceivingPass then
-		self.PendingAction = {Payload = payload, CreatedAt = os.clock()}
-	end
+	self.Remote:FireServer(payload)
 end
 
-function Controller:SetActionContext(hasBall: boolean, receivingPass: boolean)
+function Controller:SetActionContext(hasBall: boolean, receivingPass: boolean, context: any?)
+	local hadBall = self.HasBall
+	local wasReceiving = self.ReceivingPass
 	self.HasBall = hasBall == true
 	self.ReceivingPass = receivingPass == true
+	self.ReceiveArrivalSeconds = type(context) == "table" and math.max(0, tonumber(context.ArrivalSeconds) or math.huge) or nil
 	if self.HasBall and self.PendingAction then
 		local pending = self.PendingAction
 		self.PendingAction = nil
-		self.Remote:FireServer(pending.Payload)
-	elseif not self.ReceivingPass and self.PendingAction then
-		self.PendingAction = nil
-	elseif self.PendingAction and os.clock() - (self.PendingAction.CreatedAt or 0) > 4.5 then
-		self.PendingAction = nil
+		if os.clock() <= (tonumber(pending.ExpiresAt) or 0) then
+			self.Remote:FireServer(pending.Payload)
+		end
+	elseif self.PendingAction and os.clock() > (tonumber(self.PendingAction.ExpiresAt) or 0) then
+		self:_cancelPending("expired")
+	elseif self.PendingAction and wasReceiving and not self.ReceivingPass and not self.HasBall then
+		self:_cancelPending("possession_lost")
+	elseif self.PendingAction and hadBall and not self.HasBall and not self.ReceivingPass then
+		self:_cancelPending("opponent_collected")
 	end
+end
+
+function Controller:IsActionQueued(): boolean
+	return self.PendingAction ~= nil and os.clock() <= (tonumber(self.PendingAction.ExpiresAt) or 0)
 end
 
 function Controller:_stickVector(input: InputObject): Vector2
 	local raw = Vector2.new(input.Position.X, input.Position.Y)
-	return raw.Magnitude > 0.14 and raw or Vector2.zero
+	return if raw.Magnitude > 0.14 then raw else Vector2.zero
+end
+
+function Controller:SetSprintAllowed(allowed: boolean)
+	self.SprintAllowed = allowed == true
+	if not self.SprintAllowed then
+		self:SetSprintRequested(false)
+	else
+		self.SprintActual = self.SprintRequested
+	end
+	if self.MobileControls then
+		self.MobileControls:SetSprintState(self.SprintRequested, self.SprintActual, self.SprintAllowed, false)
+	end
+end
+
+function Controller:SetSprintActual(actual: boolean, exhausted: boolean?)
+	self.SprintActual = actual == true and self.SprintAllowed
+	if self.MobileControls then
+		self.MobileControls:SetSprintState(self.SprintRequested, self.SprintActual, self.SprintAllowed, exhausted == true)
+	end
+end
+
+function Controller:SetSprintRequested(active: boolean)
+	active = active == true and self.SprintAllowed and not self.ShootingOnly and not self.Suppressed
+	if self.SprintRequested == active then
+		return
+	end
+	self.SprintRequested = active
+	self.SprintToggle = active
+	self.SprintActual = active and self.SprintAllowed
+	self.SprintKeepaliveAt = os.clock()
+	self.Remote:FireServer({Type = "Sprint", Active = active})
+	if self.MobileControls then
+		self.MobileControls:SetSprintState(self.SprintRequested, self.SprintActual, self.SprintAllowed, false)
+	end
+end
+
+function Controller:SetSprint(active: boolean)
+	self:SetSprintRequested(active)
 end
 
 function Controller:ToggleSprint()
-	self.SprintToggle = not self.SprintToggle
-	self.Remote:FireServer({Type = "Sprint", Active = self.SprintToggle})
+	self:SetSprintRequested(not self.SprintRequested)
 end
 
 function Controller:_switchPlayer()
-	local aim=self:_aim("Switch")
-	local gamepad=UserInputService:GetLastInputType().Name:find("Gamepad")~=nil
-	local closestToBall=UserInputService.TouchEnabled or gamepad
-	self.Remote:FireServer({Type = "Switch",TargetModel=closestToBall and nil or aim.TargetModel,AimPosition=aim.Position,ClosestToBall=closestToBall})
+	self:_cancelPending("player_switch")
+	local aim = self:_aim("Switch")
+	local gamepad = string.find(UserInputService:GetLastInputType().Name, "Gamepad", 1, true) ~= nil
+	local closestToBall = UserInputService.TouchEnabled or gamepad
+	self.Remote:FireServer({Type = "Switch", TargetModel = if closestToBall then nil else aim.TargetModel, AimPosition = aim.Position, ClosestToBall = closestToBall})
 end
 
+function Controller:BeginMobileAction(kind: string, options: any?)
+	self:_chargeStart(kind, options)
+end
+
+function Controller:EndMobileAction(kind: string)
+	self:_chargeEnd(kind)
+end
+
+function Controller:CancelMobileAction(kind: string)
+	if self.Charge and self.Charge.Kind == kind then
+		self.Charge = nil
+		self.Remote:FireServer({Type = "MobileActionCancelled", ActionFamily = kind})
+	end
+end
+
+function Controller:TriggerMobileAction(action: string)
+	if action == "Switch" then
+		self:_switchPlayer()
+	elseif action == "Tackle" then
+		self.Remote:FireServer({Type = "Tackle"})
+	elseif action == "SlideTackle" then
+		self.Remote:FireServer({Type = "SlideTackle"})
+	elseif action == "Block" then
+		self.Remote:FireServer({Type = "Block", Active = true})
+	elseif action == "Skill" then
+		local aim = self:_aim("Skill")
+		self.Remote:FireServer({Type = "DribbleMove", Direction = aim.Direction})
+	end
+end
 
 function Controller:Start()
 	if UserInputService.TouchEnabled then
 		self.MobileControls = VoltraLiteMobileControls.new(self)
+		self.MobileControls:SetPreferences(self.MobileSprintMode or "Toggle", self.MobileControlHandedness or "Right")
 	end
 	table.insert(self.Connections, UserInputService.InputBegan:Connect(function(input, processed)
-		local isMouseAction = input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.MouseButton2
-		if self.Suppressed or (processed and not isMouseAction) then
-			return
-		end
-		if isMouseAction and UserInputService:GetFocusedTextBox() then
+		local mouseAction = input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.MouseButton2
+		if self.Suppressed or (processed and not mouseAction) or (mouseAction and UserInputService:GetFocusedTextBox() ~= nil) then
 			return
 		end
 		local key = input.KeyCode
 		if self.IgnoredActionKeys[key] then
 			return
 		end
-		if self.ShootingOnly then
-			if key == Enum.KeyCode.W or key == Enum.KeyCode.A or key == Enum.KeyCode.S or key == Enum.KeyCode.D then
-				self.Keys[key] = true
-			elseif key==Enum.KeyCode.Z then
-				self:SetShotMode("Normal")
-			elseif key==Enum.KeyCode.X then
-				self:SetShotMode("Finesse")
-			elseif key==Enum.KeyCode.C then
-				self:SetShotMode("LowDriven")
-			elseif key == Enum.KeyCode.ButtonB then
-				self:_chargeStart("Shot", {AimKind = "GamepadShot"})
-			elseif key == Enum.KeyCode.ButtonR2 then
-				self:ToggleSprint()
-			elseif input.UserInputType == Enum.UserInputType.MouseButton1 then
-				self:_chargeStart("Shot")
-			end
+		if movementKeys[key] or modifierKeys[key] or key == self.ManualPassKey or key == self.LobbedPassKey or key == self.ThroughPassKey then
+			self.Keys[key] = true
+		end
+		if key == Enum.KeyCode.LeftShift or key == Enum.KeyCode.RightShift then
+			self:SetSprintRequested(true)
 			return
 		end
-		if key == Enum.KeyCode.W or key == Enum.KeyCode.A or key == Enum.KeyCode.S or key == Enum.KeyCode.D
-			or key == Enum.KeyCode.LeftShift or key == Enum.KeyCode.RightShift
-			or key == Enum.KeyCode.LeftAlt or key == Enum.KeyCode.RightAlt
-			or key == Enum.KeyCode.LeftControl or key == Enum.KeyCode.RightControl
-			or key == self.ManualPassKey or key == self.LobbedPassKey then
-			self.Keys[key] = true
-			local passMode = self:_passKeyMode(key)
-			if passMode and not self.Defending then
-				self:_chargeStart("Pass", {PassMode = passMode, StartedByKey = key})
-			end
-		elseif key == self.TackleKey then
+		if self.ShootingOnly then
+			if key == Enum.KeyCode.Z then self:SetShotMode("Normal") elseif key == Enum.KeyCode.X then self:SetShotMode("Finesse") elseif key == Enum.KeyCode.C then self:SetShotMode("LowDriven") elseif key == Enum.KeyCode.ButtonB then self:_chargeStart("Shot", {AimKind = "GamepadShot"}) elseif key == Enum.KeyCode.ButtonR2 then self:SetSprintRequested(true) elseif input.UserInputType == Enum.UserInputType.MouseButton1 then self:_chargeStart("Shot") end
+			return
+		end
+		if key == self.TackleKey and self.Defending then
 			self.Remote:FireServer({Type = "Tackle"})
-		elseif key==self.SlideTackleKey then
-			self.Remote:FireServer({Type="SlideTackle"})
-		elseif key==Enum.KeyCode.Z then
+		elseif key == self.SlideTackleKey and self.Defending then
+			self.Remote:FireServer({Type = "SlideTackle"})
+		elseif key == Enum.KeyCode.Z then
 			self:SetShotMode("Normal")
-		elseif key==Enum.KeyCode.X then
+		elseif key == Enum.KeyCode.X and not self.Defending then
 			self:SetShotMode("Finesse")
-		elseif key==Enum.KeyCode.C then
-			if self.HasBall then self:SetShotMode("LowDriven")else local aim=self:_aim("Skill");self.Remote:FireServer({Type="DribbleMove",Direction=aim.Direction})end
-		elseif key==Enum.KeyCode.R then
-			self.Remote:FireServer({Type="Block",Active=true})
+		elseif key == Enum.KeyCode.C then
+			if self.HasBall then self:SetShotMode("LowDriven") else self:TriggerMobileAction("Skill") end
+		elseif key == Enum.KeyCode.R and self.Defending then
+			self.Remote:FireServer({Type = "Block", Active = true})
 		elseif key == self.ChangePlayerKey then
 			self:_switchPlayer()
 		elseif key == Enum.KeyCode.ButtonA then
-			if self.Defending then self.Remote:FireServer({Type = "Tackle"}) else self:_chargeStart("Pass") end
-		elseif key == Enum.KeyCode.ButtonB then
-			if not self.Defending then
-				if self.DirectFreeKick then
-					self:_chargeStart("Shot")
-				else
-					self:_chargeStart("Shot", {AimKind = "GamepadShot", ClearanceIfFar = true})
-				end
-			end
+			if self.Defending then self.Remote:FireServer({Type = "Tackle"}) else self:_chargeStart("Pass", {PassMode = "Ground"}) end
+		elseif key == Enum.KeyCode.ButtonB and not self.Defending then
+			self:_chargeStart("Shot", {AimKind = "GamepadShot", ClearanceIfFar = not self.DirectFreeKick})
 		elseif key == Enum.KeyCode.ButtonX then
-			if self.Defending then self.Remote:FireServer({Type = "SlideTackle"}) else self:_chargeStart("Pass", {PassMode = "Lofted"}) end
-		elseif key == Enum.KeyCode.ButtonY then
-			if not self.Defending then self:_chargeStart("Pass", {PassMode = "Manual"}) end
+			if self.Defending then self.Remote:FireServer({Type = "SlideTackle"}) else self:_chargeStart("Pass", {PassMode = "Lob"}) end
+		elseif key == Enum.KeyCode.ButtonY and not self.Defending then
+			self:_chargeStart("Pass", {PassMode = "Through"})
 		elseif key == Enum.KeyCode.ButtonL1 then
 			self:_switchPlayer()
 		elseif key == Enum.KeyCode.ButtonL2 then
 			self.Keys[key] = true
 			self.Remote:FireServer({Type = "ReceiverAssistOverride", Active = true})
-		elseif key == Enum.KeyCode.ButtonR1 then
-			self.Keys[key] = true
 		elseif key == Enum.KeyCode.ButtonR2 then
-			self:ToggleSprint()
-		elseif key == Enum.KeyCode.L then
-			self.Remote:FireServer({Type = "DebugFreeKick"})
-		elseif key == Enum.KeyCode.K then
-			self.Remote:FireServer({Type = "DebugPenaltyAttack"})
-		elseif key == Enum.KeyCode.O then
-			self.Remote:FireServer({Type = "DebugPenaltyDefense"})
+			self:SetSprintRequested(true)
 		elseif input.UserInputType == Enum.UserInputType.MouseButton1 then
 			self:_chargeStart("Shot")
 		elseif input.UserInputType == Enum.UserInputType.MouseButton2 then
-			self:_chargeStart("Pass")
+			local passMode, manualAim = self:_selectedDesktopPass()
+			self:_chargeStart("Pass", {PassMode = passMode, ManualAim = manualAim})
 		end
 	end))
 	table.insert(self.Connections, UserInputService.InputEnded:Connect(function(input)
-		if self.Suppressed then return end
-		local isMouseAction = input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.MouseButton2
-		if isMouseAction and UserInputService:GetFocusedTextBox() then
-			return
-		end
 		local key = input.KeyCode
 		if self.IgnoredActionKeys[key] then
 			self.IgnoredActionKeys[key] = nil
 			return
 		end
-		if self.ShootingOnly then
-			if key == Enum.KeyCode.W or key == Enum.KeyCode.A or key == Enum.KeyCode.S or key == Enum.KeyCode.D then
-				self.Keys[key] = nil
-			elseif key == Enum.KeyCode.ButtonB then
-				self:_chargeEnd("Shot")
-			elseif input.UserInputType == Enum.UserInputType.MouseButton1 then
-				self:_chargeEnd("Shot")
-			end
+		if movementKeys[key] or modifierKeys[key] or key == self.ManualPassKey or key == self.LobbedPassKey or key == self.ThroughPassKey then
+			self.Keys[key] = nil
+		end
+		if key == Enum.KeyCode.LeftShift or key == Enum.KeyCode.RightShift or key == Enum.KeyCode.ButtonR2 then
+			self:SetSprintRequested(false)
+		end
+		if self.Suppressed then
 			return
 		end
-		if key == Enum.KeyCode.W or key == Enum.KeyCode.A or key == Enum.KeyCode.S or key == Enum.KeyCode.D
-			or key == Enum.KeyCode.LeftShift or key == Enum.KeyCode.RightShift
-			or key == Enum.KeyCode.LeftAlt or key == Enum.KeyCode.RightAlt
-			or key == Enum.KeyCode.LeftControl or key == Enum.KeyCode.RightControl
-			or key == self.ManualPassKey or key == self.LobbedPassKey then
-			local current = self.Charge
-			local startedByKey = current and current.Kind == "Pass" and current.Options and current.Options.StartedByKey == key
-			if startedByKey then
-				self:_chargeEnd("Pass")
-			end
-			self.Keys[key] = nil
-		elseif key == Enum.KeyCode.ButtonA then
-			if not self.Defending then self:_chargeEnd("Pass") end
-		elseif key == Enum.KeyCode.ButtonB then
-			if not self.Defending then self:_chargeEnd("Shot") end
-		elseif key == Enum.KeyCode.ButtonX then
-			if not self.Defending then self:_chargeEnd("Pass") end
-		elseif key == Enum.KeyCode.ButtonY then
-			if not self.Defending then self:_chargeEnd("Pass") end
+		if self.ShootingOnly then
+			if key == Enum.KeyCode.ButtonB or input.UserInputType == Enum.UserInputType.MouseButton1 then self:_chargeEnd("Shot") end
+			return
+		end
+		if key == Enum.KeyCode.ButtonA and not self.Defending then
+			self:_chargeEnd("Pass")
+		elseif key == Enum.KeyCode.ButtonB and not self.Defending then
+			self:_chargeEnd("Shot")
+		elseif (key == Enum.KeyCode.ButtonX or key == Enum.KeyCode.ButtonY) and not self.Defending then
+			self:_chargeEnd("Pass")
 		elseif key == Enum.KeyCode.ButtonL2 then
 			self.Keys[key] = nil
 			self.Remote:FireServer({Type = "ReceiverAssistOverride", Active = false})
-		elseif key == Enum.KeyCode.ButtonR1 then
-			self.Keys[key] = nil
-		elseif key==Enum.KeyCode.R then
-			self.Remote:FireServer({Type="Block",Active=false})
+		elseif key == Enum.KeyCode.R then
+			self.Remote:FireServer({Type = "Block", Active = false})
 		elseif input.UserInputType == Enum.UserInputType.MouseButton1 then
 			self:_chargeEnd("Shot")
 		elseif input.UserInputType == Enum.UserInputType.MouseButton2 then
@@ -378,12 +516,29 @@ function Controller:Start()
 		end
 	end))
 	table.insert(self.Connections, UserInputService.InputChanged:Connect(function(input, processed)
-		if self.Suppressed then return end
-		if processed and input.KeyCode ~= Enum.KeyCode.Thumbstick1 and input.KeyCode ~= Enum.KeyCode.Thumbstick2 then return end
+		if self.Suppressed or (processed and input.KeyCode ~= Enum.KeyCode.Thumbstick1 and input.KeyCode ~= Enum.KeyCode.Thumbstick2) then
+			return
+		end
 		if input.KeyCode == Enum.KeyCode.Thumbstick1 then
 			self.GamepadMove = self:_stickVector(input)
 		elseif input.KeyCode == Enum.KeyCode.Thumbstick2 then
 			self.GamepadAim = self:_stickVector(input)
+		end
+	end))
+	table.insert(self.Connections, UserInputService.WindowFocusReleased:Connect(function()
+		self:SetSprintRequested(false)
+		self:_cancelPending("focus_lost")
+	end))
+	table.insert(self.Connections, UserInputService.TextBoxFocused:Connect(function()
+		self:SetSprintRequested(false)
+	end))
+	table.insert(self.Connections, RunService.Heartbeat:Connect(function()
+		if self.SprintRequested and self.SprintAllowed and os.clock() - self.SprintKeepaliveAt >= 0.75 then
+			self.SprintKeepaliveAt = os.clock()
+			self.Remote:FireServer({Type = "Sprint", Active = true, Keepalive = true})
+		end
+		if self.PendingAction and os.clock() > (tonumber(self.PendingAction.ExpiresAt) or 0) then
+			self:_cancelPending("expired")
 		end
 	end))
 end
@@ -393,22 +548,20 @@ function Controller:Move(): Vector2
 	if keyboard.Magnitude > 1 then
 		keyboard = keyboard.Unit
 	end
-	local mobile = self.MobileControls and self.MobileControls:MoveVector() or Vector2.zero
 	if keyboard.Magnitude > 0.05 then
 		return keyboard
 	end
 	if self.GamepadMove.Magnitude > 0.05 then
 		return self.GamepadMove
 	end
-	return mobile
+	return if self.MobileControls then self.MobileControls:MoveVector() else Vector2.zero
 end
-
 
 function Controller:MobileAimVector(kind: string?): Vector2?
 	if (kind == "Shot" or kind == "GamepadShot" or kind == "Switch") and self.GamepadAim.Magnitude > 0.08 then
 		return self.GamepadAim
 	end
-	local mobile = self.MobileControls and self.MobileControls:AimVector(kind) or nil
+	local mobile = if self.MobileControls then self.MobileControls:AimVector(kind) else nil
 	if mobile and mobile.Magnitude > 0.08 then
 		return mobile
 	end
@@ -419,24 +572,24 @@ function Controller:MobileAimVector(kind: string?): Vector2?
 end
 
 function Controller:CurveAimVector(): Vector2
-	if self.GamepadAim.Magnitude > 0.08 then
-		return self.GamepadAim
-	end
-	return Vector2.zero
+	return if self.GamepadAim.Magnitude > 0.08 then self.GamepadAim else Vector2.zero
 end
 
 function Controller:MobileManualAim(kind: string?): boolean
-	return self.MobileControls and self.MobileControls:IsManualAim(kind) or false
+	return self.MobileControls ~= nil and self.MobileControls:IsManualAim(kind)
 end
 
 function Controller:MobilePassMode(): string?
-	return self.MobileControls and self.MobileControls:ConsumePassMode() or nil
+	return if self.MobileControls then self.MobileControls:ConsumePassMode() else nil
 end
 
 function Controller:SetMobileDefending(defending: boolean)
 	self.Defending = defending == true
-	if self.MobileControls and self.MobileControls.SetDefending then
-		self.MobileControls:SetDefending(defending)
+	if self.Defending and self.Charge and self.Charge.Kind == "Pass" then
+		self.Charge = nil
+	end
+	if self.MobileControls then
+		self.MobileControls:SetDefending(self.Defending)
 	end
 end
 
@@ -449,11 +602,11 @@ function Controller:SetDirectFreeKick(active: boolean)
 end
 
 function Controller:Sprinting(): boolean
-	return true
+	return self.SprintRequested and self.SprintAllowed and self.SprintActual
 end
 
 function Controller:ChargeValue(): number
-	return self.Charge and math.clamp((os.clock() - self.Charge.Started) / (Config.Ball.MaxChargeTime / 3), 0, 1) or 0
+	return if self.Charge then self:_chargeScalar(self.Charge) else 0
 end
 
 function Controller:ChargeKind(): string
@@ -479,17 +632,15 @@ function Controller:FreeKickModifiers(): (number, number)
 end
 
 function Controller:Destroy()
-	if self.SprintToggle then
-		self.Remote:FireServer({Type = "Sprint", Active = false})
-		self.SprintToggle = false
-	end
+	self:SetSprintRequested(false)
 	if self.Keys[Enum.KeyCode.ButtonL2] then
 		self.Remote:FireServer({Type = "ReceiverAssistOverride", Active = false})
-		self.Keys[Enum.KeyCode.ButtonL2] = nil
 	end
-	if self.MobileControls then self.MobileControls:Destroy();self.MobileControls=nil end
+	if self.MobileControls then
+		self.MobileControls:Destroy()
+		self.MobileControls = nil
+	end
 	self.PendingAction = nil
-	if self.TouchGui then self.TouchGui:Destroy();self.TouchGui=nil end
 	for _, connection in self.Connections do
 		connection:Disconnect()
 	end
