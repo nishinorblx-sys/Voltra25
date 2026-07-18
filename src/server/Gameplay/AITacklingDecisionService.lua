@@ -40,8 +40,9 @@ function Service.CanTackle(context: any, defender: any, carrier: any, style: any
 	local fromBehind = carrierFacing.Magnitude > 0.01 and toDefender.Magnitude > 0.01 and carrierFacing.Unit:Dot(toDefender.Unit) < -0.35
 	local insideBox = PitchConfig.InZone(defender.Pitch, "OwnBox")
 	local lowStamina = (defender.Stamina or 60) < 25
-	local foulRisk = (fromBehind and 0.45 or 0.08) + (insideBox and 0.22 or 0) + (lowStamina and 0.14 or 0) + (1 - style:Risk()) * 0.08 - (defender.Stats.defending or 60) / 420
-	local slide = firstMatchAssistance < .2 and distance > 7.5 and not insideBox and style:Risk() > 0.65 and defender.Stats.standingTackle > 70
+	local tackleSkill = defender.Stats.tackleSkill or defender.Stats.defending or 60
+	local foulRisk = (fromBehind and 0.45 or 0.08) + (insideBox and 0.22 or 0) + (lowStamina and 0.14 or 0) + (1 - style:Risk()) * 0.08 - tackleSkill / 420
+	local slide = firstMatchAssistance < .2 and distance > 7.5 and not insideBox and style:Risk() > 0.65 and (defender.Stats.standingTackle > 70 or tackleSkill > 74)
 	return foulRisk < 0.28 - firstMatchAssistance * .1, slide
 end
 

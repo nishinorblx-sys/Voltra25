@@ -49,6 +49,13 @@ local function keyDown(keys: {[Enum.KeyCode]: boolean}, left: Enum.KeyCode, righ
 	return keys[left] == true or keys[right] == true
 end
 
+local function matchesBindingKey(key: Enum.KeyCode, binding: Enum.KeyCode, left: Enum.KeyCode, right: Enum.KeyCode): boolean
+	if binding == left or binding == right then
+		return key == left or key == right
+	end
+	return key == binding
+end
+
 function Controller.new(remote: RemoteEvent, aim: (string?, number?) -> any)
 	return setmetatable({
 		Remote = remote,
@@ -108,11 +115,6 @@ function Controller:_stampReception(payload: any): boolean
 	payload.ReceptionRevision = revision
 	payload.ReceptionClientTime = workspace:GetServerTimeNow()
 	return true
-end
-
-function Controller:_sendReceiverOverride(active: boolean)
-	local payload = {Type = "ReceiverAssistOverride", Active = active}
-	if self:_stampReception(payload) then self.Remote:FireServer(payload) end
 end
 
 function Controller:SetShotModeChanged(callback: any)
@@ -366,19 +368,19 @@ function Controller:_chargeEnd(kind: string, mobileToken: number?)
 	local aim = self:_aim(options.AimKind or kind, normalized)
 	if kind == "Shot" then
 		if aim.PenaltyDefense == true then
-			self:_commitAction({Type = "PenaltyGuess", AimPosition = aim.Position, PenaltySlot = aim.PenaltySlot})
+			self:_commitAction({Type = "PenaltyGuess", AimPosition = aim.Position, PenaltySlot = aim.PenaltySlot,PenaltyAttempt=aim.PenaltyAttempt})
 			return
 		end
 		if options.ClearanceIfFar and aim.GoalTarget ~= true then
 			self:_commitAction({Type = "Clearance", Direction = aim.Direction, Charge = normalized, ActionFamily = "Clearance"})
 			return
 		end
-		self:_commitAction({Type = "Shot", Direction = aim.Direction, AimPosition = aim.Position, GoalTarget = aim.GoalTarget, Charge = normalized, FreeKickCurve = aim.FreeKickCurve, FreeKickLift = aim.FreeKickLift, CurveAxis = math.clamp(tonumber(aim.FreeKickCurve) or 0, -1, 1), PenaltySlot = aim.PenaltySlot, ShotVariant = self.ShotMode, ActionFamily = "Shot"})
+		self:_commitAction({Type = "Shot", Direction = aim.Direction, AimPosition = aim.Position, GoalTarget = aim.GoalTarget, Charge = normalized, FreeKickCurve = aim.FreeKickCurve, FreeKickLift = aim.FreeKickLift, CurveAxis = math.clamp(tonumber(aim.FreeKickCurve) or 0, -1, 1), PenaltySlot = aim.PenaltySlot,PenaltyAttempt=aim.PenaltyAttempt, ShotVariant = self.ShotMode, ActionFamily = "Shot"})
 		return
 	end
 	local mobileMode = self:MobilePassMode()
 	local passType = ActionTuning.NormalizeAction(mobileMode or options.PassMode or "Ground")
-	local manualAim = options.ManualAim == true or self:MobileManualAim("Pass")
+	local manualAim = options.ManualAim == true or passType == "Lob" or self:MobileManualAim("Pass")
 	local autoSwitch = if manualAim then self.ManualPassAutoSwitch else self.AutoSwitch
 	local receiverAssist = if manualAim then "Manual" else self.ReceiverAssist
 	self:_commitAction({Type = "Pass", Direction = aim.Direction, AimPosition = aim.Position, TargetModel = if manualAim then nil else aim.TargetModel, Charge = normalized, PassType = passType, AutoSwitch = autoSwitch, ReceiverAssistMode = receiverAssist, ReceiverAssist = receiverAssist, ManualAim = manualAim, CurveAxis = 0, ActionFamily = passType})
@@ -413,6 +415,10 @@ function Controller:_commitAction(payload: any)
 		return
 	end
 	self.Remote:FireServer(payload)
+end
+
+function Controller:_sendDefensiveAction(actionType:string)
+	self.Remote:FireServer({Type=actionType,ClientTime=workspace:GetServerTimeNow()})
 end
 
 function Controller:SetActionContext(hasBall: boolean, receivingPass: boolean, context: any?)
@@ -528,17 +534,13 @@ function Controller:TriggerMobileAction(action: string)
 	if action == "Switch" then
 		self:_switchPlayer()
 	elseif action == "Tackle" then
-		self.Remote:FireServer({Type = "Tackle"})
+		self:_sendDefensiveAction("Tackle")
 	elseif action == "SlideTackle" then
-		self.Remote:FireServer({Type = "SlideTackle"})
+		self:_sendDefensiveAction("SlideTackle")
 	elseif action == "Block" then
 		self.Remote:FireServer({Type = "Block", Active = true})
 	elseif action == "BlockEnd" then
 		self.Remote:FireServer({Type = "Block", Active = false})
-	elseif action == "ReceiverOverrideBegin" then
-		self:_sendReceiverOverride(true)
-	elseif action == "ReceiverOverrideEnd" then
-		self:_sendReceiverOverride(false)
 	elseif action == "Skill" then
 		local aim = self:_aim("Skill")
 		self.Remote:FireServer({Type = "DribbleMove", Direction = aim.Direction})
@@ -562,10 +564,6 @@ function Controller:Start()
 		if movementKeys[key] or modifierKeys[key] or key == self.ManualPassKey or key == self.LobbedPassKey or key == self.ThroughPassKey then
 			self.Keys[key] = true
 		end
-		if self.ReceivingPass and key == self.ManualPassKey then
-			self:_sendReceiverOverride(true)
-			return
-		end
 		if key == Enum.KeyCode.LeftShift or key == Enum.KeyCode.RightShift then
 			self:SetSprintRequested(true)
 			return
@@ -575,9 +573,13 @@ function Controller:Start()
 			return
 		end
 		if key == self.TackleKey and self.Defending then
-			self.Remote:FireServer({Type = "Tackle"})
-		elseif key == self.SlideTackleKey and self.Defending then
-			self.Remote:FireServer({Type = "SlideTackle"})
+			self:_sendDefensiveAction("Tackle")
+		elseif key == self.SlideTackleKey then
+			self:_sendDefensiveAction("SlideTackle")
+		elseif not self.Defending and matchesBindingKey(key, self.ManualPassKey, Enum.KeyCode.LeftControl, Enum.KeyCode.RightControl) then
+			self:_chargeStart("Pass", {PassMode = "Ground", ManualAim = true, TriggerKey = key})
+		elseif not self.Defending and matchesBindingKey(key, self.LobbedPassKey, Enum.KeyCode.LeftAlt, Enum.KeyCode.RightAlt) then
+			self:_chargeStart("Pass", {PassMode = "Lob", ManualAim = true, TriggerKey = key})
 		elseif key == Enum.KeyCode.Z then
 			self:SetShotMode("Normal")
 		elseif key == Enum.KeyCode.X and not self.Defending then
@@ -589,25 +591,24 @@ function Controller:Start()
 		elseif key == self.ChangePlayerKey then
 			self:_switchPlayer()
 		elseif key == Enum.KeyCode.ButtonA then
-			if self.Defending then self.Remote:FireServer({Type = "Tackle"}) else self:_chargeStart("Pass", {PassMode = "Ground"}) end
+			if self.Defending then self:_sendDefensiveAction("Tackle") else self:_chargeStart("Pass", {PassMode = "Ground"}) end
 		elseif key == Enum.KeyCode.ButtonB and not self.Defending then
 			self:_chargeStart("Shot", {AimKind = "GamepadShot", ClearanceIfFar = not self.DirectFreeKick})
 		elseif key == Enum.KeyCode.ButtonX then
-			if self.Defending then self.Remote:FireServer({Type = "SlideTackle"}) else self:_chargeStart("Pass", {PassMode = "Lob"}) end
+			if self.Defending then self:_sendDefensiveAction("SlideTackle") else self:_chargeStart("Pass", {PassMode = "Lob"}) end
 		elseif key == Enum.KeyCode.ButtonY and not self.Defending then
 			self:_chargeStart("Pass", {PassMode = "Through"})
 		elseif key == Enum.KeyCode.ButtonL1 then
 			self:_switchPlayer()
 		elseif key == Enum.KeyCode.ButtonL2 then
 			self.Keys[key] = true
-			self:_sendReceiverOverride(true)
 		elseif key == Enum.KeyCode.ButtonR2 then
 			self:SetSprintRequested(true)
 		elseif input.UserInputType == Enum.UserInputType.MouseButton1 then
 			self:_chargeStart("Shot")
 		elseif input.UserInputType == Enum.UserInputType.MouseButton2 then
 			local passMode, manualAim = self:_selectedDesktopPass()
-			self:_chargeStart("Pass", {PassMode = passMode, ManualAim = manualAim})
+			self:_chargeStart("Pass", {PassMode = passMode, ManualAim = manualAim, TriggerInput = "MouseButton2"})
 		end
 	end))
 	table.insert(self.Connections, UserInputService.InputEnded:Connect(function(input)
@@ -619,7 +620,6 @@ function Controller:Start()
 		if movementKeys[key] or modifierKeys[key] or key == self.ManualPassKey or key == self.LobbedPassKey or key == self.ThroughPassKey then
 			self.Keys[key] = nil
 		end
-		if key == self.ManualPassKey then self:_sendReceiverOverride(false) end
 		if key == Enum.KeyCode.LeftShift or key == Enum.KeyCode.RightShift or key == Enum.KeyCode.ButtonR2 then
 			self:SetSprintRequested(false)
 		end
@@ -630,7 +630,10 @@ function Controller:Start()
 			if self.Charge and self.Charge.Kind == "Shot" and (key == Enum.KeyCode.ButtonB or input.UserInputType == Enum.UserInputType.MouseButton1) then self:_chargeEnd("Shot") end
 			return
 		end
-		if key == Enum.KeyCode.ButtonA and self.Charge and self.Charge.Kind == "Pass" then
+		local chargeOptions = self.Charge and self.Charge.Options or nil
+		if self.Charge and self.Charge.Kind == "Pass" and chargeOptions and chargeOptions.TriggerKey == key then
+			self:_chargeEnd("Pass")
+		elseif key == Enum.KeyCode.ButtonA and self.Charge and self.Charge.Kind == "Pass" then
 			self:_chargeEnd("Pass")
 		elseif key == Enum.KeyCode.ButtonB and self.Charge and self.Charge.Kind == "Shot" then
 			self:_chargeEnd("Shot")
@@ -638,12 +641,11 @@ function Controller:Start()
 			self:_chargeEnd("Pass")
 		elseif key == Enum.KeyCode.ButtonL2 then
 			self.Keys[key] = nil
-			self:_sendReceiverOverride(false)
 		elseif key == Enum.KeyCode.R then
 			self.Remote:FireServer({Type = "Block", Active = false})
 		elseif input.UserInputType == Enum.UserInputType.MouseButton1 and self.Charge and self.Charge.Kind == "Shot" then
 			self:_chargeEnd("Shot")
-		elseif input.UserInputType == Enum.UserInputType.MouseButton2 and self.Charge and self.Charge.Kind == "Pass" then
+		elseif input.UserInputType == Enum.UserInputType.MouseButton2 and self.Charge and self.Charge.Kind == "Pass" and chargeOptions and chargeOptions.TriggerInput == "MouseButton2" then
 			self:_chargeEnd("Pass")
 		end
 	end))
@@ -767,9 +769,6 @@ end
 function Controller:Destroy()
 	self:CancelPossessionActions("destroyed", false)
 	self:SetSprintRequested(false)
-	if self.Keys[Enum.KeyCode.ButtonL2] then
-		self:_sendReceiverOverride(false)
-	end
 	if self.MobileControls then
 		self.MobileControls:Destroy()
 		self.MobileControls = nil

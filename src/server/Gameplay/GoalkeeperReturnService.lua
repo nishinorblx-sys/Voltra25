@@ -7,6 +7,11 @@ local tracked = {}
 local started = false
 local tickRate = 0.25
 local accumulator = 0
+local indexed = false
+local ballIndex = setmetatable({}, { __mode = "k" })
+local keeperIndex = setmetatable({}, { __mode = "k" })
+local goalIndex = setmetatable({}, { __mode = "k" })
+local ensureIndexed
 
 local function lower(value)
 	return string.lower(tostring(value or ""))
@@ -52,8 +57,9 @@ local function isBall(inst)
 end
 
 local function getBall()
-	for _, inst in ipairs(Workspace:GetDescendants()) do
-		if (inst:IsA("BasePart") or inst:IsA("Model")) and isBall(inst) then
+	ensureIndexed()
+	for inst in pairs(ballIndex) do
+		if inst.Parent and (inst:IsA("BasePart") or inst:IsA("Model")) and isBall(inst) then
 			if inst:IsA("Model") then
 				local part = inst.PrimaryPart or inst:FindFirstChildWhichIsA("BasePart", true)
 				if part then
@@ -88,11 +94,43 @@ local function isKeeper(model)
 		or string.find(name, " gk") ~= nil
 end
 
+local function indexInstance(inst)
+	if (inst:IsA("BasePart") or inst:IsA("Model")) and isBall(inst) then
+		ballIndex[inst] = true
+	end
+	if inst:IsA("Model") and isKeeper(inst) then
+		keeperIndex[inst] = true
+	end
+	if string.find(lower(inst.Name), "goal") then
+		goalIndex[inst] = true
+	end
+end
+
+local function unindexInstance(inst)
+	ballIndex[inst] = nil
+	keeperIndex[inst] = nil
+	goalIndex[inst] = nil
+	tracked[inst] = nil
+end
+
+ensureIndexed = function()
+	if indexed then
+		return
+	end
+	indexed = true
+	for _, inst in ipairs(Workspace:GetDescendants()) do
+		indexInstance(inst)
+	end
+	Workspace.DescendantAdded:Connect(indexInstance)
+	Workspace.DescendantRemoving:Connect(unindexInstance)
+end
+
 local function getKeepers()
+	ensureIndexed()
 	local out = {}
 
-	for _, inst in ipairs(Workspace:GetDescendants()) do
-		if inst:IsA("Model") and isKeeper(inst) then
+	for inst in pairs(keeperIndex) do
+		if inst.Parent and inst:IsA("Model") and isKeeper(inst) then
 			local humanoid = inst:FindFirstChildOfClass("Humanoid")
 			local root = inst.PrimaryPart or inst:FindFirstChild("HumanoidRootPart") or inst:FindFirstChildWhichIsA("BasePart", true)
 			if humanoid and root then
@@ -109,11 +147,12 @@ local function getKeepers()
 end
 
 local function findGoal(side)
+	ensureIndexed()
 	side = lower(side)
 
-	for _, inst in ipairs(Workspace:GetDescendants()) do
+	for inst in pairs(goalIndex) do
 		local n = lower(inst.Name)
-		if string.find(n, "goal") and string.find(n, side) then
+		if inst.Parent and string.find(n, "goal") and string.find(n, side) then
 			local pos = pivotPosition(inst)
 			if pos then
 				return pos
@@ -133,8 +172,8 @@ local function getGoals()
 	end
 
 	local goals = {}
-	for _, inst in ipairs(Workspace:GetDescendants()) do
-		if string.find(lower(inst.Name), "goal") then
+	for inst in pairs(goalIndex) do
+		if inst.Parent and string.find(lower(inst.Name), "goal") then
 			local pos = pivotPosition(inst)
 			if pos then
 				table.insert(goals, pos)

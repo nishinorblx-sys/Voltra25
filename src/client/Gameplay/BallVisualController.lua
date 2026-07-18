@@ -110,6 +110,11 @@ end
 function Controller:_refreshRaycastExclusions()
 	if not self.Raycast then return end
 	local excluded: {Instance} = {self.Ball, self.Model}
+	for _, candidate in workspace:GetDescendants() do
+		if candidate:IsA("Model") and candidate ~= self.Model and candidate:GetAttribute("VTRTeam") ~= nil and candidate:FindFirstChildOfClass("Humanoid") then
+			table.insert(excluded, candidate)
+		end
+	end
 	local sourceModel = ballModel(self.Ball)
 	if sourceModel then table.insert(excluded, sourceModel) end
 	if self.VisualModel then
@@ -340,7 +345,8 @@ function Controller:Update(dt: number, move: Vector3, sprinting: boolean)
 	local predictedPosition:Vector3=self.PredictedPosition or authoritativePosition
 	local predictedVelocity:Vector3=self.PredictedVelocity or authoritativeVelocity
 	local positionError=(authoritativePosition-predictedPosition).Magnitude
-	local snapDistance = postGoalActive and 28 or glidingMotion and Config.Ball.DribbleHardSnapDistance or motionKind=="Shot" and 11 or 8
+	local ranked=self.Model:GetAttribute("VTRRankedMatch")==true
+	local snapDistance = postGoalActive and 28 or glidingMotion and(ranked and math.max(9,Config.Ball.DribbleHardSnapDistance)or Config.Ball.DribbleHardSnapDistance)or motionKind=="Shot" and 11 or 8
 	if positionError > snapDistance then
 		-- Set pieces and genuine corrections should snap. Ordinary replication
 		-- gaps are extrapolated below instead of freezing the visible ball.
@@ -356,7 +362,7 @@ function Controller:Update(dt: number, move: Vector3, sprinting: boolean)
 		if not glidingMotion and (predictedVelocity.Y*authoritativeVelocity.Y<-.5 or(previousFlat.Magnitude>3 and currentFlat.Magnitude>3 and previousFlat.Unit:Dot(currentFlat.Unit)<.35))then velocityAlpha=math.max(velocityAlpha,.72)end
 		predictedVelocity=predictedVelocity:Lerp(authoritativeVelocity,velocityAlpha)
 		predictedPosition+=predictedVelocity*dt
-		local reconcileRate=postGoalActive and 24 or motionKind=="Dribble" and 6 or motionKind=="Pass" and 5.5 or owns and 12 or(motionKind=="Shot"and 10 or 12)
+		local reconcileRate=postGoalActive and 24 or motionKind=="Dribble"and(ranked and(owns and 5.5 or 4.5)or 6)or motionKind=="Pass" and 5.5 or owns and 12 or(motionKind=="Shot"and 10 or 12)
 		predictedPosition=predictedPosition:Lerp(authoritativePosition,1-math.exp(-reconcileRate*dt))
 	end
 	self.PredictedPosition=predictedPosition
@@ -390,6 +396,14 @@ function Controller:Update(dt: number, move: Vector3, sprinting: boolean)
 		if (Vector3.new(authoritativePosition.X,0,authoritativePosition.Z)-Vector3.new(control.X,0,control.Z)).Magnitude < targetData.HardRecoveryDistance then
 			self.PredictedPosition=target
 		end
+	elseif glidingMotion then
+		local serverTarget = self.Ball:GetAttribute("VTRDribbleServerTarget")
+		if typeof(serverTarget) == "Vector3" then
+			local alpha = 1 - math.exp(-14 * dt)
+			target = target:Lerp(serverTarget, alpha)
+			self.PredictedPosition = target
+		end
+		self.VisualTarget = target
 	else
 		self.VisualTarget = target
 	end
@@ -397,7 +411,7 @@ function Controller:Update(dt: number, move: Vector3, sprinting: boolean)
 	if groundHit and groundHit.Normal.Y > 0.55 then
 		local height=(target-groundHit.Position):Dot(groundHit.Normal)
 		local desiredGroundHeight = self.Radius + 0.035
-		if (glidingMotion or owns or motionKind=="Pass"or motionKind=="Clearance") and height < self.Radius + 1.45 then
+		if glidingMotion or ((owns or motionKind=="Pass"or motionKind=="Clearance") and height < self.Radius + 1.45) then
 			local groundTarget = groundHit.Position + groundHit.Normal * desiredGroundHeight
 			local alpha = 1 - math.exp(-dt / ((motionKind == "Dribble" or owns) and 0.025 or 0.06))
 			target = Vector3.new(target.X, target.Y + (groundTarget.Y - target.Y) * alpha, target.Z)

@@ -6,7 +6,7 @@ local formats = table.freeze({
 	Extended = table.freeze({Name = "Extended", RealSeconds = 480, HalftimeSeconds = 12, ExtraTimeSeconds = 180, ExtraTimeMidpointBreakSeconds = 11, ReplaySeconds = 4, ReplayMaximumSeconds = 6, SetPieceSeconds = 5, SetPieceDecisionSeconds = 5, SetPieceCameraTransitionSeconds = .55, FinalWhistleFreezeSeconds = 1.35, PostMatchSummarySeconds = 2.6, ResultsVisibleSeconds = 4, NextMatchInputSeconds = 8, FullTimeSeconds = 4, FinalChanceSeconds = 14}),
 })
 
-local ranked = table.freeze({Name = "Ranked", ExtraTimeSeconds = 120, ExtraTimeMidpointBreakSeconds = 7, ReplaySeconds = 3.5, ReplayMaximumSeconds = 6, SetPieceDecisionSeconds = 4, SetPieceCameraTransitionSeconds = .5, FinalWhistleFreezeSeconds = 1.25, PostMatchSummarySeconds = 2.4, ResultsVisibleSeconds = 4, NextMatchInputSeconds = 8})
+local ranked = table.freeze({Name = "Ranked", StraightToPenalties = true, ExtraTimeSeconds = 0, ExtraTimeMidpointBreakSeconds = 0, ReplaySeconds = 3.5, ReplayMaximumSeconds = 6, SetPieceDecisionSeconds = 4, SetPieceCameraTransitionSeconds = .5, FinalWhistleFreezeSeconds = 1.25, PostMatchSummarySeconds = 2.4, ResultsVisibleSeconds = 4, NextMatchInputSeconds = 8})
 
 local aliases = {
 	Short = "Quick",

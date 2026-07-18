@@ -5,7 +5,10 @@ local StarterPlayer = game:GetService("StarterPlayer")
 
 local Shared = ReplicatedStorage.VTR.Shared
 local ActionTuning = require(Shared.ActionTuningConfig)
+local AITactic = require(Shared.AITacticConfig)
+local AIMovementProfiles = require(Shared.AIMovementProfileConfig)
 local BallContact = require(Shared.BallContactResolver)
+local PassFlightModel = require(Shared.PassFlightModel)
 local DefensiveSwitch = require(Shared.DefensiveSwitchConfig)
 local DeviceGameplay = require(Shared.DeviceGameplayConfig)
 local Difficulty = require(Shared.DifficultyConfig)
@@ -27,6 +30,7 @@ local Stamina = require(Shared.StaminaConfig)
 local Tackle = require(Shared.TackleResolver)
 local DebugPolicy = require(script.Parent.Parent.Gameplay.GameplayDebugPolicy)
 local AIDifficulty = require(script.Parent.Parent.Gameplay.AIDifficultyService)
+local AIMovementExecutor = require(script.Parent.Parent.Gameplay.AIMovementExecutor)
 local MatchClock = require(script.Parent.Parent.Gameplay.MatchClockService)
 local PassReceptionRuntime = require(script.Parent.Parent.Gameplay.PassReceptionService)
 local ReplayRestartGate = require(script.Parent.Parent.Gameplay.ReplayRestartGate)
@@ -135,6 +139,20 @@ function Tests.Run(): any
 		local drained = tonumber(model:GetAttribute("VTRSprintEnergy")) or 100
 		for _ = 1, 30 do service:Step(model, .1, {SprintRequested = false, SprintAllowed = true, MoveMagnitude = 0, CurrentSpeed = 0}) end
 		expect(drained < Stamina.Maximum and (tonumber(model:GetAttribute("VTRSprintEnergy")) or 0) > drained, "AI sprint did not drain and recover")
+		model:Destroy()
+	end)
+
+	test("AI sprint bursts recover after cooldown", function()
+		local executor = AIMovementExecutor.new()
+		local model = Instance.new("Model")
+		model:SetAttribute("VTRSprintEnergy", 100)
+		model:SetAttribute("VTRSprintLocked", false)
+		local command = {LocomotionMode = "SprintBurst", SprintAllowed = true, SprintRequired = true, RunTicketId = "run-1", MinimumEnergy = 20, BurstMaximumSeconds = .5, RecoveryMinimumSeconds = 1}
+		expect(executor:_sprint(model, command, 10, true), "AI burst did not start")
+		expect(not executor:_sprint(model, command, 10.6, true), "AI burst ignored its maximum")
+		expect(not executor:_sprint(model, command, 11.2, true), "AI burst ignored cooldown")
+		expect(executor:_sprint(model, command, 11.7, true), "AI burst never recovered from cooldown")
+		executor:Destroy()
 		model:Destroy()
 	end)
 
@@ -385,8 +403,8 @@ function Tests.Run(): any
 		expect(MatchFormat.Get("Quick").ExtraTimeSeconds >= 60 and MatchFormat.Get("Quick").ExtraTimeSeconds <= 90, "Quick extra time")
 		expectEqual(MatchFormat.Get("Standard").ExtraTimeSeconds, 120, "Standard extra time")
 		expectEqual(MatchFormat.Get("Extended").ExtraTimeSeconds, 180, "Extended extra time")
-		expectEqual(MatchFormat.Ranked.ExtraTimeSeconds, 120, "Ranked competitive extra time")
-		expect(MatchFormat.Ranked.ExtraTimeMidpointBreakSeconds >= 6 and MatchFormat.Ranked.ExtraTimeMidpointBreakSeconds <= 8, "Ranked midpoint break")
+		expectEqual(MatchFormat.Ranked.StraightToPenalties, true, "Ranked ties go straight to penalties")
+		expectEqual(MatchFormat.Ranked.ExtraTimeSeconds, 0, "Ranked extra time disabled")
 	end)
 
 	test("replay restart participant gate", function()
@@ -487,8 +505,8 @@ function Tests.Run(): any
 		expect(Gameplay.Ball.DribbleNaturalDistance <= 2, "Natural correction zone")
 		expect(Gameplay.Ball.DribbleControlledDistance <= 6 and Gameplay.Ball.DribbleHardRecoveryDistance <= 7, "Hard correction envelope")
 		expect(Gameplay.Ball.DribbleMaximumCorrection <= 2.5, "Hard correction is unbounded")
-		expect(Gameplay.Ball.StandingTackleRange >= 4.8 and Gameplay.Ball.StandingTackleRange <= 5.8, "Standing tackle range")
-		expect(Gameplay.Ball.SlideTackleRange >= 6.5 and Gameplay.Ball.SlideTackleRange <= 7.5, "Slide tackle range")
+		expectEqual(Gameplay.Ball.StandingTackleRange, 10.8, "Standing tackle range doubled")
+		expectEqual(Gameplay.Ball.SlideTackleRange, 14, "Slide tackle range doubled")
 	end)
 
 	test("contested possession is order independent", function()
@@ -500,8 +518,57 @@ function Tests.Run(): any
 		local b = candidate("B", 1.5)
 		local forward = BallContact.Resolve({a, b}, ball)
 		local reverse = BallContact.Resolve({b, a}, ball)
-		expect(forward and reverse and forward.Outcome == "Loose" and reverse.Outcome == "Loose", "Contested contact became automatic possession")
+		expect(forward and reverse and forward.Outcome == "Deflected" and reverse.Outcome == "Deflected", "Contested contact became automatic possession")
 		expectEqual(forward.Candidate.Key, reverse.Candidate.Key, "Contact winner depended on iteration order")
+	end)
+
+	test("swept contact catches a frame crossing", function()
+		local candidate = {Key = "Foot", RootPosition = Vector3.new(0, 2.2, 0), RootVelocity = Vector3.zero, MoveDirection = Vector3.zero, Facing = Vector3.zAxis, ContactPoints = {{PreviousPosition = Vector3.new(0, 1, 0), Position = Vector3.new(0, 1, 0), Kind = "RightFoot"}}, ContactReach = 1.75, ControlHeight = 2.2, Control = 75, Balance = 70, Agility = 72, Strength = 65, PreferredFoot = "Right", Valid = true}
+		local contact = BallContact.ResolveSwept({candidate}, {PreviousPosition = Vector3.new(-7, 1, 0), Position = Vector3.new(7, 1, 0), Velocity = Vector3.new(90, 0, 0), Radius = 1, Duration = .1})
+		expect(contact and contact.Valid and contact.ContactTime > 0 and contact.ContactTime < .1, "Swept crossing missed the physical foot")
+	end)
+
+	test("controlled player body contact traps from every direction", function()
+		local candidate = {Key = "Controlled", RootPosition = Vector3.new(0, 2.2, 0), RootVelocity = Vector3.zero, MoveDirection = Vector3.zero, Facing = Vector3.zAxis, ContactPoints = {{PreviousPosition = Vector3.new(0, 1, 0), Position = Vector3.new(0, 1, 0), Kind = "LeftFoot"}}, ContactReach = 1.75, ControlHeight = 2.2, Control = 40, Balance = 40, Agility = 40, Strength = 40, UserControlled = true, CanControl = true, Valid = true}
+		local contact = BallContact.ResolveSwept({candidate}, {PreviousPosition = Vector3.new(0, 1, -6), Position = Vector3.new(0, 1, 6), Velocity = Vector3.new(0, 0, 110), Radius = 1, Duration = .1})
+		expect(contact and contact.Valid and contact.Outcome == "Controlled", "Controlled player contact did not trap the ball")
+		candidate.CanControl = false
+		local locked = BallContact.ResolveSwept({candidate}, {PreviousPosition = Vector3.new(0, 1, -6), Position = Vector3.new(0, 1, 6), Velocity = Vector3.new(0, 0, 110), Radius = 1, Duration = .1})
+		expect(locked and locked.Valid and locked.Outcome == "Deflected", "Recovery lock allowed the ball through or granted possession")
+	end)
+
+	test("AI pass timing uses the authoritative flight curve", function()
+		local flight = Gameplay.Ball.Flight
+		local short = PassFlightModel.Duration(flight, 22, .3, "Ground")
+		local long = PassFlightModel.Duration(flight, 105, .3, "Ground")
+		local driven = PassFlightModel.Duration(flight, 105, .7, "Through")
+		expect(short > 0 and long > short and driven > 0, "Pass flight duration is not distance aware")
+	end)
+
+	test("AI movement profile catalog is complete", function()
+		expect(AIMovementProfiles.IsValid(AIMovementProfiles.Default), "Default movement profile is invalid")
+		for _, profileId in AIMovementProfiles.Order do
+			local definition = AIMovementProfiles.Profiles[profileId]
+			expect(AIMovementProfiles.IsValid(profileId) and type(definition.Name) == "string" and type(definition.Description) == "string", "Movement profile metadata missing for " .. profileId)
+		end
+		expect(not AIMovementProfiles.IsValid("Exploit"), "Unknown movement profile was accepted")
+	end)
+
+	test("tactic presets are complete and migrate legacy ids", function()
+		expectEqual(#AITactic.Order, 10, "Tactic preset count")
+		for _, id in AITactic.Order do
+			local preset = AITactic.Get(id)
+			expect(preset.Id == id and preset.MaxMajorRuns >= 1 and preset.MaxPressers >= 1, "Tactic metadata missing for " .. id)
+			for _, name in AITactic.SliderNames do expect(type(preset.Sliders[name]) == "number", id .. " omitted " .. name) end
+		end
+		expectEqual(AITactic.Normalize({Identity = "Tiki Taka"}).PresetId, "short_possession", "Legacy possession migration")
+		expectEqual(AITactic.Normalize({Identity = "Park The Bus"}).PresetId, "low_block_counter", "Legacy low-block migration")
+	end)
+
+	test("pass trail visibility defaults and validates", function()
+		expectEqual(PlayabilitySettings.Normalize({}).PassTrailVisibility, "UserOnly", "Pass trail default")
+		expectEqual(PlayabilitySettings.Normalize({PassTrailVisibility = "All"}).PassTrailVisibility, "All", "Pass trail selection")
+		expectEqual(PlayabilitySettings.Normalize({PassTrailVisibility = "Invalid"}).PassTrailVisibility, "UserOnly", "Pass trail validation")
 	end)
 
 	test("aerial ball is not vacuumed by a ground player", function()
@@ -529,12 +596,14 @@ function Tests.Run(): any
 	end)
 
 	test("tackle geometry separates misses clean wins and slide paths", function()
-		local miss = Tackle.Resolve({Slide = false, StartPosition = Vector3.zero, EndPosition = Vector3.zero, BallPosition = Vector3.new(0, 0, 8), OwnerPosition = Vector3.new(0, 0, 8), Facing = Vector3.zAxis, OwnerFacing = -Vector3.zAxis, Tackle = 99, Dribbling = 1, Strength = 99, OwnerBalance = 1, Stamina = 100, Exposure = 1})
+		local miss = Tackle.Resolve({Slide = false, StartPosition = Vector3.zero, EndPosition = Vector3.zero, BallPosition = Vector3.new(0, 0, 16), OwnerPosition = Vector3.new(0, 0, 16), Facing = Vector3.zAxis, OwnerFacing = -Vector3.zAxis, Tackle = 99, Dribbling = 1, Strength = 99, OwnerBalance = 1, Stamina = 100, Exposure = 1})
 		expectEqual(miss.Outcome, "TackleMiss", "Standing miss became a successful outcome")
 		local clean = Tackle.Resolve({Slide = false, StartPosition = Vector3.zero, EndPosition = Vector3.zero, BallPosition = Vector3.new(0, 0, 1), OwnerPosition = Vector3.new(0, 0, 1.4), Facing = Vector3.zAxis, OwnerFacing = Vector3.zAxis, Tackle = 99, Dribbling = 1, Strength = 99, OwnerBalance = 1, Stamina = 100, Exposure = 1})
 		expectEqual(clean.Outcome, "TackleWonPossession", "Clean standing tackle did not resolve once as a win")
 		local slide = Tackle.Resolve({Slide = true, StartPosition = Vector3.new(-6, 0, 0), EndPosition = Vector3.new(6, 0, 0), BallPosition = Vector3.zero, OwnerPosition = Vector3.new(0, 0, 1), Facing = -Vector3.xAxis, OwnerFacing = Vector3.zAxis, Tackle = 90, Dribbling = 20, Strength = 90, OwnerBalance = 30, Stamina = 100, Exposure = 1})
 		expect(slide.Outcome ~= "TackleMiss", "Slide path ignored contact between start and end")
+		local crossing = Tackle.Resolve({Slide = false, StartPosition = Vector3.new(-5, 0, 0), EndPosition = Vector3.new(5, 0, 0), BallStartPosition = Vector3.new(0, 0, -5), BallPosition = Vector3.new(0, 0, 5), OwnerStartPosition = Vector3.new(0, 0, -4), OwnerPosition = Vector3.new(0, 0, 6), Facing = Vector3.xAxis, OwnerFacing = Vector3.zAxis, Tackle = 90, Dribbling = 20, Strength = 90, OwnerBalance = 30, Stamina = 100, Exposure = 1})
+		expect(crossing.Outcome ~= "TackleMiss", "Synchronized standing-tackle sweep missed a crossing carrier")
 	end)
 
 	test("shared dribble target remains inside its legal envelope", function()
@@ -580,7 +649,7 @@ function Tests.Run(): any
 	end)
 
 	test("shot overhit curve is continuous", function()
-		local inputs = {0, .25, .5, .75, .89, .9, 1}
+		local inputs = {0, .25, .5, .75, .94, .95, 1}
 		local previousSpeed = -math.huge
 		local previousOverhit = -math.huge
 		for _, input in inputs do
@@ -589,9 +658,13 @@ function Tests.Run(): any
 			expect(speed >= previousSpeed and overhit >= previousOverhit, "Shot curve is not monotonic")
 			previousSpeed = speed;previousOverhit = overhit
 		end
-		expect(not ShotPower.IsOverhit(.9) and ShotPower.IsOverhit(.9001), "Overhit threshold moved")
-		expect(ShotPower.OverhitAmount(.9001) < .001, "Overhit curve jumps at threshold")
-		expectEqual(ShotPower.ApplyToVelocity(Vector3.zero, .9), Vector3.zero, "Accidental lift at accurate maximum")
+		expect(not ShotPower.IsOverhit(.95) and ShotPower.IsOverhit(.9501), "Overhit threshold moved")
+		expect(ShotPower.OverhitAmount(.9501) < .001, "Overhit curve jumps at threshold")
+		expect(ShotPower.SpeedScale(1) > ShotPower.SpeedScale(.95), "Overhit no longer adds excess speed")
+		expect(ShotPower.PlacementMultiplier(1) < .5, "Overhit accuracy penalty is too weak")
+		expectEqual(ShotPower.ApplyToVelocity(Vector3.zero, .95), Vector3.zero, "Accidental lift at accurate maximum")
+		local overhitTarget=ShotPower.ApplyToTarget(Vector3.zero,Vector3.new(0,5,-100),1)
+		expect(overhitTarget.Y>=30 and overhitTarget.Z < -150,"Maximum-power shot no longer clears the goal")
 	end)
 
 	test("lofted pass does not gain free accuracy", function()

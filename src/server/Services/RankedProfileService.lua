@@ -165,13 +165,10 @@ local function resolveLeaderboardName(userId:number, key:any):{Name:string,Usern
 	LeaderboardNameCache[cacheKey]=value
 	return value
 end
-local PATH_PACKS={[1]="bronze_pack",[2]="silver_pack",[3]="gold_pack",[4]="rare_pack",[5]="elite_pack",[6]="legendary_pack",[7]="mythic_pack"}
+local RewardEconomyConfig=require(ReplicatedStorage.VTR.Shared.RewardEconomyConfig)
 local function pathRewardPacks(wins:number):{string}
-	local packs={}
-	for index=1,math.clamp(math.floor(tonumber(wins)or 0),0,7)do
-		table.insert(packs,PATH_PACKS[index]or"bronze_pack")
-	end
-	return packs
+	local packId=RewardEconomyConfig.RankedPathPackByWins[math.clamp(math.floor(tonumber(wins)or 0),0,7)]
+	return packId and{packId}or{}
 end
 
 local function emptyRun(target:number?):any

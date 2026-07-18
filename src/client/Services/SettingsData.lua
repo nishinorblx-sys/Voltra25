@@ -25,7 +25,7 @@ return Factory.new({
 			{Title = "MOBILE SPRINT HOLD", Subtitle = "HOLD", Meta = "Sprint only while the button is held", Action = {Label = "SELECT HOLD", Operation = "Select", Key = "MobileSprintMode", Item = "Hold"}},
 			{Title = "MOBILE ACTION HAND", Subtitle = "RIGHT", Meta = "Action controls use the right side", Action = {Label = "SELECT RIGHT", Operation = "Select", Key = "MobileControlHandedness", Item = "Right"}},
 			{Title = "MOBILE ACTION HAND LEFT", Subtitle = "LEFT", Meta = "Action controls use the left side", Action = {Label = "SELECT LEFT", Operation = "Select", Key = "MobileControlHandedness", Item = "Left"}},
-			{Title = "KEYBINDS", Subtitle = "WASD MOVE / SHIFT SPRINT", Meta = "LMB shot / RMB ground / E + RMB through / Alt + RMB lob", Action = {Label = "VIEW ALL KEYBINDS", Operation = "Toast", Message = "WASD Move / Shift Sprint / Q Switch / LMB Shot / RMB Ground Pass / E + RMB Through Pass / Alt + RMB Lob / Ctrl + RMB Manual Ground Pass / E Tackle / F Slide / R Block / C Dribble"}},
+			{Title = "KEYBINDS", Subtitle = "WASD MOVE / SHIFT SPRINT", Meta = "LMB shot / RMB ground / E + RMB through / Alt lob / Ctrl manual pass", Action = {Label = "VIEW ALL KEYBINDS", Operation = "Toast", Message = "WASD Move / Shift Sprint / Q Switch / LMB Shot / RMB Ground Pass / E + RMB Through Pass / Alt Lob / Ctrl Manual Ground Pass / E Tackle / F Slide / R Block / C Dribble"}},
 		}},
 		{Id = "Audio", Label = "AUDIO", Description = "Game and music mix", Cards = {
 			{Title = "MASTER VOLUME", Subtitle = "80%", Meta = "ALL CHANNELS", Action = {Label = "ADJUST", Operation = "Select", Key = "MasterVolume", Item = "80%"}},

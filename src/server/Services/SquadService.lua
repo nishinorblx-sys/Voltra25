@@ -8,6 +8,7 @@ local ObjectiveService=require(script.Parent.ObjectiveService)
 local EconomyConfig=require(ReplicatedStorage.VTR.Shared.EconomyConfig)
 local CardProgressionResolver=require(ReplicatedStorage.VTR.Shared.CardProgressionResolver)
 local QuickSellValueConfig=require(ReplicatedStorage.VTR.Shared.QuickSellValueConfig)
+local AIMovementProfileConfig=require(ReplicatedStorage.VTR.Shared.AIMovementProfileConfig)
 
 local SquadService={};SquadService.__index=SquadService
 local ORDER=FormationConfig.Order
@@ -123,6 +124,7 @@ function SquadService:_calculate(profile:any):(number,number,number)
 	for _,pair in LINKS do local a,b=cards[pair[1]],cards[pair[2]];if a and b then if a.Club==b.Club then chemistry+=1 end;if a.Nation==b.Nation then chemistry+=1 end;if a.RoleTag==b.RoleTag then chemistry+=1 end end end
 	return filled,filled>0 and math.floor(total/filled+.5) or 0,math.min(33,chemistry)
 end
+function SquadService:_benchFilled(profile:any):number local filled=0;for index=1,7 do if self:_card(profile,profile.Bench[index])then filled+=1 end end;return filled end
 function SquadService:_objective(profile:any,id:string):any? for _,objective in profile.Objectives do if objective.objectiveId==id then return objective end end;return nil end
 function SquadService:_visibleObjective(profile:any):(any?,boolean) local all=true;for _,o in profile.Objectives do if o.groupId=="starter_journey" then if o.status~="claimed" then all=false end;if o.status=="active" or o.status=="completed" or o.status=="claimable" then return o,false end end end;return nil,all end
 function SquadService:_update(player:Player,profile:any):(boolean)
@@ -197,22 +199,32 @@ function SquadService:MovePlayer(player:Player,cardId:string,destinationType:str
 end
 
 function SquadService:SetFormation(player:Player,formation:string):(boolean,string,boolean) local p=self.Profiles:GetProfile(player);if not p or type(formation)~="string" or not FormationConfig.Formations[formation] then return false,"Unknown formation.",false end;p.Formation=formation;self:_update(player,p);return true,"Formation saved.",false end
+function SquadService:SetMovementProfile(player:Player,slot:string,profileId:string):(boolean,string,boolean)
+	local p=self.Profiles:GetProfile(player)
+	if not p or type(slot)~="string" or SquadSlots[slot]~=true or not AIMovementProfileConfig.IsValid(profileId) then return false,"Invalid movement profile.",false end
+	self:_normalize(p)
+	if not p.Squad[slot] then return false,"Place a player in that position first.",false end
+	p.PlayerInstructions=type(p.PlayerInstructions)=="table"and p.PlayerInstructions or{}
+	p.PlayerInstructions[slot]=profileId==AIMovementProfileConfig.Default and nil or profileId
+	self:_update(player,p)
+	return true,"Movement profile saved.",false
+end
 function SquadService:SetCardFlag(player:Player,cardId:string,flag:string,value:boolean):(boolean,string,boolean) local p=self.Profiles:GetProfile(player);local card=p and self:_card(p,cardId);if not p or not card or (card.Id~=cardId and card.cardInstanceId~=cardId) or (flag~="Locked" and flag~="Favorite") or type(value)~="boolean" then return false,"Invalid player flag.",false end;p.PlayerCardMeta[card.Id]=p.PlayerCardMeta[card.Id] or {};p.PlayerCardMeta[card.Id][flag]=value;if self.Profiles.Save then self.Profiles:Save(player)end;return true,flag..(value and " enabled." or " disabled."),false end
 
 function SquadService:GetSquad(player:Player):any?
-	local p=self.Profiles:GetProfile(player);if not p then return nil end;self:_normalize(p);local filled,rating,chemistry=self:_calculate(p);local formation=self:_formation(p);local slots={}
-	for _,slot in ORDER do local raw=self:_card(p,p.Squad[slot]);local card=raw and CardProgressionResolver.Resolve(raw,p.PlayerCardMeta[raw.Id]);local expected=formation[slot].Expected;local penalty=card and positionPenalty(card,expected)or 0;local cardCopy=copyForSlot(card,expected,card and card.Meta or nil);slots[slot]={Position=slot,Label=formation[slot].Label,ExpectedPosition=expected,Card=cardCopy,OutOfPosition=penalty>0,PositionPenalty=penalty,Coordinate={X=formation[slot].X,Y=formation[slot].Y}} end
+	local p=self.Profiles:GetProfile(player);if not p then return nil end;self:_normalize(p);local filled,rating,chemistry=self:_calculate(p);local benchFilled=self:_benchFilled(p);local formation=self:_formation(p);local slots={}
+	for _,slot in ORDER do local raw=self:_card(p,p.Squad[slot]);local card=raw and CardProgressionResolver.Resolve(raw,p.PlayerCardMeta[raw.Id]);local expected=formation[slot].Expected;local penalty=card and positionPenalty(card,expected)or 0;local cardCopy=copyForSlot(card,expected,card and card.Meta or nil);local movementProfile=type(p.PlayerInstructions)=="table"and p.PlayerInstructions[slot]or nil;if not AIMovementProfileConfig.IsValid(movementProfile)then movementProfile=AIMovementProfileConfig.Default end;slots[slot]={Position=slot,Label=formation[slot].Label,ExpectedPosition=expected,Card=cardCopy,OutOfPosition=penalty>0,PositionPenalty=penalty,MovementProfile=movementProfile,Coordinate={X=formation[slot].X,Y=formation[slot].Y}} end
 	local bench={};for index=1,7 do local card=self:_card(p,p.Bench[index]);local resolved=card and CardProgressionResolver.Resolve(card,p.PlayerCardMeta[card.Id])or nil;bench[index]={Index=index,Card=resolved} end
 	local reserves={};for _,id in p.Reserves do local card=self:_card(p,id);if card then table.insert(reserves,CardProgressionResolver.Resolve(card,p.PlayerCardMeta[card.Id])) end end
 	local club={};for _,card in p.PlayerCardInventory do local resolved=CardProgressionResolver.Resolve(card,p.PlayerCardMeta[card.Id]);local kind,slot=self:_locate(p,card.Id);resolved.RosterLocation=kind;resolved.RosterSlot=slot;if kind=="Club" then resolved.location="club";resolved.Location="club" end;table.insert(club,resolved) end
 	local objective,groupCompleted=self:_visibleObjective(p);local objectiveData=objective and {objectiveId=objective.objectiveId,title=objective.title,description=objective.description,progress=objective.progress,target=objective.target,status=objective.status,reward=objective.reward} or nil
 	local transferList={};for _,id in p.TransferList do local card=self:_card(p,id);if card then table.insert(transferList,table.clone(card)) end end
-	return {Slots=slots,SlotOrder=ORDER,Bench=bench,Reserves=reserves,TransferList=transferList,Club=club,Rating=rating,Chemistry=chemistry,Filled=filled,Formation=p.Formation,FormationOptions={"4-3-3","4-4-2","4-2-3-1","3-5-2","5-3-2"},TeamName=p.ClubMembership.Name,ClubIdentity=table.clone(p.ClubMembership),Objective=objectiveData,ObjectiveGroupCompleted=groupCompleted,CardMeta=p.PlayerCardMeta,SavedAt=os.time()}
+	return {Slots=slots,SlotOrder=ORDER,Bench=bench,Reserves=reserves,TransferList=transferList,Club=club,Rating=rating,Chemistry=chemistry,Filled=filled,BenchFilled=benchFilled,IsComplete=filled==#ORDER and benchFilled==7,Formation=p.Formation,FormationOptions={"4-3-3","4-4-2","4-2-3-1","3-5-2","5-3-2"},TeamName=p.ClubMembership.Name,ClubIdentity=table.clone(p.ClubMembership),Objective=objectiveData,ObjectiveGroupCompleted=groupCompleted,CardMeta=p.PlayerCardMeta,SavedAt=os.time()}
 end
 
 function SquadService:GetSquadState(player:Player):any?
-	local p=self.Profiles:GetProfile(player);if not p then return nil end;self:_normalize(p);local filled,rating,chemistry=self:_calculate(p)
-	return {startingXI=table.clone(p.SquadState.startingXI),bench=table.clone(p.SquadState.bench),reserves=table.clone(p.SquadState.reserves),transferList=table.clone(p.SquadState.transferList),rating=rating,chemistry=chemistry,filled=filled,formation=p.Formation}
+	local p=self.Profiles:GetProfile(player);if not p then return nil end;self:_normalize(p);local filled,rating,chemistry=self:_calculate(p);local benchFilled=self:_benchFilled(p)
+	return {startingXI=table.clone(p.SquadState.startingXI),bench=table.clone(p.SquadState.bench),reserves=table.clone(p.SquadState.reserves),transferList=table.clone(p.SquadState.transferList),rating=rating,chemistry=chemistry,filled=filled,benchFilled=benchFilled,isComplete=filled==#ORDER and benchFilled==7,formation=p.Formation}
 end
 function SquadService:GetClubPlayers(player:Player):any?
 	local p=self.Profiles:GetProfile(player);if not p then return nil end;self:_normalize(p);local players={};for _,card in p.PlayerCardInventory do if card.location=="club" then table.insert(players,CardProgressionResolver.Resolve(card,p.PlayerCardMeta[card.Id])) end end;return players

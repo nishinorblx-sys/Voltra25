@@ -14,13 +14,18 @@ local COLORS = {
 	OffsideWarning = Color3.fromHex("FFB020"),
 }
 
+local TEAM_RING_COLORS = {
+	User = Color3.fromHex("149CFF"),
+	Opponent = Color3.fromHex("FF3B4F"),
+}
+
 local function rootOf(model: Model?): BasePart?
 	return model and model:FindFirstChild("HumanoidRootPart") :: BasePart?
 end
 
-local function makeRing(): Part
+local function makeRing(color: Color3?, name: string?): Part
 	local ring = Instance.new("Part")
-	ring.Name = "VTRActiveIndicator"
+	ring.Name = name or "VTRActiveIndicator"
 	ring.Shape = Enum.PartType.Cylinder
 	ring.Size = Vector3.new(0.08, 4.25, 4.25)
 	ring.Anchored = true
@@ -29,7 +34,7 @@ local function makeRing(): Part
 	ring.CanTouch = false
 	ring.CastShadow = false
 	ring.Material = Enum.Material.Neon
-	ring.Color = COLORS.ActiveUser
+	ring.Color = color or COLORS.ActiveUser
 	ring.Transparency = 0.36
 	ring.Parent = workspace
 	MatchVisualCleanupService.RegisterTemporary(ring)
@@ -104,7 +109,7 @@ local function makeYellowCardMarker(): BillboardGui
 	return gui
 end
 
-function Controller.new(teamModels: any, ball: BasePart, hud: any, namesMode: string?)
+function Controller.new(teamModels: any, ball: BasePart, hud: any, namesMode: string?, controlledSide: string?)
 	local markers = {}
 	for kind, color in COLORS do
 		markers[kind] = makeMarker(kind, color)
@@ -113,9 +118,11 @@ function Controller.new(teamModels: any, ball: BasePart, hud: any, namesMode: st
 		Ball = ball,
 		HUD = hud,
 		Teams = teamModels or {},
+		ControlledSide = controlledSide == "Away" and "Away" or "Home",
 		Markers = markers,
 		Ring = makeRing(),
 		TargetRing = makeRing(),
+		TeamRings = {},
 		YellowCards = {},
 		NamesMode = namesMode or "Active Only",
 		Clock = 0,
@@ -124,7 +131,46 @@ function Controller.new(teamModels: any, ball: BasePart, hud: any, namesMode: st
 	self.TargetRing.Name = "VTRPassTargetRing"
 	self.TargetRing.Size = Vector3.new(0.06, 3.2, 3.2)
 	self.TargetRing.Transparency = 1
+	self:_ensureTeamRings()
 	return self
+end
+
+function Controller:_ringColorForSide(side: string): Color3
+	return side == self.ControlledSide and TEAM_RING_COLORS.User or TEAM_RING_COLORS.Opponent
+end
+
+function Controller:_ensureTeamRings()
+	for side, sideList in self.Teams do
+		if type(sideList) ~= "table" then continue end
+		for _, model in sideList do
+			if typeof(model) ~= "Instance" or not model:IsA("Model") or self.TeamRings[model] then continue end
+			local color = self:_ringColorForSide(tostring(side))
+			local ring = makeRing(color, tostring(side) == self.ControlledSide and "VTRUserTeamRing" or "VTROpponentTeamRing")
+			ring.Size = Vector3.new(0.045, 3.75, 3.75)
+			ring.Transparency = 0.42
+			self.TeamRings[model] = ring
+		end
+	end
+end
+
+function Controller:_updateTeamRings()
+	self:_ensureTeamRings()
+	for model, ring in self.TeamRings do
+		if typeof(model) ~= "Instance" or not model.Parent then
+			ring:Destroy()
+			self.TeamRings[model] = nil
+			continue
+		end
+		local root = rootOf(model)
+		if root then
+			local side = tostring(model:GetAttribute("VTRTeam") or "")
+			ring.Color = self:_ringColorForSide(side)
+			ring.CFrame = CFrame.new(root.Position - Vector3.new(0, 2.88, 0)) * CFrame.Angles(0, 0, math.pi / 2)
+			ring.Transparency = model == self.Active and 0.18 or 0.42
+		else
+			ring.Transparency = 1
+		end
+	end
 end
 
 function Controller:_setMarker(kind: string, model: Model?)
@@ -288,6 +334,7 @@ end
 
 function Controller:Update(dt: number)
 	self.Pulse += dt
+	self:_updateTeamRings()
 	local activeRoot = rootOf(self.Active)
 	if activeRoot then
 		self.Ring.CFrame = CFrame.new(activeRoot.Position - Vector3.new(0, 2.85, 0)) * CFrame.Angles(0, 0, math.pi / 2)
@@ -320,6 +367,9 @@ function Controller:Destroy()
 		self.Ring:Destroy()
 	end
 	if self.TargetRing then self.TargetRing:Destroy() end
+	for _, ring in self.TeamRings do
+		ring:Destroy()
+	end
 	for _, marker in self.Markers do
 		marker:Destroy()
 	end

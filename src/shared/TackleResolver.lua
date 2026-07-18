@@ -1,5 +1,7 @@
 --!strict
 
+local GameplayConfig = require(script.Parent.GameplayConfig)
+
 local Resolver = {}
 
 local function flat(value: Vector3): Vector3
@@ -13,9 +15,15 @@ local function segmentDistance(a: Vector3, b: Vector3, point: Vector3): number
 	return flat(point - (a + segment * alpha)).Magnitude
 end
 
+local function synchronizedSweepDistance(a0:Vector3,a1:Vector3,b0:Vector3,b1:Vector3):number
+	-- Both segments cover the same contact window. Measuring their relative
+	-- motion catches crossings that endpoint-only hitboxes miss under latency.
+	return segmentDistance(flat(a0-b0),flat(a1-b1),Vector3.zero)
+end
+
 function Resolver.Resolve(input: any): any
 	local slide = input.Slide == true
-	local reach = slide and 7 or 5.4
+	local reach = slide and GameplayConfig.Ball.SlideTackleRange or GameplayConfig.Ball.StandingTackleRange
 	local start = typeof(input.StartPosition) == "Vector3" and input.StartPosition or Vector3.zero
 	local finish = typeof(input.EndPosition) == "Vector3" and input.EndPosition or start
 	local ballPosition = typeof(input.BallPosition) == "Vector3" and input.BallPosition or finish
@@ -23,8 +31,11 @@ function Resolver.Resolve(input: any): any
 	local facing = typeof(input.Facing) == "Vector3" and flat(input.Facing) or Vector3.zAxis
 	local toBall = flat(ballPosition - finish)
 	local facingDot = facing.Magnitude > 0.01 and toBall.Magnitude > 0.01 and facing.Unit:Dot(toBall.Unit) or 1
-	local ballContactDistance = slide and segmentDistance(start, finish + (facing.Magnitude > 0.01 and facing.Unit or Vector3.zAxis) * 2.2, ballPosition) or toBall.Magnitude
-	local bodyDistance = slide and segmentDistance(start, finish, ownerPosition) or flat(ownerPosition - finish).Magnitude
+	local ballStart=typeof(input.BallStartPosition)=="Vector3"and input.BallStartPosition or ballPosition
+	local ownerStart=typeof(input.OwnerStartPosition)=="Vector3"and input.OwnerStartPosition or ownerPosition
+	local extendedFinish=finish+(slide and(facing.Magnitude>.01 and facing.Unit or Vector3.zAxis)*2.2 or Vector3.zero)
+	local ballContactDistance=synchronizedSweepDistance(start,extendedFinish,ballStart,ballPosition)
+	local bodyDistance=synchronizedSweepDistance(start,finish,ownerStart,ownerPosition)
 	local ownerFacing = typeof(input.OwnerFacing) == "Vector3" and flat(input.OwnerFacing) or Vector3.zAxis
 	local toTackler = flat(finish - ownerPosition)
 	local approachDot = ownerFacing.Magnitude > 0.01 and toTackler.Magnitude > 0.01 and ownerFacing.Unit:Dot(toTackler.Unit) or 0

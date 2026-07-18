@@ -1,4 +1,6 @@
 --!strict
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local AITacticConfig = require(ReplicatedStorage.VTR.Shared.AITacticConfig)
 local Service = {}
 Service.__index = Service
 
@@ -62,11 +64,9 @@ local DEFAULTS = {
 }
 
 function Service.new(tactics: any?)
-	local sliders = type(tactics) == "table" and type(tactics.Sliders) == "table" and tactics.Sliders or {}
-	local self = {Sliders = {}}
-	for name, fallback in pairs(DEFAULTS) do
-		self.Sliders[name] = math.clamp(tonumber(sliders[name]) or fallback, 0, 100)
-	end
+	local normalized = AITacticConfig.Normalize(tactics)
+	local preset = AITacticConfig.Get(normalized.PresetId)
+	local self = {Sliders = normalized.Sliders, PresetId = normalized.PresetId, Preset = preset, MaxMajorRuns = preset.MaxMajorRuns, MaxPressers = preset.MaxPressers}
 	return setmetatable(self, Service)
 end
 

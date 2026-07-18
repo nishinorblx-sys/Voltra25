@@ -69,6 +69,10 @@ function Service:UpdateTactics(side: string, tactics: any)
 	self.Controller:UpdateTactics(side, tactics)
 end
 
+function Service:ResetFootballer(model: Model)
+	self.Controller:ResetFootballer(model)
+end
+
 function Service:Step(dt: number)
 	if self.Disabled then return end
 	if self.Distribution and os.clock() >= self.Distribution.Until then

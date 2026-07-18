@@ -30,7 +30,6 @@ local gamepad = table.freeze({
 	Sprint = "R2",
 	Pause = "MENU",
 	ShootingFocus = "Y",
-	ReceiverOverride = "L2",
 	Skip = "A",
 })
 
@@ -50,7 +49,6 @@ local touch = table.freeze({
 	Sprint = "SPRINT",
 	Pause = "PAUSE",
 	ShootingFocus = "FOCUS",
-	ReceiverOverride = "OVERRIDE",
 	Skip = "SKIP",
 })
 
@@ -58,7 +56,6 @@ local keyboardBinding = table.freeze({
 	ThroughPass = "ThroughPassKey",
 	Lob = "LobbedPassKey",
 	ManualPass = "ManualPassKey",
-	ReceiverOverride = "ManualPassKey",
 	Switch = "ChangePlayerKey",
 	Tackle = "TackleKey",
 	SlideTackle = "SlideTackleKey",
@@ -111,7 +108,8 @@ function Service.Glyph(action: string, settings: any?, context: any?): string
 	local defaults = Service.DefaultBindings
 	local value = binding and ((type(settings) == "table" and settings[binding]) or defaults[binding]) or normalized
 	local glyph = keyText(value)
-	if normalized == "ThroughPass" or normalized == "Lob" or normalized == "ManualPass" then return glyph .. " + RMB" end
+	if normalized == "ThroughPass" then return glyph .. " + RMB" end
+	if normalized == "Lob" or normalized == "ManualPass" then return glyph end
 	return glyph
 end
 

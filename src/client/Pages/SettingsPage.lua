@@ -259,8 +259,9 @@ local function renderTab(context: any, scroll: ScrollingFrame, active: string)
 		toggle(mix, context, "MenuMusic", "MENU MUSIC", "Turns menu soundtrack audio on or off.", 126)
 	elseif active == "Camera" then
 		local advancedUnlocked = PlayabilityUnlockConfig.FeatureUnlocked(context.Data.Progression, "AdvancedCompetitiveSettings")
-		local cam = panel(scroll, "Camera Options", UDim2.fromOffset(0, 154), UDim2.new(1, 0, 0, 190))
+		local cam = panel(scroll, "Camera Options", UDim2.fromOffset(0, 154), UDim2.new(1, 0, 0, 264))
 		option(cam, context, "CameraPreset", "CAMERA PRESET", advancedUnlocked and "Tactical or Pro." or "Pro unlocks after your opening World Cup run.", 52, advancedUnlocked and CAMERA_PRESETS or {"Tactical"})
+		option(cam, context, "PassTrailVisibility", "PASS TRAILS", "Controls which pass trails are shown.", 126, {"Off", "UserOnly", "All"})
 	elseif active == "Accessibility" then
 		local access = panel(scroll, "Accessibility", UDim2.fromOffset(0, 154), UDim2.new(1, 0, 0, 220))
 		toggle(access, context, "HighContrast", "HIGH CONTRAST", "Increases scene contrast and UI readability.", 52)

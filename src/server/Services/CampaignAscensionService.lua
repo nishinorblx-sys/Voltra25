@@ -13,6 +13,7 @@ local ScoutingService = require(script.Parent.CampaignScoutingService)
 local ProjectService = require(script.Parent.CampaignProjectService)
 local FacilityService = require(script.Parent.CampaignFacilityService)
 local TeamDatabase = require(script.Parent.Parent.Data.TeamDatabase)
+local OpponentTacticSelector = require(script.Parent.Parent.Gameplay.OpponentTacticSelector)
 
 local Service = {}
 Service.__index = Service
@@ -79,7 +80,7 @@ local function publicFixture(fixture: any, tacticalLab: number): any
 		Played = fixture.Played, Result = fixture.Result, HomeScore = fixture.HomeScore,
 		AwayScore = fixture.AwayScore, StarsEarned = copy(fixture.StarsEarned or {}), Mode = fixture.Mode,
 	}
-	if tacticalLab >= 1 then result.Formation = fixture.Formation end
+	if tacticalLab >= 1 then result.Formation = fixture.Formation result.OpponentScouting = OpponentTacticSelector.Scout({Fixture = fixture}) end
 	if tacticalLab >= 2 then result.Strength = fixture.Strength result.Weakness = fixture.Weakness end
 	if tacticalLab >= 3 then result.CounterTactic = fixture.CounterTactic result.CounterPlanApplied = fixture.CounterPlanApplied == true end
 	return result
@@ -623,6 +624,8 @@ function Service:BuildPendingRuntime(player: Player, pendingId: string): (boolea
 	local awayRoster = TeamDatabase.GetRoster(fixture.OpponentTeamId)
 	if not awayRoster then return false, "Opponent roster is unavailable.", nil end
 	awayRoster.Formation = fixture.Formation or awayRoster.Formation
+	local opponentTactics = OpponentTacticSelector.Resolve({Fixture = fixture, Roster = awayRoster, TeamMetadata = awayRoster.Team})
+	local opponentScouting = OpponentTacticSelector.Scout({Fixture = fixture, Roster = awayRoster, TeamMetadata = awayRoster.Team})
 	local division = Config.GetDivision(fixture.DivisionId)
 	local baseSetup = profile.MatchSetup or {}
 	local setup = {
@@ -634,7 +637,7 @@ function Service:BuildPendingRuntime(player: Player, pendingId: string): (boolea
 		AscensionMode = pending.Mode, AscensionObjective = fixture.ObjectiveTitle, WatchMode = pending.Mode == "Manage",
 		TeamTactics = copy(profile.TeamTactics), RequireWinner = fixture.IsPromotionFinal == true,
 		HomeFormation = homeRoster.Formation, AwayFormation = awayRoster.Formation,
-		AscensionOpponentTactics = { Identity = fixture.TacticPreset, Sliders = copy(fixture.TacticModifiers) },
+		AwayTactics = opponentTactics, AscensionOpponentTactics = opponentTactics, OpponentScouting = opponentScouting,
 		AscensionPromotionFinal = fixture.IsPromotionFinal == true,
 		NoPrematch = false, StadiumAscensionLevel = progress.Facilities.stadium,
 	}

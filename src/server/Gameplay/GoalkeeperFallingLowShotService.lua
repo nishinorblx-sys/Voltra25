@@ -6,6 +6,10 @@ Service.Running = false
 Service.BaseY = setmetatable({}, { __mode = "k" })
 Service.ActiveUntil = setmetatable({}, { __mode = "k" })
 Service.LastTarget = setmetatable({}, { __mode = "k" })
+Service.BallIndex = setmetatable({}, { __mode = "k" })
+Service.KeeperIndex = setmetatable({}, { __mode = "k" })
+Service.Indexed = false
+local ensureIndexed
 
 local GOAL_HALF_WIDTH = 18
 local CROSSBAR_HEIGHT = 12
@@ -29,8 +33,9 @@ local function isBall(part)
 end
 
 local function findBall()
-	for _, descendant in ipairs(workspace:GetDescendants()) do
-		if isBall(descendant) then
+	ensureIndexed()
+	for descendant in pairs(Service.BallIndex) do
+		if descendant.Parent and isBall(descendant) then
 			return descendant
 		end
 	end
@@ -55,6 +60,35 @@ local function isKeeper(model)
 
 	local role = lower(model:GetAttribute("Role") or model:GetAttribute("Position") or model:GetAttribute("PrimaryPosition"))
 	return role == "gk" or role == "goalkeeper"
+end
+
+local function indexInstance(inst)
+	if inst:IsA("BasePart") and isBall(inst) then
+		Service.BallIndex[inst] = true
+	end
+	if inst:IsA("Model") and isKeeper(inst) then
+		Service.KeeperIndex[inst] = true
+	end
+end
+
+local function unindexInstance(inst)
+	Service.BallIndex[inst] = nil
+	Service.KeeperIndex[inst] = nil
+	Service.BaseY[inst] = nil
+	Service.ActiveUntil[inst] = nil
+	Service.LastTarget[inst] = nil
+end
+
+ensureIndexed = function()
+	if Service.Indexed then
+		return
+	end
+	Service.Indexed = true
+	for _, inst in ipairs(workspace:GetDescendants()) do
+		indexInstance(inst)
+	end
+	workspace.DescendantAdded:Connect(indexInstance)
+	workspace.DescendantRemoving:Connect(unindexInstance)
 end
 
 local function rootOf(model)
@@ -198,8 +232,8 @@ function Service:Step()
 		return
 	end
 
-	for _, model in ipairs(workspace:GetDescendants()) do
-		if model:IsA("Model") and isKeeper(model) then
+	for model in pairs(self.KeeperIndex) do
+		if model.Parent and model:IsA("Model") and isKeeper(model) then
 			local humanoid = model:FindFirstChildOfClass("Humanoid")
 			local root = rootOf(model)
 

@@ -1148,7 +1148,7 @@ function Service:_begin(attackingSide: string, shotId: number)
 	else
 		keeper:SetAttribute("VTRLastSaveChance",math.floor((evaluation.SavePercent or 0)+.5))
 	end
-	if willSave == false then
+	if willSave == false and not penaltyDuel then
 		VTRGoalPassThrough.Force(self.Ball, 2.75)
 	end
 	keeper:SetAttribute("VTRGoalkeeperSaving", true)
@@ -1179,6 +1179,8 @@ function Service:_begin(attackingSide: string, shotId: number)
 		LockedTarget = target,
 		PlannedRootTarget = evaluation.RootTarget,
 		PenaltyDiveTarget = nil,
+		PenaltyDuel = penaltyDuel,
+		PenaltyShotSlot = penaltySlot,
 		WillSave = willSave,
 		DivePlayed = false,
 		StartY = keeperRoot and keeperRoot.Position.Y or self.PitchCFrame.Position.Y + 3,
@@ -1194,6 +1196,7 @@ function Service:_begin(attackingSide: string, shotId: number)
 		EffectiveGravity=(self.BallService.ShotPlan and tonumber(self.BallService.ShotPlan.EffectiveGravity))or workspace.Gravity,
 		ReachEvaluation=evaluation,
 		Ball=self.Ball,
+		LastBallPosition=self.Ball.Position,
 		DiveSpeed=tonumber(evaluation.DiveSpeed)or DEFAULT_DIVE_SPEED,
 		ReachHitbox=tonumber(evaluation.ReachHitbox)or 5.7,
 		ContactRadius=tonumber(evaluation.ContactRadius)or (self.Ball.Size.X*.5+1.2),
@@ -1204,6 +1207,9 @@ function Service:_begin(attackingSide: string, shotId: number)
 		if typeof(guessPoint)=="Vector3"then
 			self.ActiveSave.PenaltyDiveTarget=guessPoint
 			self.ActiveSave.PlannedRootTarget=nil
+			self.ActiveSave.ReactionDelay=0
+			self.ActiveSave.ReactionReadyAt=shotId+.12
+			self.ActiveSave.DiveSpeed=math.max(30,tonumber(self.ActiveSave.DiveSpeed)or DEFAULT_DIVE_SPEED)
 			keeper:SetAttribute("VTRSaveTarget",guessPoint)
 		end
 	end
@@ -1278,7 +1284,7 @@ function Service:_finish(save: any)
 	if save.DiveVelocity then save.DiveVelocity:Destroy();save.DiveVelocity=nil end
 	if save.DiveAttachment then save.DiveAttachment:Destroy();save.DiveAttachment=nil end
 	keeperRoot.AssemblyLinearVelocity=Vector3.zero;keeperRoot.AssemblyAngularVelocity=Vector3.zero
-	self.BallService:GoalkeeperSave(keeper, save.Target)
+	self.BallService:GoalkeeperSave(keeper, save.ContactPoint or self.Ball.Position, true)
 	local parriedSave = self.Ball:GetAttribute("VTRGoalkeeperHeld") ~= true
 	self.Ball:SetAttribute("VTRPenaltyShotActive",nil)
 	self.BallService.Stats:RecordSave(keeper,self.BallService.LastShotXG)
@@ -1375,7 +1381,7 @@ function Service:_positionOnLine(defendingSide:string)
 		targetHorizontal=center+(ballHorizontal-center)*.34
 	end
 
-	targetHorizontal=math.clamp(targetHorizontal,rectangle.Left+width*.08,rectangle.RightBound-width*.08)
+	targetHorizontal=math.clamp(targetHorizontal,rectangle.Left+width*.2,rectangle.RightBound-width*.2)
 
 	local forward=fieldDirection(rectangle,self.PitchCFrame)
 	local height=rectangle.Bottom+math.min(2.75,(rectangle.Top-rectangle.Bottom)*.42)
@@ -1395,16 +1401,6 @@ function Service:_positionOnLine(defendingSide:string)
 		humanoid.AutoRotate=false
 		local flatTarget=Vector3.new(target.X,keeperRoot.Position.Y,target.Z)
 		local distanceToMove=(Vector3.new(flatTarget.X,0,flatTarget.Z)-Vector3.new(keeperRoot.Position.X,0,keeperRoot.Position.Z)).Magnitude
-
-		if opposingCarrier and carrierDistance > KEEPER_LATERAL_REACT_DISTANCE then
-			humanoid.WalkSpeed=0
-			humanoid:Move(Vector3.zero,false)
-			keeper:SetAttribute("VTRGoalLineTarget",keeperRoot.Position)
-			keeper:SetAttribute("VTRKeeperPositionHold",true)
-			keeper:SetAttribute("VTRKeeperCarrierDistance",math.floor(carrierDistance+.5))
-			keeper:SetAttribute("VTRKeeperPositionPressure",0)
-			return
-		end
 
 		local maxSpeed=opposingCarrier and (7+pressureAlpha*8) or 11
 		if distanceToMove < .75 then
@@ -1876,13 +1872,44 @@ local function createLateralDrive(save:any,keeperRoot:BasePart,lateralAxis:Vecto
 	save.DiveVelocity=drive
 end
 
-local function liveReachHitboxTouched(service:any,save:any,target:Vector3):boolean
-	if save.WillSave~=true then return false end
-	local radius=math.max(0.1,tonumber(save.ContactRadius)or(service.Ball.Size.X*.5+1.2))
-	local distance=(service.Ball.Position-target).Magnitude
-	save.Keeper:SetAttribute("VTRLiveSaveHitboxRadius",radius)
-	save.Keeper:SetAttribute("VTRLiveSaveHitboxDistance",math.floor(distance*100)/100)
-	return distance<=radius
+local function distanceToPart(point:Vector3,part:BasePart):number
+	local localPoint=part.CFrame:PointToObjectSpace(point)
+	local half=part.Size*.5
+	local closest=Vector3.new(
+		math.clamp(localPoint.X,-half.X,half.X),
+		math.clamp(localPoint.Y,-half.Y,half.Y),
+		math.clamp(localPoint.Z,-half.Z,half.Z)
+	)
+	return(point-part.CFrame:PointToWorldSpace(closest)).Magnitude
+end
+
+local function liveReachHitboxTouched(service:any,save:any,_target:Vector3):boolean
+	local keeper=save and save.Keeper
+	if not keeper or not keeper.Parent or save.Launched~=true then return false end
+	local current=service.Ball.Position
+	local previous=typeof(save.LastBallPosition)=="Vector3"and save.LastBallPosition or current
+	save.LastBallPosition=current
+	local ballRadius=math.max(service.Ball.Size.X*.5,0.1)
+	local contactPadding=.32
+	local samples=math.clamp(math.ceil((current-previous).Magnitude/math.max(ballRadius*.55,.3)),4,24)
+	local nearest=math.huge
+	local contactPoint=nil
+	for _,part in keeper:GetDescendants()do
+		if not part:IsA("BasePart")or part.Name=="HumanoidRootPart"or part:FindFirstAncestorOfClass("Accessory")then continue end
+		for sample=0,samples do
+			local point=previous:Lerp(current,sample/samples)
+			local distance=distanceToPart(point,part)
+			if distance<nearest then nearest=distance;contactPoint=point end
+		end
+	end
+	save.Keeper:SetAttribute("VTRLiveSaveHitboxRadius",ballRadius+contactPadding)
+	save.Keeper:SetAttribute("VTRLiveSaveHitboxDistance",math.floor(nearest*100)/100)
+	if nearest<=ballRadius+contactPadding then
+		save.ContactPoint=contactPoint or current
+		save.WillSave=true
+		return true
+	end
+	return false
 end
 
 
@@ -2006,6 +2033,16 @@ function Service:Step(dt:number?)
 		save.PlannedRootTarget=nil
 	end
 	if save.PenaltyDiveTarget then
+		if not save.Launched then
+			local liveGuessPoint=save.Keeper:GetAttribute("VTRPenaltyGuessPoint")
+			local liveGuessSlot=save.Keeper:GetAttribute("VTRPenaltyGuessSlot")
+			if typeof(liveGuessPoint)=="Vector3"then
+				save.PenaltyDiveTarget=liveGuessPoint
+				save.LockedTarget=liveGuessPoint
+				save.WillSave=type(liveGuessSlot)=="string"and liveGuessSlot==save.PenaltyShotSlot
+				save.Keeper:SetAttribute("VTRShotWillScore",not save.WillSave)
+			end
+		end
 		target=save.PenaltyDiveTarget
 	elseif save.LockedTarget then
 		target=save.LockedTarget
@@ -2046,6 +2083,7 @@ function Service:Step(dt:number?)
 	local diveSpeed=math.max(1,tonumber(save.DiveSpeed)or DEFAULT_DIVE_SPEED)
 	local distanceToCover=Vector2.new(travel,rise).Magnitude
 	local requiredTime=math.clamp(distanceToCover/diveSpeed,.12,3.0)
+	local penaltyDive=save.PenaltyDuel==true and save.PenaltyDiveTarget~=nil
 	local reactionReady=os.clock()>=(tonumber(save.ReactionReadyAt)or 0)
 	local forceLateDive=save.WillSave==false and (save.ShotExpired==true or time<=EMERGENCY_SAVE_TIME or os.clock()-(tonumber(save.ShotId)or os.clock())>math.max(.3,tonumber(save.ReactionDelay)or 0))
 	if not save.Launched then
@@ -2062,10 +2100,10 @@ function Service:Step(dt:number?)
 		humanoid:Move(Vector3.zero,false)
 		humanoid.PlatformStand=true
 		local flightTime=math.max(.12,requiredTime)
-		if save.WillSave==false then flightTime=math.clamp(requiredTime+(tonumber(save.MissDelay)or .35),forceLateDive and .42 or .35,1.45)end
+		if save.WillSave==false and not penaltyDive then flightTime=math.clamp(requiredTime+(tonumber(save.MissDelay)or .35),forceLateDive and .42 or .35,1.45)end
 		save.DiveStartedAt=os.clock()
 		save.DiveDuration=flightTime
-		save.InitialInterceptTime=save.WillSave==false and math.max(forceLateDive and flightTime*.62 or time+(tonumber(save.MissDelay)or .35),.01)or math.max(flightTime,.01)
+		save.InitialInterceptTime=penaltyDive and math.max(flightTime,.01)or save.WillSave==false and math.max(forceLateDive and flightTime*.62 or time+(tonumber(save.MissDelay)or .35),.01)or math.max(flightTime,.01)
 		save.Progress=0
 		save.StartPosition=keeperRoot.Position
 		save.RootTarget=rootTarget
@@ -2142,12 +2180,13 @@ function Service:Step(dt:number?)
 		save.DivePosePlan=posePlan
 		liftKeeperAboveFloor(save.Keeper,upAxis,self.PitchCFrame.Position:Dot(upAxis)+.58,.08)
 	end
-	if save.Launched and save.WillSave==false and ((save.Progress or 0)>=.94 or time<=EMERGENCY_SAVE_TIME) and os.clock()-(save.DiveStartedAt or os.clock())>=math.clamp(.58+(tonumber(save.MissDelay)or .35)*.25,.58,.86) then
-		self:_miss(save)
+	if save.Launched and liveReachHitboxTouched(self,save,save.LockedTarget or target) then
+		save.WillSave=true
+		self:_finish(save)
 		return
 	end
-	if save.WillSave~=false and save.Launched and liveReachHitboxTouched(self,save,save.LockedTarget or target) then
-		self:_finish(save)
+	if save.Launched and save.WillSave==false and ((save.Progress or 0)>=.94 or time<=EMERGENCY_SAVE_TIME) and os.clock()-(save.DiveStartedAt or os.clock())>=math.clamp(.58+(tonumber(save.MissDelay)or .35)*.25,.58,.86) then
+		self:_miss(save)
 		return
 	end
 	if save.WillSave~=false and save.Launched and ((save.Progress or 0)>=.995 or time<=EMERGENCY_SAVE_TIME) then

@@ -21,7 +21,7 @@ local MatchExperienceConfig=require(ReplicatedStorage.VTR.Shared.MatchExperience
 local DifficultyConfig=require(ReplicatedStorage.VTR.Shared.DifficultyConfig)
 local Remotes=require(ReplicatedStorage.VTR.Shared.Remotes)
 local PenaltyConfig=require(ReplicatedStorage.VTR.Shared.PenaltyConfig)
-local VTRLiteConfig=require(ReplicatedStorage.VTR.Shared.VTRLiteConfig)
+local AITacticConfig=require(ReplicatedStorage.VTR.Shared.AITacticConfig)
 local Catalog=require(ReplicatedStorage.VTR.Shared.Catalog)
 local TeamDatabase=require(script.Parent.Parent.Data.TeamDatabase)
 local TeamSpawnService=require(script.Parent.TeamSpawnService)
@@ -50,6 +50,7 @@ local GameplayLinkDebugService=require(script.Parent.GameplayLinkDebugService)
 local PitchConfig=require(script.Parent.PitchConfig)
 local PlayBuilderConfig=require(ReplicatedStorage.VTR.Shared.PlayBuilderConfig)
 local GoalModelResolver=require(ReplicatedStorage.VTR.Shared.GoalModelResolver)
+local FormationConfig=require(ReplicatedStorage.VTR.Shared.FormationConfig)
 local FormationService=require(script.Parent.FormationService)
 local DeveloperAccessService=require(script.Parent.Parent.Services.DeveloperAccessService)
 local GameplayDebugPolicy=require(script.Parent.GameplayDebugPolicy)
@@ -156,15 +157,7 @@ local function delayUnpaused(session:any,seconds:number,callback:() -> ())
 	end)
 end
 local function sanitizeRuntimeTactics(payload:any):any
-	local identity=type(payload)=="table"and type(payload.Identity)=="string"and payload.Identity or"Balanced"
-	if not VTRLiteConfig.TacticPresets[identity]then identity="Balanced"end
-	local sliders={}
-	local source=type(payload)=="table"and type(payload.Sliders)=="table"and payload.Sliders or{}
-	local preset=VTRLiteConfig.TacticPresets[identity]or VTRLiteConfig.TacticPresets.Balanced
-	for index,name in VTRLiteConfig.TacticSliderNames do
-		sliders[name]=math.clamp(math.floor((tonumber(source[name])or preset[index]or 50)+.5),0,100)
-	end
-	return{Identity=identity,Sliders=sliders}
+	return AITacticConfig.Normalize(payload)
 end
 local function getGoalkeeper(team:{Model}?):Model?
 	if not team then return nil end
@@ -311,7 +304,7 @@ function Service:StartMatch(player:Player,setup:any,opponent:Player?,opponentSet
 	self:EndMatch(player,false);if opponent then self:EndMatch(opponent,false)end
 	local players={player};if opponent then table.insert(players,opponent)end
 	local humanoids:any={};for _,participant in players do local character=participant.Character;local hum=character and character:FindFirstChildOfClass("Humanoid");if not character or not hum then return false,participant.Name.." is not ready.",nil end;humanoids[participant]=hum end
-	local finalSetup=table.clone(setup);if opponentSetup then finalSetup.AwayTeamId=opponentSetup.HomeTeamId;finalSetup.AwayKit=opponentSetup.AwayKit or"Away"end
+	local finalSetup=table.clone(setup);if opponentSetup then finalSetup.AwayTeamId=opponentSetup.HomeTeamId;finalSetup.AwayKit=opponentSetup.AwayKit or"Away";finalSetup.AwayTactics=opponentSetup.TeamTactics or opponentSetup.HomeTactics or opponentSetup.AwayTactics end
 	finalSetup.MatchFormat=MatchFormatConfig.Normalize(finalSetup.MatchFormat or finalSetup.MatchLength)
 	finalSetup.PresentationProfile=opponent and"Broadcast"or MatchExperienceConfig.Normalize(finalSetup.PresentationProfile)
 	local format=MatchFormatConfig.Get(finalSetup.MatchFormat)
@@ -358,7 +351,10 @@ function Service:StartMatch(player:Player,setup:any,opponent:Player?,opponentSet
 	for _,participant in players do local hum=humanoids[participant];session.PlayerState[participant]={Stamina=Config.Stamina.Maximum,Endurance=Config.Stamina.Maximum,SprintRequested=false,SprintActual=false,SprintLastSignalAt=0,PreviousSpeed=hum.WalkSpeed,PreviousJump=hum.JumpPower,ReturnCFrame=parkedReturnCFrames[participant] or CFrame.new(0,8,0)};session.PauseSecondsByPlayer[participant]=60;hum.WalkSpeed=0;hum.JumpPower=0;participant:SetAttribute("VTRInMatch",true);self.Sessions[participant]=session end
 	for _,model in models do local modelRoot=model:FindFirstChild("HumanoidRootPart")::BasePart?;if modelRoot then session.LastPositions[model]=modelRoot.Position end end
 	if finalSetup.WorldCupTutorial==true then world.Ball:SetAttribute("VTRTutorialPhysics",true)end
-	session.Goals=GoalService.new(world.Ball,world.PitchCFrame,world.Width,world.Length,function(team)self:_goal(session,team)end);session.AI=AIService.new(teams,formation,world.PitchCFrame,world.Width,world.Length,finalSetup.Difficulty,world.Ball,possession,ballService,finalSetup.TeamTactics);if finalSetup.FirstPlayableMatch==true or finalSetup.WorldCupOnboarding==true or finalSetup.WorldCupTutorial==true then session.AI:SetFirstMatchAssistance(true)end;session.Goalkeepers=GoalkeeperService.new(world.Ball,teams,world.PitchCFrame,world.Width,world.Length,ballService,animations,self.State,session.AI);session.SetPieces=SetPieceService.new(self.State,world,teams,formation,possession,teamControl,ballService,function()return session.Paused==true end);session.OutOfBounds=OutOfBoundsService.new(world.Ball,world.PitchCFrame,world.Width,world.Length,ballService,function(kind,restartTeam,location)self:_startSetPiece(session,kind,restartTeam,location)end)
+	local homeTactics=sanitizeRuntimeTactics(finalSetup.HomeTactics or finalSetup.TeamTactics)
+	local awayTactics=sanitizeRuntimeTactics(finalSetup.AwayTactics or finalSetup.OpponentTactics)
+	finalSetup.HomeTactics=homeTactics;finalSetup.AwayTactics=awayTactics;finalSetup.HomeTacticPresetId=homeTactics.PresetId;finalSetup.AwayTacticPresetId=awayTactics.PresetId
+	session.Goals=GoalService.new(world.Ball,world.PitchCFrame,world.Width,world.Length,function(team)self:_goal(session,team)end);session.AI=AIService.new(teams,formation,world.PitchCFrame,world.Width,world.Length,finalSetup.Difficulty,world.Ball,possession,ballService,{HomeTactics=homeTactics,AwayTactics=awayTactics});if finalSetup.FirstPlayableMatch==true or finalSetup.WorldCupOnboarding==true or finalSetup.WorldCupTutorial==true then session.AI:SetFirstMatchAssistance(true)end;session.Goalkeepers=GoalkeeperService.new(world.Ball,teams,world.PitchCFrame,world.Width,world.Length,ballService,animations,self.State,session.AI);session.SetPieces=SetPieceService.new(self.State,world,teams,formation,possession,teamControl,ballService,function()return session.Paused==true end);session.OutOfBounds=OutOfBoundsService.new(world.Ball,world.PitchCFrame,world.Width,world.Length,ballService,function(kind,restartTeam,location)self:_startSetPiece(session,kind,restartTeam,location)end)
 	if finalSetup.CampaignAscension==true and session.AI and session.AI.UpdateTactics then
 		if type(finalSetup.AscensionOpponentTactics)=="table"then session.AI:UpdateTactics("Away",sanitizeRuntimeTactics(finalSetup.AscensionOpponentTactics))end
 		if type(finalSetup.AscensionCounterPlan)=="string"and finalSetup.AscensionCounterPlan~=""then session.AI:UpdateTactics("Home",sanitizeRuntimeTactics({Identity=finalSetup.AscensionCounterPlan}))end
@@ -2126,9 +2122,12 @@ function Service:_halfTime(session:any)
 	if session.CampaignManager then session.CampaignManager.FirstHalfGoalDifference=session.World.HomeScore.Value-session.World.AwayScore.Value end
 	local gameSeconds=session.Clock:Payload().GameSeconds
 	local payload=self:_pausePayload(session,true,nil)
-	local halfTimeBreakSeconds=session.ExtraTimeActive==true and (tonumber(session.ExtraTimeHalfPauseSeconds) or 7) or math.max(3,tonumber(session.Format and session.Format.HalftimeSeconds)or 7)
-	payload.Type="HalfTime";payload.HalfTime=true;payload.ExtraTime=session.ExtraTimeActive==true;payload.PauseRemaining=halfTimeBreakSeconds;payload.Home=session.World.HomeScore.Value;payload.Away=session.World.AwayScore.Value;payload.Stats=session.Stats:Serialize(session.World.HomeScore.Value,session.World.AwayScore.Value,gameSeconds)
-	session.HalfTimeBreak=true;session.HalfTimeBreakEndsAt=os.clock()+halfTimeBreakSeconds;session.HalfTimeTimerAccumulator=0;session.HalfTimeResumeVotes={}
+	local presentationDuration=7.2
+	local presentationFallback=presentationDuration+1.8
+	local configuredBreak=session.ExtraTimeActive==true and (tonumber(session.ExtraTimeHalfPauseSeconds) or 7) or math.max(3,tonumber(session.Format and session.Format.HalftimeSeconds)or 7)
+	local halfTimeBreakSeconds=math.max(configuredBreak,presentationFallback)
+	payload.Type="HalfTime";payload.HalfTime=true;payload.ExtraTime=session.ExtraTimeActive==true;payload.PauseRemaining=halfTimeBreakSeconds;payload.PresentationDuration=presentationDuration;payload.Home=session.World.HomeScore.Value;payload.Away=session.World.AwayScore.Value;payload.Stats=session.Stats:Serialize(session.World.HomeScore.Value,session.World.AwayScore.Value,gameSeconds)
+	session.HalfTimeBreak=true;session.HalfTimeBreakEndsAt=os.clock()+halfTimeBreakSeconds;session.HalfTimePresentationDeadline=os.clock()+presentationFallback;session.HalfTimePresentationReady={};session.HalfTimeTimerAccumulator=0;session.HalfTimeResumeVotes={}
 	broadcast(self.State,session,payload)
 	task.delay(halfTimeBreakSeconds,function()if not session.Ended and session.HalfTimeBreak then self:_resumeHalfTime(session)end end)
 end
@@ -2136,9 +2135,12 @@ end
 function Service:_resumeHalfTime(session:any)
 	if session.Ended or not session.HalfTimeBreak then return end
 	if session.HalfTimeResuming then return end
+	if os.clock()<(tonumber(session.HalfTimePresentationDeadline)or 0)then for _,participant in session.Players do if not(session.HalfTimePresentationReady and session.HalfTimePresentationReady[participant])then return end end end
 	session.HalfTimeResuming=true
 	session.HalfTimeBreak=false
 	session.HalfTimeBreakEndsAt=nil
+	session.HalfTimePresentationDeadline=nil
+	session.HalfTimePresentationReady=nil
 	session.HalfTimeResumeVotes={}
 	session.ManualPaused=false
 	session.Paused=false
@@ -3434,11 +3436,11 @@ function Service:_resetForExtraTimeKickoff(session:any)
 end
 
 function Service:_startWorldCupExtraTime(session:any):boolean
-	if not(session.Ranked==true or self:_isWorldCupKnockoutTiebreakMatch(session)) or not self:_scoreTied(session) or session.ExtraTimeStarted==true then
+	if not self:_isWorldCupKnockoutTiebreakMatch(session) or not self:_scoreTied(session) or session.ExtraTimeStarted==true then
 		return false
 	end
 
-	local pacing=session.Ranked==true and MatchFormatConfig.Ranked or session.Format or MatchFormatConfig.Get(session.MatchFormat)
+	local pacing=session.Format or MatchFormatConfig.Get(session.MatchFormat)
 	local extraTimeSeconds=math.max(60,tonumber(pacing and pacing.ExtraTimeSeconds)or 120)
 	local midpointBreakSeconds=math.clamp(tonumber(pacing and pacing.ExtraTimeMidpointBreakSeconds)or 7,4,12)
 	session.ExtraTimeStarted=true
@@ -3453,7 +3455,7 @@ function Service:_startWorldCupExtraTime(session:any):boolean
 	session.HalfTimeTriggered=false
 
 	self:_resetForExtraTimeKickoff(session)
-	broadcast(self.State,session,{Type="ExtraTime",Phase="EXTRA TIME",Ranked=session.Ranked==true,Home=session.World.HomeScore.Value,Away=session.World.AwayScore.Value,Duration=extraTimeSeconds,HalfPause=midpointBreakSeconds})
+	broadcast(self.State,session,{Type="ExtraTime",Phase="EXTRA TIME",Ranked=false,Home=session.World.HomeScore.Value,Away=session.World.AwayScore.Value,Duration=extraTimeSeconds,HalfPause=midpointBreakSeconds})
 	task.delay(.55,function()
 		if session.Ended or not session.ExtraTimeActive then return end
 		self:_startSetPiece(session,"Kickoff","Home",session.World.PitchCFrame.Position)
@@ -3627,6 +3629,9 @@ function Service:_beginRankedShootoutAttempt(session:any)
 	shootout.ActiveTaker=taker
 	shootout.ShotStartedAt=0
 	local goalSign=side=="Home"and-1 or 1
+	local defendingSide=side=="Home"and"Away"or"Home"
+	local attemptKeeper=getGoalkeeper(session.Teams[defendingSide])
+	if attemptKeeper then attemptKeeper:SetAttribute("VTRPenaltyGuessSlot",nil);attemptKeeper:SetAttribute("VTRPenaltyGuessPoint",nil)end
 	local spot=session.World.PitchCFrame:PointToWorldSpace(Vector3.new(0,1.15,goalSign*(session.World.Length*.5-12)))
 	broadcast(self.State,session,{Type="PenaltyShootout",Phase="ATTEMPT",Ranked=true,Manual=true,ActiveSide=side,Round=round,Attempt=attempt,Taker=taker:GetAttribute("DisplayName")or taker.Name,Home=session.World.HomeScore.Value,Away=session.World.AwayScore.Value,PenaltyHome=pens.Home,PenaltyAway=pens.Away,Winner=nil,Rounds=pens.Rounds})
 	self:_startSetPiece(session,"Penalty",side,spot,taker)
@@ -3650,6 +3655,9 @@ function Service:_completeRankedShootoutAttempt(session:any,side:string,scored:b
 	table.insert(pens.Attempts,{Round=round,Side=side,Scored=scored==true,Reason=reason,HomeTotal=entry.HomeTotal,AwayTotal=entry.AwayTotal})
 	shootout.NextAttempt=(tonumber(shootout.ActiveAttempt)or tonumber(shootout.NextAttempt)or 1)+1
 	shootout.ShotStartedAt=0
+	local defendingSide=side=="Home"and"Away"or"Home"
+	local attemptKeeper=getGoalkeeper(session.Teams[defendingSide])
+	if attemptKeeper then attemptKeeper:SetAttribute("VTRPenaltyGuessSlot",nil);attemptKeeper:SetAttribute("VTRPenaltyGuessPoint",nil)end
 	if session.World and session.World.Ball then
 		session.World.Ball:SetAttribute("VTRPenaltyShotActive",nil)
 		session.World.Ball:SetAttribute("VTRPostGoalPhysicsUntil",nil)
@@ -3823,7 +3831,7 @@ function Service:_releaseAIPenalty(session:any)
 	session.Possession:ForcePickup(taker)
 	self:_setPieceRunup(session,taker,"Shot")
 	session.World.Ball:SetAttribute("VTRPenaltyShotActive",true)
-	session.BallService:Kick(taker,"Shot",target-takerRoot.Position,.62,nil,nil,nil,target)
+	session.BallService:Kick(taker,"Shot",target-takerRoot.Position,1,nil,"Penalty",(target-takerRoot.Position).Magnitude,target)
 	if setPieces.ReleaseRestartTaker then setPieces:ReleaseRestartTaker()end
 	self:_resumeFinalChanceAfterSetPiece(session)
 	session.PendingAIPenalty=nil
@@ -4215,6 +4223,97 @@ function Service:_action(player:Player,payload:any)
 		self:_watchdogResetSecondHalf(session,player)
 		return
 	end
+	if payload.Type=="HalfTimePresentationReady"then
+		if not session.HalfTimeBreak then return end
+		session.HalfTimePresentationReady=session.HalfTimePresentationReady or{}
+		session.HalfTimePresentationReady[player]=true
+		local ready=true
+		for _,participant in session.Players do if not session.HalfTimePresentationReady[participant]then ready=false;break end end
+		if ready then self:_resumeHalfTime(session)end
+		return
+	end
+	if payload.Type=="CampaignManagerApply"then
+		if not session.CampaignAscension or not session.Setup or session.Setup.WatchMode~=true then return end
+		local manager=session.CampaignManager
+		if type(manager)~="table"then return end
+		local now=os.clock()
+		if now-(tonumber(manager.LastActionAt)or 0)<.35 then return end
+		local changes=type(payload.Changes)=="table"and payload.Changes or{}
+		local half=session.Clock and session.Clock:Payload().Half or 1
+		local afterHalf=half>=2 or session.HalfTimeBreak==true or session.ExtraTimeStarted==true
+		local applied=false
+		local recordedAction="Mentality"
+		local function supportedFormation(name:string):boolean
+			if not FormationConfig.Formations[name]then return false end
+			return #(FormationConfig.GetOrder(name)or{})>=11
+		end
+		local formation=tostring(changes.Formation or manager.CurrentFormation or"")
+		if formation~=""and supportedFormation(formation)and manager.CurrentFormation~=formation then
+			session.Formation.Home=FormationService.Build(formation,session.World.Width,session.World.Length)
+			if session.AI then
+				session.AI.Formations.Home=formation
+				if session.AI.Controller and session.AI.Controller.Formations then session.AI.Controller.Formations.Home=formation end
+			end
+			manager.CurrentFormation=formation
+			applied=true
+			recordedAction="Formation"
+		end
+		local preset=tostring(changes.TacticalPreset or changes.QuickTactic or manager.CurrentTacticalPreset or manager.CurrentQuickTactic or"balanced_control")
+		if not AITacticConfig.IsKnown(preset)then preset="balanced_control"end
+		local sliders={}
+		if type(manager.CurrentSliders)=="table"then
+			for _,name in AITacticConfig.SliderNames do
+				local value=tonumber(manager.CurrentSliders[name])
+				if value then sliders[name]=math.clamp(value,0,100)end
+			end
+		end
+		if type(changes.Sliders)=="table"then
+			for _,name in AITacticConfig.SliderNames do
+				local value=tonumber(changes.Sliders[name])
+				if value and value==value and value~=math.huge and value~=-math.huge then sliders[name]=math.clamp(value,0,100)end
+			end
+		end
+		local mentality=tostring(changes.Mentality or manager.CurrentMentality or"Balanced")
+		if mentality=="Defensive"then mentality="Defend"end
+		if mentality=="Attacking"then mentality="Attack"end
+		if not table.find({"Balanced","Attack","Defend"},mentality)then mentality="Balanced"end
+		if mentality=="Defend"then
+			sliders.RiskLevel=math.min(tonumber(sliders.RiskLevel)or 35,35)
+			sliders.DefensiveDepth=math.min(tonumber(sliders.DefensiveDepth)or 40,40)
+			sliders.PressingIntensity=math.min(tonumber(sliders.PressingIntensity)or 45,45)
+		elseif mentality=="Attack"then
+			sliders.RiskLevel=math.max(tonumber(sliders.RiskLevel)or 70,70)
+			sliders.DefensiveDepth=math.max(tonumber(sliders.DefensiveDepth)or 62,62)
+			sliders.PressingIntensity=math.max(tonumber(sliders.PressingIntensity)or 68,68)
+		end
+		local tactics=sanitizeRuntimeTactics({PresetId=preset,Sliders=sliders,Custom=true})
+		local tacticChanged=manager.CurrentTacticalPreset~=tactics.PresetId or manager.CurrentMentality~=mentality or manager.CurrentQuickTactic~=changes.QuickTactic
+		if not tacticChanged and type(manager.CurrentSliders)=="table"then
+			for _,name in {"AttackingWidth","DefensiveDepth","PressingIntensity"}do
+				if math.floor((tonumber(manager.CurrentSliders[name])or-1)+.5)~=math.floor((tonumber(tactics.Sliders[name])or-1)+.5)then tacticChanged=true;break end
+			end
+		else
+			tacticChanged=true
+		end
+		if tacticChanged then
+			if session.AI and session.AI.UpdateTactics then session.AI:UpdateTactics("Home",tactics)end
+			manager.CurrentTacticalPreset=tactics.PresetId
+			manager.CurrentQuickTactic=changes.QuickTactic
+			manager.CurrentMentality=mentality
+			manager.CurrentSliders={AttackingWidth=tactics.Sliders.AttackingWidth,DefensiveDepth=tactics.Sliders.DefensiveDepth,PressingIntensity=tactics.Sliders.PressingIntensity}
+			manager.CurrentTactics=tactics
+			applied=true
+			if recordedAction~="Formation"then recordedAction="Mentality"end
+		end
+		if applied then
+			manager.LastActionAt=now
+			if self.CampaignAscension then self.CampaignAscension:RecordManagerInteraction(player,session,recordedAction,{AfterHalf=afterHalf})end
+			self.State:FireClient(player,{Type="CampaignManagerState",Manager=table.clone(manager),Objective=session.Setup.AscensionObjective,AppliedTactics=manager.CurrentTactics})
+		else
+			self:_track(session,player,"playability_manager_input_error",{actionFamily="CampaignManagerApply"})
+		end
+		return
+	end
 	if payload.Type=="CampaignManagerAction"then
 		if not session.CampaignAscension or not session.Setup or session.Setup.WatchMode~=true then return end
 		local manager=session.CampaignManager
@@ -4421,6 +4520,7 @@ function Service:_action(player:Player,payload:any)
 		outgoing:SetAttribute("DisplayName",incoming.displayName or incoming.shortName or"SUBSTITUTE")
 		outgoing:SetAttribute("overall",incoming.overall or 60)
 		session.StaminaService:Reset(outgoing)
+		if session.AI and session.AI.ResetFootballer then session.AI:ResetFootballer(outgoing) end
 		session.MovementSpeeds[outgoing]=nil
 		for _,participant in session.Players do
 			if session.TeamControl:GetActive(participant)==outgoing then
@@ -4467,6 +4567,21 @@ function Service:_action(player:Player,payload:any)
 	if payload.Type=="ReceiverAssistOverride"then
 		if session.TeamControl and session.TeamControl.SetManualReceiveOverride then
 			session.TeamControl:SetManualReceiveOverride(player,payload.Active==true,payload.ReceptionContractId,payload.ReceptionRevision,payload.ReceptionClientTime)
+		end
+		return
+	end
+	if payload.Type=="PenaltyGuess"and session.RankedShootout and session.RankedShootout.Active==true then
+		local payloadAttempt=tonumber(payload.PenaltyAttempt)
+		if payloadAttempt and payloadAttempt~=tonumber(session.RankedShootout.ActiveAttempt)then return end
+		local activeSide=tostring(session.RankedShootout.ActiveSide or"")
+		local defendingSide=activeSide=="Home"and"Away"or"Home"
+		local playerSide=session.PlayerSides[player]or"Home"
+		local shotStarted=tonumber(session.RankedShootout.ShotStartedAt)or 0
+		if playerSide==defendingSide and(shotStarted<=0 or os.clock()-shotStarted<=.16)then
+			local goalSign=tonumber(session.SetPieces and session.SetPieces.RestartGoalSign)or(defendingSide=="Home"and-1 or 1)
+			local aim=typeof(payload.AimPosition)=="Vector3"and payload.AimPosition or session.World.Ball.Position
+			local slot=PenaltyConfig.NormalizeSlot(payload.PenaltySlot)or PenaltyConfig.SlotFromGoalPoint(session.World.PitchCFrame,session.World.Length,goalSign,aim,session.World.Width)
+			self:_setPenaltyKeeperGuess(session,defendingSide,slot)
 		end
 		return
 	end
@@ -4976,8 +5091,6 @@ function Service:EndMatch(player:Player,showResult:boolean):boolean
 		return true
 	end
 	if showResult and session.Ranked==true and session.PenaltyShootoutResolved~=true and self:_scoreTied(session) and not session.ForfeitBy and not session.RankedForceLossUserId then
-		if session.ExtraTimeStarted~=true then return self:_startWorldCupExtraTime(session)end
-		session.ExtraTimeCompleted=true
 		return self:_startRankedPenaltyShootout(session)
 	end
 	if session.TeamControl and session.TeamControl.CancelReception then session.TeamControl:CancelReception(showResult and "FullTime" or "MatchInterrupted") end

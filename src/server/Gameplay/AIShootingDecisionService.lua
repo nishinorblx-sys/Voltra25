@@ -65,8 +65,9 @@ function Service.Evaluate(context: any, shooter: any, style: any, difficulty: an
 	local central = PitchConfig.InZone(shooter.Pitch, "CentralShootingZone")
 	local edge = PitchConfig.InZone(shooter.Pitch, "EdgeOfBoxZone")
 	local closeChance = inDangerBox and distance < 78
-	local longShotAllowed = style:Ratio("LongShotFrequency") > 0.55 and shooter.Stats.longShots >= 72
-	local good = closeChance or (inDangerBox and distance < 115 and clearAngle and not pressure.Heavy) or (central and distance < 150 and shooter.Stats.shooting >= 75 and clearAngle) or oneVOne
+	local shootingIQ = shooter.Stats.shootingIQ or shooter.Stats.shooting or 60
+	local longShotAllowed = style:Ratio("LongShotFrequency") > 0.55 and (shooter.Stats.longShots >= 72 or shootingIQ >= 76)
+	local good = closeChance or (inDangerBox and distance < 115 and clearAngle and not pressure.Heavy) or (central and distance < 150 and shootingIQ >= 75 and clearAngle) or oneVOne
 	if shooter.Role == "ST" and (inDangerBox or central) then
 		good = true
 	end
@@ -82,7 +83,7 @@ function Service.Evaluate(context: any, shooter: any, style: any, difficulty: an
 	score += closeChance and 30 or distance < 105 and 14 or 0
 	score += clearAngle and 26 or -24
 	score += oneVOne and 32 or 0
-	score += (shooter.Stats.shooting - 60) * 0.45
+	score += (shootingIQ - 60) * 0.45
 	score -= pressure.Score * (closeChance and 14 or 34)
 	score -= wideAngle and 22 or 0
 	score -= math.max(0, distance - 120) * 0.12

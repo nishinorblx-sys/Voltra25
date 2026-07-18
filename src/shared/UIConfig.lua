@@ -34,7 +34,7 @@ UIConfig.Pages = {
 	Campaign = { Kicker = "CLUB DEVELOPMENT", Title = "VOLTRA ASCENSION", Subtitle = "Earn promotion, develop a favorite player, and build a club worth taking into Ranked." },
 	MyPlayer = { Kicker = "PLAY MODE", Title = "MY PLAYER", Subtitle = "Build your Voltra footballer for online PLAY lobbies." },
 	FiveVFive = { Kicker = "ONLINE MODE", Title = "5V5", Subtitle = "Queue ten players, teleport together, and play assigned 70 OVR outfield slots with AI goalkeepers." },
-	Ranked = { Kicker = "7-WIN TOURNAMENT", Title = "RANKED", Subtitle = "Enter with your current squad. Seven wins earns a Mythic Pack; three losses ends the run." },
+	Ranked = { Kicker = "7-WIN TOURNAMENT", Title = "RANKED", Subtitle = "Enter with your current squad. Seven wins earns a Legendary Pack; three losses ends the run." },
 }
 
 UIConfig.PlayModes = {

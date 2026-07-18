@@ -36,21 +36,35 @@ local function flat(value: Vector3): Vector3
 	return Vector3.new(value.X, 0, value.Z)
 end
 
+local function root(model: Model): BasePart?
+	return model:FindFirstChild("HumanoidRootPart") :: BasePart?
+end
+
 function Service.SetRoute(receiver: Model, contract: any)
+	local receiverRoot = root(receiver)
+	local target = contract.LiveInterceptPoint
+	local distance = receiverRoot and typeof(target) == "Vector3" and flat(target - receiverRoot.Position).Magnitude or 0
+	local ballETA = math.max(0, tonumber(contract.BallETA) or 0)
+	local receiverETA = tonumber(contract.ReceiverETA) or math.huge
+	local aiReceiver = receiver:GetAttribute("aiControlled") == true and receiver:GetAttribute("controlledByUser") ~= true
+	local sprintRequested = contract.RouteSprintRequested == true or aiReceiver and typeof(target) == "Vector3" and distance > 7 and receiverETA > math.max(0.12, ballETA - 0.08)
 	receiver:SetAttribute("VTRReceptionContractId", contract.Id)
 	receiver:SetAttribute("VTRReceptionRevision", contract.Revision)
 	receiver:SetAttribute("VTRReceptionPhase", contract.Phase)
-	receiver:SetAttribute("VTRReceiveTarget", contract.LiveInterceptPoint)
-	receiver:SetAttribute("VTRReceiveIntercept", contract.LiveInterceptPoint)
+	receiver:SetAttribute("VTRReceiveTarget", target)
+	receiver:SetAttribute("VTRReceiveIntercept", target)
 	receiver:SetAttribute("VTRReceiveUntil", contract.ExpiresAt)
 	receiver:SetAttribute("VTRReceiveBallETA", contract.BallETA)
 	receiver:SetAttribute("VTRReceiveReceiverETA", contract.ReceiverETA)
 	receiver:SetAttribute("VTRReceiveOpponentETA", contract.OpponentETA)
 	receiver:SetAttribute("VTRReceiveRouteConfidence", contract.RouteConfidence)
 	receiver:SetAttribute("VTRReceiveTrajectoryConfidence", contract.TrajectoryConfidence)
-	receiver:SetAttribute("VTRReceiveRouteSprintRequested", contract.RouteSprintRequested == true)
+	receiver:SetAttribute("VTRReceiveRouteSprintRequested", sprintRequested)
+	receiver:SetAttribute("VTRReceiveDistance", distance)
 	receiver:SetAttribute("VTRPreparingReceive", true)
 	receiver:SetAttribute("VTRReceiveCommitted", true)
+	receiver:SetAttribute("VTRReceiveLockedAt", os.clock())
+	receiver:SetAttribute("VTRAITargetedPass", aiReceiver)
 	receiver:SetAttribute("VTRReceiverAssist", contract.AssistanceMode)
 	receiver:SetAttribute("VTRReceiverAssistMode", contract.AssistanceMode)
 end
@@ -80,6 +94,7 @@ function Service.Clear(receiver: Model)
 	for _, attribute in routeAttributes do receiver:SetAttribute(attribute, nil) end
 	receiver:SetAttribute("VTRManualReceiveOverride", false)
 	receiver:SetAttribute("VTRAssistedMoveMagnitude", 0)
+	receiver:SetAttribute("VTRAITargetedPass", false)
 	if receiver:GetAttribute("controlledByUser") ~= true then
 		receiver:SetAttribute("VTRAISprintRequested", false)
 	end

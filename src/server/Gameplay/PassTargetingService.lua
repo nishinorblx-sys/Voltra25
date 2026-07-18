@@ -135,6 +135,25 @@ function Service:ChooseAtPoint(passer: Model, aimPosition: Vector3, charge: numb
 	end)
 	local chosen = candidates[1]
 	if chosen then return chosen.Model, chosen.Point, chosen.PassDistance, -chosen.MouseDistance end
+	local fallback: Model? = nil
+	local fallbackDistance = math.huge
+	for _, candidate in teammates do
+		if candidate ~= passer then
+			local candidateRoot = root(candidate)
+			local humanoid = candidate:FindFirstChildOfClass("Humanoid")
+			if candidateRoot and humanoid and humanoid.Health > 0 and candidate:GetAttribute("VTRSentOff") ~= true then
+				local distance = flat(candidateRoot.Position - aimPosition).Magnitude
+				if distance < fallbackDistance then
+					fallback = candidate
+					fallbackDistance = distance
+				end
+			end
+		end
+	end
+	if fallback then
+		local passDistance = flat(aimPosition - passerRoot.Position).Magnitude
+		return fallback, aimPosition, passDistance, -fallbackDistance
+	end
 	return nil, aimPosition, 0, -math.huge
 end
 

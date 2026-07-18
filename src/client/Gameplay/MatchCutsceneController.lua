@@ -79,12 +79,12 @@ function Controller:Goal(payload: any)
 	self.Camera:GoalCinematic()
 end
 
-function Controller:HalfTime(payload: any)
+function Controller:HalfTime(payload: any, onComplete: (() -> ())?)
 	self.HUD:SetPhase("HALF TIME")
 	if self.Camera and self.Camera.BeginHalfTimeWide then
 		self.Camera:BeginHalfTimeWide(math.max(2, tonumber(payload.PauseRemaining) or 7))
 	end
-	self.HUD:ShowHalfTime(payload)
+	self.HUD:ShowHalfTime(payload,{Duration=tonumber(payload.PresentationDuration)or 7.2,OnComplete=onComplete})
 end
 
 function Controller:Destroy()

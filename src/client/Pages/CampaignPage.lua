@@ -578,13 +578,14 @@ function Page.new(context: any): CanvasGroup
 
 	local function renderScoutingReport(parent: Instance, height: number)
 		local fixture = state.CurrentFixture
-		local item = panel(parent, "ScoutingReport", fixture and tostring(fixture.TacticLabel or "OPPONENT REPORT") or "NO REPORT READY", "SCOUTING REPORT", height)
+		local scouting = fixture and fixture.OpponentScouting or nil
+		local item = panel(parent, "ScoutingReport", fixture and tostring(scouting and scouting.Name or fixture.TacticLabel or "OPPONENT REPORT") or "NO REPORT READY", "SCOUTING REPORT", height)
 		if not fixture then return end
 		local y = 70
 		local entries = {
 			{ "FORMATION", fixture.Formation or "UPGRADE TACTICAL LAB TO REVEAL" },
-			{ "STRENGTH", fixture.Strength or "UPGRADE TACTICAL LAB TO REVEAL" },
-			{ "WEAKNESS", fixture.Weakness or "UPGRADE TACTICAL LAB TO REVEAL" },
+			{ "TACTIC", scouting and (scouting.Name .. " / " .. scouting.Risk .. " RISK / " .. scouting.StaminaDemand .. " ENERGY") or "UPGRADE TACTICAL LAB TO REVEAL" },
+			{ "WEAKNESS", scouting and table.concat(scouting.Weaknesses or {}, "; ") or fixture.Weakness or "UPGRADE TACTICAL LAB TO REVEAL" },
 			{ "COUNTER PLAN", fixture.CounterTactic or "TACTICAL LAB LEVEL 3" },
 		}
 		for _, entry in entries do

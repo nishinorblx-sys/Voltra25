@@ -10,7 +10,7 @@ local EconomyConfig=require(ReplicatedStorage.VTR.Shared.EconomyConfig)
 local DeveloperConfig=require(ReplicatedStorage.VTR.Shared.DeveloperConfig)
 local DeveloperAccessService=require(script.Parent.DeveloperAccessService)
 local ProClubsConfig=require(ReplicatedStorage.VTR.Shared.ProClubsConfig)
-local VTRLiteConfig=require(ReplicatedStorage.VTR.Shared.VTRLiteConfig)
+local AITacticConfig=require(ReplicatedStorage.VTR.Shared.AITacticConfig)
 local ClubNameFilterService=require(script.Parent.ClubNameFilterService)
 local LaunchService={};LaunchService.__index=LaunchService
 local function find(list:any,id:string):any? for _,item in list do if item.Id==id then return item end end;return nil end
@@ -36,16 +36,7 @@ local function autoFill(profile:any)
 	profile.Bench={};profile.Reserves={};local remaining={};for _,card in profile.PlayerCardInventory do if not used[card.Id] then table.insert(remaining,card) end end;table.sort(remaining,function(a,b) return a.Rating>b.Rating end);for index,card in remaining do if index<=7 then profile.Bench[index]=card.Id else table.insert(profile.Reserves,card.Id) end end
 end
 local function sanitizeTactics(payload:any):any
-	local identity=type(payload.Identity)=="string"and payload.Identity or"Balanced"
-	if not VTRLiteConfig.TacticPresets[identity]then identity="Balanced"end
-	local sliders={}
-	local source=type(payload.Sliders)=="table"and payload.Sliders or{}
-	local preset=VTRLiteConfig.TacticPresets[identity]or VTRLiteConfig.TacticPresets.Balanced
-	for index,name in VTRLiteConfig.TacticSliderNames do
-		local value=tonumber(source[name])or preset[index]or 50
-		sliders[name]=math.clamp(math.floor(value+.5),0,100)
-	end
-	return{Identity=identity,Sliders=sliders}
+	return AITacticConfig.Normalize(payload)
 end
 
 function LaunchService.new(profiles:any,progression:any,publish:(Player,string,any)->(),inventory:any,packs:any) return setmetatable({Profiles=profiles,Progression=progression,Publish=publish,Inventory=inventory,Packs=packs,RankedProfiles=nil},LaunchService) end
@@ -56,7 +47,7 @@ function LaunchService:Handle(player:Player,action:string,payload:any):(boolean,
 	if action=="DeveloperResetProfile"then if not RunService:IsStudio()then return false,"Developer reset is only available in Studio.",nil end;local reset=self.Profiles:ResetProfile(player);if not reset then return false,"Profile reset failed.",nil end;self:_push(player,reset);return true,"Profile reset to fresh launch state. Restart Play to run onboarding.",{Reset=true}
 	elseif action=="DeveloperGrantCoins"then if not DeveloperAccessService.IsAuthorized(player)then return false,"Developer authorization required.",nil end;local profile=self.Profiles:GetProfile(player);if not profile then return false,"Profile unavailable.",nil end;profile.Currency.Coins=math.min(EconomyConfig.MaximumCoins,profile.Currency.Coins+DeveloperConfig.CoinGrantAmount);self:_push(player,profile);return true,"Developer vault added 10,000,000 coins.",{Coins=profile.Currency.Coins}end
 	local p=self.Profiles:GetProfile(player);if not p then return false,"Profile unavailable.",nil end;payload=type(payload)=="table" and payload or {};local o=p.Onboarding;local responseData:any=nil;local responseMessage="Profile updated."
-	if action=="SaveTeamTactics"then p.TeamTactics=sanitizeTactics(payload);responseMessage="AI tactics saved.";responseData={TeamTactics=p.TeamTactics}
+	if action=="SaveTeamTactics"then if payload.PresetId~=nil and not AITacticConfig.IsKnown(payload.PresetId)then return false,"Unknown tactic preset.",nil end;p.TeamTactics=sanitizeTactics(payload);responseMessage="AI tactics saved.";responseData={TeamTactics=p.TeamTactics}
 	elseif action=="SetClubName" then if o.Complete or o.StarterPackClaimed then return false,"Club identity is locked.",nil end;local valid,result=cleanClubName(player,payload.Name);if not valid then return false,result,nil end;o.ClubName=result;p.Profile.SelectedClub=result;p.ClubMembership.Name=result;o.Step=math.max(o.Step,2);responseData={Name=result}
 	elseif action=="SetAbbreviation" then local tagOk,tag=cleanClubTag(player,payload.Value);if o.ClubName=="" or o.StarterPackClaimed or not tagOk then return false,tag,nil end;o.Abbreviation=tag;p.ClubMembership.Abbreviation=tag;o.Step=math.max(o.Step,3);responseData={Tag=tag}
 	elseif action=="SetIdentityDesign"then if o.Abbreviation==""or o.StarterPackClaimed then return false,"Club design cannot be changed during this step.",nil end;local valid,design=identityDesign(payload);if not valid then return false,design,nil end;applyIdentity(o,design);applyIdentity(p.ClubMembership,design);o.IdentityConfigured=true;o.Step=math.max(o.Step,5)

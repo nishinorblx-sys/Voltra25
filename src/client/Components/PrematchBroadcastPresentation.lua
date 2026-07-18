@@ -19,17 +19,10 @@ local MatchPresentationService = require(script:FindFirstAncestor("VTRClient").S
 local Presentation = {}
 local TOTAL_DURATION = 66.0
 local STARTING_XI_SOUNDS = {
-	"rbxassetid://111250989374137",
-	"rbxassetid://76843129252399",
 	"rbxassetid://99361731737732",
 }
 local introSound: Sound? = nil
 local INTRO_BACKGROUND_SOUND = "rbxassetid://127074097075829"
-local INTRO_TRACKS = {
-	"rbxassetid://103355995717599",
-	"rbxassetid://104511486039648",
-	"rbxassetid://111700713857834",
-}
 local activeIntroSounds = {}
 
 local function playPresentationSound(soundId: string, volume: number?, looped: boolean?)
@@ -64,8 +57,6 @@ end
 local function startIntroAudio(gui: ScreenGui)
 	stopIntroAudio()
 	table.insert(activeIntroSounds, playPresentationSound(INTRO_BACKGROUND_SOUND, .34, true))
-	table.insert(activeIntroSounds, playPresentationSound(INTRO_TRACKS[math.random(1, #INTRO_TRACKS)], .58, false))
-	
 end
 
 local function shortCode(name: string): string
@@ -296,7 +287,6 @@ local function panel(parent: Instance, name: string, pos: UDim2, size: UDim2): C
 end
 
 local function slideIn(item: GuiObject, pos: UDim2, from: UDim2, duration: number?)
-	UISoundService.PlayTransition()
 	item.Position = from
 	item.Visible = true
 	TweenService:Create(item, TweenInfo.new(duration or 0.36, Theme.Animation.EasingStyle, Theme.Animation.EasingDirection), {Position = pos}):Play()
@@ -1375,9 +1365,6 @@ local function showPlayerGroupPreview(container: Frame, models: {Model}, players
 			numberLabel.TextXAlignment = Enum.TextXAlignment.Center
 			task.delay((order - 1) * 0.08, function()
 				if not slot.Parent then return end
-				if order == 1 then
-					UISoundService.PlayTransition()
-				end
 				TweenService:Create(slot, TweenInfo.new(0.36, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
 					Position = targetPosition,
 					GroupTransparency = 0,
@@ -1477,7 +1464,6 @@ function Presentation.Play(data: any, onComplete: (() -> ())?)
 			return
 		end
 		skipSent = true
-		UISoundService.PlayTransition()
 		if not actionRemote then
 			pcall(function()
 				actionRemote = select(1, Remotes.Wait())

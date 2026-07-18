@@ -206,6 +206,7 @@ function ServerApp.Start()
 			elseif action=="ClearSquad" then local accepted,text,justCompleted=squad:ClearSquad(player);return accepted,text,justCompleted,squad:GetSquad(player)
 			elseif action=="MovePlayer" then local accepted,text,justCompleted=squad:MovePlayer(player,payload.CardId,payload.DestinationType,payload.DestinationSlot);return accepted,text,justCompleted,squad:GetSquad(player)
 			elseif action=="SetFormation" then local accepted,text,justCompleted=squad:SetFormation(player,payload.Formation);return accepted,text,justCompleted,squad:GetSquad(player)
+			elseif action=="SetMovementProfile" then local accepted,text,justCompleted=squad:SetMovementProfile(player,payload.Slot,payload.ProfileId);return accepted,text,justCompleted,squad:GetSquad(player)
 			elseif action=="SetCardFlag" then local accepted,text,justCompleted=squad:SetCardFlag(player,payload.CardId,payload.Flag,payload.Value);return accepted,text,justCompleted,squad:GetSquad(player)
 			elseif action=="MoveCardToStarting" then local accepted,text,data=squad:MoveCardToStarting(player,payload.CardInstanceId,payload.PositionSlot);return accepted,text,false,data
 			elseif action=="MoveCardToBench" then local accepted,text,data=squad:MoveCardToBench(player,payload.CardInstanceId,payload.BenchSlot);return accepted,text,false,data

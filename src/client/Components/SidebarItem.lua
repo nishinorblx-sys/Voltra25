@@ -13,6 +13,7 @@ local WORLD_CUP_GLOW = Color3.fromRGB(255, 236, 142)
 
 export type SidebarItem = typeof(setmetatable({
 	Instance = nil :: TextButton?,
+	Warning = nil :: TextLabel?,
 	Active = false,
 	SetActive = nil :: any,
 }, SidebarItem))
@@ -42,6 +43,19 @@ function SidebarItem.new(item: any, onActivated: (string) -> ()): SidebarItem
 	corner.Parent = button
 	local scale = Instance.new("UIScale")
 	scale.Parent = button
+	local warning = Instance.new("TextLabel")
+	warning.Name = "IncompleteLineupWarning"
+	warning.AnchorPoint = Vector2.new(1, 0.5)
+	warning.BackgroundTransparency = 1
+	warning.Position = UDim2.new(1, -10, 0.5, 0)
+	warning.Size = UDim2.fromOffset(20, 26)
+	warning.Text = "!"
+	warning.TextColor3 = Theme.Colors.Danger
+	warning.TextSize = 18
+	warning.Font = Theme.Fonts.Display
+	warning.Visible = false
+	warning.ZIndex = button.ZIndex + 3
+	warning.Parent = button
 
 	local featuredStroke: UIStroke? = nil
 	local featuredGlow: Frame? = nil
@@ -102,7 +116,7 @@ function SidebarItem.new(item: any, onActivated: (string) -> ()): SidebarItem
 		end)
 	end
 
-	local self = setmetatable({ Instance = button, Active = false }, SidebarItem)
+	local self = setmetatable({ Instance = button, Warning = warning, Active = false }, SidebarItem)
 	local function visualHover(hovered: boolean)
 		if self.Active then return end
 		if featuredWorldCup then
@@ -131,6 +145,10 @@ function SidebarItem.new(item: any, onActivated: (string) -> ()): SidebarItem
 		onActivated(item.Id)
 	end)
 	return self
+end
+
+function SidebarItem:SetWarning(active: boolean)
+	if self.Warning then self.Warning.Visible = active == true end
 end
 
 function SidebarItem:SetActive(active: boolean)

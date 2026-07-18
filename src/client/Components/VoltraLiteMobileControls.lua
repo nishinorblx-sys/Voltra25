@@ -379,9 +379,7 @@ function Controls:_beginActionTouch(button: TextButton, input: InputObject, role
 	elseif role == "Secondary" then
 		kind = if self.Defending then "Switch" else "Shot"
 	elseif role == "Context" then
-		if self.ReceivingPass then
-			kind = "ReceiverOverride"
-		elseif self.ContextAction == "SlideTackle" or self.ContextAction == "Block" or self.ContextAction == "Skill" then
+		if self.ContextAction == "SlideTackle" or self.ContextAction == "Block" or self.ContextAction == "Skill" then
 			kind = self.ContextAction
 		else
 			kind = "Pass"
@@ -417,8 +415,6 @@ function Controls:_beginActionTouch(button: TextButton, input: InputObject, role
 		self.Controller:SetSprintRequested(true)
 	elseif kind == "Block" then
 		self.Controller:TriggerMobileAction("Block")
-	elseif kind == "ReceiverOverride" then
-		self.Controller:TriggerMobileAction("ReceiverOverrideBegin")
 	end
 end
 
@@ -431,7 +427,6 @@ function Controls:_finishActionTouch(input: InputObject, cancelled: boolean)
 			if cancelled then
 				if state.Kind == "Pass" or state.Kind == "Shot" then self.Controller:CancelMobileAction(state.Kind, state.Token, "touch_cancelled")
 				elseif state.Kind == "Sprint" and self.SprintMode == "Hold" then self.Controller:SetSprintRequested(false) end
-				if state.Kind == "ReceiverOverride" then self.Controller:TriggerMobileAction("ReceiverOverrideEnd") end
 			elseif state.Kind == "Pass" then
 				local delta = state.Delta
 				local swipe = ActionTuning.MobilePassSwipePixels * (self.ControlScale or 1)
@@ -444,8 +439,6 @@ function Controls:_finishActionTouch(input: InputObject, cancelled: boolean)
 				if self.SprintMode == "Hold" then self.Controller:SetSprintRequested(false) else self.Controller:ToggleSprint() end
 			elseif state.Kind == "Block" then
 				self.Controller:TriggerMobileAction("BlockEnd")
-			elseif state.Kind == "ReceiverOverride" then
-				self.Controller:TriggerMobileAction("ReceiverOverrideEnd")
 			else
 				self.Controller:TriggerMobileAction(state.Kind)
 			end
@@ -527,7 +520,7 @@ function Controls:SetContextAction(action: string?)
 		if active then self:_finishActionTouch(active.Input, true) end
 	end
 	self.ContextAction = value
-	self.ContextButton.Text = if self.ReceivingPass then "OVERRIDE" else string.upper(if value == "SlideTackle" then "SLIDE" else value)
+	self.ContextButton.Text = string.upper(if value == "SlideTackle" then "SLIDE" else value)
 end
 
 function Controls:SetReceivingPass(receiving: boolean)
@@ -536,7 +529,7 @@ function Controls:SetReceivingPass(receiving: boolean)
 	local active = self.ActionTouches[self.ContextButton]
 	if active then self:_finishActionTouch(active.Input, true) end
 	self.ReceivingPass = value
-	self.ContextButton.Text = if value then "OVERRIDE" else string.upper(if self.ContextAction == "SlideTackle" then "SLIDE" else self.ContextAction)
+	self.ContextButton.Text = string.upper(if self.ContextAction == "SlideTackle" then "SLIDE" else self.ContextAction)
 end
 
 function Controls:SetDefending(defending: boolean)
@@ -557,7 +550,7 @@ function Controls:SetDefending(defending: boolean)
 	self.ContextButton.Visible = true
 	self.PrimaryButton.Text = if self.Defending then "TACKLE" else "PASS"
 	self.SecondaryButton.Text = if self.Defending then "SWITCH" else "SHOOT"
-	self.ContextButton.Text = if self.ReceivingPass then "OVERRIDE" else string.upper(if self.ContextAction == "SlideTackle" then "SLIDE" else self.ContextAction)
+	self.ContextButton.Text = string.upper(if self.ContextAction == "SlideTackle" then "SLIDE" else self.ContextAction)
 	local color = if self.Defending then RED else GREEN
 	local outline = self.PrimaryButton:FindFirstChildOfClass("UIStroke")
 	if outline then outline.Color = color end

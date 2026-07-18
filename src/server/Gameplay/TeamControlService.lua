@@ -521,7 +521,7 @@ function Service:Handle(player: Player, payload: any)
 		local requestedPass=ActionTuning.NormalizeAction(payload.PassType)
 		local internalPass=if requestedPass=="Lob"then"Lofted"else requestedPass
 		local evaluatedCharge=ActionTuning.EvaluateNormalized(requestedPass,payload.Charge)
-		if payload.ManualAim==true or payload.PassType=="Manual"or payload.PassType=="ManualLobbed"then
+		if payload.ManualAim==true or requestedPass=="Lob"or payload.PassType=="Manual"or payload.PassType=="ManualLobbed"then
 			local activeRoot=root(active)
 			local offset=activeRoot and aimPoint and(aimPoint-activeRoot.Position)or nil
 			if activeRoot and aimPoint and offset and offset.Magnitude>1 then
@@ -585,9 +585,9 @@ function Service:Handle(player: Player, payload: any)
 	elseif kind=="DribbleMove"and validDirection(payload.Direction)then
 		self.BallService:SkillMove(active,payload.Direction)
 	elseif kind == "Tackle" then
-		self.BallService:Tackle(active)
+		self.BallService:Tackle(active,false,payload.ClientTime)
 	elseif kind=="SlideTackle"then
-		self.BallService:Tackle(active,true)
+		self.BallService:Tackle(active,true,payload.ClientTime)
 	elseif kind=="Block"then
 		self.BallService:SetBlock(active,payload.Active==true)
 	end

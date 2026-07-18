@@ -9,6 +9,11 @@ local function quest(id: string, category: string, title: string, description: s
 	elseif difficulty >= 5 and target >= 3 then
 		rewardDifficulty = 6
 	end
+	-- Broad nation/continent title quests overlap with the main championship reward.
+	-- Keep those meaningful without turning one tournament win into several Elite packs.
+	if target == 1 and (metric == "titleWithNation" or metric == "continentTitle" or metric == "formerChampionTitle") then
+		rewardDifficulty = math.min(rewardDifficulty, 4)
+	end
 	local packId = "bronze_pack"
 	if rewardDifficulty >= 6 then
 		packId = "champion_pack"

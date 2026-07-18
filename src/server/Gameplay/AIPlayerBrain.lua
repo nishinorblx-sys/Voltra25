@@ -2,6 +2,7 @@
 local PitchConfig = require(script.Parent.PitchConfig)
 local AIDifficultyService = require(script.Parent.AIDifficultyService)
 local AIContextBuilder = require(script.Parent.AIContextBuilder)
+local AIPassExecutionPlanner = require(script.Parent.AIPassExecutionPlanner)
 local AIPassingDecisionService = require(script.Parent.AIPassingDecisionService)
 local AIShootingDecisionService = require(script.Parent.AIShootingDecisionService)
 local AIDribblingDecisionService = require(script.Parent.AIDribblingDecisionService)
@@ -136,22 +137,11 @@ local function chooseBoxCross(context: any, carrier: any): any?
 end
 
 function Service.new(ballService: any, style: any, difficulty: any)
-	return setmetatable({BallService = ballService, Style = style, Difficulty = difficulty, NextDecision = {}, CarrySince = {}, LastAction = {}, Random = Random.new()}, Service)
+	return setmetatable({BallService = ballService, Style = style, Difficulty = difficulty, NextDecision = {}, CarrySince = {}, LastAction = {}, Random = Random.new(), ImmediateReceiverRoute = nil}, Service)
 end
 
-function Service:_setReceiver(pass: any)
-	if not pass or not pass.Receiver then
-		return
-	end
-	local receiver = pass.Receiver.Model
-	receiver:SetAttribute("VTRReceiveTarget", pass.Target)
-	receiver:SetAttribute("VTRPreparingReceive", true)
-	receiver:SetAttribute("VTRReceiveUntil", os.clock() + math.clamp((pass.Distance or 45) / 24, 2.8, 5.4))
-	receiver:SetAttribute("VTRReceiveLockedAt", os.clock())
-	receiver:SetAttribute("AIDebugExpectedPass", true)
-	receiver:SetAttribute("AIDebugPassTarget", pass.Target)
-	receiver:SetAttribute("AIDebugPassKind", pass.PassKind or "Ground")
-	receiver:SetAttribute("AIDebugPassScore", pass.Score or 0)
+function Service:SetImmediateReceiverRoute(callback: any)
+	self.ImmediateReceiverRoute = callback
 end
 
 function Service:_kickPass(context: any, passer: any, pass: any): boolean
@@ -159,37 +149,54 @@ function Service:_kickPass(context: any, passer: any, pass: any): boolean
 		return false
 	end
 	local direction = pass.Target - passer.Root.Position
-	if pass.Receiver and pass.Receiver.Root then
-		local receiverVelocity = flat(pass.Receiver.Root.AssemblyLinearVelocity)
-		if receiverVelocity.Magnitude > 1.5 and (pass.PassKind == "Through" or pass.PassKind == "Lofted" or pass.ForwardGain and pass.ForwardGain > 8) then
-			local lead = receiverVelocity.Unit * math.clamp(receiverVelocity.Magnitude * (pass.PassKind == "Lofted" and 0.42 or 0.3), 5, 24)
-			local leadTarget = pass.Target + lead
-			local leadPitch = PitchConfig.WorldToTeamPitchPosition(leadTarget, passer.Side, context.Options)
-			if leadPitch.Z >= pass.Receiver.Pitch.Z - 2 then
-				pass.Target = PitchConfig.TeamPitchPositionToWorld(PitchConfig.ClampInsidePitch(Vector3.new(leadPitch.X, 3, leadPitch.Z)), passer.Side, context.Options)
-				direction = pass.Target - passer.Root.Position
-			end
+	local execution = AIPassExecutionPlanner.Plan(context, passer, pass, self.Style, self.Difficulty)
+	if not execution then return false end
+	pass.Target = execution.Target
+	pass.Distance = execution.Distance
+	direction = pass.Target - passer.Root.Position
+	if direction.Magnitude < 4 then return false end
+	local passKind = pass.PassKind == "Through" and "Through" or (pass.PassKind == "Lofted" or pass.PassKind == "FarPostCross") and "Lofted" or "Ground"
+	local power = execution.Power
+	local receiverModel = pass.Receiver and pass.Receiver.Model
+	if receiverModel and receiverModel.Parent then
+		local now = context.Now or os.clock()
+		local receiveUntil = now + math.clamp((execution.BallETA or 1.1) + 1.35, 1.2, 5.2)
+		local sprint = (execution.ReceiverETA or math.huge) > math.max(0.08, (execution.BallETA or 0) - 0.08) or PitchConfig.GetDistanceStuds(pass.Receiver.World, pass.Target) > 8
+		receiverModel:SetAttribute("VTRReceiveTarget", pass.Target)
+		receiverModel:SetAttribute("VTRReceiveIntercept", pass.Target)
+		receiverModel:SetAttribute("VTRReceiveUntil", receiveUntil)
+		receiverModel:SetAttribute("VTRReceiveBallETA", execution.BallETA)
+		receiverModel:SetAttribute("VTRReceiveReceiverETA", execution.ReceiverETA)
+		receiverModel:SetAttribute("VTRReceiveOpponentETA", execution.OpponentETA)
+		receiverModel:SetAttribute("VTRReceiveRouteConfidence", math.clamp(tonumber(execution.Viability) or 0.7, 0, 1))
+		receiverModel:SetAttribute("VTRReceiveRouteSprintRequested", sprint)
+		receiverModel:SetAttribute("VTRReceiveDistance", PitchConfig.GetDistanceStuds(pass.Receiver.World, pass.Target))
+		receiverModel:SetAttribute("VTRPreparingReceive", true)
+		receiverModel:SetAttribute("VTRReceiveCommitted", true)
+		receiverModel:SetAttribute("VTRReceiveLockedAt", now)
+		receiverModel:SetAttribute("VTRAITargetedPass", true)
+		receiverModel:SetAttribute("VTRRunTicketId", nil)
+		receiverModel:SetAttribute("VTRRunApproved", false)
+		receiverModel:SetAttribute("currentAssignment", "ReceivePass")
+		receiverModel:SetAttribute("SupportRole", "ReceivePass")
+		if self.ImmediateReceiverRoute then
+			self.ImmediateReceiverRoute(receiverModel, pass.Target, passKind, execution)
 		end
 	end
-	if direction.Magnitude < 4 then
-		return false
-	end
-	self:_setReceiver(pass)
-	local passKind = pass.PassKind == "Through" and "Through" or (pass.PassKind == "Lofted" or pass.PassKind == "FarPostCross") and "Lofted" or "Ground"
-	local power = math.clamp((pass.Distance or direction.Magnitude) / (passKind == "Through" and 145 or passKind == "Lofted" and 130 or 110), passKind == "Lofted" and 0.32 or 0.12, passKind == "Through" and 0.46 or passKind == "Lofted" and 0.68 or 0.78)
 	passer.Model:SetAttribute("AIPassCentralLane", pass.MiddlePass == true)
 	passer.Model:SetAttribute("AIPassMiddleOutnumbered", pass.MiddleOutnumbered == true)
 	passer.Model:SetAttribute("AIPassWingEscape", pass.WingEscape == true)
-	passer.Model:SetAttribute("AIPassMiddleMemory", AIPassingDecisionService.GetMiddleMistakeMemory and AIPassingDecisionService.GetMiddleMistakeMemory(passer.Side) or 0)
+	passer.Model:SetAttribute("AIPassMiddleMemory", AIPassingDecisionService.GetMiddleMistakeMemory and AIPassingDecisionService.GetMiddleMistakeMemory(passer.Model) or 0)
 	local kicked = self.BallService:Kick(passer.Model, "Pass", direction, power, pass.Receiver.Model, passKind, pass.Distance or direction.Magnitude, pass.Target)
 	if kicked then
+		pass.Receiver.Model:SetAttribute("AIDebugExpectedPass", true)
+		pass.Receiver.Model:SetAttribute("AIDebugPassTarget", pass.Target)
+		pass.Receiver.Model:SetAttribute("AIDebugPassKind", pass.PassKind or "Ground")
+		pass.Receiver.Model:SetAttribute("AIDebugPassScore", pass.Score or 0)
+		pass.Receiver.Model:SetAttribute("AIDebugBallETA", execution.BallETA)
+		pass.Receiver.Model:SetAttribute("AIDebugReceiverETA", execution.ReceiverETA)
+		pass.Receiver.Model:SetAttribute("AIDebugOpponentETA", execution.OpponentETA)
 		self.LastAction[passer.Model] = (pass.PassKind == "LowCross" or pass.PassKind == "FarPostCross") and "Cross" or pass.PassKind == "Cutback" and "Cutback" or pass.PassKind == "Through" and "ThroughPass" or "Pass"
-	else
-		pass.Receiver.Model:SetAttribute("VTRReceiveTarget", nil)
-		pass.Receiver.Model:SetAttribute("VTRPreparingReceive", false)
-		pass.Receiver.Model:SetAttribute("VTRReceiveUntil", nil)
-		pass.Receiver.Model:SetAttribute("VTRReceiveLockedAt", nil)
-		pass.Receiver.Model:SetAttribute("AIDebugExpectedPass", nil)
 	end
 	return kicked
 end
@@ -286,6 +293,18 @@ function Service:_carrierDecision(context: any, carrier: any, assignment: any)
 	elseif wingerWide and carrier.Pitch.Z >= 495 then
 		holdLimit = math.min(holdLimit, 0.5)
 	end
+	local story = context.TeamStories and context.TeamStories[carrier.Side]
+	local storyMovement = tostring(story and story.Movement or "")
+	local storyAction = tostring(story and story.Action or "")
+	if storyMovement == "Counter" or storyMovement == "CounterWide" or storyMovement == "CounterCentral" or storyMovement == "Release" or storyMovement == "Chance" or storyMovement == "FinalPress" then
+		holdLimit = math.min(holdLimit, 0.42)
+	elseif storyMovement == "Recycle" or storyMovement == "Secure" or storyMovement == "Safe" then
+		holdLimit = math.max(holdLimit, pressure.Under and 0.42 or 0.78)
+	elseif storyMovement == "Cross" and carrier.Role == "Winger" then
+		holdLimit = math.min(holdLimit, 0.28)
+	elseif storyMovement == "Direct" or storyMovement == "Target" then
+		holdLimit = math.min(holdLimit, 0.55)
+	end
 	holdLimit = math.clamp(holdLimit, 0.18, 1.45)
 	local nextDecision = self.NextDecision[carrier.Model] or 0
 	carrier.Model:SetAttribute("AIPressureScore", pressure.Score)
@@ -295,6 +314,7 @@ function Service:_carrierDecision(context: any, carrier: any, assignment: any)
 	carrier.Model:SetAttribute("AIAttackStage", attackStage)
 	carrier.Model:SetAttribute("AIDefensiveMood", defensiveMood)
 	carrier.Model:SetAttribute("AICarryIntoSpace", false)
+	carrier.Model:SetAttribute("AITacticalStoryAction", storyAction)
 	if (tonumber(carrier.Model:GetAttribute("VTRKickoffReturnUntil")) or 0) > now and carriedFor >= 0.03 then
 		local kickoffReturn = AIPassingDecisionService.ChooseKickoffReturn(context, carrier, self.Style, self.Difficulty)
 		if kickoffReturn and self:_kickPass(context, carrier, kickoffReturn) then

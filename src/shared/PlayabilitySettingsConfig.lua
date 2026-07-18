@@ -18,6 +18,7 @@ local defaults = table.freeze({
 	ReducedMotion = false,
 	PerformanceMode = false,
 	ImmersivePresentation = false,
+	PassTrailVisibility = "UserOnly",
 })
 
 local cameraAliases = {
@@ -34,6 +35,7 @@ local validCamera = {Auto = true, Tactical = true, Pro = true, Roblox = true}
 local validZoom = {Close = true, Moderate = true, Wide = true}
 local validSprint = {Toggle = true, Hold = true}
 local validHand = {Right = true, Left = true}
+local validPassTrail = {Off = true, UserOnly = true, All = true}
 
 local function copyDefaults(): {[string]: any}
 	local result = {}
@@ -66,6 +68,8 @@ local function normalize(source: any): {[string]: any}
 	result.ReducedMotion = input.ReducedMotion == true
 	result.PerformanceMode = input.PerformanceMode == true
 	result.ImmersivePresentation = input.ImmersivePresentation == true
+	local passTrail = tostring(input.PassTrailVisibility or defaults.PassTrailVisibility)
+	result.PassTrailVisibility = if validPassTrail[passTrail] then passTrail else defaults.PassTrailVisibility
 	result.ReceiverAssist = nil
 	result.DefensiveAutoSwitch = nil
 	result.SprintToggle = nil

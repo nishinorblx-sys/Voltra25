@@ -4,6 +4,24 @@ local PhysicsService = game:GetService("PhysicsService")
 local Service = {}
 local GROUPS = {"Players", "Ball", "ScoredBall", "Pitch", "Goal", "GoalNet", "Stadium"}
 
+local function isGoalDetector(instance: Instance): boolean
+	local name = string.lower(instance.Name)
+	return instance:GetAttribute("VTRGoalDetector") == true
+		or instance.Name == "HomeGoal"
+		or instance.Name == "AwayGoal"
+		or string.find(name, "goaldetector", 1, true) ~= nil
+		or string.find(name, "goalhitbox", 1, true) ~= nil
+		or string.find(name, "goallinevolume", 1, true) ~= nil
+end
+
+local function configureGoalDetector(part: BasePart)
+	part:SetAttribute("VTRGoalDetector", true)
+	part.CollisionGroup = "Goal"
+	part.CanCollide = false
+	part.CanTouch = false
+	part.CanQuery = true
+end
+
 local function register(name: string)
 	pcall(function() PhysicsService:RegisterCollisionGroup(name) end)
 end
@@ -73,6 +91,10 @@ function Service.ApplyWorld(folder: Instance)
 		if descendant:IsA("BasePart") then
 			local name = string.lower(descendant.Name)
 			descendant.CollisionGroup = string.find(name, "goal", 1, true) and "Goal" or (string.find(name, "pitch", 1, true) or string.find(name, "field", 1, true)) and "Pitch" or "Stadium"
+			if isGoalDetector(descendant) then
+				configureGoalDetector(descendant)
+				continue
+			end
 			if descendant.Name == "Pitch" or descendant.Name == "PitchSurface" then
 				descendant.CanCollide = true
 				descendant.CanTouch = true
@@ -88,10 +110,7 @@ function Service.ApplyWorld(folder: Instance)
 	for _, goalName in {"HomeGoal", "AwayGoal"} do
 		local goal = workspace:FindFirstChild(goalName, true)
 		if goal and goal:IsA("BasePart") then
-			goal.CollisionGroup = "Goal"
-			goal.CanCollide = false
-			goal.CanTouch = false
-			goal.CanQuery = true
+			configureGoalDetector(goal)
 		end
 	end
 end
@@ -102,7 +121,7 @@ function Service.ApplyGoalNets()
 	local names = {HomeNet = true, AwayNet = true, Net = true}
 	for _, item in workspace:GetDescendants() do
 		local lowerName = string.lower(item.Name)
-		if names[item.Name] or string.find(lowerName, "net", 1, true) then
+		if not isGoalDetector(item) and (names[item.Name] or string.find(lowerName, "net", 1, true)) then
 			if item:IsA("BasePart") then
 				found = true
 				item.CollisionGroup = "GoalNet"
@@ -113,6 +132,10 @@ function Service.ApplyGoalNets()
 			end
 			for _, part in item:GetDescendants() do
 				if part:IsA("BasePart") then
+					if isGoalDetector(part) then
+						configureGoalDetector(part)
+						continue
+					end
 					found = true
 					part.CollisionGroup = "GoalNet"
 					part.CanCollide = true

@@ -401,6 +401,7 @@ function UIController:Start()
 		end,
 		IsCurrentPage = function(id: string) return navigation.Current == id end,
 		HidePage = function(id: string) navigation:HidePage(id) end,
+		SetSquadIncomplete = function(incomplete:boolean) self:_setSquadIncomplete(incomplete) end,
 		Toast = function(payload: any) self:_showNotification(payload) end,
 		Flow = self.Flow,
 		RevealOnboardingMenu = function()
@@ -607,6 +608,11 @@ function UIController:_syncProgressionNavigation()
 		self.Navigation:Navigate("Home")
 		UIStateService:SetLastPage("Home")
 	end
+end
+
+function UIController:_setSquadIncomplete(incomplete:boolean)
+	local item=self.Navigation and self.Navigation.Items and self.Navigation.Items.UltimateTeam
+	if item and item.SetWarning then item:SetWarning(incomplete==true)end
 end
 
 function UIController:_bindDataUpdates()

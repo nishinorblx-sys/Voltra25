@@ -7,17 +7,19 @@ local AIPlayerBrain = require(script.Parent.AIPlayerBrain)
 local AIDebugService = require(script.Parent.AIDebugService)
 local AIDifficultyService = require(script.Parent.AIDifficultyService)
 local AITacticalStyleService = require(script.Parent.AITacticalStyleService)
+local AITacticalStoryService = require(script.Parent.AITacticalStoryService)
 local RunService = game:GetService("RunService")
 
 local Service = {}
 Service.__index = Service
 
 function Service.new(teams: any, formations: any, pitchCFrame: CFrame, width: number, length: number, ball: BasePart, possession: any, ballService: any, difficultyName: string, tactics: any?, executor: any)
-	local style = AITacticalStyleService.new(tactics)
-	local homeStyle = AITacticalStyleService.new(tactics)
-	local awayStyle = AITacticalStyleService.new(tactics)
+	local homeTactics = type(tactics) == "table" and tactics.HomeTactics or tactics
+	local awayTactics = type(tactics) == "table" and tactics.AwayTactics or tactics
+	local homeStyle = AITacticalStyleService.new(homeTactics)
+	local awayStyle = AITacticalStyleService.new(awayTactics)
 	local difficulty = AIDifficultyService.Resolve(difficultyName, Random.new())
-	return setmetatable({
+	local self = setmetatable({
 		Teams = teams,
 		Formations = formations,
 		PitchCFrame = pitchCFrame,
@@ -28,7 +30,7 @@ function Service.new(teams: any, formations: any, pitchCFrame: CFrame, width: nu
 		BallService = ballService,
 		Half = 1,
 		ExternalPhase = nil,
-		Style = style,
+		Style = homeStyle,
 		Styles = {Home = homeStyle, Away = awayStyle},
 		Difficulty = difficulty,
 		Phase = AIPhaseService.new(),
@@ -42,7 +44,8 @@ function Service.new(teams: any, formations: any, pitchCFrame: CFrame, width: nu
 			Away = AIPlayerBrain.new(ballService, awayStyle, difficulty),
 		},
 		Debug = AIDebugService.new(),
-		Accum = {Phase = 0.035, Assignment = 0.035, OnBall = 0.03, Movement = 0.03, Debug = 0.25},
+		Stories = AITacticalStoryService.new(),
+		Accum = {Phase = 0.16, Assignment = 0.12, OnBall = 0.08, Movement = 0.03, Debug = 0.25},
 		Phases = {Home = "LooseBall", Away = "LooseBall"},
 		CurrentAssignments = {Home = {}, Away = {}},
 		LastContext = nil,
@@ -58,7 +61,62 @@ function Service.new(teams: any, formations: any, pitchCFrame: CFrame, width: nu
 		},
 		ManualTackleSides = {},
 		FirstMatchAssistance = nil,
+		LastPassStateKey = "",
+		ReceiverRouteSequence = 0,
 	}, Service)
+	local function routeReceiver(model: Model, target: Vector3, passKind: string?, execution: any)
+		self:_routeReceiverBeforePass(model, target, passKind, execution)
+	end
+	self.Brain.Home:SetImmediateReceiverRoute(routeReceiver)
+	self.Brain.Away:SetImmediateReceiverRoute(routeReceiver)
+	return self
+end
+
+function Service:_routeReceiverBeforePass(model: Model, target: Vector3, passKind: string?, execution: any)
+	if typeof(target) ~= "Vector3" or not model or not model.Parent then return end
+	local modelRoot = model:FindFirstChild("HumanoidRootPart") :: BasePart?
+	local humanoid = model:FindFirstChildOfClass("Humanoid")
+	if not modelRoot or not humanoid or humanoid.Health <= 0 then return end
+	local side = tostring(model:GetAttribute("VTRTeam") or "")
+	local sprint = model:GetAttribute("VTRReceiveRouteSprintRequested") == true or tostring(passKind or "") == "Lofted" or (target - modelRoot.Position).Magnitude > 7
+	local assignment = {
+		PrimaryAssignment = "ReceivePass",
+		TargetWorld = target,
+		FaceWorld = self.Ball and self.Ball.Position or target,
+		MovementUrgency = 1,
+		SprintAllowed = sprint,
+		Phase = "PassReception",
+		SprintConservation = 0,
+	}
+	if self.CurrentAssignments[side] then
+		self.CurrentAssignments[side][model] = assignment
+	end
+	self.Movement.State[model] = nil
+	self.ReceiverRouteSequence = (tonumber(self.ReceiverRouteSequence) or 0) + 1
+	local ticket = "ReceivePass:PreKick:" .. tostring(self.ReceiverRouteSequence)
+	self.Movement.Executor:SetCommand(model, {
+		Target = Vector3.new(target.X, modelRoot.Position.Y, target.Z),
+		Urgency = 1,
+		LocomotionMode = sprint and "SprintBurst" or "Run",
+		SprintAllowed = sprint,
+		SprintRequired = sprint,
+		Essential = true,
+		BurstMaximumSeconds = 3,
+		RecoveryMinimumSeconds = 0.8,
+		MinimumEnergy = 15,
+		AssignmentId = ticket,
+		RunTicketId = ticket,
+		FaceTarget = self.Ball and self.Ball.Position or target,
+	})
+	model:SetAttribute("currentAssignment", "ReceivePass")
+	model:SetAttribute("targetPosition", target)
+	model:SetAttribute("MovementTarget", target)
+	model:SetAttribute("SupportRole", "ReceivePass")
+	model:SetAttribute("AttackAssignment", "ReceivePass")
+	model:SetAttribute("TeamPhase", "PassReception")
+	model:SetAttribute("MovementMode", sprint and "SprintBurst" or "Run")
+	model:SetAttribute("VTRAIMovementIntensity", 1)
+	model:SetAttribute("VTRAIIntentionUntil", (self.LastContext and self.LastContext.Now or os.clock()) + math.max(0.45, tonumber(execution and execution.BallETA) or 0.8))
 end
 
 local function debugEnabled(): boolean
@@ -84,6 +142,7 @@ function Service:SetHalf(half: number?)
 		self.Movement:Clear()
 		self.Brain.Home:Clear()
 		self.Brain.Away:Clear()
+		if self.Stories then self.Stories:Reset() end
 	end
 	self.Half = nextHalf
 end
@@ -94,6 +153,19 @@ end
 
 function Service:SetManualTackleSides(sides: {[string]: boolean}?)
 	self.ManualTackleSides = sides or {}
+end
+
+function Service:ResetFootballer(model: Model)
+		self.Movement.State[model] = nil
+	self.Movement.Executor:Clear(model)
+	for _, side in {"Home", "Away"} do
+		local assignmentService = self.Assignments[side]
+		if assignmentService and assignmentService.RunCoordinator then assignmentService.RunCoordinator.Tickets[model] = nil end
+		local brain = self.Brain[side]
+		if brain then brain.NextDecision[model] = nil;brain.CarrySince[model] = nil;brain.LastAction[model] = nil end
+		self.CurrentAssignments[side][model] = nil
+	end
+	for _, attribute in {"VTRAISprintRequested", "VTRReceiveTarget", "VTRPreparingReceive", "VTRReceiveUntil", "VTRReceiveRouteSprintRequested", "AIMiddlePassMistakeMemory"} do model:SetAttribute(attribute, nil) end
 end
 
 function Service:SetFirstMatchAssistance(active: boolean)
@@ -120,7 +192,11 @@ function Service:UpdateTactics(side: string, tactics: any)
 	self.Styles[targetSide] = style
 	self.Assignments[targetSide] = AIAssignmentService.new(style)
 	self.Brain[targetSide] = AIPlayerBrain.new(self.BallService, style, self.Difficulty)
+	self.Brain[targetSide]:SetImmediateReceiverRoute(function(model: Model, target: Vector3, passKind: string?, execution: any)
+		self:_routeReceiverBeforePass(model, target, passKind, execution)
+	end)
 	self.CurrentAssignments[targetSide] = {}
+	if self.Stories then self.Stories:Reset(targetSide) end
 end
 
 function Service:_isLive(): boolean
@@ -224,6 +300,10 @@ function Service:Step(dt: number)
 	context.ManualTackleSides = self.ManualTackleSides
 	self:_updatePressState(context)
 	self.LastContext = context
+	local passStateKey = context.PassInFlight and (tostring(self.Ball:GetAttribute("VTRPassStartedAt") or "") .. ":" .. tostring(self.Ball:GetAttribute("VTRPassReceiver") or "") .. ":" .. tostring(self.Ball:GetAttribute("VTRTrajectoryId") or "")) or ""
+	local passStateChanged = passStateKey ~= self.LastPassStateKey
+	self.LastPassStateKey = passStateKey
+	local urgentBallState = context.PassInFlight or context.LooseBall
 	if context.Owner ~= self.LastDebugOwner then
 		self.LastDebugOwner = context.Owner
 		debugKickoff("context owner changed", "owner", context.Owner and context.Owner.Name or "nil", "ownerSide", context.OwnerSide or "nil", "loose", context.LooseBall, "motion", context.MotionKind)
@@ -245,6 +325,7 @@ function Service:Step(dt: number)
 
 	if context.LooseBall then
 		self.Phases = self.Phase:Update(context, true)
+		if self.Stories then self.Stories:Step(context, self.Styles, self.Phases) end
 		self.CurrentAssignments = {
 			Home = self.Assignments.Home:BuildSide(context, "Home", "LooseBall"),
 			Away = self.Assignments.Away:BuildSide(context, "Away", "LooseBall"),
@@ -254,13 +335,16 @@ function Service:Step(dt: number)
 	end
 
 	self.Accum.Phase += dt
-	if self.Accum.Phase >= 0.035 then
+	if self.Accum.Phase >= 0.16 then
 		self.Accum.Phase = 0
 		self.Phases = self.Phase:Update(context, true)
 	end
+	if self.Stories then
+		self.Stories:Step(context, self.Styles, self.Phases)
+	end
 
 	self.Accum.Assignment += dt
-	if self.Accum.Assignment >= 0.035 or not next(self.CurrentAssignments.Home) then
+	if urgentBallState or passStateChanged or self.Accum.Assignment >= 0.12 or not next(self.CurrentAssignments.Home) then
 		self.Accum.Assignment = 0
 		self.CurrentAssignments = {
 			Home = self.Assignments.Home:BuildSide(context, "Home", self.Phases.Home or "LooseBall"),
@@ -282,7 +366,7 @@ function Service:Step(dt: number)
 	end
 
 	self.Accum.OnBall += dt
-	if self.Accum.OnBall >= 0.03 then
+	if self.Accum.OnBall >= 0.08 then
 		self.Accum.OnBall = 0
 		self.Brain.Home:StepSide(context, self.CurrentAssignments, "Home")
 		self.Brain.Away:StepSide(context, self.CurrentAssignments, "Away")

@@ -110,6 +110,27 @@ local function chooseBest(team:{Model},statKey:string,fallbackKey:string?):Model
 	return tied[math.random(1,math.max(1,#tied))] or team[1]
 end
 
+local function closestKickoffPartner(team:{Model}?, taker:Model?):Model?
+	local takerRoot=taker and root(taker)
+	if not team or not takerRoot then return nil end
+	local best:Model?=nil
+	local bestDistance=math.huge
+	for _,candidate in team do
+		if candidate~=taker and candidate:GetAttribute("VTRSentOff")~=true and not isKeeper(candidate)then
+			local candidateRoot=root(candidate)
+			local humanoid=candidate:FindFirstChildOfClass("Humanoid")
+			if candidateRoot and humanoid and humanoid.Health>0 then
+				local distance=(Vector3.new(candidateRoot.Position.X,0,candidateRoot.Position.Z)-Vector3.new(takerRoot.Position.X,0,takerRoot.Position.Z)).Magnitude
+				if distance<bestDistance then
+					best=candidate
+					bestDistance=distance
+				end
+			end
+		end
+	end
+	return best
+end
+
 local function face(model:Model,position:Vector3,target:Vector3)
 	local modelRoot=root(model)
 	if not modelRoot then return end
@@ -576,6 +597,9 @@ function Service:Start(player: Player, kind: string, restartTeam: string, locati
 				local offset=receiverRoot.Position-takerRoot.Position
 				self.BallService:Kick(taker,"Pass",offset,math.clamp(offset.Magnitude/85,.25,.68),best,"Lofted",offset.Magnitude,receiverRoot.Position)
 			end
+		end
+		if kind=="Kickoff" then
+			kickoffPartner=closestKickoffPartner(self.Teams[restartTeam],taker) or kickoffPartner
 		end
 		if kind=="Kickoff" and kickoffPartner and kickoffPartner.Parent and self.OnboardingNoAutoKickoff~=true then
 			local takerRoot=root(taker)

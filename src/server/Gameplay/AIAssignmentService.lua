@@ -5,7 +5,11 @@ local AILooseBallService = require(script.Parent.AILooseBallService)
 local AIGoalkeeperService = require(script.Parent.AIGoalkeeperService)
 local AIDefensiveDecisionService = require(script.Parent.AIDefensiveDecisionService)
 local PenaltyBoxService = require(script.Parent.PenaltyBoxService)
+local AIRunCoordinator = require(script.Parent.AIRunCoordinator)
+local AIDefensiveCoordinator = require(script.Parent.AIDefensiveCoordinator)
 local Workspace = game:GetService("Workspace")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local AIMovementProfileConfig = require(ReplicatedStorage.VTR.Shared.AIMovementProfileConfig)
 
 local Service = {}
 Service.__index = Service
@@ -32,6 +36,78 @@ local function makeAssignment(context: any, info: any, name: string, pitch: Vect
 		MarkTarget = nil,
 		SupportTarget = context.Owner,
 	}
+end
+
+local function receiveAssignment(context: any, info: any): any?
+	local target = info.Model:GetAttribute("VTRReceiveTarget")
+	local untilTime = tonumber(info.Model:GetAttribute("VTRReceiveUntil")) or 0
+	if info.Model:GetAttribute("VTRPreparingReceive") ~= true or typeof(target) ~= "Vector3" or untilTime <= (context.Now or os.clock()) then
+		return nil
+	end
+	local targetPitch = PitchConfig.WorldToTeamPitchPosition(target, info.Side, context.Options)
+	local ballEta = tonumber(info.Model:GetAttribute("VTRReceiveBallETA")) or 0
+	local receiverEta = tonumber(info.Model:GetAttribute("VTRReceiveReceiverETA")) or math.huge
+	local sprint = info.Model:GetAttribute("VTRReceiveRouteSprintRequested") == true or receiverEta > math.max(0.1, ballEta - 0.08)
+	local assignment = makeAssignment(context, info, "ReceivePass", targetPitch, 1, sprint, context.BallWorld)
+	assignment.Phase = "PassReception"
+	assignment.ReceptionContractId = info.Model:GetAttribute("VTRReceptionContractId")
+	assignment.RunTicketId = nil
+	assignment.RunApproved = false
+	assignment.MovementProfile = "Balanced"
+	return assignment
+end
+
+local function applyReceiveOverrides(context: any, side: string, assignments: any, coordinator: any?)
+	for _, info in ipairs(context.Teams[side].List) do
+		local assignment = receiveAssignment(context, info)
+		if assignment then
+			assignments[info.Model] = assignment
+			if coordinator and coordinator.Tickets then coordinator.Tickets[info.Model] = nil end
+			info.Model:SetAttribute("VTRRunTicketId", nil)
+			info.Model:SetAttribute("VTRRunApproved", false)
+			info.Model:SetAttribute("currentAssignment", "ReceivePass")
+			info.Model:SetAttribute("SupportRole", "ReceivePass")
+		end
+	end
+end
+
+local function applyMovementProfile(context: any, info: any, assignment: any, attacking: boolean)
+	if info.IsGoalkeeper then return end
+	local profileId = AIMovementProfileConfig.IsValid(info.MovementProfile) and info.MovementProfile or AIMovementProfileConfig.Default
+	assignment.MovementProfile = profileId
+	local pitch = assignment.TargetPitch
+	if attacking then
+		if profileId == "ComeShort" then
+			pitch = Vector3.new(pitch.X, 3, math.max(info.BasePitch.Z - 15, math.min(pitch.Z, context.BallTeam[info.Side].Z - 22)))
+			assignment.PrimaryAssignment = "ProfileComeShort"
+			assignment.SprintAllowed = false
+		elseif profileId == "GetInBehind" then
+			pitch = Vector3.new(pitch.X, 3, math.min(690, math.max(pitch.Z, context.BallTeam[info.Side].Z + 70)))
+			assignment.PrimaryAssignment = "RunBehind"
+			assignment.MovementUrgency = math.max(assignment.MovementUrgency, 0.92)
+			assignment.SprintAllowed = true
+		elseif profileId == "StayWide" then
+			pitch = Vector3.new(info.BasePitch.X < PitchConfig.HALF_WIDTH and 38 or 386, 3, pitch.Z)
+			assignment.PrimaryAssignment = "ProfileStayWide"
+		elseif profileId == "FreeRoam" then
+			pitch = Vector3.new(pitch.X * 0.55 + context.BallTeam[info.Side].X * 0.45, 3, pitch.Z)
+			assignment.PrimaryAssignment = "ProfileFreeRoam"
+		elseif profileId == "StayBack" then
+			pitch = Vector3.new(pitch.X, 3, math.min(pitch.Z, info.BasePitch.Z + 22))
+			assignment.PrimaryAssignment = "ProfileStayBack"
+			assignment.SprintAllowed = false
+		end
+	elseif profileId == "AggressivePress" then
+		assignment.MovementUrgency = math.max(assignment.MovementUrgency, 0.96)
+		assignment.PressPriority = 22
+	elseif profileId == "RecoveryRunner" then
+		pitch = Vector3.new(pitch.X, 3, math.min(pitch.Z, info.BasePitch.Z))
+		assignment.MovementUrgency = math.max(assignment.MovementUrgency, 0.94)
+		assignment.SprintAllowed = true
+	end
+	assignment.TargetPitch = PitchConfig.ClampInsidePitch(pitch)
+	assignment.TargetWorld = asWorld(context, info.Side, assignment.TargetPitch)
+	assignment.MovementTarget = assignment.TargetWorld
 end
 
 local function baseWithPhase(info: any, phase: string, ballPitch: Vector3, style: any): Vector3
@@ -732,12 +808,11 @@ local function shapeMotion(context: any, info: any, target: Vector3, depth: numb
 		seed += string.byte(name, i) or 0
 	end
 	local now = context.Now or os.clock()
-	local depthAmount = depth or 14
-	local widthAmount = width or 5
+	local depthAmount = math.min(depth or 1.4, 1.6)
+	local widthAmount = math.min(width or 1, 1.4)
 	local waveA = math.sin(now * (0.82 + (seed % 7) * 0.035) + seed * 0.19)
 	local waveB = math.cos(now * (0.58 + (seed % 5) * 0.04) + seed * 0.13)
-	local stagger = ((seed % 7) - 3) * 3
-	return PitchConfig.ClampInsidePitch(Vector3.new(target.X + waveB * widthAmount, target.Y, target.Z + waveA * depthAmount + stagger))
+	return PitchConfig.ClampInsidePitch(Vector3.new(target.X + waveB * widthAmount, target.Y, target.Z + waveA * depthAmount))
 end
 
 local function simpleDefensiveShapeTarget(info: any, ballPitch: Vector3, base: Vector3, style: any): Vector3
@@ -906,7 +981,126 @@ local function simpleDefensiveRoleTarget(context: any, info: any, ballPitch: Vec
 end
 
 function Service.new(style: any)
-	return setmetatable({Style = style}, Service)
+	return setmetatable({Style = style, RunCoordinator = AIRunCoordinator.new(style), DefensiveCoordinator = AIDefensiveCoordinator.new(style)}, Service)
+end
+
+local function storyName(context: any, side: string): string
+	local story = context.TeamStories and context.TeamStories[side]
+	return tostring(story and story.Action or "")
+end
+
+local function storyMovement(context: any, side: string): string
+	local story = context.TeamStories and context.TeamStories[side]
+	return tostring(story and story.Movement or "")
+end
+
+local function storyPitchTarget(context: any, info: any, ownerInfo: any?, fallback: Vector3): (string?, Vector3?, number?, boolean?)
+	local action = storyName(context, info.Side)
+	local movement = storyMovement(context, info.Side)
+	local ballPitch = context.BallTeam[info.Side]
+	local base = info.BasePitch
+	local sameSide = sameWideSide(info, ballPitch)
+	local farPostX = ballPitch.X < PitchConfig.HALF_WIDTH and 306 or 118
+	if movement == "Recycle" or movement == "Secure" or movement == "Safe" then
+		if info.Role == "CB" then return "StoryRecycleCenterBack", Vector3.new(base.X, 3, math.max(65, ballPitch.Z - 82)), 0.72, false end
+		if info.Role == "Fullback" then return "StorySafeFullback", Vector3.new(sideLaneX(info, true), 3, math.max(100, ballPitch.Z - 42)), 0.74, false end
+		if info.Role == "CDM" or info.Role == "CM" then return "StorySafeSupport", Vector3.new(PitchConfig.HALF_WIDTH + (base.X < PitchConfig.HALF_WIDTH and -34 or 34), 3, math.max(145, ballPitch.Z - 28)), 0.78, false end
+		if info.Role == "ST" then return "StoryOutletStriker", Vector3.new(PitchConfig.HALF_WIDTH, 3, math.max(base.Z, ballPitch.Z + 54)), 0.72, false end
+	elseif movement == "Wide" or movement == "WideBuild" or movement == "Overload" then
+		if info.Role == "Winger" then return sameSide and "StoryWideBallSideWinger" or "StoryFarSideWinger", Vector3.new(sideLaneX(info, true), 3, onsideZ(context, info.Side, sameSide and ballPitch.Z + 42 or math.max(base.Z, ballPitch.Z + 24))), sameSide and 0.88 or 0.78, sameSide end
+		if info.Role == "Fullback" then return sameSide and "StoryWideFullbackLane" or "StoryRestFullback", Vector3.new(sideLaneX(info, true), 3, sameSide and math.max(130, ballPitch.Z - 28) or math.max(80, math.min(base.Z + 32, ballPitch.Z - 62))), sameSide and 0.84 or 0.7, false end
+		if info.Role == "CM" or info.Role == "CAM" then return "StoryInsideSupport", Vector3.new(math.clamp(ballPitch.X + (ballPitch.X < PitchConfig.HALF_WIDTH and 44 or -44), 132, 292), 3, math.clamp(ballPitch.Z + 8, 250, 575)), 0.82, false end
+		if info.Role == "ST" then return "StoryCrossTarget", Vector3.new(PitchConfig.HALF_WIDTH, 3, onsideZ(context, info.Side, math.max(520, ballPitch.Z + 58))), 0.86, false end
+	elseif movement == "Cross" then
+		if info.Role == "ST" then return "StoryNearPostRun", Vector3.new(ballPitch.X < PitchConfig.HALF_WIDTH and 176 or 248, 3, 632), 0.94, true end
+		if info.Role == "Winger" then return sameSide and "StoryCrossCarrierSupport" or "StoryFarPostRun", Vector3.new(sameSide and sideLaneX(info, true) or farPostX, 3, sameSide and math.max(520, ballPitch.Z - 12) or 646), sameSide and 0.78 or 0.92, not sameSide end
+		if info.Role == "CM" or info.Role == "CAM" then return "StoryEdgeBox", Vector3.new(PitchConfig.HALF_WIDTH + (base.X < PitchConfig.HALF_WIDTH and -28 or 28), 3, 548), 0.8, false end
+	elseif movement == "Counter" or movement == "CounterWide" or movement == "CounterCentral" or movement == "Release" then
+		if info.Role == "ST" then return "StoryCentralChannelRun", Vector3.new(PitchConfig.HALF_WIDTH, 3, onsideZ(context, info.Side, ballPitch.Z + 112)), 1, true end
+		if info.Role == "Winger" then return "StoryCounterWideRun", Vector3.new(sideLaneX(info, true), 3, onsideZ(context, info.Side, ballPitch.Z + 105)), 1, true end
+		if info.Role == "CM" or info.Role == "CAM" then return "StoryCounterSupport", Vector3.new(PitchConfig.HALF_WIDTH + (base.X < PitchConfig.HALF_WIDTH and -32 or 32), 3, ballPitch.Z + 34), 0.86, false end
+		if info.Role == "CB" or info.Role == "Fullback" or info.Role == "CDM" then return "StoryCounterRestDefense", Vector3.new(base.X, 3, math.max(85, math.min(base.Z + 42, ballPitch.Z - 62))), 0.7, false end
+	elseif movement == "Triangle" or movement == "ThirdMan" or movement == "WallPass" or movement == "Link" then
+		if info.Role == "CM" or info.Role == "CAM" then return "StoryCentralAngle", Vector3.new(PitchConfig.HALF_WIDTH + (base.X < PitchConfig.HALF_WIDTH and -42 or 42), 3, math.clamp(ballPitch.Z + (action == "ThirdManRun" and 62 or 22), 230, 585)), 0.86, action == "ThirdManRun" end
+		if info.Role == "CDM" then return "StoryCentralRestOption", Vector3.new(PitchConfig.HALF_WIDTH, 3, math.max(150, ballPitch.Z - 32)), 0.76, false end
+		if info.Role == "Winger" then return "StoryHoldWidth", Vector3.new(sideLaneX(info, true), 3, onsideZ(context, info.Side, math.max(base.Z, ballPitch.Z + 36))), 0.78, false end
+		if info.Role == "ST" then return "StoryWallPassStriker", Vector3.new(PitchConfig.HALF_WIDTH, 3, onsideZ(context, info.Side, math.max(350, ballPitch.Z + (action == "StrikerWallPass" and 12 or 44)))), 0.84, false end
+	elseif movement == "Direct" or movement == "Target" or movement == "SecondBall" then
+		if info.Role == "ST" then return "StoryDirectOutlet", Vector3.new(PitchConfig.HALF_WIDTH, 3, onsideZ(context, info.Side, math.max(base.Z, ballPitch.Z + 78))), 0.92, true end
+		if info.Role == "Winger" then return "StoryRunBeyondOutlet", Vector3.new(sideLaneX(info, true), 3, onsideZ(context, info.Side, ballPitch.Z + 92)), 0.9, true end
+		if info.Role == "CM" or info.Role == "CDM" or info.Role == "CAM" then return "StorySecondBallSupport", Vector3.new(PitchConfig.HALF_WIDTH + (base.X < PitchConfig.HALF_WIDTH and -36 or 36), 3, math.max(180, ballPitch.Z + 16)), 0.84, false end
+	elseif movement == "Commit" or movement == "Chance" or movement == "FinalPress" then
+		if info.Role == "Fullback" then return "StoryFullbackCommit", Vector3.new(sideLaneX(info, true), 3, onsideZ(context, info.Side, ballPitch.Z + 72)), 0.9, true end
+		if info.Role == "CM" or info.Role == "CAM" then return "StoryLateBoxRun", Vector3.new(PitchConfig.HALF_WIDTH + (base.X < PitchConfig.HALF_WIDTH and -36 or 36), 3, onsideZ(context, info.Side, ballPitch.Z + 70)), 0.92, true end
+		if info.Role == "Winger" then return "StoryAttackBoxLane", Vector3.new(sideLaneX(info, true), 3, onsideZ(context, info.Side, ballPitch.Z + 86)), 0.94, true end
+		if info.Role == "ST" then return "StoryCentralFinishRun", Vector3.new(PitchConfig.HALF_WIDTH, 3, onsideZ(context, info.Side, math.max(565, ballPitch.Z + 48))), 0.94, true end
+	end
+	return nil, fallback, nil, nil
+end
+
+local function applyStoryAttack(context: any, info: any, assignment: any, ownerInfo: any?)
+	if not assignment or not context.TeamStories then return end
+	assignment.TeamStoryAction = storyName(context, info.Side)
+	local name, pitch, urgency, sprint = storyPitchTarget(context, info, ownerInfo, assignment.TargetPitch)
+	if name and pitch then
+		assignment.PrimaryAssignment = name
+		assignment.TargetPitch = PitchConfig.ClampInsidePitch(pitch)
+		assignment.TargetWorld = asWorld(context, info.Side, assignment.TargetPitch)
+		assignment.MovementTarget = assignment.TargetWorld
+		assignment.MovementUrgency = urgency or assignment.MovementUrgency
+		assignment.SprintAllowed = sprint == nil and assignment.SprintAllowed or sprint
+		info.Model:SetAttribute("AITacticalStoryAction", assignment.TeamStoryAction)
+		info.Model:SetAttribute("SupportRole", name)
+	end
+end
+
+local function applyStoryDefense(context: any, info: any, assignment: any, ownerInfo: any?)
+	local movement = storyMovement(context, info.Side)
+	if movement == "" or not assignment then return end
+	assignment.TeamStoryAction = storyName(context, info.Side)
+	if movement == "Press" or movement == "Counterpress" then
+		if ownerInfo then
+			local rank = pressureRank(context, info, ownerInfo)
+			if rank == 1 then
+				local target = AIDefensiveDecisionService.ContainTarget(ownerInfo.Pitch)
+				assignment.PrimaryAssignment = "StoryPrimaryPresser"
+				assignment.TargetPitch = target
+				assignment.TargetWorld = asWorld(context, info.Side, target)
+				assignment.MovementTarget = assignment.TargetWorld
+				assignment.MovementUrgency = 1
+				assignment.SprintAllowed = true
+			elseif rank == 2 then
+				local target = AIDefensiveDecisionService.CoverPresserTarget(ownerInfo.Pitch)
+				assignment.PrimaryAssignment = "StoryCoverPresser"
+				assignment.TargetPitch = target
+				assignment.TargetWorld = asWorld(context, info.Side, target)
+				assignment.MovementTarget = assignment.TargetWorld
+				assignment.MovementUrgency = 0.9
+				assignment.SprintAllowed = true
+			elseif info.Role == "CB" or info.Role == "Fullback" then
+				assignment.PrimaryAssignment = "StoryDepthProtector"
+				assignment.SprintAllowed = false
+			end
+		end
+	elseif movement == "Block" or movement == "LowBlock" or movement == "Delay" or movement == "BoxProtect" then
+		local ballPitch = context.BallTeam[info.Side]
+		if info.Role == "ST" then
+			assignment.PrimaryAssignment = "StoryOutletInBlock"
+			assignment.TargetPitch = Vector3.new(info.BasePitch.X, 3, math.max(235, ballPitch.Z + 85))
+		elseif info.Role == "Winger" then
+			assignment.PrimaryAssignment = "StoryNarrowWideMidfielder"
+			assignment.TargetPitch = Vector3.new(info.BasePitch.X + (PitchConfig.HALF_WIDTH - info.BasePitch.X) * 0.55, 3, math.max(130, ballPitch.Z - 42))
+		elseif info.Role == "CB" or info.Role == "Fullback" or info.Role == "CDM" then
+			assignment.PrimaryAssignment = "StoryCompactDefensiveBlock"
+			assignment.TargetPitch = Vector3.new(info.BasePitch.X + (PitchConfig.HALF_WIDTH - info.BasePitch.X) * 0.18, 3, math.max(55, math.min(info.BasePitch.Z + 26, ballPitch.Z - 38)))
+		end
+		assignment.TargetPitch = PitchConfig.ClampInsidePitch(assignment.TargetPitch)
+		assignment.TargetWorld = asWorld(context, info.Side, assignment.TargetPitch)
+		assignment.MovementTarget = assignment.TargetWorld
+		assignment.MovementUrgency = math.min(assignment.MovementUrgency or 0.8, 0.82)
+		assignment.SprintAllowed = false
+	end
+	info.Model:SetAttribute("AITacticalStoryAction", assignment.TeamStoryAction)
 end
 
 function Service:_assignLoose(context: any, side: string, phase: string, assignments: any)
@@ -947,6 +1141,8 @@ function Service:_assignAttack(context: any, side: string, phase: string, assign
 			assignment = makeAssignment(context, info, "GoalkeeperPosition", target, 0.62, false)
 		elseif info.Model == owner then
 			assignment = makeAssignment(context, info, "BallCarrierDecision", info.Pitch + Vector3.new(0, 0, 18), 1, true)
+			assignment.TeamStoryAction = storyName(context, side)
+			info.Model:SetAttribute("AITacticalStoryAction", assignment.TeamStoryAction)
 		else
 			local name, target, urgency, sprint = attackingRoleTarget(context, info, ballPitch, ownerInfo, self.Style)
 			if phase == "Transition_JustWonBall" and (info.Role == "ST" or info.Role == "Winger") and target.Z > ballPitch.Z then
@@ -955,6 +1151,7 @@ function Service:_assignAttack(context: any, side: string, phase: string, assign
 				sprint = true
 			end
 			assignment = makeAssignment(context, info, name, target, urgency, sprint)
+			applyStoryAttack(context, info, assignment, ownerInfo)
 		end
 		assignment.Phase = phase
 		assignments[info.Model] = assignment
@@ -976,6 +1173,7 @@ function Service:_assignDefense(context: any, side: string, phase: string, assig
 			if mark then
 				assignment.MarkTarget = mark
 			end
+			applyStoryDefense(context, info, assignment, ownerInfo)
 		end
 		assignment.Phase = phase
 		assignments[info.Model] = assignment
@@ -1000,6 +1198,13 @@ function Service:BuildSide(context: any, side: string, phase: string): any
 	else
 		self:_assignDefense(context, side, phase, assignments)
 	end
+	applyReceiveOverrides(context, side, assignments, self.RunCoordinator)
+	for _, assignment in assignments do applyMovementProfile(context, assignment.Info, assignment, context.OwnerSide == side) end
+	applyReceiveOverrides(context, side, assignments, self.RunCoordinator)
+	if context.OwnerSide == side then self.RunCoordinator:Coordinate(context, side, assignments) elseif phase ~= "LooseBall" then self.DefensiveCoordinator:Coordinate(context, side, assignments) end
+	applyReceiveOverrides(context, side, assignments, self.RunCoordinator)
+	local conservation = self.Style:Get("SprintConservation")
+	for _, assignment in assignments do assignment.SprintConservation = conservation end
 	return assignments
 end
 

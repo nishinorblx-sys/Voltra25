@@ -1,8 +1,10 @@
 --!strict
 local PackRouletteAlignmentService = require(script.Parent.Parent.Services:WaitForChild("PackRouletteAlignmentService"))
 local TweenService = game:GetService("TweenService")
+local RunService = game:GetService("RunService")
 local Theme = require(game:GetService("ReplicatedStorage").VTR.Shared.Theme)
 local Catalog = require(game:GetService("ReplicatedStorage").VTR.Shared.Catalog)
+local RewardEconomyConfig = require(game:GetService("ReplicatedStorage").VTR.Shared.RewardEconomyConfig)
 
 local Presentation = {}
 
@@ -18,25 +20,7 @@ local PACK_COLORS = {
 	Mythic = Color3.fromHex("24C6B8"),
 }
 
-local PACK_WEIGHTS = {
-	common_pack = 260,
-	bronze_pack = 190,
-	silver_pack = 150,
-	gold_pack = 115,
-	rare_pack = 84,
-	elite_pack = 62,
-	rising_star_pack = 48,
-	totw_pack = 40,
-	voltra_pack = 32,
-	event_pack = 26,
-	hero_pack = 18,
-	champion_pack = 13,
-	legendary_pack = 8,
-	icon_pack = 4,
-	limited_pack = 3,
-	mythic_storm_pack = 2,
-	mythic_pack = 1,
-}
+local PACK_WEIGHTS = RewardEconomyConfig.RankedWinPackWeights
 
 local function packRarity(definition: any): string
 	local odds = definition and definition.Odds or {}
@@ -161,6 +145,41 @@ local function rewardPack(payload: any): any
 	return weightedPack(packs)
 end
 
+local function rewardData(payload: any): any
+	if not payload then return {} end
+	local reward = payload.Reward
+	local ranked = payload.RankedWinPack
+	if type(reward) == "table" and (reward.RouletteReel or reward.RouletteStopIndex) then return reward end
+	if type(ranked) == "table" and (ranked.RouletteReel or ranked.RouletteStopIndex) then return ranked end
+	return type(reward) == "table" and reward or type(ranked) == "table" and ranked or {}
+end
+
+local function rouletteReel(payload: any, packs: {any}, total: number): {any}
+	local reward = rewardData(payload)
+	local supplied = reward and reward.RouletteReel
+	local reel = {}
+	if type(supplied) == "table" then
+		for index = 1, total do
+			local entry = supplied[index]
+			local pack = entry and catalogPack(tostring(entry.PackId or entry.Id or "")) or nil
+			if not pack and type(entry) == "table" and entry.Name then
+				pack = decoratePack({
+					PackId = tostring(entry.PackId or entry.Id or ""),
+					Name = tostring(entry.Name),
+					Rarity = tostring(entry.Rarity or "Common"),
+					Weight = 1,
+				})
+			end
+			reel[index] = pack or packs[math.random(1, #packs)]
+		end
+		return reel
+	end
+	for index = 1, total do
+		reel[index] = weightedPack(packs)
+	end
+	return reel
+end
+
 local function makePackCard(parent: Instance, pack: any, size: UDim2, z: number): Frame
 	local card = Instance.new("Frame")
 	card.Size = size
@@ -270,12 +289,18 @@ function Presentation.Play(gui: ScreenGui, payload: any, onComplete: () -> ())
 	layout.Padding = UDim.new(0, 12)
 	layout.SortOrder = Enum.SortOrder.LayoutOrder
 	layout.Parent = strip
-	local stopIndex = 28
 	local cardWidth = 138
 	local total = 38
+	local reward = rewardData(payload)
+	local stopIndex = math.clamp(math.floor(tonumber(reward.RouletteStopIndex) or 28), 1, total)
+	local reel = rouletteReel(payload, packs, total)
+	local authoritativePackId=tostring(reward.PackId or reward.AwardedPackId or chosen.PackId or"")
+	local authoritativePack=catalogPack(authoritativePackId)or chosen
+	if reel[stopIndex]and authoritativePackId~=""and tostring(reel[stopIndex].PackId or"")~=authoritativePackId then reel[stopIndex]=authoritativePack end
 	local holders = {}
+	local holderPacks = {}
 	for i = 1, total do
-		local pack = i == stopIndex and chosen or packs[math.random(1, #packs)]
+		local pack = reel[i]
 		local holder = Instance.new("Frame")
 		holder.Name = "RoulettePack_" .. tostring(i)
 		holder.BackgroundTransparency = 1
@@ -286,6 +311,7 @@ function Presentation.Play(gui: ScreenGui, payload: any, onComplete: () -> ())
 		holder:SetAttribute("PackName", tostring(pack.Name or ""))
 		holder.Parent = strip
 		holders[i] = holder
+		holderPacks[holder] = pack
 		makePackCard(holder, pack, UDim2.fromScale(1, 1), 524)
 	end
 	local sparkLine = Instance.new("Frame")
@@ -301,24 +327,17 @@ function Presentation.Play(gui: ScreenGui, payload: any, onComplete: () -> ())
 	task.wait()
 	local railWidth = rail.AbsoluteSize.X
 	local winningHolder = holders[stopIndex]
-	local function centeredStripX(): number
-		if not winningHolder or not winningHolder.Parent then
-			return railWidth * .5 - ((stopIndex - 1) * (cardWidth + 12) + cardWidth * .5)
-		end
-		local railCenter = rail.AbsolutePosition.X + rail.AbsoluteSize.X * .5
-		local itemCenter = winningHolder.AbsolutePosition.X + winningHolder.AbsoluteSize.X * .5
-		return strip.Position.X.Offset + (railCenter - itemCenter)
-	end
+	local targetX=railWidth*.5-((stopIndex-1)*(cardWidth+12)+cardWidth*.5)
 	strip.Position = UDim2.fromOffset(railWidth * .5 + 120, 8)
 	task.wait()
-	local targetX = centeredStripX()
 	local spinTween = TweenService:Create(strip, TweenInfo.new(4.4, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {Position = UDim2.fromOffset(targetX, 8)})
 	spinTween:Play()
 	spinTween.Completed:Wait()
 	if not overlay.Parent then return end
-	strip.Position = UDim2.fromOffset(centeredStripX(), 8)
-	task.wait()
-	strip.Position = UDim2.fromOffset(centeredStripX(), 8)
+	strip.Position = UDim2.fromOffset(targetX, 8)
+	RunService.RenderStepped:Wait()
+	-- The visual reel follows the server award; screen geometry never chooses it.
+	chosen=authoritativePack or holderPacks[winningHolder]or chosen
 	topArrow.TextColor3 = Theme.Colors.Electric
 	bottomArrow.TextColor3 = Theme.Colors.Electric
 	do

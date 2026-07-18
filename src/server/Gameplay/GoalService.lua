@@ -41,6 +41,14 @@ local function disableGoalCollision(instance: Instance?)
 	end
 end
 
+local function configureGoalDetector(instance: Instance?)
+	if not instance or not instance:IsA("BasePart") then return end
+	instance:SetAttribute("VTRGoalDetector", true)
+	instance.CanCollide = false
+	instance.CanTouch = false
+	instance.CanQuery = true
+end
+
 local function createVolume(parent: Instance, team: string, rectangle: any): BasePart
 	local width = rectangle.RightBound - rectangle.Left
 	local height = rectangle.Top - rectangle.Bottom
@@ -54,6 +62,7 @@ local function createVolume(parent: Instance, team: string, rectangle: any): Bas
 	volume.CanTouch = false
 	volume.CanQuery = true
 	volume.Transparency = 1
+	volume:SetAttribute("VTRGoalDetector", true)
 	volume.Parent = parent
 	return volume
 end
@@ -89,6 +98,7 @@ function Service.new(ball: BasePart, pitchCFrame: CFrame, width: number, length:
 	}
 	for _, goal in goals do
 		disableGoalCollision(goal.Hitbox)
+		configureGoalDetector(goal.Hitbox)
 	end
 	local volumeParent = ball:FindFirstAncestorWhichIsA("Folder") or ball.Parent
 	local realNetsAvailable = ball:GetAttribute("VTRTutorialPhysics") == true and hasRealNetParts()
@@ -110,27 +120,6 @@ function Service:_entryVelocity(previous: Vector3, current: Vector3, now: number
 	if inferredVelocity.Magnitude > best.Magnitude then best = inferredVelocity end
 	if best.Magnitude > 220 then best = best.Unit * 220 end
 	return best
-end
-
-function Service:_denyNonShotGoal(goal: any, current: Vector3): boolean
-	local kind = tostring(self.Ball:GetAttribute("VTRMotionKind") or "")
-	if kind == "Shot" or kind == "Corner" or self.Ball:GetAttribute("VTRPenaltyShotActive") == true then
-		return false
-	end
-	if kind == "Pass" or kind == "Clearance" or kind == "Dribble" then
-		local safe = self.PreviousBallPosition
-		if typeof(safe) ~= "Vector3" then safe = current end
-		self.Ball.CFrame = CFrame.new(safe)
-		self.Ball.AssemblyLinearVelocity = Vector3.zero
-		self.Ball.AssemblyAngularVelocity = Vector3.zero
-		self.Ball:SetAttribute("VTRDeniedNonShotGoalAt", os.clock())
-		self.PreviousBallPosition = safe
-		self.PreviousStepClock = os.clock()
-		self.PreviousBallVelocity = Vector3.zero
-		for _, item in self.Goals do item.WasInside = false end
-		return true
-	end
-	return false
 end
 
 function Service:_recordGoalEntry(goal: any, previous: Vector3, current: Vector3, now: number)
@@ -169,9 +158,9 @@ function Service:Step()
 		if goal.Hitbox and goal.Hitbox.Parent then
 			local localBall=goal.Hitbox.CFrame:PointToObjectSpace(current);local half=goal.Hitbox.Size*.5
 			local inside=math.abs(localBall.X)<=math.max(.1,half.X-radius*.55)and math.abs(localBall.Y)<=math.max(.1,half.Y-radius*.55)and math.abs(localBall.Z)<=half.Z+radius
-			if inside and not goal.WasInside then goal.WasInside=true;if self:_denyNonShotGoal(goal,current) then return end;self:_recordGoalEntry(goal, previous, current, now);return end
+			if inside and not goal.WasInside then goal.WasInside=true;self:_recordGoalEntry(goal, previous, current, now);return end
 			goal.WasInside=inside
-			continue
+			if inside then continue end
 		end
 		local rectangle = goal.Rectangle
 		local previousDistance = (previous - rectangle.PlanePoint):Dot(rectangle.Normal)
@@ -185,7 +174,6 @@ function Service:Step()
 			local vertical = offset:Dot(rectangle.Up)
 			local fullyInside = horizontal >= rectangle.Left + radius and horizontal <= rectangle.RightBound - radius and vertical >= rectangle.Bottom + radius * 0.72 and vertical <= rectangle.Top - radius
 			if fullyInside then
-				if self:_denyNonShotGoal(goal,crossing) then return end
 				self:_recordGoalEntry(goal, previous, current, now)
 				return
 			end

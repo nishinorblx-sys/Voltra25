@@ -13,6 +13,7 @@ local VTRLiteConfig=require(ReplicatedStorage.VTR.Shared.VTRLiteConfig)
 local Catalog=require(ReplicatedStorage.VTR.Shared.Catalog)
 local WorldCupConfig=require(ReplicatedStorage.VTR.Shared.WorldCupConfig)
 local WorldCupQuestConfig=require(ReplicatedStorage.VTR.Shared.WorldCupQuestConfig)
+local RewardEconomyConfig=require(ReplicatedStorage.VTR.Shared.RewardEconomyConfig)
 local FormationConfig=require(ReplicatedStorage.VTR.Shared.FormationConfig)
 local TeamDatabase=require(script.Parent.Parent.Data.TeamDatabase)
 local PlayerDatabase=require(script.Parent.Parent.Data.PlayerDatabase)
@@ -97,6 +98,7 @@ function Service:_isCampaignMatch(setup:any):boolean
 end
 function Service:_runtimeSetup(profile:any,setup:any):any
 	local launch=table.clone(setup)
+	launch.TeamTactics=profile and profile.TeamTactics or nil
 	launch.MatchFormat=MatchFormatConfig.Normalize(launch.MatchFormat or launch.MatchLength)
 	launch.PresentationProfile=MatchExperienceConfig.Resolve(launch,profile)
 	local playability=type(profile and profile.PlayabilityProgress)=="table"and profile.PlayabilityProgress or{}
@@ -1681,45 +1683,13 @@ function Service:_worldCupRewardForState(state:any):any
 	local played=math.max(0,math.floor(tonumber(state.PlayedMatches)or 0))
 	local goalsFor=math.max(0,math.floor(tonumber(state.UserGoalsFor)or 0))
 	local goalsAgainst=math.max(0,math.floor(tonumber(state.UserGoalsAgainst)or 0))
-	local tiers={
-		{PackId="bronze_pack",Name="Bronze Pack"},
-		{PackId="silver_pack",Name="Silver Pack"},
-		{PackId="gold_pack",Name="Gold Pack"},
-		{PackId="rare_pack",Name="Rare Pack"},
-		{PackId="elite_pack",Name="Elite Pack"},
-		{PackId="legendary_pack",Name="Legendary Pack"},
-		{PackId="icon_pack",Name="Icon Pack"},
-		{PackId="mythic_pack",Name="Mythic Pack"},
-	}
-	local baseTier=2
-	if reached=="GROUP STAGE"then baseTier=2
-	elseif reached=="Round of 16"then baseTier=3
-	elseif reached=="Quarter Final"then baseTier=4
-	elseif reached=="Semi Final"then baseTier=5
-	elseif reached=="Final"then baseTier=6
-	elseif reached=="CHAMPIONS"then baseTier=7 end
-	local playBonus=math.floor(played/2)
-	local simPenalty=math.floor((simulated+1)/2)
-	if played>=3 then playBonus+=1 end
-	if played>=5 then playBonus+=1 end
-	if simulated==0 and played>0 then playBonus+=1 end
-	local tierIndex=math.clamp(baseTier+playBonus-simPenalty,1,#tiers)
-	local primary=tiers[tierIndex]
-	local packs={{PackId=primary.PackId,Name=primary.Name,Quantity=1}}
-	if reached=="CHAMPIONS"then
-		packs={{PackId="icon_pack",Name="Icon Pack",Quantity=1}}
-		if played>=4 then
-			table.insert(packs,{PackId=played>=6 and"mythic_pack"or"voltra_pack",Name=played>=6 and"Mythic Pack"or"Voltra Pack",Quantity=1})
-		elseif simulated<=2 then
-			table.insert(packs,{PackId="voltra_pack",Name="Voltra Pack",Quantity=1})
-		else
-			table.insert(packs,{PackId="elite_pack",Name="Elite Pack",Quantity=1})
-		end
-	elseif played>=4 and simulated<=1 and tierIndex<#tiers then
-		local bonus=tiers[math.min(#tiers,tierIndex+1)]
-		table.insert(packs,{PackId=bonus.PackId,Name=bonus.Name,Quantity=1})
-	end
-	local playLine=played>simulated and"Manual matches boosted your reward tier."or simulated>played and"Simulated matches reduced the final pack tier."or"Played and simulated matches were balanced in the reward score."
+	local packId=RewardEconomyConfig.WorldCupFinishPacks[reached]or"bronze_pack"
+	local definition=Catalog.Packs[packId]
+	local packs={{PackId=packId,Name=definition and definition.Name or packId,Quantity=1}}
+	local tierIndex=({bronze_pack=1,silver_pack=2,gold_pack=3,rare_pack=4,elite_pack=5,champion_pack=6})[packId]or 1
+	local playBonus=0
+	local simPenalty=0
+	local playLine="Finish rewards are based on tournament progress; manually played matches still grant their normal match coins and XP."
 	local analysis=string.format("Reached %s with %d played match%s and %d simulated match%s. %s Your run finished with %d goal%s scored and %d conceded.",reached,played,played==1 and""or"es",simulated,simulated==1 and""or"es",playLine,goalsFor,goalsFor==1 and""or"s",goalsAgainst)
 	return{Id="wc_"..tostring(state.CreatedAt or os.time()),Reached=reached,Packs=packs,Analysis=analysis,SimulatedMatches=simulated,PlayedMatches=played,GoalsFor=goalsFor,GoalsAgainst=goalsAgainst,RewardTier=tierIndex,PlayedBonus=playBonus,SimulationPenalty=simPenalty}
 end

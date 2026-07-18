@@ -87,7 +87,7 @@ end
 
 local function compactReward(reward:any):any
 	if type(reward)~="table"then return nil end
-	return pick(reward,{"Title","Coins","XP","PackGranted","PackId","PackInstanceId","PackName","Pack","Rarity"})
+	return pick(reward,{"Title","Coins","XP","PackGranted","PackId","PackInstanceId","PackName","Pack","Rarity","RouletteReel","RouletteStopIndex"})
 end
 
 local function compactPendingResult(payload:any,includeStats:boolean):any
@@ -233,6 +233,7 @@ function Service:BuildRankedSetup(player: Player, profile: any, roster: any): an
 		StadiumId = type(saved.StadiumId) == "string" and saved.StadiumId or "voltra_arena",
 		Weather = WEATHER[self.Random:NextInteger(1, #WEATHER)],
 		Time = TIMES[self.Random:NextInteger(1, #TIMES)],
+		TeamTactics = profile.TeamTactics,
 		Completed = true,
 		SavedAt = os.time(),
 		KitConflict = false,

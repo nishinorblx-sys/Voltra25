@@ -1,6 +1,7 @@
 --!strict
 
 local Config = {}
+local AITacticConfig = require(script.Parent.AITacticConfig)
 
 Config.CampaignDifficulties = {
 	{ Id = "kickabout", Name = "Kickabout", Difficulty = "Beginner", Range = {45, 54}, Reward = "Common Pack", PackId = "common_pack", TierClearReward = "Bronze Pack", TierClearPackId = "bronze_pack" },
@@ -70,11 +71,12 @@ Config.PositionInstructions = {
 }
 
 function Config.DefaultTactics(): any
-	local values = {}
-	for index, name in Config.TacticSliderNames do
-		values[name] = Config.TacticPresets.Balanced[index] or 50
-	end
-	return { Identity = "Balanced", Sliders = values }
+	return AITacticConfig.Normalize({PresetId = "balanced_control"})
 end
+
+Config.TacticPresets = AITacticConfig.Presets
+Config.TacticSliderNames = AITacticConfig.SliderNames
+Config.TacticPresetOrder = AITacticConfig.Order
+Config.NormalizeTactics = AITacticConfig.Normalize
 
 return table.freeze(Config)

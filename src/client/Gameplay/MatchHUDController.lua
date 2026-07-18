@@ -510,8 +510,8 @@ function Controller.new(data: any)
 	corner(sweetZone, 4)
 	local overhitZone = Instance.new("Frame")
 	overhitZone.Name = "OverhitZone"
-	overhitZone.Position = UDim2.new(.86, 4, 1, -6)
-	overhitZone.Size = UDim2.new(.14, -8, 0, 4)
+	overhitZone.Position = UDim2.new(.95, 4, 1, -6)
+	overhitZone.Size = UDim2.new(.05, -8, 0, 4)
 	overhitZone.BackgroundColor3 = Theme.Colors.Danger
 	overhitZone.BackgroundTransparency = .42
 	overhitZone.BorderSizePixel = 0
@@ -948,7 +948,7 @@ function Controller:SetCharge(value: number, kind: string?)
 	self.ChargeLabel.Text = labels[kind or ""] or "SHOT POWER"
 	if self.ShotSweetZone then self.ShotSweetZone.Visible = kind == "Shot" or kind == nil end
 	if self.OverhitZone then self.OverhitZone.Visible = true end
-	self.ChargeFill.BackgroundColor3 = Color3.new(1, 1, 1)
+	self.ChargeFill.BackgroundColor3 = (kind == "Shot" or kind == nil) and normalized > .95 and Theme.Colors.Danger or Color3.new(1, 1, 1)
 end
 
 function Controller:SetShotMode(mode:string?)
@@ -2264,7 +2264,7 @@ function Controller:ShowPenaltyShootout(payload:any)
 	root.Name="PenaltyShootoutPanel"
 	root.AnchorPoint=Vector2.new(.5,0)
 	root.Position=UDim2.fromScale(.5,.105)
-	root.Size=UDim2.fromOffset(520,118)
+	root.Size=UDim2.fromOffset(520,164)
 	root.BackgroundColor3=Theme.Colors.Black
 	root.BackgroundTransparency=.06
 	root.BorderSizePixel=0
@@ -2281,18 +2281,39 @@ function Controller:ShowPenaltyShootout(payload:any)
 	score.TextXAlignment=Enum.TextXAlignment.Center
 	score.TextColor3=Theme.Colors.White
 	score.ZIndex=151
-	local marks=Instance.new("Frame")
-	marks.BackgroundTransparency=1
-	marks.Position=UDim2.fromOffset(22,70)
-	marks.Size=UDim2.new(1,-44,0,34)
-	marks.ZIndex=151
-	marks.Parent=root
-	local layout=Instance.new("UIListLayout")
-	layout.FillDirection=Enum.FillDirection.Horizontal
-	layout.HorizontalAlignment=Enum.HorizontalAlignment.Center
-	layout.VerticalAlignment=Enum.VerticalAlignment.Center
-	layout.Padding=UDim.new(0,8)
-	layout.Parent=marks
+	local function makeMarksRow(name:string,y:number):(Frame,TextLabel)
+		local row=Instance.new("Frame")
+		row.Name=name.."PenaltyRow"
+		row.BackgroundColor3=Color3.fromHex("10151D")
+		row.BackgroundTransparency=.18
+		row.BorderSizePixel=0
+		row.Position=UDim2.fromOffset(18,y)
+		row.Size=UDim2.new(1,-36,0,35)
+		row.ZIndex=151
+		row.Parent=root
+		corner(row,6)
+		local teamLabel=label(row,name,UDim2.fromOffset(10,7),UDim2.fromOffset(72,21),11)
+		teamLabel.TextXAlignment=Enum.TextXAlignment.Left
+		teamLabel.TextColor3=Theme.Colors.White
+		teamLabel.ZIndex=152
+		local marks=Instance.new("Frame")
+		marks.Name="Marks"
+		marks.BackgroundTransparency=1
+		marks.Position=UDim2.fromOffset(88,2)
+		marks.Size=UDim2.new(1,-96,1,-4)
+		marks.ClipsDescendants=true
+		marks.ZIndex=152
+		marks.Parent=row
+		local layout=Instance.new("UIListLayout")
+		layout.FillDirection=Enum.FillDirection.Horizontal
+		layout.HorizontalAlignment=Enum.HorizontalAlignment.Left
+		layout.VerticalAlignment=Enum.VerticalAlignment.Center
+		layout.Padding=UDim.new(0,6)
+		layout.Parent=marks
+		return marks,teamLabel
+	end
+	local homeMarks,homeLabel=makeMarksRow(self.HomeCode or"HOME",68)
+	local awayMarks,awayLabel=makeMarksRow(self.AwayCode or"AWAY",108)
 	local scale=Instance.new("UIScale")
 	scale.Scale=.86
 	scale.Parent=root
@@ -2301,22 +2322,18 @@ function Controller:ShowPenaltyShootout(payload:any)
 	local awayTotal=0
 	local function addMark(side:string,scored:boolean,totalHome:number,totalAway:number)
 		local chip=Instance.new("Frame")
-		chip.Size=UDim2.fromOffset(42,30)
+		chip.Size=UDim2.fromOffset(30,27)
 		chip.BackgroundColor3=scored and Theme.Colors.Electric or Color3.fromHex("35131A")
 		chip.BackgroundTransparency=scored and .06 or .02
 		chip.BorderSizePixel=0
 		chip.ZIndex=152
-		chip.Parent=marks
-		corner(chip,8)
+		chip.Parent=side=="Away"and awayMarks or homeMarks
+		corner(chip,6)
 		stroke(chip,scored and Theme.Colors.White or Color3.fromHex("FF4056"),scored and .55 or .12)
-		local text=label(chip,scored and "GOAL" or "X",UDim2.fromOffset(0,3),UDim2.new(1,0,0,18),scored and 9 or 18)
+		local text=label(chip,scored and "GOAL" or "X",UDim2.fromOffset(0,4),UDim2.new(1,0,0,19),scored and 8 or 17)
 		text.TextXAlignment=Enum.TextXAlignment.Center
 		text.TextColor3=scored and Theme.Colors.Black or Theme.Colors.White
 		text.ZIndex=153
-		local sideLabel=label(chip,side,UDim2.fromOffset(0,19),UDim2.new(1,0,0,9),7)
-		sideLabel.TextXAlignment=Enum.TextXAlignment.Center
-		sideLabel.TextColor3=scored and Theme.Colors.Black or Theme.Colors.White
-		sideLabel.ZIndex=153
 		score.Text=tostring(totalHome).." - "..tostring(totalAway)
 		local pop=Instance.new("UIScale")
 		pop.Scale=.58
@@ -2341,8 +2358,8 @@ function Controller:ShowPenaltyShootout(payload:any)
 			title.Text=(winner=="Home"and(self.HomeCode or"HOME")or winner=="Away"and(self.AwayCode or"AWAY")or"WINNER").." WINS ON PENALTIES"
 		end
 		for _,round in ipairs(rounds)do
-			if round.Home~=nil then addMark(self.HomeCode or"HOME",round.Home==true,tonumber(round.HomeTotal)or homeTotal,tonumber(round.AwayTotal)or awayTotal)end
-			if round.Away~=nil then addMark(self.AwayCode or"AWAY",round.Away==true,tonumber(round.HomeTotal)or homeTotal,tonumber(round.AwayTotal)or awayTotal)end
+			if round.Home~=nil then addMark("Home",round.Home==true,tonumber(round.HomeTotal)or homeTotal,tonumber(round.AwayTotal)or awayTotal)end
+			if round.Away~=nil then addMark("Away",round.Away==true,tonumber(round.HomeTotal)or homeTotal,tonumber(round.AwayTotal)or awayTotal)end
 		end
 		TweenService:Create(root,TweenInfo.new(.18),{BackgroundTransparency=.04}):Play()
 		return
@@ -2351,11 +2368,11 @@ function Controller:ShowPenaltyShootout(payload:any)
 		task.delay((index-1)*.78,function()
 			if self.PenaltyShootoutPanel~=root or not root.Parent then return end
 			homeTotal=tonumber(round.HomeTotal)or homeTotal
-			addMark(self.HomeCode or"HOME",round.Home==true,homeTotal,awayTotal)
+			addMark("Home",round.Home==true,homeTotal,awayTotal)
 			task.delay(.34,function()
 				if self.PenaltyShootoutPanel~=root or not root.Parent then return end
 				awayTotal=tonumber(round.AwayTotal)or awayTotal
-				addMark(self.AwayCode or"AWAY",round.Away==true,homeTotal,awayTotal)
+				addMark("Away",round.Away==true,homeTotal,awayTotal)
 			end)
 		end)
 	end

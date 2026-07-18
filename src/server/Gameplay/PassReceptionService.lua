@@ -345,6 +345,7 @@ function Service:OnPassLaunched(launch: any): any?
 	self.Metrics.Attempted += 1
 	self.ByReceiver[receiver] = contract
 	if player then self.ByPlayer[player] = contract end
+	self:_solve(contract, 1 / PassReceptionConfig.UpdateRate)
 	ReceiverMovementService.SetRoute(receiver, contract)
 	self:_fire(contract, {Type = "ReceptionStarted", ReceivePoint = initialPoint, Phase = contract.Phase, AssistanceMode = assistance, AutoSwitchMode = autoSwitch, PassFamily = family})
 	self:_emit(contract, "playability_reception_started")
@@ -355,6 +356,17 @@ end
 function Service:_insideBounds(point: Vector3): boolean
 	local localPoint = self.PitchCFrame:PointToObjectSpace(point)
 	return math.abs(localPoint.X) <= self.Width * 0.5 + 3 and math.abs(localPoint.Z) <= self.Length * 0.5 + 3
+end
+
+function Service:_landingETA(contract: any): number
+	local active = self.BallService.ActiveTrajectory
+	if active and active.Id == contract.TrajectoryId and type(active.Data) == "table" then
+		local data = active.Data
+		local started = finiteNumber(data.StartServerTime, workspace:GetServerTimeNow())
+		local duration = math.max(0.05, finiteNumber(data.Duration, 1))
+		return math.max(0.05, started + duration - workspace:GetServerTimeNow())
+	end
+	return math.max(0.05, finiteNumber(contract.BallETA, 0.6))
 end
 
 function Service:_trajectorySamples(contract: any): {any}
@@ -434,7 +446,7 @@ function Service:_solve(contract: any, deltaTime: number): any
 	local jog = self:_movementProfile(receiver, false)
 	local sprint = self:_movementProfile(receiver, true)
 	local samples = self:_trajectorySamples(contract)
-	local target = contract.LiveInterceptPoint or contract.InitialReceivePoint
+	local target = contract.PassFamily == "Lob" and contract.InitialReceivePoint or contract.LiveInterceptPoint or contract.InitialReceivePoint
 	local opponents = self:_opponents(contract, target)
 	local started = os.clock()
 	local solved = ReceptionInterceptResolver.Resolve({
@@ -452,8 +464,14 @@ function Service:_solve(contract: any, deltaTime: number): any
 	self.SolverOpponents = #opponents
 	if solved.Point then
 		local force = contract.MaterialDeflection == true
+		local routePoint = solved.Point
+		if contract.PassFamily == "Lob" and finiteVector(contract.InitialReceivePoint) and contract.MaterialDeflection ~= true then
+			routePoint = contract.InitialReceivePoint
+			solved.BallETA = self:_landingETA(contract)
+			solved.Point = routePoint
+		end
 		contract.PreviousInterceptPoint = contract.LiveInterceptPoint
-		contract.LiveInterceptPoint = ReceptionInterceptResolver.Smooth(contract.LiveInterceptPoint, solved.Point, deltaTime, tuning.InterceptSmoothing, tuning.MaximumTargetSpeed, force)
+		contract.LiveInterceptPoint = ReceptionInterceptResolver.Smooth(contract.LiveInterceptPoint, routePoint, deltaTime, tuning.InterceptSmoothing, tuning.MaximumTargetSpeed, force)
 		contract.MaterialDeflection = false
 		contract.BallETA = solved.BallETA
 		contract.ReceiverETA = solved.ReceiverETA
@@ -634,15 +652,11 @@ function Service:HandleMovement(player: Player, model: Model, direction: Vector3
 	if contract.ExplicitOverride or contract.AssistanceMode == "Manual" then return input, 0, false end
 	local tuning = PassReceptionConfig.Get(contract.AssistanceMode)
 	local route = ReceiverMovementService.RouteDirection(model, contract.LiveInterceptPoint)
-	if tuning.ExplicitOverrideOnly and input.Magnitude >= 0.78 and route.Magnitude > 0 and input.Unit:Dot(route) < -0.45 and os.clock() - (contract.OverrideHintAt or 0) >= 1.5 then
-		contract.OverrideHintAt = os.clock()
-		self:_fire(contract, {Type = "ReceptionOverrideHint"})
-	end
-	if contract.AssistanceMode == "Standard" and input.Magnitude >= tuning.DecisiveInputThreshold and route.Magnitude > 0 and input.Unit:Dot(route) < -0.45 then
+	local takeoverThreshold = math.min(tuning.DecisiveInputThreshold, 0.72)
+	if input.Magnitude >= takeoverThreshold then
 		contract.ExplicitOverride = true
 		self.Metrics.Overrides += 1
-		self:_emit(contract, "playability_reception_override", {overrideKind = "DecisiveInput"})
-		self:_terminal(contract, "Cancelled", "ManualOverride")
+		self:_emit(contract, "playability_reception_override", {overrideKind = "AutomaticDecisiveInput"})
 		return input, 0, false
 	end
 	local movement, assisted = ReceiverMovementService.BlendUserMovement(model, contract.LiveInterceptPoint, input, tuning.PostSwitchRouteWeight, tuning.UserRouteInfluence)
@@ -656,8 +670,7 @@ function Service:SetOverride(player: Player, model: Model, active: boolean, cont
 		contract.ExplicitOverride = true
 		contract.QueuedAction = nil
 		self.Metrics.Overrides += 1
-		self:_emit(contract, "playability_reception_override", {overrideKind = "Explicit"})
-		self:_terminal(contract, "Cancelled", "ManualOverride")
+		self:_emit(contract, "playability_reception_override", {overrideKind = "LegacyExplicit"})
 	end
 	return true
 end

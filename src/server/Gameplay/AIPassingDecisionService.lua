@@ -4,7 +4,6 @@ local AIContextBuilder = require(script.Parent.AIContextBuilder)
 
 local Service = {}
 local Randomizer = Random.new()
-local MiddleMistakeMemory = {Home = 0, Away = 0}
 
 local function isCentralLaneX(x: number): boolean
 	return x >= 112 and x <= 312
@@ -14,25 +13,20 @@ local function isWingLaneX(x: number): boolean
 	return x <= 104 or x >= 320
 end
 
-local function memoryForSide(side: string): number
-	return math.clamp(MiddleMistakeMemory[side] or 0, 0, 1)
+local function memoryForPasser(passer: any): number
+	local model = typeof(passer) == "Instance" and passer or type(passer) == "table" and passer.Model or nil
+	return math.clamp(tonumber(model and model:GetAttribute("AIMiddlePassMistakeMemory")) or 0, 0, 1)
 end
 
-local function setMemory(side: string, value: number)
-	if side == "Home" or side == "Away" then
-		MiddleMistakeMemory[side] = math.clamp(value, 0, 1)
-	end
+function Service.GetMiddleMistakeMemory(passer: any): number
+	return memoryForPasser(passer)
 end
 
-function Service.GetMiddleMistakeMemory(side: string): number
-	return memoryForSide(side)
-end
-
-function Service.RecordPassOutcome(passer: Model?, receiver: Model?, success: boolean)
+function Service.RecordPassOutcome(passer: Model?, receiver: Model?, success: boolean, matchModels: {Model}?)
 	if not passer then return end
 	local side = tostring(passer:GetAttribute("VTRTeam") or "")
 	if side ~= "Home" and side ~= "Away" then return end
-	local memory = memoryForSide(side)
+	local memory = memoryForPasser(passer)
 	local central = passer:GetAttribute("AIPassCentralLane") == true
 	local outnumbered = passer:GetAttribute("AIPassMiddleOutnumbered") == true
 	local wing = passer:GetAttribute("AIPassWingEscape") == true
@@ -45,8 +39,8 @@ function Service.RecordPassOutcome(passer: Model?, receiver: Model?, success: bo
 	elseif success then
 		memory -= 0.04
 	end
-	setMemory(side, memory)
-	passer:SetAttribute("AIMiddlePassMistakeMemory", memoryForSide(side))
+	local resolvedMemory = math.clamp(memory, 0, 1)
+	for _, model in matchModels or {passer} do if model:GetAttribute("VTRTeam") == side then model:SetAttribute("AIMiddlePassMistakeMemory", resolvedMemory) end end
 	passer:SetAttribute("AILastPassLearnedWide", wing and success)
 end
 
@@ -101,7 +95,7 @@ local function laneInterceptionRisk(context: any, passer: any, target: Vector3, 
 				local closest = start + direction * along
 				local lateral = PitchConfig.GetDistanceStuds(defender.World, closest)
 				local pace = defender.Stats and defender.Stats.pace or 60
-				local interceptions = defender.Stats and defender.Stats.interceptions or defender.Stats and defender.Stats.defending or 60
+				local interceptions = defender.Stats and (defender.Stats.interceptionSkill or defender.Stats.interceptions or defender.Stats.defending) or 60
 				local reach = 7.5 + math.clamp((pace - 55) * 0.045, -1.2, 2.2) + math.clamp((interceptions - 55) * 0.07, -1.4, 3)
 				if passKind == "Through" then
 					reach += 2
@@ -237,6 +231,48 @@ local function routeBias(stage: string, mood: string, receiver: any, kind: strin
 	return bias
 end
 
+local function storyBias(context: any, passer: any, receiver: any, kind: string, targetKind: string, forwardGain: number, distance: number): number
+	local story = context.TeamStories and context.TeamStories[passer.Side]
+	local action = tostring(story and story.Action or "")
+	local movement = tostring(story and story.Movement or "")
+	local role = receiver.Role
+	local supportRole = tostring(receiver.Model:GetAttribute("SupportRole") or "")
+	local bias = 0
+	if supportRole == "ReceivePass" then return 0 end
+	if movement == "Recycle" or movement == "Secure" or movement == "Safe" then
+		bias += kind == "Back" and 44 or kind == "Side" and 28 or -24
+		if role == "CB" or role == "CDM" or role == "Fullback" then bias += 24 end
+		if forwardGain > 34 then bias -= 36 end
+	elseif movement == "Possession" or movement == "Triangle" or movement == "WallPass" or movement == "Link" then
+		bias += kind == "Side" and 28 or kind == "Forward" and 18 or kind == "Back" and 8 or 0
+		if role == "CM" or role == "CAM" or role == "CDM" or role == "ST" then bias += 22 end
+		if distance <= 55 then bias += 16 else bias -= 10 end
+		if targetKind == "Through" and action ~= "ThirdManRun" then bias -= 16 end
+	elseif movement == "Wide" or movement == "WideBuild" or movement == "Overload" or movement == "Switch" then
+		if role == "Winger" or role == "Fullback" then bias += 38 end
+		if math.abs(receiver.Pitch.X - passer.Pitch.X) > 90 then bias += movement == "Switch" and 42 or 14 end
+		if targetKind == "Lofted" and movement == "Switch" then bias += 18 end
+	elseif movement == "Cross" then
+		if role == "ST" or role == "Winger" or role == "CAM" then bias += 36 end
+		if targetKind == "LowCross" or targetKind == "FarPostCross" or targetKind == "Lofted" or targetKind == "Cutback" then bias += 42 end
+		if kind == "Back" and role == "CM" then bias += 18 end
+	elseif movement == "Counter" or movement == "CounterWide" or movement == "CounterCentral" or movement == "Release" then
+		bias += kind == "Forward" and 48 or kind == "Side" and 8 or -26
+		if role == "ST" or role == "Winger" then bias += 34 end
+		if targetKind == "Through" or targetKind == "Lofted" then bias += 22 end
+	elseif movement == "Direct" or movement == "Target" or movement == "SecondBall" then
+		if role == "ST" then bias += 54 elseif role == "Winger" then bias += 24 elseif role == "CM" or role == "CAM" then bias += 14 end
+		if targetKind == "Lofted" or targetKind == "Through" then bias += 22 end
+		if kind == "Back" then bias -= 20 end
+	elseif movement == "Commit" or movement == "Chance" or movement == "FinalPress" then
+		bias += kind == "Forward" and 38 or kind == "Side" and 10 or -18
+		if role == "ST" or role == "Winger" or role == "CAM" then bias += 28 end
+	elseif movement == "SafeCounter" then
+		bias += (role == "ST" or role == "Winger") and forwardGain > 22 and 30 or kind == "Back" and 16 or 0
+	end
+	return bias
+end
+
 function Service.ScoreReceiver(context: any, passer: any, receiver: any, style: any, difficulty: any): any
 	local distance = PitchConfig.GetDistanceStuds(passer.World, receiver.World)
 	if distance < 7 or distance > 135 then
@@ -302,7 +338,7 @@ function Service.ScoreReceiver(context: any, passer: any, receiver: any, style: 
 	local pressure = AIContextBuilder.Pressure(context, receiver)
 	local safe = (open or veryOpen) and laneClear and laneRisk < 0.46 and distance < 115 and not (pressure.Under and kind == "Back")
 	local passerPressure = AIContextBuilder.Pressure(context, passer)
-	local sideMemory = memoryForSide(passer.Side)
+	local sideMemory = memoryForPasser(passer)
 	local centralPass = isCentralLaneX(passer.Pitch.X) and isCentralLaneX(receiver.Pitch.X)
 	local receiverWide = isWingLaneX(receiver.Pitch.X) or receiver.Role == "Winger" or receiver.Role == "Fullback"
 	local centralTrap = isCentralLaneX(passer.Pitch.X) and centralOutnumberedAround(context, passer, receiver.Pitch.Z)
@@ -316,8 +352,12 @@ function Service.ScoreReceiver(context: any, passer: any, receiver: any, style: 
 	score += forwardGain > 45 and 16 or forwardGain > 24 and 10 or forwardGain > 8 and 5 or 0
 	score += dangerous and (10 + risk * 10 + passRisk * 10) or 0
 	score -= math.abs(distance - (directness > 0.55 and 48 or 28)) * 0.22
-	score += (receiver.Stats.overall or 60) * 0.08 + (receiver.Stats.pace or 60) * 0.05
+	local passerPassQuality = passer.Stats and (passer.Stats.passQuality or passer.Stats.passing or 60) or 60
+	local passerVision = passer.Stats and (passer.Stats.passVision or passer.Stats.vision or passerPassQuality) or passerPassQuality
+	local receiverReception = receiver.Stats and (receiver.Stats.reception or receiver.Stats.ballControl or receiver.Stats.overall or 60) or 60
+	score += (receiver.Stats.overall or 60) * 0.06 + (receiver.Stats.pace or 60) * 0.04 + receiverReception * 0.06 + passerPassQuality * 0.08 + passerVision * 0.05
 	score += routeBias(stage, mood, receiver, kind, forwardGain)
+	score += storyBias(context, passer, receiver, kind, targetKind, forwardGain, distance)
 	if middleOutnumbered then
 		score -= 42 + sideMemory * 76
 	elseif centralPass and sideMemory > 0.12 then
@@ -379,8 +419,14 @@ function Service.ScoreReceiver(context: any, passer: any, receiver: any, style: 
 	if timedStrikerRun then
 		score += 46
 	end
+	local movementProfile=tostring(receiver.MovementProfile or receiver.Model:GetAttribute("VTRAIMovementProfile")or"Balanced")
+	if movementProfile=="GetInBehind"then score+=targetKind=="Through"and 34 or forwardGain>12 and 12 or 0
+	elseif movementProfile=="ComeShort"then score+=targetKind=="Ground"and distance<52 and 24 or 0
+	elseif movementProfile=="StayWide"then score+=receiverWide and 22 or 0
+	elseif movementProfile=="FreeRoam"then score+=(open or veryOpen)and 18 or 0
+	elseif movementProfile=="StayBack"and forwardGain>38 then score-=30 end
 	score -= pressure.Score * 18
-	score -= laneRisk * 96
+	score -= laneRisk * math.clamp(124 - passerVision * 0.42, 70, 116)
 	if laneRisk >= 0.54 then
 		score -= 42
 	elseif laneRisk >= 0.36 then
@@ -542,7 +588,7 @@ function Service.Choose(context: any, passer: any, style: any, difficulty: any, 
 		end
 	end
 	local passerPressure = AIContextBuilder.Pressure(context, passer)
-	local sideMemory = memoryForSide(passer.Side)
+	local sideMemory = memoryForPasser(passer)
 	local centralTrap = isCentralLaneX(passer.Pitch.X) and centralOutnumberedAround(context, passer, passer.Pitch.Z + 36)
 	if wingEscape and (centralTrap or sideMemory >= 0.34) then
 		if not best or best.MiddlePass or wingEscape.Score >= best.Score - (26 + sideMemory * 44) then

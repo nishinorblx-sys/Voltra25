@@ -1,6 +1,7 @@
 --!strict
 local PitchConfig = require(script.Parent.PitchConfig)
 local AIFormationService = require(script.Parent.AIFormationService)
+local AttributeAIService = require(script.Parent.AttributeAIService)
 
 local Service = {}
 
@@ -12,49 +13,8 @@ local function flat(vector: Vector3): Vector3
 	return Vector3.new(vector.X, 0, vector.Z)
 end
 
-local function stat(model: Model, names: {string}, fallback: number): number
-	for _, name in ipairs(names) do
-		local value = tonumber(model:GetAttribute(name))
-		if value then
-			return math.clamp(value, 1, 99)
-		end
-	end
-	return math.clamp(fallback, 1, 99)
-end
-
 function Service.PlayerStats(model: Model): any
-	local overall = math.clamp(tonumber(model:GetAttribute("overall")) or tonumber(model:GetAttribute("OVR")) or 60, 1, 99)
-	return {
-		overall = overall,
-		pace = stat(model, {"PAC", "Pace", "Acceleration", "SprintSpeed"}, overall),
-		acceleration = stat(model, {"Acceleration", "PAC", "Pace"}, overall),
-		sprintSpeed = stat(model, {"SprintSpeed", "PAC", "Pace"}, overall),
-		shooting = stat(model, {"SHO", "Shooting"}, overall),
-		finishing = stat(model, {"Finishing", "SHO", "Shooting"}, overall),
-		shotPower = stat(model, {"ShotPower", "SHO", "Shooting"}, overall),
-		longShots = stat(model, {"LongShots", "SHO", "Shooting"}, overall),
-		passing = stat(model, {"PAS", "Passing"}, overall),
-		shortPassing = stat(model, {"ShortPassing", "PAS", "Passing"}, overall),
-		longPassing = stat(model, {"LongPassing", "PAS", "Passing"}, overall),
-		vision = stat(model, {"Vision", "PAS", "Passing"}, overall),
-		crossing = stat(model, {"Crossing", "PAS", "Passing"}, overall),
-		dribbling = stat(model, {"DRI", "Dribbling"}, overall),
-		ballControl = stat(model, {"BallControl", "DRI", "Dribbling"}, overall),
-		agility = stat(model, {"Agility", "DRI", "Dribbling"}, overall),
-		defending = stat(model, {"DEF", "Defending"}, overall),
-		standingTackle = stat(model, {"StandingTackle", "DEF", "Defending"}, overall),
-		interceptions = stat(model, {"Interceptions", "DEF", "Defending"}, overall),
-		physical = stat(model, {"PHY", "Physical"}, overall),
-		strength = stat(model, {"Strength", "PHY", "Physical"}, overall),
-		stamina = stat(model, {"Stamina", "PHY", "Physical"}, overall),
-		currentStamina = math.clamp(tonumber(model:GetAttribute("VTRSprintStamina")) or tonumber(model:GetAttribute("VTRStamina")) or 100, 0, 100),
-		weakFoot = math.clamp(tonumber(model:GetAttribute("WeakFoot")) or 3, 1, 5),
-		skillMoves = math.clamp(tonumber(model:GetAttribute("SkillMoves")) or 3, 1, 5),
-		workRateAttack = tostring(model:GetAttribute("WorkRateAttack") or "Medium"),
-		workRateDefense = tostring(model:GetAttribute("WorkRateDefense") or "Medium"),
-		preferredFoot = tostring(model:GetAttribute("PreferredFoot") or "Right"),
-		height = tonumber(model:GetAttribute("Height")) or 70,
-	}
+	return AttributeAIService.Profile(model)
 end
 
 function Service.Build(teams: any, formations: any, pitchCFrame: CFrame, width: number, length: number, ball: BasePart, possession: any, attackSigns: {[string]: number}): any
@@ -68,6 +28,8 @@ function Service.Build(teams: any, formations: any, pitchCFrame: CFrame, width: 
 	local passTarget = ball:GetAttribute("VTRPassTarget")
 	local passReceiver = tostring(ball:GetAttribute("VTRPassReceiver") or "")
 	local passAge = os.clock() - passStartedAt
+	local kinematicFlight = ball:GetAttribute("VTRKinematicFlight") == true
+	local ballSpeed = ballVelocity.Magnitude
 	local receiveLocked = false
 	for _, side in ipairs({"Home", "Away"}) do
 		for _, model in ipairs(teams[side] or {}) do
@@ -84,7 +46,8 @@ function Service.Build(teams: any, formations: any, pitchCFrame: CFrame, width: 
 		and (motionKind == "Pass" or motionKind == "Corner")
 		and (lastTouchTeam == "Home" or lastTouchTeam == "Away")
 		and (typeof(passTarget) == "Vector3" or ball:GetAttribute("VTRLobPassActive") == true)
-		and ((passReceiver ~= "" and passAge < 4.2) or (receiveLocked and passAge < 5.8) or passAge < 0.45)
+		and (kinematicFlight or ballSpeed > 18 or receiveLocked and passAge < 2.4 or passAge < 0.35)
+		and ((passReceiver ~= "" and passAge < 3.2) or (receiveLocked and passAge < 3.6) or passAge < 0.35)
 	if passInFlight then
 		ownerSide = lastTouchTeam
 	end
@@ -142,6 +105,7 @@ function Service.Build(teams: any, formations: any, pitchCFrame: CFrame, width: 
 				IsUserControlled = model:GetAttribute("aiControlled") ~= true and (model:GetAttribute("controlledByUser") == true or model:GetAttribute("VTRUserId") ~= nil),
 				IsGoalkeeper = tostring(slot.Role) == "GK" or tostring(model:GetAttribute("position")) == "GK",
 				HasBall = owner == model,
+				MovementProfile = tostring(model:GetAttribute("VTRAIMovementProfile") or "Balanced"),
 			}
 			context.Players[model] = info
 			context.Teams[side].ByModel[model] = info

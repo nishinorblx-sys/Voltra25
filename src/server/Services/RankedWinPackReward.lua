@@ -2,29 +2,12 @@
 local VTRPendingPackAnimation = require(script.Parent:WaitForChild("PendingPackAnimationService"))
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Catalog = require(ReplicatedStorage.VTR.Shared.Catalog)
+local RewardEconomyConfig = require(ReplicatedStorage.VTR.Shared.RewardEconomyConfig)
 local PackInstanceFactory = require(script.Parent.Parent.Data.PackInstanceFactory)
 
 local Service = {}
 
-local PackWeights = {
-	common_pack = 260,
-	bronze_pack = 190,
-	silver_pack = 150,
-	gold_pack = 115,
-	rare_pack = 84,
-	elite_pack = 62,
-	rising_star_pack = 48,
-	totw_pack = 40,
-	voltra_pack = 32,
-	event_pack = 26,
-	hero_pack = 18,
-	champion_pack = 13,
-	legendary_pack = 8,
-	icon_pack = 4,
-	limited_pack = 3,
-	mythic_storm_pack = 2,
-	mythic_pack = 1,
-}
+local PackWeights = RewardEconomyConfig.RankedWinPackWeights
 
 local function packRarity(definition: any): string
 	local odds = definition and definition.Odds or {}
@@ -71,6 +54,14 @@ function Service.Roll(): any
 	return table.clone(Packs[1])
 end
 
+local function rollReel(length: number, stopIndex: number): ({any}, any)
+	local reel = {}
+	for index = 1, length do
+		reel[index] = Service.Roll()
+	end
+	return reel, table.clone(reel[stopIndex])
+end
+
 local function directAddPack(progression: any, player: Player, packId: string): any?
 	local profile = progression and progression.Profiles and progression.Profiles:GetProfile(player)
 	if not profile then return nil end
@@ -99,7 +90,8 @@ local function publishAll(progression: any, publish: ((Player, string, any) -> (
 end
 
 function Service.Grant(progression: any, player: Player, publish: ((Player, string, any) -> ())?): any
-	local pack = Service.Roll()
+	local stopIndex = math.random(26, 30)
+	local reel, pack = rollReel(38, stopIndex)
 	local matchReward = progression and progression.GrantMatchRewards and progression:GrantMatchRewards(player, {
 		Title = "RANKED WIN REWARD",
 		Coins = 1500,
@@ -147,6 +139,24 @@ function Service.Grant(progression: any, player: Player, publish: ((Player, stri
 		end
 	end
 	publishAll(progression, publish, player)
+	local reelPayload = {}
+	for index, reelPack in reel do
+		reelPayload[index] = {
+			PackId = reelPack.PackId,
+			Name = reelPack.Name,
+			Rarity = reelPack.Rarity,
+		}
+	end
+	-- Inventory fallbacks are rare, but the visible landing must still match the
+	-- pack that was successfully stored for the player.
+	if reelPayload[stopIndex] and reelPayload[stopIndex].PackId ~= grantedId then
+		local definition = Catalog.Packs[grantedId]
+		reelPayload[stopIndex] = {
+			PackId = grantedId,
+			Name = definition and definition.Name or pack.Name,
+			Rarity = definition and packRarity(definition) or pack.Rarity,
+		}
+	end
 	return {
 		Title = "RANKED WIN REWARD",
 		Coins = matchReward and matchReward.Coins or 1500,
@@ -160,6 +170,8 @@ function Service.Grant(progression: any, player: Player, publish: ((Player, stri
 		PackGranted = granted,
 		InventoryStored = granted,
 		Source = "RankedWin",
+		RouletteReel = reelPayload,
+		RouletteStopIndex = stopIndex,
 	}
 end
 
