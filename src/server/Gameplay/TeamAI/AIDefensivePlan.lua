@@ -32,6 +32,19 @@ local function nearestOpponent(context: any, side: string, predicate: ((any) -> 
 	return best
 end
 
+local function prePassReceiver(context: any, side: string): any?
+	local opponentSide = side == "Home" and "Away" or "Home"
+	for _, info in ipairs(((context.Teams or {})[opponentSide] or {}).List or {}) do
+		local phase = tostring(info.Model:GetAttribute("VTRPrePassPhase") or "")
+		local target = info.Model:GetAttribute("VTRPrePassTarget")
+		local untilTime = tonumber(info.Model:GetAttribute("VTRPrePassExpiresAt")) or 0
+		if phase == "Committed" and typeof(target) == "Vector3" and untilTime >= (context.Now or os.clock()) then
+			return {Info = info, World = target, Pitch = PitchConfig.WorldToTeamPitchPosition(target, side, context.Options)}
+		end
+	end
+	return nil
+end
+
 local function assignmentDistance(context: any, model: Model, targetPitch: Vector3): number
 	local info = context.Players and context.Players[model]
 	if not info then return math.huge end
@@ -79,7 +92,10 @@ function Plan.Apply(context: any, side: string, assignments: any, intent: any, b
 	local nearestForwardOutlet = nearestOpponent(context, side, function(info: any): boolean
 		return info.Role == "ST" or info.Role == "Winger" or info.Role == "CAM"
 	end)
+	local committedReceiver = prePassReceiver(context, side)
 	local highPress = tostring(intent and intent.Intent or "") == "HighPress"
+		or tostring(intent and intent.Intent or "") == "HighPressBuildUp"
+		or tostring(intent and intent.Intent or "") == "HighPressLocked"
 	for model, assignment in pairs(assignments) do
 		local slot = assignment.TacticalSlot
 		if slot and slot.Id == "primary-presser" and not primaryUsed then
@@ -105,8 +121,18 @@ function Plan.Apply(context: any, side: string, assignments: any, intent: any, b
 			model:SetAttribute("AIChosenPressRole", "Carrier")
 			model:SetAttribute("AIPressTarget", assignment.TargetWorld)
 			model:SetAttribute("AIPressLayer", "Primary")
-		elseif slot and slot.Id == "cover-presser" then
+			model:SetAttribute("AIPressAwarenessRange", highPress and 95 or 55)
+			model:SetAttribute("AIPressEngagementRange", highPress and 52 or 30)
+			model:SetAttribute("AIPressPhase", highPress and "Approach" or "Contain")
+			model:SetAttribute("AIPressTargetRole", "Carrier")
+			model:SetAttribute("AIPressTrigger", tostring(intent and intent.Intent or ""))
+		elseif slot and (slot.Id == "ball-side-outlet-presser" or slot.Id == "cover-presser") then
 			local outlet = carrierPitch.Z <= PitchConfig.HALF_LENGTH and nearestMidfielder or nearestForwardOutlet or nearestMidfielder
+			if slot.Id == "ball-side-outlet-presser" then
+				outlet = committedReceiver or nearestOpponent(context, side, function(info: any): boolean
+					return info.Role == "Fullback" or info.Role == "Winger" or info.Role == "CB" or info.IsGoalkeeper
+				end) or outlet
+			end
 			if outlet then
 				local target = Vector3.new((outlet.Pitch.X + PitchConfig.HALF_WIDTH) * .5, 3, math.max(34, outlet.Pitch.Z - 10))
 				assignment.TargetPitch = PitchConfig.ClampInsidePitch(target)
@@ -114,14 +140,54 @@ function Plan.Apply(context: any, side: string, assignments: any, intent: any, b
 				assignment.MovementTarget = assignment.TargetWorld
 				assignment.FaceWorld = outlet.World
 			end
-			assignment.PrimaryAssignment = carrierPitch.Z <= PitchConfig.HALF_LENGTH and "PressNextReceiver" or "CoverPresser"
-			assignment.MovementUrgency = highPress and .96 or .88
+			assignment.PrimaryAssignment = slot.Id == "ball-side-outlet-presser" and "PressOutletLane" or carrierPitch.Z <= PitchConfig.HALF_LENGTH and "PressNextReceiver" or "CoverPresser"
+			assignment.MovementUrgency = highPress and .98 or .88
 			assignment.SprintAllowed = highPress or (outlet and PitchConfig.GetDistanceStuds((context.Players[model] and context.Players[model].Pitch) or assignment.TargetPitch, assignment.TargetPitch) > 14) or false
+			model:SetAttribute("AIChosenPressRole", slot.Id == "ball-side-outlet-presser" and "BallSideOutlet" or "CentralOutlet")
+			model:SetAttribute("AIPressTarget", assignment.TargetWorld)
+			model:SetAttribute("AIPressLayer", slot.Id == "ball-side-outlet-presser" and "Outlet" or "Cover")
+			model:SetAttribute("AIPressAwarenessRange", highPress and 88 or 48)
+			model:SetAttribute("AIPressEngagementRange", highPress and 46 or 26)
+			model:SetAttribute("AIPressPhase", committedReceiver and "PressHandoff" or "CloseLane")
+			model:SetAttribute("AIPressTargetRole", slot.Id == "ball-side-outlet-presser" and "WideOutlet" or "NextReceiver")
+			model:SetAttribute("AIPressTrigger", committedReceiver and "CommittedPass" or tostring(intent and intent.Intent or ""))
+		elseif slot and slot.Id == "central-outlet-presser" then
+			local outlet = committedReceiver or nearestMidfielder
+			if outlet then
+				local target = Vector3.new(outlet.Pitch.X, 3, math.max(40, outlet.Pitch.Z - 12))
+				assignment.TargetPitch = PitchConfig.ClampInsidePitch(target)
+				assignment.TargetWorld = PitchConfig.TeamPitchPositionToWorld(assignment.TargetPitch, side, context.Options)
+				assignment.MovementTarget = assignment.TargetWorld
+				assignment.FaceWorld = outlet.World
+			end
+			assignment.PrimaryAssignment = "PressCentralOutlet"
+			assignment.MovementUrgency = highPress and .97 or .86
+			assignment.SprintAllowed = highPress
 			model:SetAttribute("AIChosenPressRole", "CentralOutlet")
 			model:SetAttribute("AIPressTarget", assignment.TargetWorld)
-			model:SetAttribute("AIPressLayer", "Cover")
-		elseif slot and slot.Id == "midfield-press-support" then
+			model:SetAttribute("AIPressLayer", "Outlet")
+			model:SetAttribute("AIPressAwarenessRange", highPress and 82 or 45)
+			model:SetAttribute("AIPressEngagementRange", highPress and 42 or 24)
+			model:SetAttribute("AIPressPhase", committedReceiver and "PressHandoff" or "CloseLane")
+			model:SetAttribute("AIPressTargetRole", "DeepMidfielder")
+			model:SetAttribute("AIPressTrigger", committedReceiver and "CommittedPass" or tostring(intent and intent.Intent or ""))
+		elseif slot and slot.Id == "far-side-return-blocker" then
+			assignment.PrimaryAssignment = "BlockFarReturn"
+			assignment.MovementUrgency = highPress and .9 or .78
+			assignment.SprintAllowed = highPress
+			model:SetAttribute("AIChosenPressRole", "FarSideTrap")
+			model:SetAttribute("AIPressTarget", assignment.TargetWorld)
+			model:SetAttribute("AIPressLayer", "Trap")
+			model:SetAttribute("AIPressAwarenessRange", highPress and 76 or 40)
+			model:SetAttribute("AIPressEngagementRange", highPress and 34 or 20)
+			model:SetAttribute("AIPressPhase", "CloseLane")
+			model:SetAttribute("AIPressTargetRole", "FarReturn")
+			model:SetAttribute("AIPressTrigger", tostring(intent and intent.Intent or ""))
+		elseif slot and (slot.Id == "midfield-press-support" or slot.Id == "ball-side-midfield-squeezer" or slot.Id == "central-midfield-squeezer") then
 			local outlet = nearestMidfielder or nearestForwardOutlet
+			if slot.Id == "ball-side-midfield-squeezer" and committedReceiver then
+				outlet = committedReceiver
+			end
 			if outlet then
 				local x = outlet.Pitch.X + (PitchConfig.HALF_WIDTH - outlet.Pitch.X) * .35
 				local z = math.max(48, math.min(outlet.Pitch.Z - 16, carrierPitch.Z - 8))
@@ -130,13 +196,18 @@ function Plan.Apply(context: any, side: string, assignments: any, intent: any, b
 				assignment.MovementTarget = assignment.TargetWorld
 				assignment.FaceWorld = outlet.World
 			end
-			assignment.PrimaryAssignment = "MidfieldPressSupport"
+			assignment.PrimaryAssignment = slot.Id == "central-midfield-squeezer" and "CentralMidfieldSqueeze" or "MidfieldPressSupport"
 			assignment.MovementUrgency = highPress and .94 or .84
 			assignment.SprintAllowed = highPress
-			model:SetAttribute("AIChosenPressRole", "MidfieldSupport")
+			model:SetAttribute("AIChosenPressRole", slot.Id == "central-midfield-squeezer" and "CentralSqueezer" or "MidfieldSupport")
 			model:SetAttribute("AIPressTarget", assignment.TargetWorld)
 			model:SetAttribute("AIPressLayer", "Support")
-		elseif slot and (slot.Id == "central-lane-block" or slot.Id == "pivot-lane-blocker" or slot.Id == "cam-feet-lane-blocker") then
+			model:SetAttribute("AIPressAwarenessRange", highPress and 78 or 44)
+			model:SetAttribute("AIPressEngagementRange", highPress and 38 or 24)
+			model:SetAttribute("AIPressPhase", committedReceiver and "ReceiverTracker" or "Approach")
+			model:SetAttribute("AIPressTargetRole", "MidfieldOutlet")
+			model:SetAttribute("AIPressTrigger", committedReceiver and "CommittedPass" or tostring(intent and intent.Intent or ""))
+		elseif slot and (slot.Id == "central-lane-block" or slot.Id == "pivot-lane-blocker" or slot.Id == "cam-feet-lane-blocker" or slot.Id == "pivot-screen") then
 			local outlet = nearestForwardOutlet or nearestMidfielder
 			if outlet then
 				local midpoint = carrierPitch:Lerp(outlet.Pitch, .48)
@@ -151,10 +222,28 @@ function Plan.Apply(context: any, side: string, assignments: any, intent: any, b
 			model:SetAttribute("AIChosenPressRole", "PivotScreen")
 			model:SetAttribute("AIPressTarget", assignment.TargetWorld)
 			model:SetAttribute("AIPressLayer", "Screen")
-		elseif slot and (slot.Id == "left-center-back" or slot.Id == "right-center-back" or slot.Id == "left-fullback-zone" or slot.Id == "right-fullback-zone") then
-			assignment.PrimaryAssignment = "HoldBackLineZone"
-			assignment.MovementUrgency = .72
+			model:SetAttribute("AIPressAwarenessRange", highPress and 82 or 50)
+			model:SetAttribute("AIPressEngagementRange", highPress and 32 or 22)
+			model:SetAttribute("AIPressPhase", "Screen")
+			model:SetAttribute("AIPressTargetRole", "CentralPass")
+			model:SetAttribute("AIPressTrigger", tostring(intent and intent.Intent or ""))
+		elseif slot and slot.Id == "deep-cover-defender" then
+			assignment.PrimaryAssignment = "DeepCover"
+			assignment.MovementUrgency = highPress and .82 or .72
 			assignment.SprintAllowed = false
+			model:SetAttribute("AIDeepCover", true)
+			model:SetAttribute("AIPressLayer", "Depth")
+			model:SetAttribute("AIPressPhase", "Recover")
+			model:SetAttribute("AIPressAwarenessRange", highPress and 65 or 45)
+			model:SetAttribute("AIPressEngagementRange", highPress and 36 or 28)
+		elseif slot and (slot.Id == "left-center-back" or slot.Id == "right-center-back" or slot.Id == "left-fullback-zone" or slot.Id == "right-fullback-zone") then
+			assignment.PrimaryAssignment = highPress and "HighLineCompress" or "HoldBackLineZone"
+			assignment.MovementUrgency = highPress and .84 or .72
+			assignment.SprintAllowed = false
+			model:SetAttribute("AIPressLayer", "HighLine")
+			model:SetAttribute("AIPressPhase", highPress and "CloseLane" or "Observe")
+			model:SetAttribute("AIPressAwarenessRange", highPress and 64 or 42)
+			model:SetAttribute("AIPressEngagementRange", highPress and 34 or 24)
 		elseif slot and (slot.Id == "cutback-protector" or slot.Id == "far-post-protector") then
 			assignment.PrimaryAssignment = slot.Id == "cutback-protector" and "ProtectCutbackZone" or "ProtectFarPost"
 			assignment.MovementUrgency = .76
@@ -184,6 +273,26 @@ function Plan.Apply(context: any, side: string, assignments: any, intent: any, b
 			model:SetAttribute("AIDefensiveBlockWidth", block.BlockWidth)
 			model:SetAttribute("AIDefensiveBackLineZ", block.BackLineZ)
 			model:SetAttribute("AIDefensiveMidLineZ", block.MidfieldLineZ)
+			model:SetAttribute("AIHighPressActive", highPress)
+			model:SetAttribute("AIHighPressPhase", block.HighPressPhase or "")
+			model:SetAttribute("AIHighPressBlockDepth", block.HighPressBlockDepth or 0)
+			model:SetAttribute("AIHighPressForwardLineZ", block.ForwardLineZ)
+			model:SetAttribute("AIHighPressMidfieldLineZ", block.MidfieldLineZ)
+			model:SetAttribute("AIHighPressBackLineZ", block.BackLineZ)
+		end
+	end
+	local activePressers = 0
+	for _, assignment in pairs(assignments) do
+		local primary = tostring(assignment.PrimaryAssignment or "")
+		if primary == "PressBallCarrier" or primary == "PressOutletLane" or primary == "PressCentralOutlet" or primary == "MidfieldPressSupport" or primary == "CentralMidfieldSqueeze" or primary == "BlockFarReturn" then
+			activePressers += 1
+		end
+	end
+	for model, assignment in pairs(assignments) do
+		model:SetAttribute("AIPressersActive", activePressers)
+		model:SetAttribute("AIPressBroken", false)
+		if assignment.TargetWorld then
+			model:SetAttribute("AIPressDistance", assignmentDistance(context, model, assignment.TargetPitch or carrierPitch))
 		end
 	end
 	if block and carrier then

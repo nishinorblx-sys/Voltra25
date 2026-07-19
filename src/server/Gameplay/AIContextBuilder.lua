@@ -182,18 +182,26 @@ end
 
 function Service.Pressure(context: any, info: any): any
 	local count20 = 0
+	local approaching = 0
 	local closest = math.huge
 	local under = false
+	local approachingPressure = false
 	for _, opponent in ipairs(context.Teams[info.OpponentSide].List) do
 		if opponent.Root and info.Root then
 			local distance = PitchConfig.GetDistanceStuds(opponent.World, info.World)
 			closest = math.min(closest, distance)
-			if distance <= 20 then
-				local toCarrier = flat(info.World - opponent.World)
-				local facing = flat(opponent.Root.CFrame.LookVector)
-				local moving = flat(opponent.Root.AssemblyLinearVelocity)
-				local facingToward = facing.Magnitude > 0.01 and toCarrier.Magnitude > 0.01 and facing.Unit:Dot(toCarrier.Unit) > 0.1
-				local movingToward = moving.Magnitude > 0.5 and toCarrier.Magnitude > 0.01 and moving.Unit:Dot(toCarrier.Unit) > 0.1
+			local toCarrier = flat(info.World - opponent.World)
+			local facing = flat(opponent.Root.CFrame.LookVector)
+			local moving = flat(opponent.Root.AssemblyLinearVelocity)
+			local facingToward = facing.Magnitude > 0.01 and toCarrier.Magnitude > 0.01 and facing.Unit:Dot(toCarrier.Unit) > 0.1
+			local movingToward = moving.Magnitude > 0.5 and toCarrier.Magnitude > 0.01 and moving.Unit:Dot(toCarrier.Unit) > 0.1
+			local assignment = tostring(opponent.Model:GetAttribute("currentAssignment") or opponent.Model:GetAttribute("AIDefensiveDuty") or "")
+			local pressingDuty = assignment == "PressBallCarrier" or assignment == "PressOutletLane" or assignment == "PressCentralOutlet" or assignment == "MidfieldPressSupport" or assignment == "CentralMidfieldSqueeze" or assignment == "ContainBallCarrier" or assignment == "CarrierBreachPress"
+			if distance <= (pressingDuty and 55 or 38) and (facingToward or movingToward or pressingDuty) then
+				approaching += 1
+				approachingPressure = true
+			end
+			if distance <= (pressingDuty and 28 or 20) then
 				if facingToward or movingToward then
 					under = true
 					count20 += 1
@@ -201,14 +209,18 @@ function Service.Pressure(context: any, info: any): any
 			end
 		end
 	end
+	local band = closest <= 12 and "HeavyPressure" or under and "UnderPressure" or approachingPressure and "ApproachingPressure" or "NoPressure"
 	return {
 		Under = under,
 		Heavy = closest <= 10,
 		Closest = closest,
 		Count18 = count20,
 		Count20 = count20,
-		None = closest > 20,
-		Score = 1 - math.clamp((closest - 10) / 10, 0, 1),
+		Approaching = approachingPressure,
+		ApproachingCount = approaching,
+		Band = band,
+		None = not approachingPressure and closest > 20,
+		Score = math.max(1 - math.clamp((closest - 10) / 10, 0, 1), approachingPressure and math.clamp((55 - closest) / 55, .15, .85) or 0),
 	}
 end
 

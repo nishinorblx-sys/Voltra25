@@ -6,6 +6,7 @@ Director.__index = Director
 local PitchConfig = require(script.Parent.Parent.PitchConfig)
 
 local MIN_COMMIT = .55
+local HIGH_PRESS_COMMIT = 1.05
 
 function Director.new(): any
 	return setmetatable({State = {Home = nil, Away = nil}}, Director)
@@ -49,8 +50,9 @@ local function defenseIntent(context: any, side: string, style: any): string
 	if ball.Z < 185 then return "ProtectBox" end
 	if depth < .34 then return "LowBlock" end
 	local pressCommit = press * .72 + trigger * .28
-	if ball.Z >= 470 and press >= .58 then return "HighPress" end
-	if ball.Z >= PitchConfig.HALF_LENGTH and pressCommit >= .68 then return "HighPress" end
+	if ball.Z >= 520 and pressCommit >= .56 then return "HighPressBuildUp" end
+	if ball.Z >= 470 and press >= .58 then return "HighPressBuildUp" end
+	if ball.Z >= PitchConfig.HALF_LENGTH and pressCommit >= .68 then return "HighPressLocked" end
 	if ball.Z >= 250 and counter >= .58 and press >= .54 then return "Counterpress" end
 	return "MidBlock"
 end
@@ -68,7 +70,8 @@ function Director:Update(context: any, styles: any, spatial: any, memory: any): 
 		else
 			nextIntent = defenseIntent(context, side, styles[side])
 		end
-		if previous and previous.Intent ~= nextIntent and now - previous.StartedAt < MIN_COMMIT then
+		local minimumCommit = previous and tostring(previous.Intent or ""):find("HighPress") and HIGH_PRESS_COMMIT or MIN_COMMIT
+		if previous and previous.Intent ~= nextIntent and now - previous.StartedAt < minimumCommit then
 			nextIntent = previous.Intent
 		end
 		local state = previous and previous.Intent == nextIntent and previous or {Intent = nextIntent, StartedAt = now, Reason = context.MatchState}

@@ -1870,6 +1870,153 @@ function Tests.Run(): any
 		for _, item in {passer, offsideForward, legalRunner, defenderA, defenderB} do item.Model:Destroy() end
 	end)
 
+	test("opponent defensive-third possession activates collective high press", function()
+		local style = {Ratio = function(_, key: string)
+			if key == "PressingIntensity" then return .78 end
+			if key == "PressTriggerDistance" then return .72 end
+			if key == "DefensiveDepth" then return .62 end
+			return .55
+		end}
+		local director = AITacticalIntentDirector.new()
+		local context = {Now = 1, OwnerSide = "Away", Owner = Instance.new("Model"), LooseBall = false, MatchState = "Live", BallTeam = {Home = Vector3.new(212, 3, 555), Away = Vector3.new(212, 3, 187)}, DefensivePress = {Home = {}, Away = {}}}
+		local intents = director:Update(context, {Home = style, Away = style}, nil, nil)
+		expectEqual(intents.Home.Intent, "HighPressBuildUp", "Defensive-third buildup did not activate high press")
+		context.Owner:Destroy()
+	end)
+
+	test("collective high press distributes outlet midfield screen and depth duties", function()
+		local options = {PitchCFrame = CFrame.new(), Width = PitchConfig.PITCH_WIDTH, Length = PitchConfig.PITCH_LENGTH, AttackSigns = {Home = 1, Away = -1}}
+		local function info(side: string, role: string, pitch: Vector3, name: string): any
+			local model = Instance.new("Model")
+			model.Name = name
+			model:SetAttribute("VTRTeam", side)
+			local root = Instance.new("Part")
+			root.Name = "HumanoidRootPart"
+			root.Position = PitchConfig.TeamPitchPositionToWorld(pitch, side, options)
+			root.Parent = model
+			return {Model = model, Root = root, Side = side, OpponentSide = side == "Home" and "Away" or "Home", Role = role, Pitch = pitch, World = root.Position, Stats = {pace = 72, defending = 70}, Stamina = 82, IsGoalkeeper = role == "GK"}
+		end
+		local home = {
+			info("Home", "ST", Vector3.new(212, 3, 500), "ST"),
+			info("Home", "Winger", Vector3.new(80, 3, 480), "LW"),
+			info("Home", "Winger", Vector3.new(344, 3, 478), "RW"),
+			info("Home", "CAM", Vector3.new(212, 3, 456), "CAM"),
+			info("Home", "CM", Vector3.new(172, 3, 425), "CM1"),
+			info("Home", "CM", Vector3.new(252, 3, 418), "CM2"),
+			info("Home", "CDM", Vector3.new(212, 3, 390), "DM"),
+			info("Home", "CB", Vector3.new(160, 3, 325), "CB1"),
+			info("Home", "CB", Vector3.new(264, 3, 325), "CB2"),
+			info("Home", "Fullback", Vector3.new(70, 3, 335), "LB"),
+			info("Home", "Fullback", Vector3.new(354, 3, 335), "RB"),
+		}
+		local awayCarrier = info("Away", "CB", Vector3.new(212, 3, 185), "AwayCB")
+		local awayFB = info("Away", "Fullback", Vector3.new(78, 3, 190), "AwayFB")
+		local awayDM = info("Away", "CDM", Vector3.new(212, 3, 245), "AwayDM")
+		local context = {Now = 1, Owner = awayCarrier.Model, OwnerSide = "Away", BallWorld = awayCarrier.World, BallTeam = {Home = Vector3.new(212, 3, 557), Away = awayCarrier.Pitch}, Teams = {Home = {List = home}, Away = {List = {awayCarrier, awayFB, awayDM}}}, Players = {}, Options = options}
+		for _, item in ipairs(home) do context.Players[item.Model] = item end
+		for _, item in ipairs({awayCarrier, awayFB, awayDM}) do context.Players[item.Model] = item end
+		local planner = AIDefensiveBlockPlanner.new()
+		local block = planner:Build(context, "Home", {Ratio = function(_, key: string)
+			if key == "PressingIntensity" then return .86 end
+			if key == "DefensiveDepth" then return .78 end
+			if key == "BackLineCompactness" then return .76 end
+			if key == "ZoneDiscipline" then return .72 end
+			return .58
+		end}, {Intent = "HighPressBuildUp"})
+		expect(block.ForwardLineZ > block.MidfieldLineZ and block.MidfieldLineZ > block.BackLineZ, "High-press line ordering invalid")
+		expect(block.HighPressBlockDepth >= 70 and block.HighPressBlockDepth <= 130, "High-press block depth escaped collective range")
+		local slots = {}
+		for _, slot in ipairs(block.Slots) do slots[slot.Id] = slot end
+		for _, id in ipairs({"primary-presser", "ball-side-outlet-presser", "central-outlet-presser", "ball-side-midfield-squeezer", "central-midfield-squeezer", "pivot-screen", "deep-cover-defender"}) do
+			expect(slots[id] ~= nil, "Missing collective press slot " .. id)
+			expect(slots[id].LockedModel ~= nil, "Collective press slot was not locked: " .. id)
+		end
+		local assignments = AITacticalSlotAssignment.Assign(context, "Home", block.Slots)
+		AIDefensivePlan.Apply(context, "Home", assignments, {Intent = "HighPressBuildUp"}, block, {})
+		local active = 0
+		local wingerPress = false
+		local midfieldPress = false
+		local deepCover = 0
+		for model, assignment in pairs(assignments) do
+			local primary = tostring(assignment.PrimaryAssignment or "")
+			if primary == "PressBallCarrier" or primary == "PressOutletLane" or primary == "PressCentralOutlet" or primary == "MidfieldPressSupport" or primary == "CentralMidfieldSqueeze" or primary == "BlockFarReturn" then active += 1 end
+			local role = context.Players[model] and context.Players[model].Role
+			if role == "Winger" and primary == "PressOutletLane" then wingerPress = true end
+			if (role == "CM" or role == "CAM") and (primary == "MidfieldPressSupport" or primary == "CentralMidfieldSqueeze" or primary == "PressCentralOutlet") then midfieldPress = true end
+			if primary == "DeepCover" then deepCover += 1 end
+		end
+		expect(active >= 4, "High press did not create at least four active pressure responsibilities")
+		expect(wingerPress, "No winger received an active outlet pressing target")
+		expect(midfieldPress, "No midfielder received an active pressing target")
+		expectEqual(deepCover, 1, "High press did not preserve exactly one deepest cover")
+		for _, item in ipairs(home) do item.Model:Destroy() end
+		for _, item in ipairs({awayCarrier, awayFB, awayDM}) do item.Model:Destroy() end
+	end)
+
+	test("approaching pressers create faster pressure bands", function()
+		local carrier = Instance.new("Model")
+		local carrierRoot = Instance.new("Part")
+		carrierRoot.Name = "HumanoidRootPart"
+		carrierRoot.Position = Vector3.new(0, 3, 0)
+		carrierRoot.Parent = carrier
+		local function presser(name: string, position: Vector3): any
+			local model = Instance.new("Model")
+			model.Name = name
+			model:SetAttribute("currentAssignment", "PressBallCarrier")
+			local root = Instance.new("Part")
+			root.Name = "HumanoidRootPart"
+			root.CFrame = CFrame.lookAt(position, carrierRoot.Position)
+			root.AssemblyLinearVelocity = (carrierRoot.Position - position).Unit * 12
+			root.Parent = model
+			return {Model = model, Root = root, Side = "Away", OpponentSide = "Home", Role = "ST", Pitch = position, World = position, Stats = {pace = 70}, Stamina = 80}
+		end
+		local carrierInfo = {Model = carrier, Root = carrierRoot, Side = "Home", OpponentSide = "Away", Role = "CM", Pitch = carrierRoot.Position, World = carrierRoot.Position, Stats = {pace = 70}, Stamina = 80}
+		local one = presser("P1", Vector3.new(0, 3, 48))
+		local two = presser("P2", Vector3.new(26, 3, 46))
+		local context = {Teams = {Home = {List = {carrierInfo}}, Away = {List = {one}}}}
+		local single = AIContextBuilder.Pressure(context, carrierInfo)
+		context.Teams.Away.List = {one, two}
+		local double = AIContextBuilder.Pressure(context, carrierInfo)
+		expectEqual(single.Band, "ApproachingPressure", "Single approaching presser did not create approaching pressure")
+		expect(double.ApproachingCount > single.ApproachingCount, "Second approaching presser was not counted")
+		carrier:Destroy();one.Model:Destroy();two.Model:Destroy()
+	end)
+
+	test("committed pre-pass rotates defensive receiver pressure before launch", function()
+		local options = {PitchCFrame = CFrame.new(), Width = PitchConfig.PITCH_WIDTH, Length = PitchConfig.PITCH_LENGTH, AttackSigns = {Home = 1, Away = -1}}
+		local function info(side: string, role: string, pitch: Vector3, name: string): any
+			local model = Instance.new("Model")
+			model.Name = name
+			model:SetAttribute("VTRTeam", side)
+			local root = Instance.new("Part")
+			root.Name = "HumanoidRootPart"
+			root.Position = PitchConfig.TeamPitchPositionToWorld(pitch, side, options)
+			root.Parent = model
+			return {Model = model, Root = root, Side = side, OpponentSide = side == "Home" and "Away" or "Home", Role = role, Pitch = pitch, World = root.Position, Stats = {pace = 70}, Stamina = 80}
+		end
+		local receiver = info("Away", "Fullback", Vector3.new(84, 3, 205), "AwayFB")
+		local carrier = info("Away", "CB", Vector3.new(212, 3, 182), "AwayCB")
+		local winger = info("Home", "Winger", Vector3.new(70, 3, 480), "HomeW")
+		local cm = info("Home", "CM", Vector3.new(180, 3, 430), "HomeCM")
+		local cb = info("Home", "CB", Vector3.new(212, 3, 340), "HomeCB")
+		local target = receiver.World + Vector3.new(0, 0, 8)
+		receiver.Model:SetAttribute("VTRPrePassPhase", "Committed")
+		receiver.Model:SetAttribute("VTRPrePassTarget", target)
+		receiver.Model:SetAttribute("VTRPrePassExpiresAt", 10)
+		local context = {Now = 2, Owner = carrier.Model, OwnerSide = "Away", BallWorld = carrier.World, BallTeam = {Home = Vector3.new(212, 3, 560), Away = carrier.Pitch}, Teams = {Home = {List = {winger, cm, cb}}, Away = {List = {carrier, receiver}}}, Players = {[winger.Model] = winger, [cm.Model] = cm, [cb.Model] = cb, [carrier.Model] = carrier, [receiver.Model] = receiver}, Options = options}
+		local block = AIDefensiveBlockPlanner.new():Build(context, "Home", {Ratio = function() return .8 end}, {Intent = "HighPressBuildUp"})
+		local assignments = AITacticalSlotAssignment.Assign(context, "Home", block.Slots)
+		AIDefensivePlan.Apply(context, "Home", assignments, {Intent = "HighPressBuildUp"}, block, {})
+		local tracker = false
+		for model, assignment in pairs(assignments) do
+			if tostring(assignment.PrimaryAssignment or "") == "PressOutletLane" and model:GetAttribute("AIPressTrigger") == "CommittedPass" then
+				tracker = true
+			end
+		end
+		expect(tracker, "Committed pass did not rotate an outlet presser before launch")
+		for _, item in {receiver, carrier, winger, cm, cb} do item.Model:Destroy() end
+	end)
+
 	test("client gameplay modules load", function()
 		local root = StarterPlayer.StarterPlayerScripts.VTRClient
 		local input = require(root.Gameplay.InputController)

@@ -64,6 +64,34 @@ local function root(model:Model):BasePart?
 	return model:FindFirstChild("HumanoidRootPart") :: BasePart?
 end
 
+local function primeSetPieceReceiver(taker: Model?, receiver: Model?, target: Vector3?, family: string?, launchDelay: number?, confidence: number?)
+	if not taker or not receiver or typeof(target) ~= "Vector3" then return end
+	local receiverRoot = root(receiver)
+	local takerRoot = root(taker)
+	if not receiverRoot or not takerRoot then return end
+	local now = os.clock()
+	local distance = Vector3.new(target.X - takerRoot.Position.X, 0, target.Z - takerRoot.Position.Z).Magnitude
+	local eta = math.clamp(distance / 56, .25, 2.8)
+	local receiverEta = math.clamp(Vector3.new(target.X - receiverRoot.Position.X, 0, target.Z - receiverRoot.Position.Z).Magnitude / 25, .15, 2.8)
+	local mode = receiverEta > eta + .18 and "SprintBurst" or receiverEta > eta - .08 and "Run" or "Jog"
+	receiver:SetAttribute("VTRPrePassId", tostring(taker.Name) .. ":" .. tostring(receiver.Name) .. ":SetPiece:" .. tostring(math.floor(now * 100)))
+	receiver:SetAttribute("VTRPrePassPhase", "Committed")
+	receiver:SetAttribute("VTRPrePassPasser", taker.Name)
+	receiver:SetAttribute("VTRPrePassTarget", target)
+	receiver:SetAttribute("VTRPrePassFamily", family or "Ground")
+	receiver:SetAttribute("VTRPrePassExpectedLaunchAt", now + (launchDelay or .12))
+	receiver:SetAttribute("VTRPrePassExpectedBallETA", eta)
+	receiver:SetAttribute("VTRPrePassReceiverETA", receiverEta)
+	receiver:SetAttribute("VTRPrePassConfidence", confidence or .82)
+	receiver:SetAttribute("VTRPrePassMovementMode", mode)
+	receiver:SetAttribute("VTRPrePassExpiresAt", now + math.clamp(eta + 1.2, 1, 4))
+	receiver:SetAttribute("VTRPrePassFirstTouchIntent", family == "Cross" and "Finish" or "Secure")
+	receiver:SetAttribute("VTRPrepareToReceive", true)
+	receiver:SetAttribute("VTRPotentialReceiveTarget", target)
+	receiver:SetAttribute("VTRPrepareReceiveUntil", now + math.clamp(eta + 1.2, 1, 4))
+	receiver:SetAttribute("VTRReceiveLocomotionMode", mode)
+end
+
 local function clearSpaceAround(models:any,center:Vector3,radius:number,pitchCFrame:CFrame,width:number,length:number,exceptModel:Model?)
 	for _,team in models do
 		for _,model in team do
@@ -472,6 +500,7 @@ function Service:_releaseCorner(player:Player,payload:any)
 	local takerRoot=active.Data.Taker:FindFirstChild("HumanoidRootPart")::BasePart?;if takerRoot then takerRoot.Anchored=false;takerRoot.AssemblyLinearVelocity=Vector3.zero;takerRoot.AssemblyAngularVelocity=Vector3.zero end
 	active.Data.Taker:SetAttribute("VTRForceIdle",nil)
 	self.World.Ball.Anchored=false;self.World.Ball:SetNetworkOwner(nil);self.Possession:ForcePickup(active.Data.Taker)
+	primeSetPieceReceiver(active.Data.Taker, delivery=="Short"and active.Data.ShortOption or plannedReceiver, target, delivery=="Short" and "Ground" or "Cross", .18, .86)
 	local kicked=self.BallService:CornerKick(active.Data.Taker,target,delivery,power,delivery=="Short"and active.Data.ShortOption or plannedReceiver)
 	if not kicked then self.World.Ball.Anchored=true;return false end
 	CornerPositioningService.ActivateRuns(active.Data,target)
@@ -566,6 +595,34 @@ function Service:Start(player: Player, kind: string, restartTeam: string, locati
 		return
 	end
 	if kind=="FreeKick"or kind=="Penalty"or kind=="GoalKick"or kind=="ThrowIn"then
+		if (kind=="GoalKick" or kind=="ThrowIn") and userControlled~=true then
+			local takerRoot = root(taker)
+			local best: Model? = nil
+			local bestDistance = math.huge
+			if takerRoot then
+				for _, teammate in self.Teams[restartTeam] or {} do
+					if teammate ~= taker and teammate:GetAttribute("VTRSentOff") ~= true and not isKeeper(teammate) then
+						local teammateRoot = root(teammate)
+						if teammateRoot then
+							local distance = (teammateRoot.Position - takerRoot.Position).Magnitude
+							local role = tostring(teammate:GetAttribute("position") or "")
+							local roleBonus = (role == "CB" or role == "LB" or role == "RB" or role == "CM" or role == "CDM") and -12 or 0
+							if distance + roleBonus < bestDistance then
+								best = teammate
+								bestDistance = distance + roleBonus
+							end
+						end
+					end
+				end
+			end
+			local bestRoot = best and root(best)
+			if takerRoot and bestRoot then
+				local offset = bestRoot.Position - takerRoot.Position
+				local direction = offset.Magnitude > .1 and offset.Unit or takerRoot.CFrame.LookVector
+				local target = bestRoot.Position + direction * math.clamp(kind == "GoalKick" and 9 or 5, 4, 10)
+				primeSetPieceReceiver(taker, best, target, kind == "GoalKick" and "Ground" or "ThrowIn", .25, .68)
+			end
+		end
 		return
 	end
 	self:_delayActive(duration,sequence,function()
@@ -595,6 +652,7 @@ function Service:Start(player: Player, kind: string, restartTeam: string, locati
 			local receiverRoot=best and root(best)
 			if takerRoot and receiverRoot then
 				local offset=receiverRoot.Position-takerRoot.Position
+				primeSetPieceReceiver(taker,best,receiverRoot.Position,"Lofted",.14,.84)
 				self.BallService:Kick(taker,"Pass",offset,math.clamp(offset.Magnitude/85,.25,.68),best,"Lofted",offset.Magnitude,receiverRoot.Position)
 			end
 		end
@@ -620,6 +678,7 @@ function Service:Start(player: Player, kind: string, restartTeam: string, locati
 						partnerHumanoid:ChangeState(Enum.HumanoidStateType.Running)
 					end
 					if partnerRoot then partnerRoot.Anchored=false end
+					primeSetPieceReceiver(taker,kickoffPartner,target,"Ground",.08,.9)
 					local released=self.BallService:Kick(taker,"Pass",target-takerRoot.Position,.16,kickoffPartner,"Ground",offset.Magnitude,target)
 					debugKickoff("auto pass result", "released", released, "owner", self.Possession:GetOwner() and self.Possession:GetOwner().Name or "nil", "ballSpeed", math.floor(self.World.Ball.AssemblyLinearVelocity.Magnitude*10)/10)
 					if released then

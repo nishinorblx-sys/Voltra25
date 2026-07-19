@@ -73,6 +73,25 @@ local function nearestRole(context: any, side: string, roleSet: {[string]: boole
 	return best
 end
 
+local function opponentClosest(context: any, defendingSide: string, roleSet: {[string]: boolean}?, target: Vector3, preferWide: boolean?): any?
+	local opponentSide = defendingSide == "Home" and "Away" or "Home"
+	local best = nil
+	local bestScore = math.huge
+	for _, info in ipairs(((context.Teams or {})[opponentSide] or {}).List or {}) do
+		if info.Root then
+			local pitch = PitchConfig.WorldToTeamPitchPosition(info.World, defendingSide, context.Options)
+			local rolePenalty = roleSet and not roleSet[info.Role] and 34 or 0
+			local wideBonus = preferWide and math.abs(pitch.X - PitchConfig.HALF_WIDTH) > 86 and -12 or 0
+			local score = PitchConfig.GetDistanceStuds(pitch, target) + rolePenalty + wideBonus
+			if score < bestScore then
+				best = {Info = info, Pitch = pitch, World = info.World}
+				bestScore = score
+			end
+		end
+	end
+	return best
+end
+
 function Planner.new(): any
 	return setmetatable({Duties = {Home = {}, Away = {}}}, Planner)
 end
@@ -129,20 +148,44 @@ function Planner:Build(context: any, side: string, style: any, intent: any): any
 		press = math.clamp(press + (tonumber(pressRules.Pressers) or 0) * .18, 0, 1)
 	end
 	local low = intentName == "LowBlock" or intentName == "ProtectBox" or intentName == "ProtectLead"
-	local high = intentName == "HighPress"
+	local high = intentName == "HighPress" or intentName == "HighPressBuildUp" or intentName == "HighPressLocked"
 	local blockWidth = clamp(190 + widthRatio * 86 - compact * 42, 152, 258)
 	local centerShift = clamp((ball.X - PitchConfig.HALF_WIDTH) * (.22 + zone * .18), -32, 32)
 	local centerX = clamp(PitchConfig.HALF_WIDTH + centerShift, 110, 314)
 	local backZ = low and clamp(64 + depthRatio * 74, 58, 148) or high and clamp(285 + depthRatio * 145, 260, 455) or clamp(132 + depthRatio * 178, 112, 330)
 	local backMidGap = clamp(58 - compact * 20 + (low and -8 or high and 6 or 0), 36, 58)
 	local midForwardGap = clamp(68 - compact * 18 + (high and 5 or 0), 40, 68)
+	local midZ = clamp(backZ + backMidGap, 96, 540)
+	local forwardZ = clamp(midZ + midForwardGap, 138, 630)
+	local pressAnchorZ = ball.Z
+	if high then
+		local threatZ = 0
+		for _, opponent in ipairs(((context.Teams or {})[side == "Home" and "Away" or "Home"] or {}).List or {}) do
+			if opponent.Root then
+				local pitch = PitchConfig.WorldToTeamPitchPosition(opponent.World, side, context.Options)
+				if pitch.Z < ball.Z - 20 then
+					threatZ = math.max(threatZ, pitch.Z)
+				end
+			end
+		end
+		local speedThreat = threatZ > 0 and math.clamp((ball.Z - threatZ) / 240, 0, 1) or .25
+		local forwardMidGap = clamp(45 - compact * 10 - press * 7, 30, 45)
+		local midBackGap = clamp(48 - compact * 10 - zone * 5 + speedThreat * 12, 32, 54)
+		forwardZ = clamp(pressAnchorZ - 6, 410, 690)
+		midZ = clamp(forwardZ - forwardMidGap, 330, 650)
+		backZ = clamp(midZ - midBackGap, 250, threatZ > 0 and math.min(540, threatZ + 26) or 545)
+		backMidGap = midZ - backZ
+		midForwardGap = forwardZ - midZ
+	end
 	if reaction then
 		local gapAdjust = (tonumber(reaction.LineGap) or 0) * 42
 		backMidGap = clamp(backMidGap + gapAdjust, 30, 64)
 		midForwardGap = clamp(midForwardGap + gapAdjust, 34, 74)
+		if not high then
+			midZ = clamp(backZ + backMidGap, 96, 540)
+			forwardZ = clamp(midZ + midForwardGap, 138, 630)
+		end
 	end
-	local midZ = clamp(backZ + backMidGap, 96, 540)
-	local forwardZ = clamp(midZ + midForwardGap, 138, 630)
 	local halfWidth = blockWidth * .5
 	local leftX = clamp(centerX - halfWidth * .45, 42, 180)
 	local rightX = clamp(centerX + halfWidth * .45, 244, 382)
@@ -159,15 +202,42 @@ function Planner:Build(context: any, side: string, style: any, intent: any): any
 	local primaryTarget = Vector3.new(ball.X + (ballSide == "Left" and 12 or ballSide == "Right" and -12 or 0), 3, clamp(ball.Z - 2, 48, PitchConfig.PITCH_LENGTH - 18))
 	local primary = nearestRole(context, side, {ST = true, Winger = true, CAM = true}, primaryTarget, used)
 	if primary then used[primary.Model] = true end
-	local coverTarget = Vector3.new(clamp((ball.X + centerX) * .5, 78, 346), 3, clamp(ball.Z - 24, backZ + 24, forwardZ))
-	local cover = nearestRole(context, side, {CM = true, CDM = true, CAM = true}, coverTarget, used)
-	if cover then used[cover.Model] = true end
-	local supportTarget = Vector3.new(clamp(PitchConfig.HALF_WIDTH + (ball.X - PitchConfig.HALF_WIDTH) * .28, 100, 324), 3, clamp(ball.Z - 34, backZ + 18, midZ + 28))
+	local nearOutlet = opponentClosest(context, side, {Fullback = true, Winger = true, CB = true, GK = true}, Vector3.new(ball.X, 3, ball.Z - 10), true)
+	local centralOutlet = opponentClosest(context, side, {CDM = true, CM = true, CAM = true}, Vector3.new(PitchConfig.HALF_WIDTH, 3, ball.Z - 26), false)
+	local farOutlet = opponentClosest(context, side, {CB = true, Fullback = true, GK = true}, Vector3.new(ballSide == "Left" and 318 or 106, 3, ball.Z - 8), true)
+	local nearOutletTarget = nearOutlet and Vector3.new(nearOutlet.Pitch.X + (PitchConfig.HALF_WIDTH - nearOutlet.Pitch.X) * .18, 3, clamp(nearOutlet.Pitch.Z - 12, midZ, forwardZ + 8)) or Vector3.new(ballSide == "Left" and 96 or 328, 3, clamp(ball.Z - 18, midZ, forwardZ))
+	local centralTarget = centralOutlet and Vector3.new(centralOutlet.Pitch.X, 3, clamp(centralOutlet.Pitch.Z - 14, midZ - 8, forwardZ)) or Vector3.new(PitchConfig.HALF_WIDTH, 3, clamp(ball.Z - 28, midZ - 4, forwardZ))
+	local farTarget = farOutlet and Vector3.new((farOutlet.Pitch.X + PitchConfig.HALF_WIDTH) * .5, 3, clamp(farOutlet.Pitch.Z - 14, midZ, forwardZ)) or Vector3.new(ballSide == "Left" and 294 or 130, 3, clamp(ball.Z - 24, midZ, forwardZ))
+	local nearPresser = nearestRole(context, side, {Winger = true, ST = true, CAM = true, Fullback = high}, nearOutletTarget, used)
+	if nearPresser then used[nearPresser.Model] = true end
+	local centralPresser = nearestRole(context, side, {CAM = true, CM = true, ST = true}, centralTarget, used)
+	if centralPresser then used[centralPresser.Model] = true end
+	local farPresser = nearestRole(context, side, {Winger = true, ST = true, CAM = true}, farTarget, used)
+	if farPresser then used[farPresser.Model] = true end
+	local supportTarget = Vector3.new(clamp(PitchConfig.HALF_WIDTH + (ball.X - PitchConfig.HALF_WIDTH) * .28, 100, 324), 3, clamp(ball.Z - 42, backZ + 18, midZ + 18))
+	local support = nearestRole(context, side, {CM = true, CAM = true, CDM = true}, supportTarget, used)
+	if support then used[support.Model] = true end
+	local centralSupportTarget = Vector3.new(PitchConfig.HALF_WIDTH, 3, clamp(ball.Z - 52, backZ + 18, midZ + 10))
+	local centralSupport = nearestRole(context, side, {CM = true, CDM = true, CAM = true}, centralSupportTarget, used)
+	if centralSupport then used[centralSupport.Model] = true end
+	local pivotTarget = Vector3.new(clamp(PitchConfig.HALF_WIDTH + centerShift * .35, 125, 299), 3, clamp(ball.Z - 62, backZ + 14, midZ))
+	local pivot = nearestRole(context, side, {CDM = true, CM = true}, pivotTarget, used)
+	if pivot then used[pivot.Model] = true end
+	local deepCoverTarget = Vector3.new(ballSide == "Left" and rightX or leftX, 3, clamp(backZ - (high and 10 or 0), 48, 560))
+	local deepCover = nearestRole(context, side, {CB = true, Fullback = true}, deepCoverTarget, used)
+	if deepCover then used[deepCover.Model] = true end
 	local slots = {
 		slot("primary-presser", "ST", primaryTarget, high and 98 or 90, false, true, "PrimaryPress", primary and primary.Model or nil, {"ST", "Winger", "CAM"}),
-		slot("cover-presser", "CM", coverTarget, 89, false, high, "CoverPress", cover and cover.Model or nil, {"CM", "CDM", "CAM"}),
-		slot("midfield-press-support", "CM", supportTarget, 87, false, high, "MidfieldPressSupport", nil, {"CM", "CDM", "CAM"}),
-		slot("pivot-lane-blocker", "CDM", Vector3.new(centerX, 3, midZ), 92, false, false, "PivotLaneBlock"),
+		slot("ball-side-outlet-presser", "Winger", nearOutletTarget, high and 96 or 86, false, high, "BallSideOutletPress", nearPresser and nearPresser.Model or nil, {"Winger", "ST", "CAM", "Fullback"}),
+		slot("central-outlet-presser", "CAM", centralTarget, high and 95 or 87, false, high, "CentralOutletPress", centralPresser and centralPresser.Model or nil, {"CAM", "CM", "ST"}),
+		slot("far-side-return-blocker", "Winger", farTarget, high and 90 or 82, false, high, "FarSideReturnBlock", farPresser and farPresser.Model or nil, {"Winger", "ST", "CAM"}),
+		slot("ball-side-midfield-squeezer", "CM", supportTarget, high and 91 or 85, false, high, "BallSideMidfieldSqueeze", support and support.Model or nil, {"CM", "CAM", "CDM"}),
+		slot("central-midfield-squeezer", "CM", centralSupportTarget, high and 89 or 83, false, high, "CentralMidfieldSqueeze", centralSupport and centralSupport.Model or nil, {"CM", "CDM", "CAM"}),
+		slot("pivot-screen", "CDM", pivotTarget, 93, false, false, "PivotScreen", pivot and pivot.Model or nil, {"CDM", "CM"}),
+		slot("deep-cover-defender", "CB", deepCoverTarget, 97, true, false, "DeepCover", deepCover and deepCover.Model or nil, {"CB", "Fullback"}),
+		slot("cover-presser", "CM", centralTarget, 84, false, high, "CoverPress", nil, {"CM", "CDM", "CAM"}),
+		slot("midfield-press-support", "CM", supportTarget, 82, false, high, "MidfieldPressSupport", nil, {"CM", "CDM", "CAM"}),
+		slot("pivot-lane-blocker", "CDM", Vector3.new(centerX, 3, midZ), 80, false, false, "PivotLaneBlock"),
 		slot("cam-feet-lane-blocker", "CM", Vector3.new(clamp(centerX + (ball.X < PitchConfig.HALF_WIDTH and 28 or -28), 96, 328), 3, clamp(midZ + 22, 120, 570)), 86, false, false, "CentralLaneBlock"),
 		slot("left-center-back", "CB", Vector3.new(leftX, 3, backZ), 94, true, false, "BackLine"),
 		slot("right-center-back", "CB", Vector3.new(rightX, 3, backZ), 94, true, false, "BackLine"),
@@ -182,6 +252,9 @@ function Planner:Build(context: any, side: string, style: any, intent: any): any
 		BackLineZ = backZ,
 		MidfieldLineZ = midZ,
 		ForwardLineZ = forwardZ,
+		PressAnchorZ = pressAnchorZ,
+		HighPressPhase = high and intentName or "",
+		HighPressBlockDepth = forwardZ - backZ,
 		BallSideShift = centerShift,
 		FarSideTuck = farSideTuck,
 		PressureDirection = forceDirection,
@@ -189,7 +262,8 @@ function Planner:Build(context: any, side: string, style: any, intent: any): any
 		BlockedLane = lane > .6 and "CentralPivot" or "ForwardCentral",
 		ConcededLane = "SideOrBack",
 		PrimaryPresser = primary and primary.Model or nil,
-		CoverPresser = cover and cover.Model or nil,
+		CoverPresser = centralPresser and centralPresser.Model or nil,
+		DeepCover = deepCover and deepCover.Model or nil,
 		Slots = slots,
 		GeneratedAt = now,
 		ExpiresAt = now + (high and .75 or 1.15),

@@ -114,8 +114,9 @@ function Engine.new(teams: any, formations: any, pitchCFrame: CFrame, width: num
 		ManualTackleSides = {},
 		FirstMatchAssistance = nil,
 		WasLive = false,
-		Accum = {Spatial = .25, Intent = .24, Structure = .24, Carrier = .1, Movement = .04, Debug = .5},
+		Accum = {Spatial = .25, Intent = .24, Structure = .24, Press = .08, Carrier = .1, Movement = .04, Debug = .5},
 		LastPassStateKey = "",
+		LastPressStateKey = "",
 		ReceiverRouteSequence = 0,
 	}, Engine)
 	local function routeReceiver(model: Model, target: Vector3, passKind: string?, execution: any)
@@ -123,6 +124,29 @@ function Engine.new(teams: any, formations: any, pitchCFrame: CFrame, width: num
 	end
 	self.TeamBrain:SetImmediateReceiverRoute(routeReceiver)
 	return self
+end
+
+local function laneKey(pitch: Vector3?): string
+	if typeof(pitch) ~= "Vector3" then return "" end
+	return pitch.X < 110 and "LW" or pitch.X > 314 and "RW" or pitch.X < 180 and "LH" or pitch.X > 244 and "RH" or "C"
+end
+
+function Engine:_pressStateKey(context: any): string
+	local owner = context.Owner
+	local ownerSide = context.OwnerSide or ""
+	local defendingSide = ownerSide == "Home" and "Away" or ownerSide == "Away" and "Home" or ""
+	local ballPitch = defendingSide ~= "" and context.BallTeam[defendingSide] or nil
+	local intent = defendingSide ~= "" and self.CurrentIntents[defendingSide] and self.CurrentIntents[defendingSide].Intent or ""
+	local committed = ""
+	for _, side in ipairs({"Home", "Away"}) do
+		for _, info in ipairs(context.Teams[side].List) do
+			if info.Model:GetAttribute("VTRPrePassPhase") == "Committed" then
+				committed = info.Model.Name .. ":" .. tostring(info.Model:GetAttribute("VTRPrePassTarget"))
+				break
+			end
+		end
+	end
+	return tostring(owner) .. ":" .. tostring(ownerSide) .. ":" .. tostring(intent) .. ":" .. laneKey(ballPitch) .. ":" .. tostring(ballPitch and math.floor(ballPitch.Z / 38) or 0) .. ":" .. committed
 end
 
 function Engine:_attackSigns(): {[string]: number}
@@ -418,8 +442,16 @@ function Engine:Step(dt: number)
 	self:_publishTeamContext(context)
 	self.TeamBrain:Declare(context)
 	local passStateKey = context.PassInFlight and (tostring(self.Ball:GetAttribute("VTRPassStartedAt") or "") .. ":" .. tostring(self.Ball:GetAttribute("VTRPassReceiver") or "") .. ":" .. tostring(self.Ball:GetAttribute("VTRTrajectoryId") or "")) or ""
-	local urgent = context.LooseBall or context.PassInFlight or passStateKey ~= self.LastPassStateKey
+	local pressStateKey = self:_pressStateKey(context)
+	local highPressLive = (self.CurrentIntents.Home and tostring(self.CurrentIntents.Home.Intent):find("HighPress") ~= nil) or (self.CurrentIntents.Away and tostring(self.CurrentIntents.Away.Intent):find("HighPress") ~= nil)
+	self.Accum.Press += dt
+	local urgentPress = highPressLive and (pressStateKey ~= self.LastPressStateKey or self.Accum.Press >= .06)
+	local urgent = context.LooseBall or context.PassInFlight or passStateKey ~= self.LastPassStateKey or urgentPress
 	self.LastPassStateKey = passStateKey
+	if urgentPress then
+		self.Accum.Press = 0
+		self.LastPressStateKey = pressStateKey
+	end
 	self.Accum.Structure += dt
 	if urgent or self.Accum.Structure >= .24 or not next(self.CurrentAssignments.Home) then
 		self.Accum.Structure = 0

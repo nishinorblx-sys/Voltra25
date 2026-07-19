@@ -229,8 +229,57 @@ local function primePassChaser(model: Model, target: Vector3, now: number, ballE
 	model:SetAttribute("TeamPhase", "PassReception")
 end
 
+local function setPrePassIntent(receiver: any, passer: any, target: Vector3, phase: string, passKind: string?, execution: any?, confidence: number, now: number)
+	if not receiver or not receiver.Model or not receiver.Root then return end
+	local model = receiver.Model
+	local ballEta = tonumber(execution and execution.BallETA) or math.clamp(PitchConfig.GetDistanceStuds(passer.World, target) / 54, .25, 2.2)
+	local receiverEta = tonumber(execution and execution.ReceiverETA) or math.clamp(PitchConfig.GetDistanceStuds(receiver.World, target) / math.max(18, estimateReceiverSpeed(receiver)), .18, 2.6)
+	local mode = tostring(execution and execution.SelectedLocomotionMode or receiverEta > ballEta + .12 and "SprintBurst" or receiverEta > ballEta - .08 and "Run" or "Jog")
+	local expires = now + (phase == "Committed" and math.clamp(ballEta + .8, .65, 2.8) or .45)
+	local id = tostring(passer.Model.Name) .. ":" .. tostring(model.Name) .. ":" .. tostring(math.floor(now * 100))
+	model:SetAttribute("VTRPrePassId", id)
+	model:SetAttribute("VTRPrePassPhase", phase)
+	model:SetAttribute("VTRPrePassPasser", passer.Model.Name)
+	model:SetAttribute("VTRPrePassTarget", target)
+	model:SetAttribute("VTRPrePassFamily", passKind or "Ground")
+	model:SetAttribute("VTRPrePassExpectedLaunchAt", now + (phase == "Committed" and .04 or .28))
+	model:SetAttribute("VTRPrePassExpectedBallETA", ballEta)
+	model:SetAttribute("VTRPrePassReceiverETA", receiverEta)
+	model:SetAttribute("VTRPrePassOpponentETA", tonumber(execution and execution.OpponentETA) or math.huge)
+	model:SetAttribute("VTRPrePassConfidence", confidence)
+	model:SetAttribute("VTRPrePassMovementMode", mode)
+	model:SetAttribute("VTRPrePassExpiresAt", expires)
+	model:SetAttribute("VTRPrePassFirstTouchIntent", execution and execution.FirstTouchIntent or "Secure")
+	model:SetAttribute("VTRPrepareToReceive", true)
+	model:SetAttribute("VTRPotentialReceiveTarget", target)
+	model:SetAttribute("VTRPrepareReceiveUntil", expires)
+	if phase == "Committed" then
+		model:SetAttribute("VTRReceiveLocomotionMode", mode)
+		model:SetAttribute("VTRReceiveDesiredArrivalVelocity", execution and execution.DesiredArrivalVelocity or nil)
+		model:SetAttribute("VTRReceiveBrakingDistance", execution and execution.BrakingDistance or nil)
+		model:SetAttribute("VTRReceiveContactKind", execution and execution.ContactKind or nil)
+		model:SetAttribute("VTRReceivePreferredFoot", execution and execution.PreferredFoot or nil)
+		model:SetAttribute("currentAssignment", "ReceivePass")
+		model:SetAttribute("SupportRole", "ReceivePass")
+	end
+end
+
+local function clearPrePassCandidate(context: any, passer: any, receiver: any?)
+	for _, teammate in ipairs(context.Teams[passer.Side].List) do
+		if teammate.Model ~= (receiver and receiver.Model) and teammate.Model:GetAttribute("VTRPrePassPhase") == "Candidate" then
+			teammate.Model:SetAttribute("VTRPrePassId", nil)
+			teammate.Model:SetAttribute("VTRPrePassPhase", nil)
+			teammate.Model:SetAttribute("VTRPrePassTarget", nil)
+			teammate.Model:SetAttribute("VTRPrePassExpiresAt", nil)
+			teammate.Model:SetAttribute("VTRPrepareToReceive", nil)
+			teammate.Model:SetAttribute("VTRPotentialReceiveTarget", nil)
+			teammate.Model:SetAttribute("VTRPrepareReceiveUntil", nil)
+		end
+	end
+end
+
 function Service.new(ballService: any, style: any, difficulty: any)
-	return setmetatable({BallService = ballService, Style = style, Difficulty = difficulty, NextDecision = {}, CarrySince = {}, LastAction = {}, Random = Random.new(), ImmediateReceiverRoute = nil}, Service)
+	return setmetatable({BallService = ballService, Style = style, Difficulty = difficulty, NextDecision = {}, CarrySince = {}, LastAction = {}, Random = Random.new(), ImmediateReceiverRoute = nil, PrePassCandidates = {}}, Service)
 end
 
 function Service:SetImmediateReceiverRoute(callback: any)
@@ -263,10 +312,11 @@ function Service:_kickPass(context: any, passer: any, pass: any): boolean
 	local receiverModel = pass.Receiver and pass.Receiver.Model
 	if receiverModel and receiverModel.Parent then
 		local now = context.Now or os.clock()
-		receiverModel:SetAttribute("VTRPrepareToReceive", true)
-		receiverModel:SetAttribute("VTRPotentialReceiveTarget", pass.Target)
-		receiverModel:SetAttribute("VTRPrepareReceiveUntil", now + math.clamp((execution.BallETA or .8) * .55, .22, .7))
+		setPrePassIntent(pass.Receiver, passer, execution.InterceptPoint or pass.Target, "Committed", passKind, execution, math.clamp(tonumber(execution.Viability) or .72, .45, .96), now)
 		receiverModel:SetAttribute("VTRReceiveCommitted", false)
+		if self.ImmediateReceiverRoute then
+			self.ImmediateReceiverRoute(receiverModel, execution.InterceptPoint or pass.Target, passKind, execution)
+		end
 	end
 	local alternates = alternatePassChasers(context, passer, pass.Receiver, execution.InterceptPoint or pass.Target)
 	passer.Model:SetAttribute("AIPassCentralLane", pass.MiddlePass == true)
@@ -448,6 +498,13 @@ function Service:_carrierDecision(context: any, carrier: any, assignment: any)
 	elseif defensiveMood == "AggressiveRisk" then
 		holdLimit = math.min(holdLimit, 0.32)
 	end
+	if pressure.Band == "ApproachingPressure" then
+		holdLimit = math.min(holdLimit, pressure.ApproachingCount >= 2 and 0.22 or 0.35)
+	elseif pressure.Band == "UnderPressure" then
+		holdLimit = math.min(holdLimit, 0.18)
+	elseif pressure.Band == "HeavyPressure" then
+		holdLimit = math.min(holdLimit, 0.08)
+	end
 	if wingerEndLine then
 		holdLimit = math.min(holdLimit, 0.12)
 	elseif wingerChanceZone then
@@ -471,6 +528,8 @@ function Service:_carrierDecision(context: any, carrier: any, assignment: any)
 	local nextDecision = self.NextDecision[carrier.Model] or 0
 	carrier.Model:SetAttribute("AIPressureScore", pressure.Score)
 	carrier.Model:SetAttribute("AIHeavyPressure", pressure.Heavy)
+	carrier.Model:SetAttribute("AIPressureBand", pressure.Band)
+	carrier.Model:SetAttribute("AIApproachingPressers", pressure.ApproachingCount or 0)
 	carrier.Model:SetAttribute("AICarriedFor", carriedFor)
 	carrier.Model:SetAttribute("AIHoldLimit", holdLimit)
 	carrier.Model:SetAttribute("AIMinimumHoldTime", minimumHoldTime)
@@ -519,7 +578,8 @@ function Service:_carrierDecision(context: any, carrier: any, assignment: any)
 		return
 	end
 
-	self.NextDecision[carrier.Model] = now + math.max(0.04, math.min(AIDifficultyService.NextDecisionDelay(self.Difficulty) * (0.72 - passTempo * 0.42) * (1 + firstMatchAssistance * .35), holdLimit * 0.65))
+	local pressureDelayCap = pressure.Band == "HeavyPressure" and 0.05 or pressure.Band == "UnderPressure" and 0.09 or pressure.Band == "ApproachingPressure" and ((pressure.ApproachingCount or 0) >= 2 and 0.07 or 0.12) or math.huge
+	self.NextDecision[carrier.Model] = now + math.max(0.035, math.min(AIDifficultyService.NextDecisionDelay(self.Difficulty) * (0.72 - passTempo * 0.42) * (1 + firstMatchAssistance * .35), holdLimit * 0.65, pressureDelayCap))
 
 	if canCarry and carrier.Role == "Winger" and wingerWide and carrier.Pitch.Z >= 520 and pressure.Closest > 18 then
 		local diagonalX = carrier.Pitch.X < PitchConfig.HALF_WIDTH and 154 or 270
@@ -660,7 +720,7 @@ function Service:_carrierDecision(context: any, carrier: any, assignment: any)
 
 
 	local runningIntoSpaceDanger = pressure.Closest <= 25 or strikerUnderClosePressure or ((carrier.Model:GetAttribute("AICarryIntoSpace") == true or self.LastAction[carrier.Model] == "CarryForwardSpace" or self.LastAction[carrier.Model] == "TakeOnPressForward") and pressure.Closest <= 25)
-	local forcedSafe = wingerEndLine or runningIntoSpaceDanger or (defensiveMood ~= "AggressiveRisk" and (pressure.Heavy or carriedFor >= holdLimit * 0.45 or self.Style:Risk() < 0.3))
+	local forcedSafe = wingerEndLine or runningIntoSpaceDanger or (defensiveMood ~= "AggressiveRisk" and (pressure.Heavy or pressure.Approaching and (pressure.ApproachingCount or 0) >= 2 or carriedFor >= holdLimit * 0.45 or self.Style:Risk() < 0.3))
 	local pass = canPass and AIPassingDecisionService.Choose(context, carrier, self.Style, self.Difficulty, forcedSafe) or nil
 	local inOpponentHalf = carrier.Pitch.Z >= PitchConfig.HALF_LENGTH
 	local passIsBackwards = pass ~= nil and pass.Kind == "Back" and (pass.ForwardGain or 0) < -8
@@ -687,6 +747,18 @@ function Service:_carrierDecision(context: any, carrier: any, assignment: any)
 	carrier.Model:SetAttribute("AIPassReceiver", pass and pass.Receiver and pass.Receiver.Model.Name or "")
 	carrier.Model:SetAttribute("AIPassKind", pass and pass.PassKind or "")
 	carrier.Model:SetAttribute("AIPassLaneClear", pass and pass.LaneClear or false)
+	if pass and pass.Receiver and pass.Score and pass.Score > -8 then
+		local last = self.PrePassCandidates[carrier.Model]
+		local stableSince = last and last.Receiver == pass.Receiver.Model and last.Since or now
+		self.PrePassCandidates[carrier.Model] = {Receiver = pass.Receiver.Model, Since = stableSince}
+		if now - stableSince >= (pressure.Approaching and .05 or .15) then
+			setPrePassIntent(pass.Receiver, carrier, pass.Target, "Candidate", pass.PassKind or "Ground", nil, math.clamp((pass.Score + 40) / 120, .35, .78), now)
+			clearPrePassCandidate(context, carrier, pass.Receiver)
+		end
+	else
+		self.PrePassCandidates[carrier.Model] = nil
+		clearPrePassCandidate(context, carrier, nil)
+	end
 	local preplannedOneTouch = oneTouchPassing > 0.72 and carriedFor <= math.max(0.22, minimumHoldTime * 0.75) and pass and pass.Safe and pass.Score > 18
 	local holdWindowDone = carriedFor >= minimumHoldTime or pressure.Heavy or pressure.Under or runningIntoSpaceDanger or forcedSafe or preplannedOneTouch
 	if pass and holdWindowDone and (runningIntoSpaceDanger or forcedSafe or preplannedOneTouch or pass.Kind ~= "Back" and pass.Score > (-8 - passTempo * 18) or pass.Kind == "Back" and pass.Score > 58 or carriedFor > math.max(minimumHoldTime, 0.16 - passTempo * 0.1)) then
@@ -784,7 +856,7 @@ function Service:_defensiveActions(context: any, assignmentsBySide: any, onlySid
 				local distanceToCarrier = PitchConfig.GetDistanceStuds(defender.World, carrier.World)
 				local closeAutoTackle = distanceToCarrier <= 8.75
 				local strikerEmergencyTackle = carrier.Role == "ST" and PitchConfig.GetDistanceStuds(defender.World, carrier.World) <= 18
-				if actionAllowed(assignment, "Tackle") and (closeAutoTackle or strikerEmergencyTackle or primary == "PressBallCarrier" or primary == "PressNextReceiver" or primary == "MidfieldPressSupport" or primary == "ContainBallCarrier" or primary == "CoverStep" or primary == "CarrierBreachPress" or primary == "EmergencyBoxContain" or primary == "BallSideDefenderStep" or primary == "CoverPresser" or primary == "CloseLongCarryGap" or primary == "EarlyCBPressPassTarget" or primary == "EarlyClosePassTargetPressure" or primary == "CenterBackPressureStriker" or primary == "AggressiveCBPressStriker" or primary == "AggressiveCBStepOut") then
+				if actionAllowed(assignment, "Tackle") and (closeAutoTackle or strikerEmergencyTackle or primary == "PressBallCarrier" or primary == "PressOutletLane" or primary == "PressCentralOutlet" or primary == "CentralMidfieldSqueeze" or primary == "PressNextReceiver" or primary == "MidfieldPressSupport" or primary == "ContainBallCarrier" or primary == "CoverStep" or primary == "CarrierBreachPress" or primary == "EmergencyBoxContain" or primary == "BallSideDefenderStep" or primary == "CoverPresser" or primary == "CloseLongCarryGap" or primary == "EarlyCBPressPassTarget" or primary == "EarlyClosePassTargetPressure" or primary == "CenterBackPressureStriker" or primary == "AggressiveCBPressStriker" or primary == "AggressiveCBStepOut") then
 					local canTackle, slide = AITacklingDecisionService.CanTackle(context, defender, carrier, self.Style)
 					if canTackle then
 						if self.BallService:Tackle(model, slide) then
