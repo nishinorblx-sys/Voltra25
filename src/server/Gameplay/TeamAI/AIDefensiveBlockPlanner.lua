@@ -201,7 +201,8 @@ function Planner:Build(context: any, side: string, style: any, intent: any): any
 		press = math.clamp(press + (tonumber(pressRules.Pressers) or 0) * .18, 0, 1)
 	end
 	local low = intentName == "LowBlock" or intentName == "ProtectLead"
-	local high = intentName == "HighPress" or intentName == "HighPressBuildUp" or intentName == "HighPressLocked" or intentName == "HighPressCompression"
+	local resetPress = intentName == "OpponentResetPress" or intentName ~= "PressBroken" and context.OpponentResetPress and context.OpponentResetPress[side] and context.OpponentResetPress[side].Active == true
+	local high = intentName == "HighPress" or intentName == "HighPressBuildUp" or intentName == "HighPressLocked" or intentName == "HighPressCompression" or resetPress
 	local compression = intentName == "HighPressCompression"
 	local boxMetrics = PenaltyBoxService.DefensiveBoxMetrics(side, context.Options)
 	local boxEdgeZ = tonumber(boxMetrics.BoxEdgeZ) or PitchConfig.Zones.OwnBox.ZMax
@@ -235,7 +236,9 @@ function Planner:Build(context: any, side: string, style: any, intent: any): any
 	local previousLine = self.LineStates[side]
 	local lineState = "HoldEdge"
 	local emergencyReason = ""
-	if low then
+	if resetPress then
+		lineState = "HoldEdge"
+	elseif low then
 		lineState = "LowBlock"
 	elseif throughPassBehind or intentName == "PressBroken" then
 		lineState = "EmergencyDrop"
@@ -258,8 +261,14 @@ function Planner:Build(context: any, side: string, style: any, intent: any): any
 	local nearBoxAnchor = clamp(boxEdgeZ + 8 + depthRatio * 14 - box * 4, boxEdgeZ + 4, boxEdgeZ + 24)
 	local lowAnchor = clamp(boxEdgeZ - 12 + depthRatio * 18, boxEdgeZ - 14, boxEdgeZ + 12)
 	local emergencyAnchor = tonumber(boxMetrics.EmergencyBoxAnchorZ) or math.max(28, boxEdgeZ - 48)
+	local resetData = context.OpponentResetPress and context.OpponentResetPress[side] or nil
+	local resetTarget = resetData and typeof(resetData.TargetPitch) == "Vector3" and resetData.TargetPitch or typeof(targetPitch) == "Vector3" and targetPitch or ball
+	local depthThreatAdjustment = dangerousRunnerBehind and 42 or throughPassBehind and 70 or 0
+	local minimumHighLineZ = clamp(PitchConfig.HALF_LENGTH - 28 + depthRatio * 36 + press * 28 - depthThreatAdjustment, PitchConfig.HALF_LENGTH - 42, PitchConfig.HALF_LENGTH + 36)
 	local minimumBackLineZ = edgeAnchor
-	if high then
+	if resetPress then
+		minimumBackLineZ = minimumHighLineZ
+	elseif high then
 		minimumBackLineZ = compression and 330 or 250
 	elseif lineState == "LowBlock" then
 		minimumBackLineZ = outsideBoxWithoutDepth and lowAnchor or math.max(emergencyAnchor, boxEdgeZ - 20)
@@ -284,6 +293,9 @@ function Planner:Build(context: any, side: string, style: any, intent: any): any
 	elseif lineState == "LowBlock" then
 		backZ = clamp(backZ, minimumBackLineZ, boxEdgeZ + 12)
 	end
+	if resetPress then
+		backZ = clamp(math.max(backZ, minimumHighLineZ), minimumHighLineZ, PitchConfig.HALF_LENGTH + 52)
+	end
 	if not high and (lineState == "StepToCarrier" or lineState == "HoldEdge") and ball.Z <= boxEdgeZ + 120 then
 		backZ = clamp(backZ, minimumBackLineZ, math.max(minimumBackLineZ, math.min(boxEdgeZ + 42, carrierPitch.Z - 12)))
 	end
@@ -292,7 +304,16 @@ function Planner:Build(context: any, side: string, style: any, intent: any): any
 	local midZ = clamp(backZ + backMidGap, 96, 540)
 	local forwardZ = clamp(midZ + midForwardGap, 138, 630)
 	local pressAnchorZ = ball.Z
-	if high then
+	if resetPress then
+		pressAnchorZ = clamp(resetTarget.Z, 500, 706)
+		local forwardMidGap = clamp(48 - compact * 8 - press * 6, 34, 52)
+		local midBackGap = clamp(56 - compact * 8 - press * 5, 38, 58)
+		forwardZ = clamp(pressAnchorZ - 8, PitchConfig.HALF_LENGTH + 38, 704)
+		midZ = clamp(forwardZ - forwardMidGap, PitchConfig.HALF_LENGTH + 2, 660)
+		backZ = clamp(math.max(midZ - midBackGap, minimumHighLineZ), minimumHighLineZ, 610)
+		backMidGap = midZ - backZ
+		midForwardGap = forwardZ - midZ
+	elseif high then
 		local threatZ = 0
 		local fastestThreat = 0
 		for _, opponent in ipairs(((context.Teams or {})[side == "Home" and "Away" or "Home"] or {}).List or {}) do
@@ -339,12 +360,13 @@ function Planner:Build(context: any, side: string, style: any, intent: any): any
 		forceDirection = tostring(pressRules.PressDirection)
 	end
 	local used: {[Model]: boolean} = {}
-	local primaryTarget = Vector3.new(ball.X + (ballSide == "Left" and 12 or ballSide == "Right" and -12 or 0), 3, clamp(ball.Z - 2, 48, PitchConfig.PITCH_LENGTH - 18))
+	local primaryAnchor = resetPress and resetTarget or ball
+	local primaryTarget = Vector3.new(primaryAnchor.X + (ballSide == "Left" and 12 or ballSide == "Right" and -12 or 0), 3, clamp(primaryAnchor.Z - 2, 48, PitchConfig.PITCH_LENGTH - 18))
 	local primary = nearestRole(context, side, {ST = true, Winger = true, CAM = true}, primaryTarget, used)
 	if primary then used[primary.Model] = true end
-	local nearOutlet = opponentClosest(context, side, {Fullback = true, Winger = true, CB = true, GK = true}, Vector3.new(ball.X, 3, ball.Z - 10), true)
-	local centralOutlet = opponentClosest(context, side, {CDM = true, CM = true, CAM = true}, Vector3.new(PitchConfig.HALF_WIDTH, 3, ball.Z - 26), false)
-	local farOutlet = opponentClosest(context, side, {CB = true, Fullback = true, GK = true}, Vector3.new(ballSide == "Left" and 318 or 106, 3, ball.Z - 8), true)
+	local nearOutlet = opponentClosest(context, side, {Fullback = true, Winger = true, CB = true, GK = true}, Vector3.new(primaryAnchor.X, 3, primaryAnchor.Z - 10), true)
+	local centralOutlet = opponentClosest(context, side, {CDM = true, CM = true, CAM = true}, Vector3.new(PitchConfig.HALF_WIDTH, 3, primaryAnchor.Z - 26), false)
+	local farOutlet = opponentClosest(context, side, {CB = true, Fullback = true, GK = true}, Vector3.new(ballSide == "Left" and 318 or 106, 3, primaryAnchor.Z - 8), true)
 	local nearOutletTarget = nearOutlet and Vector3.new(nearOutlet.Pitch.X + (PitchConfig.HALF_WIDTH - nearOutlet.Pitch.X) * .18, 3, clamp(nearOutlet.Pitch.Z - 12, midZ, forwardZ + 8)) or Vector3.new(ballSide == "Left" and 96 or 328, 3, clamp(ball.Z - 18, midZ, forwardZ))
 	local centralTarget = centralOutlet and Vector3.new(centralOutlet.Pitch.X, 3, clamp(centralOutlet.Pitch.Z - 14, midZ - 8, forwardZ)) or Vector3.new(PitchConfig.HALF_WIDTH, 3, clamp(ball.Z - 28, midZ - 4, forwardZ))
 	local farTarget = farOutlet and Vector3.new((farOutlet.Pitch.X + PitchConfig.HALF_WIDTH) * .5, 3, clamp(farOutlet.Pitch.Z - 14, midZ, forwardZ)) or Vector3.new(ballSide == "Left" and 294 or 130, 3, clamp(ball.Z - 24, midZ, forwardZ))
@@ -444,6 +466,19 @@ function Planner:Build(context: any, side: string, style: any, intent: any): any
 		EmergencyDropReason = emergencyReason,
 		ThreatResolved = threatResolved,
 		EdgeOfBoxPressure = lineState == "StepToCarrier",
+		OpponentResetPress = resetPress,
+		ResetPressStartedAt = resetData and resetData.StartedAt or 0,
+		ResetPressExpiresAt = resetData and resetData.ExpiresAt or 0,
+		ResetPressReceiver = resetData and resetData.Receiver or nil,
+		ResetPressReceiverName = resetData and resetData.ReceiverName or "",
+		ResetPassDirection = resetData and resetData.PassDirection or "",
+		ResetPressConfidence = resetData and resetData.Confidence or 0,
+		ResetPressState = resetData and resetData.State or "",
+		HighLineMinimumZ = minimumHighLineZ,
+		HighLineTargetZ = backZ,
+		HalfwayLock = resetPress and backZ >= PitchConfig.HALF_LENGTH - 24,
+		BlockCompressionState = resetPress and (backZ >= PitchConfig.HALF_LENGTH - 24 and "LockedAtHalfway" or "CompressingUp") or high and "HighPress" or lineState,
+		PressBrokenReason = emergencyReason,
 		Slots = slots,
 		GeneratedAt = now,
 		ExpiresAt = now + (high and .75 or 1.15),

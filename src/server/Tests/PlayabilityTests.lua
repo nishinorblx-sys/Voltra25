@@ -2206,6 +2206,136 @@ function Tests.Run(): any
 		for _, item in ipairs({carrier, outlet}) do item.Model:Destroy() end
 	end)
 
+	test("opponent reset press raises whole block before receiver control", function()
+		local options = {PitchCFrame = CFrame.new(), Width = PitchConfig.PITCH_WIDTH, Length = PitchConfig.PITCH_LENGTH, AttackSigns = {Home = 1, Away = -1}}
+		local function info(side: string, role: string, ownPitch: Vector3, name: string, pace: number?): any
+			local model = Instance.new("Model")
+			model.Name = name
+			model:SetAttribute("VTRTeam", side)
+			local root = Instance.new("Part")
+			root.Name = "HumanoidRootPart"
+			root.Position = PitchConfig.TeamPitchPositionToWorld(ownPitch, side, options)
+			root.Parent = model
+			return {Model = model, Root = root, Side = side, OpponentSide = side == "Home" and "Away" or "Home", Role = role, Pitch = ownPitch, World = root.Position, Stats = {pace = pace or 72, defending = 72}, Stamina = 86, IsGoalkeeper = role == "GK"}
+		end
+		local home = {
+			info("Home", "GK", Vector3.new(212, 3, 44), "HGK", 66),
+			info("Home", "ST", Vector3.new(212, 3, 408), "HST", 78),
+			info("Home", "Winger", Vector3.new(78, 3, 394), "HLW", 76),
+			info("Home", "Winger", Vector3.new(348, 3, 392), "HRW", 76),
+			info("Home", "CAM", Vector3.new(212, 3, 374), "HCAM", 74),
+			info("Home", "CM", Vector3.new(170, 3, 326), "HCM1", 72),
+			info("Home", "CM", Vector3.new(252, 3, 322), "HCM2", 72),
+			info("Home", "CDM", Vector3.new(212, 3, 286), "HCDM", 72),
+			info("Home", "CB", Vector3.new(154, 3, 220), "HCB1", 76),
+			info("Home", "CB", Vector3.new(270, 3, 218), "HCB2", 70),
+			info("Home", "Fullback", Vector3.new(76, 3, 232), "HLB", 74),
+			info("Home", "Fullback", Vector3.new(350, 3, 232), "HRB", 74),
+		}
+		local awayCM = info("Away", "CM", Vector3.new(212, 3, 360), "AwayCM", 70)
+		local awayCB1 = info("Away", "CB", Vector3.new(164, 3, 185), "AwayCB1", 68)
+		local awayCB2 = info("Away", "CB", Vector3.new(260, 3, 182), "AwayCB2", 68)
+		local awayGK = info("Away", "GK", Vector3.new(212, 3, 42), "AwayGK", 60)
+		local awayFB = info("Away", "Fullback", Vector3.new(76, 3, 206), "AwayFB", 72)
+		local awayDM = info("Away", "CDM", Vector3.new(212, 3, 245), "AwayDM", 70)
+		local awayST = info("Away", "ST", Vector3.new(212, 3, 430), "AwayST", 84)
+		local away = {awayCM, awayCB1, awayCB2, awayGK, awayFB, awayDM, awayST}
+		local context = {Now = 30, Owner = awayCM.Model, OwnerSide = "Away", BallWorld = awayCM.World, BallTeam = {Home = PitchConfig.WorldToTeamPitchPosition(awayCM.World, "Home", options), Away = awayCM.Pitch}, Teams = {Home = {List = home}, Away = {List = away}}, Players = {}, Options = options, PassInFlight = true, PassTargetTeam = {Home = PitchConfig.WorldToTeamPitchPosition(awayCB1.World, "Home", options), Away = awayCB1.Pitch}, LooseBall = false}
+		for _, item in ipairs(home) do context.Players[item.Model] = item end
+		for _, item in ipairs(away) do context.Players[item.Model] = item end
+		local style = {Ratio = function(_, key: string)
+			if key == "PressingIntensity" then return .82 end
+			if key == "DefensiveDepth" then return .72 end
+			if key == "BackLineCompactness" then return .78 end
+			if key == "ZoneDiscipline" then return .7 end
+			if key == "PressTriggerDistance" then return .76 end
+			return .58
+		end}
+		local director = AITacticalIntentDirector.new()
+		local intents = director:Update(context, {Home = style, Away = style}, nil, nil)
+		expectEqual(intents.Home.Intent, "OpponentResetPress", "Backward pass to center-back did not trigger reset press")
+		expect(context.OpponentResetPress and context.OpponentResetPress.Home and context.OpponentResetPress.Home.Active == true, "Reset press context was not exposed")
+		local planner = AIDefensiveBlockPlanner.new()
+		local block = planner:Build(context, "Home", style, intents.Home)
+		expect(block.OpponentResetPress == true, "Defensive block did not receive reset press")
+		expect(block.BackLineZ >= PitchConfig.HALF_LENGTH - 24, "Reset press back line did not rise toward halfway")
+		expect(block.MidBackGap >= 38 and block.MidBackGap <= 58, "Reset press midfield-back gap escaped range")
+		expect(block.ForwardMidGap >= 34 and block.ForwardMidGap <= 52, "Reset press forward-mid gap escaped range")
+		expect(block.TeamBlockDepth <= 145, "Reset press block stayed too stretched")
+		local assignments = AITacticalSlotAssignment.Assign(context, "Home", block.Slots)
+		AIDefensivePlan.Apply(context, "Home", assignments, intents.Home, block, {})
+		local active = 0
+		local midfieldUp = 0
+		local defendersHigh = 0
+		local deepCoverZ = nil
+		local otherBackZ = {}
+		local keeperZ = nil
+		local primaryTargetZ = nil
+		for model, assignment in pairs(assignments) do
+			local role = context.Players[model] and context.Players[model].Role
+			local primary = tostring(assignment.PrimaryAssignment or "")
+			if primary == "PressBallCarrier" then primaryTargetZ = assignment.TargetPitch.Z end
+			if primary == "PressBallCarrier" or primary == "PressOutletLane" or primary == "PressCentralOutlet" or primary == "MidfieldPressSupport" or primary == "CentralMidfieldSqueeze" or primary == "BlockFarReturn" then active += 1 end
+			if role == "CM" or role == "CDM" or role == "CAM" then
+				if assignment.TargetPitch.Z >= PitchConfig.HALF_LENGTH + 2 then midfieldUp += 1 end
+			elseif role == "CB" or role == "Fullback" then
+				if primary == "DeepCover" then
+					deepCoverZ = assignment.TargetPitch.Z
+				else
+					table.insert(otherBackZ, assignment.TargetPitch.Z)
+					if assignment.TargetPitch.Z >= PitchConfig.HALF_LENGTH - 24 then defendersHigh += 1 end
+				end
+			elseif role == "GK" then
+				keeperZ = assignment.TargetPitch.Z
+			end
+		end
+		expect(primaryTargetZ ~= nil and primaryTargetZ >= context.PassTargetTeam.Home.Z - 14, "Primary presser did not target reset receiver before control")
+		expect(active >= 3, "Reset press did not assign enough active pressure and outlet-blocking duties")
+		expect(midfieldUp >= 2, "Midfield line did not move upward behind press")
+		expect(defendersHigh >= 3, "At least three defenders did not rise toward halfway")
+		expect(deepCoverZ ~= nil, "Reset press did not keep one deep cover")
+		for _, z in ipairs(otherBackZ) do expect(deepCoverZ <= z - 6, "Deep cover was not slightly behind the raised line") end
+		expect(keeperZ ~= nil and keeperZ >= block.BackLineZ - 90 and keeperZ < block.BackLineZ, "Goalkeeper did not advance behind reset high line")
+		context.Now = 30.7
+		context.Owner = awayCB1.Model
+		context.BallWorld = awayCB1.World
+		context.BallTeam = {Home = PitchConfig.WorldToTeamPitchPosition(awayCB1.World, "Home", options), Away = awayCB1.Pitch}
+		context.PassTargetTeam = {Home = PitchConfig.WorldToTeamPitchPosition(awayCB2.World, "Home", options), Away = awayCB2.Pitch}
+		local sidewaysIntent = director:Update(context, {Home = style, Away = style}, nil, nil)
+		expectEqual(sidewaysIntent.Home.Intent, "OpponentResetPress", "Sideways center-back pass incorrectly released reset press")
+		local sideways = planner:Build(context, "Home", style, sidewaysIntent.Home)
+		expect(sideways.BackLineZ >= PitchConfig.HALF_LENGTH - 24, "Line retreated after sideways center-back recycle")
+		expect(math.abs(sideways.BlockCenter.X - block.BlockCenter.X) > 4, "Block did not shift sideways with reset circulation")
+		context.Now = 31.4
+		context.Owner = awayCB2.Model
+		context.BallWorld = awayCB2.World
+		context.BallTeam = {Home = PitchConfig.WorldToTeamPitchPosition(awayCB2.World, "Home", options), Away = awayCB2.Pitch}
+		context.PassTargetTeam = {Home = PitchConfig.WorldToTeamPitchPosition(awayGK.World, "Home", options), Away = awayGK.Pitch}
+		local keeperIntent = director:Update(context, {Home = style, Away = style}, nil, nil)
+		expectEqual(keeperIntent.Home.Intent, "OpponentResetPress", "Backward pass to goalkeeper did not preserve reset press")
+		local keeperBlock = planner:Build(context, "Home", style, keeperIntent.Home)
+		expect(keeperBlock.BackLineZ >= sideways.BackLineZ - 2, "Line dropped before goalkeeper received reset")
+		context.Now = 32.2
+		context.Owner = awayGK.Model
+		context.BallWorld = awayGK.World
+		context.BallTeam = {Home = PitchConfig.WorldToTeamPitchPosition(awayGK.World, "Home", options), Away = awayGK.Pitch}
+		context.PassTargetTeam = {Home = Vector3.new(212, 3, PitchConfig.HALF_LENGTH - 34), Away = PitchConfig.WorldToTeamPitchPosition(PitchConfig.TeamPitchPositionToWorld(Vector3.new(212, 3, PitchConfig.HALF_LENGTH - 34), "Home", options), "Away", options)}
+		local brokenIntent = director:Update(context, {Home = style, Away = style}, nil, nil)
+		expectEqual(brokenIntent.Home.Intent, "PressBroken", "Long pass behind high line did not break reset press")
+		local brokenBlock = planner:Build(context, "Home", style, brokenIntent.Home)
+		expect(brokenBlock.DefensiveLineState == "EmergencyDrop", "Broken reset press did not coordinate recovery")
+		context.Now = 34
+		context.PassInFlight = false
+		context.Owner = awayDM.Model
+		context.BallWorld = awayDM.World
+		context.BallTeam = {Home = PitchConfig.WorldToTeamPitchPosition(awayDM.World, "Home", options), Away = awayDM.Pitch}
+		context.PassTargetTeam = {Home = nil, Away = nil}
+		local throughIntent = director:Update(context, {Home = style, Away = style}, nil, nil)
+		expect(throughIntent.Home.Intent ~= "OpponentResetPress", "Completed midfield escape kept reset press locked")
+		for _, item in ipairs(home) do item.Model:Destroy() end
+		for _, item in ipairs(away) do item.Model:Destroy() end
+	end)
+
 	test("client gameplay modules load", function()
 		local root = StarterPlayer.StarterPlayerScripts.VTRClient
 		local input = require(root.Gameplay.InputController)

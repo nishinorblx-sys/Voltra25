@@ -97,6 +97,7 @@ function Plan.Apply(context: any, side: string, assignments: any, intent: any, b
 		or tostring(intent and intent.Intent or "") == "HighPressBuildUp"
 		or tostring(intent and intent.Intent or "") == "HighPressLocked"
 		or tostring(intent and intent.Intent or "") == "HighPressCompression"
+		or tostring(intent and intent.Intent or "") == "OpponentResetPress"
 	for model, assignment in pairs(assignments) do
 		local slot = assignment.TacticalSlot
 		if slot and slot.Id == "goalkeeper-sweeper-cover" then
@@ -111,7 +112,12 @@ function Plan.Apply(context: any, side: string, assignments: any, intent: any, b
 			assignment.PrimaryAssignment = "PressBallCarrier"
 			assignment.MovementUrgency = 1
 			assignment.SprintAllowed = true
-			if block and carrier then
+			if block and block.OpponentResetPress == true then
+				assignment.TargetPitch = slot.TargetPitch
+				assignment.TargetWorld = PitchConfig.TeamPitchPositionToWorld(assignment.TargetPitch, side, context.Options)
+				assignment.MovementTarget = assignment.TargetWorld
+				assignment.FaceWorld = assignment.TargetWorld
+			elseif block and carrier then
 				local target = slot.TargetPitch
 				local force = tostring(block.ForceDirection or "")
 				if force == "TouchlineLeft" then
@@ -331,6 +337,19 @@ function Plan.Apply(context: any, side: string, assignments: any, intent: any, b
 			model:SetAttribute("AIEmergencyDropReason", block.EmergencyDropReason or "")
 			model:SetAttribute("AIThreatResolved", block.ThreatResolved == true)
 			model:SetAttribute("AIEdgeOfBoxPressure", block.EdgeOfBoxPressure == true)
+			model:SetAttribute("AIOpponentResetPress", block.OpponentResetPress == true)
+			model:SetAttribute("AIResetPressReceiver", block.ResetPressReceiverName or "")
+			model:SetAttribute("AIResetPressStartedAt", block.ResetPressStartedAt or 0)
+			model:SetAttribute("AIResetPressConfidence", block.ResetPressConfidence or 0)
+			model:SetAttribute("AIHighLineMinimumZ", block.HighLineMinimumZ or 0)
+			model:SetAttribute("AIHighLineTargetZ", block.HighLineTargetZ or 0)
+			model:SetAttribute("AIHighLineCurrentZ", block.BackLineZ or 0)
+			model:SetAttribute("AIHalfwayLock", block.HalfwayLock == true)
+			model:SetAttribute("AIBlockCompressionState", block.BlockCompressionState or "")
+			model:SetAttribute("AIForwardMidfieldGap", block.ForwardMidGap or 0)
+			model:SetAttribute("AIMidfieldBackGap", block.MidBackGap or 0)
+			model:SetAttribute("AITotalBlockDepth", block.TeamBlockDepth or 0)
+			model:SetAttribute("AIPressBrokenReason", block.PressBrokenReason or "")
 		end
 	end
 	local activePressers = 0

@@ -294,7 +294,9 @@ function Engine:_buildAssignments(context: any)
 				AIRunCoordinator.Apply(context, side, sideAssignments, plan, self.Styles[side])
 			else
 				AIDefensivePlan.Apply(context, side, sideAssignments, intents[side], block, self.DefensiveDuties[side])
-				AIDefensivePlan.ApplyIncomingPass(context, side, sideAssignments, self.DefensiveDuties[side])
+				if not (block and block.OpponentResetPress == true) then
+					AIDefensivePlan.ApplyIncomingPass(context, side, sideAssignments, self.DefensiveDuties[side])
+				end
 			end
 			assignments[side] = sideAssignments
 		end
@@ -442,11 +444,19 @@ function Engine:Step(dt: number)
 	self:_publishTeamContext(context)
 	self.TeamBrain:Declare(context)
 	local passStateKey = context.PassInFlight and (tostring(self.Ball:GetAttribute("VTRPassStartedAt") or "") .. ":" .. tostring(self.Ball:GetAttribute("VTRPassReceiver") or "") .. ":" .. tostring(self.Ball:GetAttribute("VTRTrajectoryId") or "")) or ""
+	local passChanged = context.PassInFlight and passStateKey ~= self.LastPassStateKey
+	if passChanged then
+		local start = os.clock()
+		self.CurrentIntents = self.Intent:Update(context, self.Styles, self.Spatial, self.Memory)
+		self.Metrics:Sample("IntentMs", os.clock() - start)
+		self.Accum.Intent = 0
+		self:_publishTeamContext(context)
+	end
 	local pressStateKey = self:_pressStateKey(context)
-	local highPressLive = (self.CurrentIntents.Home and tostring(self.CurrentIntents.Home.Intent):find("HighPress") ~= nil) or (self.CurrentIntents.Away and tostring(self.CurrentIntents.Away.Intent):find("HighPress") ~= nil)
+	local highPressLive = (self.CurrentIntents.Home and (tostring(self.CurrentIntents.Home.Intent):find("HighPress") ~= nil or tostring(self.CurrentIntents.Home.Intent) == "OpponentResetPress")) or (self.CurrentIntents.Away and (tostring(self.CurrentIntents.Away.Intent):find("HighPress") ~= nil or tostring(self.CurrentIntents.Away.Intent) == "OpponentResetPress"))
 	self.Accum.Press += dt
 	local urgentPress = highPressLive and (pressStateKey ~= self.LastPressStateKey or self.Accum.Press >= .06)
-	local urgent = context.LooseBall or context.PassInFlight or passStateKey ~= self.LastPassStateKey or urgentPress
+	local urgent = context.LooseBall or context.PassInFlight or passChanged or urgentPress
 	self.LastPassStateKey = passStateKey
 	if urgentPress then
 		self.Accum.Press = 0
