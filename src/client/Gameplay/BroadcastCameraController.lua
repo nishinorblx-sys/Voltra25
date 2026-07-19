@@ -666,18 +666,20 @@ function Controller:ApplySettings(settings: any, deviceProfile: any?)
 	self.SideSign = settings.CameraSide == "Far" and -1 or 1
 end
 
-function Controller:SetTacticalView(active: boolean)
+function Controller:SetTacticalView(active: boolean, topDown: boolean?)
 	self.TacticalView = active == true
+	self.TacticalTopDown = topDown == true
 	if self.TacticalView then
 		self.ShootingFocus = false
 		self.TacticalFocusLocal = self.TacticalFocusLocal or Vector3.zero
 		self.TacticalYaw = self.TacticalYaw or 0
 		self.TacticalHeight = self.TacticalHeight or math.max(self.Length * 0.82, 150)
-		self.TacticalDistance = self.TacticalDistance or math.max(self.Width * 0.28, 110)
+		self.TacticalDistance = self.TacticalTopDown and 0.1 or self.TacticalDistance or math.max(self.Width * 0.28, 110)
 		self.Camera.CameraType = Enum.CameraType.Scriptable
-		self.Camera.FieldOfView = 58
+		self.Camera.FieldOfView = self.TacticalTopDown and 70 or 58
 	else
 		self.TacticalCFrame = nil
+		self.TacticalTopDown = false
 	end
 end
 
@@ -730,13 +732,21 @@ function Controller:_updateTactical(dt: number)
 	end
 	local focusLocal = self.TacticalFocusLocal or Vector3.zero
 	local wheelZoom = self:_wheelZoom()
-	local orbit = CFrame.Angles(0, yaw, 0):VectorToWorldSpace(Vector3.new(self.Width * 0.10, 0, (self.TacticalDistance or math.max(self.Width * 0.28, 110)) + wheelZoom * 12))
-	local positionLocal = focusLocal + Vector3.new(orbit.X, math.clamp(self.TacticalHeight + wheelZoom * 7, math.max(90, self.Length * 0.18), math.max(240, self.Length)), orbit.Z)
 	local focus = self.PitchCFrame:PointToWorldSpace(focusLocal + Vector3.new(0, 4, 0))
-	local position = self.PitchCFrame:PointToWorldSpace(positionLocal)
-	self.TacticalCFrame = CFrame.lookAt(position, focus, self.PitchCFrame.UpVector)
+	local targetFov = math.clamp(58 + wheelZoom * 0.9, 46, 66)
+	if self.TacticalTopDown then
+		local height = math.clamp((self.TacticalHeight or math.max(self.Length * 0.82, 150)) + wheelZoom * 10, math.max(145, self.Length * 0.32), math.max(280, self.Length * 1.08))
+		local position = self.PitchCFrame:PointToWorldSpace(focusLocal + Vector3.new(0, height, 0.05))
+		self.TacticalCFrame = CFrame.lookAt(position, focus, -self.PitchCFrame.LookVector)
+		targetFov = math.clamp(70 + wheelZoom * 0.65, 52, 78)
+	else
+		local orbit = CFrame.Angles(0, yaw, 0):VectorToWorldSpace(Vector3.new(self.Width * 0.10, 0, (self.TacticalDistance or math.max(self.Width * 0.28, 110)) + wheelZoom * 12))
+		local positionLocal = focusLocal + Vector3.new(orbit.X, math.clamp(self.TacticalHeight + wheelZoom * 7, math.max(90, self.Length * 0.18), math.max(240, self.Length)), orbit.Z)
+		local position = self.PitchCFrame:PointToWorldSpace(positionLocal)
+		self.TacticalCFrame = CFrame.lookAt(position, focus, self.PitchCFrame.UpVector)
+	end
 	self.Camera.CFrame = self.Camera.CFrame:Lerp(self.TacticalCFrame, 1 - math.exp(-10 * dt))
-	self.Camera.FieldOfView += (math.clamp(58 + wheelZoom * 0.9, 46, 66) - self.Camera.FieldOfView) * (1 - math.exp(-7 * dt))
+	self.Camera.FieldOfView += (targetFov - self.Camera.FieldOfView) * (1 - math.exp(-7 * dt))
 end
 
 function Controller:_updatePro(dt: number, root: BasePart)

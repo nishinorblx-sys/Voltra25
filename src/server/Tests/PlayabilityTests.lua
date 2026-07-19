@@ -5,7 +5,10 @@ local StarterPlayer = game:GetService("StarterPlayer")
 
 local Shared = ReplicatedStorage.VTR.Shared
 local ActionTuning = require(Shared.ActionTuningConfig)
+local AIBehaviorTuning = require(Shared.AIBehaviorTuningConfig)
 local AITactic = require(Shared.AITacticConfig)
+local AIPlaystyleConfig = require(Shared.AIPlaystyleConfig)
+local AIPlaystyleResolver = require(Shared.AIPlaystyleResolver)
 local AIMovementProfiles = require(Shared.AIMovementProfileConfig)
 local BallContact = require(Shared.BallContactResolver)
 local PassFlightModel = require(Shared.PassFlightModel)
@@ -31,6 +34,16 @@ local Tackle = require(Shared.TackleResolver)
 local DebugPolicy = require(script.Parent.Parent.Gameplay.GameplayDebugPolicy)
 local AIDifficulty = require(script.Parent.Parent.Gameplay.AIDifficultyService)
 local AIMovementExecutor = require(script.Parent.Parent.Gameplay.AIMovementExecutor)
+local PitchConfig = require(script.Parent.Parent.Gameplay.PitchConfig)
+local AISpatialControlMap = require(script.Parent.Parent.Gameplay.TeamAI.AISpatialControlMap)
+local AITacticalIntentDirector = require(script.Parent.Parent.Gameplay.TeamAI.AITacticalIntentDirector)
+local AIPositionalStructurePlanner = require(script.Parent.Parent.Gameplay.TeamAI.AIPositionalStructurePlanner)
+local AITacticalSlotAssignment = require(script.Parent.Parent.Gameplay.TeamAI.AITacticalSlotAssignment)
+local AIPossessionDirector = require(script.Parent.Parent.Gameplay.TeamAI.AIPossessionDirector)
+local AITeamMemory = require(script.Parent.Parent.Gameplay.TeamAI.AITeamMemory)
+local AIDefensiveBlockPlanner = require(script.Parent.Parent.Gameplay.TeamAI.AIDefensiveBlockPlanner)
+local AIDefensivePlan = require(script.Parent.Parent.Gameplay.TeamAI.AIDefensivePlan)
+local PassArrivalPlanner = require(script.Parent.Parent.Gameplay.PassArrivalPlanner)
 local MatchClock = require(script.Parent.Parent.Gameplay.MatchClockService)
 local PassReceptionRuntime = require(script.Parent.Parent.Gameplay.PassReceptionService)
 local ReplayRestartGate = require(script.Parent.Parent.Gameplay.ReplayRestartGate)
@@ -76,6 +89,27 @@ function Tests.Run(): any
 		expect(MatchExperience.Get("Standard").Duration <= 10, "Standard duration escaped budget")
 		expect(MatchExperience.Get("Broadcast").Duration <= 25, "Broadcast duration escaped budget")
 		expect(MatchExperience.Get("Acquisition").Duration ~= 66, "Legacy 66-second path remains")
+	end)
+
+	test("AI LAB playstyle schema normalizes high-impact controls", function()
+		local draft = AIPlaystyleConfig.DraftFromTactics("Aggressive Stage Test", {PresetId = "high_press", Sliders = {PressingIntensity = 93, DefensiveDepth = 82, LooseBallAggression = 88}}, 123)
+		expectEqual(draft.Status, "Draft", "Draft status changed")
+		expectEqual(draft.Tactics.PresetId, "high_press", "Draft preset changed")
+		expectEqual(draft.Tactics.Sliders.PressingIntensity, 93, "Pressing value did not normalize")
+		local metadata = AIPlaystyleConfig.ClientMetadata()
+		expectEqual(#metadata.HighImpactSettings, 10, "AI LAB does not expose exactly 10 high-impact settings")
+	end)
+
+	test("AI LAB published versions resolve immutably by side", function()
+		local first = AIPlaystyleConfig.Normalize({Name = "Stage Build", PlaystyleId = "stage_build", Status = "Published", Version = 1, Tactics = {PresetId = "short_possession"}}, 456)
+		local second = AIPlaystyleConfig.Normalize({Name = "Stage Build", PlaystyleId = "stage_build", Status = "Published", Version = 2, Tactics = {PresetId = "vertical_combination"}}, 456)
+		local repository = {Published = {stage_build = {["1"] = first, ["2"] = second}}, Assignments = {Home = {PlaystyleId = "stage_build", Version = 1}, Away = {PlaystyleId = "stage_build", Version = 2}}}
+		local home = AIPlaystyleResolver.ResolveSide("Home", repository)
+		local away = AIPlaystyleResolver.ResolveSide("Away", repository)
+		expectEqual(home.PlaystyleVersion, 1, "Home did not resolve assigned immutable version")
+		expectEqual(home.PresetId, "short_possession", "Home resolved wrong version tactic")
+		expectEqual(away.PlaystyleVersion, 2, "Away did not resolve assigned immutable version")
+		expectEqual(away.PresetId, "vertical_combination", "Away resolved wrong version tactic")
 	end)
 
 	test("movement ranges", function()
@@ -140,6 +174,177 @@ function Tests.Run(): any
 		for _ = 1, 30 do service:Step(model, .1, {SprintRequested = false, SprintAllowed = true, MoveMagnitude = 0, CurrentSpeed = 0}) end
 		expect(drained < Stamina.Maximum and (tonumber(model:GetAttribute("VTRSprintEnergy")) or 0) > drained, "AI sprint did not drain and recover")
 		model:Destroy()
+	end)
+
+	test("team intelligence spatial map resolves controlled far-side space", function()
+		local function player(side: string, role: string, pitch: Vector3): any
+			local model = Instance.new("Model")
+			model:SetAttribute("VTRTeam", side)
+			local root = Instance.new("Part")
+			root.Name = "HumanoidRootPart"
+			root.Anchored = true
+			root.Position = pitch
+			root.Parent = model
+			return {Model = model, Root = root, Side = side, Role = role, Pitch = pitch, World = pitch, Stats = {pace = 70}, Stamina = 80}
+		end
+		local homeA = player("Home", "Winger", Vector3.new(58, 3, 420))
+		local homeB = player("Home", "CM", Vector3.new(190, 3, 320))
+		local awayA = player("Away", "CB", Vector3.new(74, 3, 420))
+		local awayB = player("Away", "Fullback", Vector3.new(112, 3, 390))
+		local context = {
+			Now = 10,
+			BallTeam = {Home = Vector3.new(70, 3, 390), Away = Vector3.new(354, 3, 314)},
+			Teams = {
+				Home = {List = {homeA, homeB}},
+				Away = {List = {awayA, awayB}},
+			},
+		}
+		local map = AISpatialControlMap.new()
+		map:Update(context)
+		expectEqual(#map.Cells, 273, "Spatial map cell count changed")
+		local far = map:BestCell("Home", 360, true)
+		expect(far ~= nil, "Far-side space was not found")
+		expect(far.Point.X > PitchConfig.HALF_WIDTH, "Far-side best cell did not switch away from pressure")
+		for _, info in {homeA, homeB, awayA, awayB} do info.Model:Destroy() end
+	end)
+
+	test("team intelligence intent persists across minor owner movement", function()
+		local style = {Ratio = function(_, key: string) if key == "PassingDirectness" then return .3 elseif key == "CounterAttackFrequency" then return .2 elseif key == "AttackingWidth" then return .55 elseif key == "PressingIntensity" then return .4 elseif key == "DefensiveDepth" then return .5 end return .5 end}
+		local director = AITacticalIntentDirector.new()
+		local memory = AITeamMemory.new()
+		local context = {Now = 5, OwnerSide = "Home", Owner = nil, LooseBall = false, MatchState = "HomePossession", BallTeam = {Home = Vector3.new(210, 3, 130), Away = Vector3.new(214, 3, 574)}, DefensivePress = {Home = {}, Away = {Active = false}}}
+		local first = director:Update(context, {Home = style, Away = style}, nil, memory)
+		expectEqual(first.Home.Intent, "BuildOut", "Initial build-out intent")
+		context.Now = 5.2
+		context.BallTeam.Home = Vector3.new(216, 3, 146)
+		local second = director:Update(context, {Home = style, Away = style}, nil, memory)
+		expectEqual(second.Home.Intent, "BuildOut", "Intent switched inside commitment window")
+	end)
+
+	test("team intelligence slot assignment preserves user and fills rest defense", function()
+		local function info(name: string, role: string, pitch: Vector3, user: boolean?): any
+			local model = Instance.new("Model")
+			model.Name = name
+			model:SetAttribute("VTRTeam", "Home")
+			local root = Instance.new("Part")
+			root.Name = "HumanoidRootPart"
+			root.Anchored = true
+			root.Position = pitch
+			root.Parent = model
+			return {Model = model, Root = root, Side = "Home", Role = role, Pitch = pitch, World = pitch, BasePitch = pitch, Stats = {pace = 65}, Stamina = 80, IsUserControlled = user == true}
+		end
+		local players = {
+			info("User", "CM", Vector3.new(210, 3, 230), true),
+			info("CB1", "CB", Vector3.new(120, 3, 95)),
+			info("CB2", "CB", Vector3.new(300, 3, 95)),
+			info("DM", "CDM", Vector3.new(210, 3, 155)),
+			info("W", "Winger", Vector3.new(52, 3, 310)),
+			info("ST", "ST", Vector3.new(210, 3, 440)),
+		}
+		local style = {Ratio = function(_, key: string) if key == "AttackingWidth" then return .75 elseif key == "SupportDistance" then return .45 elseif key == "DefensiveDepth" then return .5 end return .5 end}
+		local context = {OwnerSide = "Home", BallTeam = {Home = Vector3.new(185, 3, 210)}, BallWorld = Vector3.new(185, 3, 210), Teams = {Home = {List = players}}, Options = {PitchCFrame = CFrame.new(), Width = PitchConfig.PITCH_WIDTH, Length = PitchConfig.PITCH_LENGTH}}
+		local slots = AIPositionalStructurePlanner.Build(context, "Home", style, {Intent = "BuildOut"}, nil)
+		local assignments = AITacticalSlotAssignment.Assign(context, "Home", slots)
+		expect(assignments[players[1].Model] == nil, "User-controlled footballer received AI slot")
+		local rest = false
+		for model, assignment in pairs(assignments) do
+			if assignment.TacticalSlot and assignment.TacticalSlot.RestDefense == true then rest = true end
+			expect(model:GetAttribute("AITacticalSlot") ~= nil, "Assigned player missing tactical slot attribute")
+		end
+		expect(rest, "No rest-defense slot assigned")
+		for _, playerInfo in players do playerInfo.Model:Destroy() end
+	end)
+
+	test("team intelligence possession plan survives owner change", function()
+		local director = AIPossessionDirector.new()
+		local memory = AITeamMemory.new()
+		local context = {Now = 20, Owner = Instance.new("Model")}
+		local first = director:Update(context, "Home", {Intent = "SwitchPlay"}, nil, memory)
+		context.Now = 21
+		context.Owner = Instance.new("Model")
+		local second = director:Update(context, "Home", {Intent = "SwitchPlay"}, nil, memory)
+		expect(first == second, "Possession plan reset on owner change")
+		expectEqual(second.Route[2], "far-side-switch", "Switch route changed")
+		first.Owner:Destroy()
+		context.Owner:Destroy()
+	end)
+
+	test("defensive block planner keeps compact line gaps and tactic differences", function()
+		local style = {Ratio = function(_, key: string) if key == "DefensiveWidth" then return .45 elseif key == "DefensiveDepth" then return .5 elseif key == "BackLineCompactness" then return .75 elseif key == "ZoneDiscipline" then return .7 elseif key == "BoxProtection" then return .65 elseif key == "LaneBlocking" then return .75 elseif key == "PressingIntensity" then return .45 end return .5 end}
+		local highStyle = {Ratio = function(_, key: string) if key == "DefensiveDepth" then return .9 elseif key == "PressingIntensity" then return .95 elseif key == "BackLineCompactness" then return .55 end return .55 end}
+		local function defender(role: string, pitch: Vector3): any
+			local model = Instance.new("Model")
+			local root = Instance.new("Part")
+			root.Name = "HumanoidRootPart"
+			root.Position = pitch
+			root.Parent = model
+			return {Model = model, Root = root, Side = "Away", Role = role, Pitch = pitch, World = pitch, Stats = {pace = 65}, Stamina = 80}
+		end
+		local list = {defender("ST", Vector3.new(210, 3, 500)), defender("CM", Vector3.new(180, 3, 360)), defender("CDM", Vector3.new(220, 3, 310)), defender("CB", Vector3.new(150, 3, 170)), defender("CB", Vector3.new(270, 3, 170)), defender("Fullback", Vector3.new(70, 3, 185)), defender("Fullback", Vector3.new(350, 3, 185))}
+		local context = {Now = 1, BallTeam = {Away = Vector3.new(75, 3, 360)}, Teams = {Away = {List = list}}}
+		local planner = AIDefensiveBlockPlanner.new()
+		local mid = planner:Build(context, "Away", style, {Intent = "MidBlock"})
+		local high = planner:Build(context, "Away", highStyle, {Intent = "HighPress"})
+		expect(mid.MidfieldLineZ - mid.BackLineZ >= 36 and mid.MidfieldLineZ - mid.BackLineZ <= 58, "Mid-block back-to-mid gap escaped range")
+		expect(mid.ForwardLineZ - mid.MidfieldLineZ >= 40 and mid.ForwardLineZ - mid.MidfieldLineZ <= 68, "Mid-block mid-to-forward gap escaped range")
+		expect(high.BackLineZ > mid.BackLineZ, "High press did not raise the back line")
+		expect(mid.FarSideTuck >= 20, "Far-side tuck missing")
+		expect(mid.ConcededLane == "SideOrBack", "Safe circulation lane not conceded")
+		for _, item in list do item.Model:Destroy() end
+	end)
+
+	test("incoming pass defense creates coordinated single duties", function()
+		local function makeInfo(side: string, role: string, pitch: Vector3): any
+			local model = Instance.new("Model")
+			model:SetAttribute("VTRTeam", side)
+			local root = Instance.new("Part")
+			root.Name = "HumanoidRootPart"
+			root.Position = pitch
+			root.Parent = model
+			return {Model = model, Root = root, Side = side, Role = role, Pitch = pitch, World = pitch, Stats = {pace = 70}, Stamina = 85}
+		end
+		local receiver = makeInfo("Home", "CM", Vector3.new(210, 3, 360))
+		receiver.Model:SetAttribute("VTRReceiveIntercept", Vector3.new(212, 3, 362))
+		receiver.Model:SetAttribute("VTRReceiveUntil", 12)
+		local defenders = {makeInfo("Away", "CDM", Vector3.new(210, 3, 330)), makeInfo("Away", "CB", Vector3.new(185, 3, 250)), makeInfo("Away", "CM", Vector3.new(245, 3, 335)), makeInfo("Away", "Fullback", Vector3.new(330, 3, 275))}
+		local players: any = {[receiver.Model] = receiver}
+		local assignments = {}
+		for _, info in defenders do
+			players[info.Model] = info
+			assignments[info.Model] = {PrimaryAssignment = "HoldBackLineZone", TargetWorld = info.World, MovementTarget = info.World, MovementUrgency = .7, SprintAllowed = false}
+		end
+		local context = {Now = 10, PassInFlight = true, BallWorld = Vector3.new(180, 3, 330), Teams = {Home = {List = {receiver}}, Away = {List = defenders}}, Players = players, Options = {PitchCFrame = CFrame.new(), Width = PitchConfig.PITCH_WIDTH, Length = PitchConfig.PITCH_LENGTH}}
+		AIDefensivePlan.ApplyIncomingPass(context, "Away", assignments, {})
+		local counts = {AttackPassTrajectory = 0, TrackIncomingReceiver = 0, BlockReturnPass = 0}
+		for _, assignment in pairs(assignments) do
+			if counts[assignment.PrimaryAssignment] ~= nil then counts[assignment.PrimaryAssignment] += 1 end
+		end
+		expect(counts.AttackPassTrajectory == 1, "Incoming pass did not create one trajectory attacker")
+		expect(counts.TrackIncomingReceiver <= 1, "Incoming pass created multiple receiver trackers")
+		expect(counts.BlockReturnPass <= 1, "Incoming pass created multiple return blockers")
+		receiver.Model:Destroy()
+		for _, info in defenders do info.Model:Destroy() end
+	end)
+
+	test("pass arrival planner selects locomotion from timing deficit", function()
+		local receiver = Instance.new("Model")
+		receiver:SetAttribute("PAC", 70)
+		receiver:SetAttribute("BallControl", 72)
+		receiver:SetAttribute("VTRSprintEnergy", 100)
+		local root = Instance.new("Part")
+		root.Name = "HumanoidRootPart"
+		root.Position = Vector3.new(0, 3, 0)
+		root.Parent = receiver
+		local jog = PassArrivalPlanner.Solve({ReceiverModel = receiver, Target = Vector3.new(8, 3, 0), BallETA = 1.4, PassFamily = "Ground"})
+		local run = PassArrivalPlanner.Solve({ReceiverModel = receiver, Target = Vector3.new(18, 3, 0), BallETA = 1.0, PassFamily = "Ground"})
+		local sprint = PassArrivalPlanner.Solve({ReceiverModel = receiver, Target = Vector3.new(30, 3, 0), BallETA = 1.0, PassFamily = "Through"})
+		local impossible = PassArrivalPlanner.Solve({ReceiverModel = receiver, Target = Vector3.new(85, 3, 0), BallETA = .6, PassFamily = "Ground"})
+		expect(jog and jog.SelectedLocomotionMode == "Jog", "Jog-reachable pass did not select Jog")
+		expect(run and run.SelectedLocomotionMode == "Run", "Run-reachable pass did not select Run")
+		expect(sprint and sprint.SelectedLocomotionMode == "SprintBurst", "Sprint-required pass did not select SprintBurst")
+		expect(impossible and impossible.Reachable == false, "Impossible pass was marked reachable")
+		expect(jog.BrakingDistance >= 0 and jog.FirstTouchIntent ~= nil, "Ground route missing braking or touch state")
+		receiver:Destroy()
 	end)
 
 	test("AI sprint bursts recover after cooldown", function()
@@ -563,6 +768,52 @@ function Tests.Run(): any
 		end
 		expectEqual(AITactic.Normalize({Identity = "Tiki Taka"}).PresetId, "short_possession", "Legacy possession migration")
 		expectEqual(AITactic.Normalize({Identity = "Park The Bus"}).PresetId, "low_block_counter", "Legacy low-block migration")
+	end)
+
+	test("AI behavior tuning metadata is valid", function()
+		local seen: any = {}
+		local categories: any = {}
+		for _, category in AIBehaviorTuning.Categories do categories[category] = true end
+		for _, meta in AIBehaviorTuning.All() do
+			expect(not seen[meta.Id], "Duplicate AI behavior setting " .. meta.Id)
+			seen[meta.Id] = true
+			expect(type(meta.Label) == "string" and #meta.Label > 0, "Missing label for " .. meta.Id)
+			expect(categories[meta.Category] == true, "Unknown category for " .. meta.Id)
+			expect(type(meta.Min) == "number" and type(meta.Max) == "number" and meta.Min < meta.Max, "Invalid range for " .. meta.Id)
+			expect(type(meta.Step) == "number" and meta.Step > 0, "Invalid step for " .. meta.Id)
+			expect(meta.Default >= meta.Min and meta.Default <= meta.Max, "Default outside range for " .. meta.Id)
+			expect(meta.Visibility == "Public" or meta.Visibility == "Developer", "Invalid visibility for " .. meta.Id)
+			expect(type(meta.Scopes) == "table" and #meta.Scopes > 0, "Missing scopes for " .. meta.Id)
+			expect(type(meta.Systems) == "table" and #meta.Systems > 0, "Missing consumers for " .. meta.Id)
+		end
+		for _, id in {"ForwardPassBias", "LateralPassBias", "BackPassBias", "BackPassSafety", "RecycleBias", "PossessionPatience", "MinimumHoldTime", "OneTouchPassing", "SwitchPlayFrequency", "PassToFeetBias", "LeadRunBias", "RetentionProbabilityWeight", "ReceiverNextOptionsWeight", "ReceiverIsolationPenalty", "AerialContestPenalty", "ImmediateSupportDistance", "TriangleStrength", "MaxMajorRuns", "RestDefenseMinimum", "CounterAttackFrequency", "MaxPressers", "DefensiveDepth", "SprintConservation", "ReceiverTrapAggression", "ShotPatience", "SequencePersistence", "ThirdManSequenceBias", "LookaheadPasses"} do
+			expect(seen[id] == true, "Critical AI behavior setting missing " .. id)
+		end
+	end)
+
+	test("AI behavior resolver precedence and migration are idempotent", function()
+		local preset = AITactic.Get("balanced_control")
+		local profile = {
+			PresetId = "balanced_control",
+			GlobalOverrides = {ForwardPassBias = 11, MinimumHoldTime = 0.25},
+			PhaseOverrides = {BuildUp = {ForwardPassBias = 22}},
+			RoleOverrides = {CM = {ForwardPassBias = 33}},
+			MatchStateOverrides = {Trailing = {ForwardPassBias = 44}},
+			ExecutionOverrides = {LookaheadPasses = 2},
+		}
+		local resolved = AIBehaviorTuning.Resolve(preset.Sliders, profile, {Phase = "BuildUp", Role = "CM", MatchState = "Trailing", Sequence = {ForwardPassBias = 55}, Emergency = {ForwardPassBias = 66}})
+		expectEqual(resolved.ForwardPassBias, 66, "Emergency precedence")
+		expectEqual(resolved.MinimumHoldTime, 0.25, "Global timing override")
+		expectEqual(resolved.LookaheadPasses, 2, "Execution override")
+		local migrated = AITactic.Normalize({Identity = "Balanced", Sliders = {PassTempo = 64, BackPassSafety = 71}})
+		local migratedAgain = AITactic.Normalize(migrated)
+		expectEqual(migratedAgain.Sliders.PassTempo, migrated.Sliders.PassTempo, "Second tactic migration changed pass tempo")
+		expectEqual(migratedAgain.Sliders.BackPassSafety, migrated.Sliders.BackPassSafety, "Second tactic migration changed back-pass safety")
+		local ok = AIBehaviorTuning.ValidateSettingValue("ForwardPassBias", math.huge)
+		expect(ok == false, "Infinity was accepted")
+		ok = AIBehaviorTuning.ValidateSettingValue("ForwardPassBias", 140)
+		local _, clamped = AIBehaviorTuning.ValidateSettingValue("ForwardPassBias", 140)
+		expect(ok == true and clamped == 100, "Out-of-range setting did not clamp")
 	end)
 
 	test("pass trail visibility defaults and validates", function()

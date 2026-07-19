@@ -23,9 +23,23 @@ local routeAttributes = {
 	"VTRFirstTouchIntentVector",
 	"VTRReceptionQueuedAction",
 	"VTRReceiveLockedAt",
+	"VTRReceiveHardLock",
+	"VTRReceiveHardLockUntil",
 	"VTRReceiveMode",
 	"VTRReceiveBallSpeed",
 	"VTRReceiveDistance",
+	"VTRReceiveLocomotionMode",
+	"VTRReceiveDesiredArrivalVelocity",
+	"VTRReceiveBrakingDistance",
+	"VTRReceiveFacingTarget",
+	"VTRReceiveContactKind",
+	"VTRReceivePreferredFoot",
+	"VTRReceiveTimingDeficit",
+	"VTRReceiveExpectedContactQuality",
+	"VTRPrepareToReceive",
+	"VTRPotentialReceiveTarget",
+	"VTRPrepareReceiveUntil",
+	"VTRAIAlternatePassChaser",
 	"AIDebugExpectedPass",
 	"AIDebugPassTarget",
 	"AIDebugPassKind",
@@ -47,7 +61,8 @@ function Service.SetRoute(receiver: Model, contract: any)
 	local ballETA = math.max(0, tonumber(contract.BallETA) or 0)
 	local receiverETA = tonumber(contract.ReceiverETA) or math.huge
 	local aiReceiver = receiver:GetAttribute("aiControlled") == true and receiver:GetAttribute("controlledByUser") ~= true
-	local sprintRequested = contract.RouteSprintRequested == true or aiReceiver and typeof(target) == "Vector3" and distance > 7 and receiverETA > math.max(0.12, ballETA - 0.08)
+	local mode = tostring(contract.SelectedLocomotionMode or receiver:GetAttribute("VTRReceiveLocomotionMode") or "Run")
+	local sprintRequested = contract.RouteSprintRequested == true or aiReceiver and mode == "SprintBurst"
 	receiver:SetAttribute("VTRReceptionContractId", contract.Id)
 	receiver:SetAttribute("VTRReceptionRevision", contract.Revision)
 	receiver:SetAttribute("VTRReceptionPhase", contract.Phase)
@@ -61,6 +76,14 @@ function Service.SetRoute(receiver: Model, contract: any)
 	receiver:SetAttribute("VTRReceiveTrajectoryConfidence", contract.TrajectoryConfidence)
 	receiver:SetAttribute("VTRReceiveRouteSprintRequested", sprintRequested)
 	receiver:SetAttribute("VTRReceiveDistance", distance)
+	receiver:SetAttribute("VTRReceiveLocomotionMode", mode)
+	receiver:SetAttribute("VTRReceiveDesiredArrivalVelocity", contract.DesiredArrivalVelocity)
+	receiver:SetAttribute("VTRReceiveBrakingDistance", contract.BrakingDistance)
+	receiver:SetAttribute("VTRReceiveFacingTarget", contract.FacingTarget)
+	receiver:SetAttribute("VTRReceiveContactKind", contract.ContactKind)
+	receiver:SetAttribute("VTRReceivePreferredFoot", contract.PreferredFoot)
+	receiver:SetAttribute("VTRReceiveTimingDeficit", contract.TimingDeficit)
+	receiver:SetAttribute("VTRReceiveExpectedContactQuality", contract.ExpectedContactQuality)
 	receiver:SetAttribute("VTRPreparingReceive", true)
 	receiver:SetAttribute("VTRReceiveCommitted", true)
 	receiver:SetAttribute("VTRReceiveLockedAt", os.clock())

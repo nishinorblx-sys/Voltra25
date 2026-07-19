@@ -1,8 +1,9 @@
 --!strict
 
 local Config = {}
+local AIBehaviorTuningConfig = require(script.Parent.AIBehaviorTuningConfig)
 
-Config.Version = 2
+Config.Version = 3
 Config.SliderNames = {
 	"BuildUpSpeed", "PassingDirectness", "AttackingWidth", "DefensiveWidth", "DefensiveDepth", "PressingIntensity", "CounterAttackFrequency", "OverlapFrequency", "CrossingFrequency", "LongShotFrequency", "DribblingFreedom", "RiskLevel", "SupportDistance", "PassTempo", "ForwardPassPriority", "BackPassSafety", "SwitchPlayFrequency", "ThroughBallFrequency", "PassRisk", "FirstTouchDirectness", "ReceiverTrapAggression", "RunsInBehind", "UnderlapFrequency", "BoxRuns", "CutbackFrequency", "FinalThirdPatience", "ShotPatience", "OneTouchPassing", "WidthDiscipline", "FullbackAttack", "MidfieldRotation", "CreativeFreedom", "PressTriggerDistance", "CounterPress", "TackleAggression", "InterceptionRisk", "MarkingTightness", "LaneBlocking", "BackLineCompactness", "BoxProtection", "ZoneDiscipline", "LooseBallAggression", "RecoveryRuns", "SprintConservation", "KeeperAggression", "KeeperDistributionRisk", "ShortGKDistribution", "LongGKDistribution", "FreeKickShortPass", "FreeKickLongPass", "CornerNearPost", "CornerFarPost", "SetPiecePatience", "ClearanceHeight", "StaminaPressLimit", "DefensiveLineStepUp",
 }
@@ -70,11 +71,26 @@ function Config.Normalize(payload: any): any
 	local supplied = type(source.Sliders) == "table" and source.Sliders or {}
 	local sliders = {}
 	for _, name in Config.SliderNames do
-		local value = tonumber(supplied[name])
+		local override = type(source.GlobalOverrides) == "table" and tonumber(source.GlobalOverrides[name]) or nil
+		local value = override or tonumber(supplied[name])
 		if not value or value ~= value or value == math.huge or value == -math.huge then value = preset.Sliders[name] end
 		sliders[name] = math.clamp(value, 0, 100)
 	end
-	return {Version = Config.Version, PresetId = id, BasePresetId = id, Identity = preset.Name, Sliders = sliders, Custom = source.Custom == true, SavedAt = tonumber(source.SavedAt) or os.time()}
+	local behavior = AIBehaviorTuningConfig.NormalizeProfile(source, preset.Sliders)
+	return {
+		Version = Config.Version,
+		PresetId = id,
+		BasePresetId = id,
+		Identity = preset.Name,
+		Sliders = sliders,
+		Custom = source.Custom == true or next(behavior.GlobalOverrides) ~= nil or next(behavior.PhaseOverrides) ~= nil or next(behavior.RoleOverrides) ~= nil or next(behavior.MatchStateOverrides) ~= nil or next(behavior.ExecutionOverrides) ~= nil,
+		GlobalOverrides = behavior.GlobalOverrides,
+		PhaseOverrides = behavior.PhaseOverrides,
+		RoleOverrides = behavior.RoleOverrides,
+		MatchStateOverrides = behavior.MatchStateOverrides,
+		ExecutionOverrides = behavior.ExecutionOverrides,
+		SavedAt = tonumber(source.SavedAt) or os.time(),
+	}
 end
 
 Config.Presets = table.freeze(presets)

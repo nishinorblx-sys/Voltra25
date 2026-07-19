@@ -1,6 +1,6 @@
 --!strict
 local AIMovementExecutor = require(script.Parent.AIMovementExecutor)
-local AITeamController = require(script.Parent.AITeamController)
+local TeamIntelligenceEngine = require(script.Parent.TeamAI.TeamIntelligenceEngine)
 
 local Service = {}
 Service.__index = Service
@@ -9,7 +9,7 @@ local GOALKEEPER_DISTRIBUTION_DELAY = 0.65
 function Service.new(teams: any, formation: any, pitchCFrame: CFrame, width: number, length: number, difficulty: string, ball: BasePart, possession: any, ballService: any, tactics: any?)
 	local formations = formation and formation.Names or {Home = "4-3-3", Away = "4-3-3"}
 	local executor = AIMovementExecutor.new()
-	local controller = AITeamController.new(teams, formations, pitchCFrame, width, length, ball, possession, ballService, difficulty, tactics, executor)
+	local controller = TeamIntelligenceEngine.new(teams, formations, pitchCFrame, width, length, ball, possession, ballService, difficulty, tactics, executor)
 	return setmetatable({
 		Teams = teams,
 		Formations = formations,
@@ -67,6 +67,12 @@ end
 
 function Service:UpdateTactics(side: string, tactics: any)
 	self.Controller:UpdateTactics(side, tactics)
+end
+
+function Service:ClearTransientPlans(side: string?)
+	if self.Controller and self.Controller.ClearTransientPlans then
+		self.Controller:ClearTransientPlans(side)
+	end
 end
 
 function Service:ResetFootballer(model: Model)

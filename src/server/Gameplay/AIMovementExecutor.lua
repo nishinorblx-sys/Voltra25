@@ -84,6 +84,7 @@ function Service:Step(dt: number)
 		local distance = horizontal.Magnitude
 		local velocity = Vector3.new(modelRoot.AssemblyLinearVelocity.X, 0, modelRoot.AssemblyLinearVelocity.Z)
 		local receiving = model:GetAttribute("VTRPreparingReceive") == true and typeof(model:GetAttribute("VTRReceiveTarget")) == "Vector3"
+		local chasingLoose = tostring(command.AssignmentId or ""):find("ChaseLooseBall", 1, true) ~= nil
 		local ballETA = tonumber(model:GetAttribute("VTRReceiveBallETA")) or math.huge
 		local faceTarget = typeof(command.FaceTarget) == "Vector3" and command.FaceTarget or nil
 		local faceOffset = faceTarget and Vector3.new(faceTarget.X - modelRoot.Position.X, 0, faceTarget.Z - modelRoot.Position.Z) or Vector3.zero
@@ -92,8 +93,8 @@ function Service:Step(dt: number)
 		if direction.Magnitude < 0.1 then direction = Vector3.zAxis end
 		command.LastDirection = direction
 		local mode = tostring(command.LocomotionMode or "Jog")
-		local moveThreshold = receiving and 0.08 or 0.6
-		local moving = mode ~= "Idle" and (distance > moveThreshold or receiving and ballETA < 0.75 and faceOffset.Magnitude > 0.2)
+		local moveThreshold = (receiving or chasingLoose) and 0.08 or 0.6
+		local moving = mode ~= "Idle" and (distance > moveThreshold or (receiving or chasingLoose) and faceOffset.Magnitude > 0.2)
 		local sprintRequested = self:_sprint(model, command, now, moving)
 		model:SetAttribute("VTRMoveMagnitude", moving and 1 or 0)
 		model:SetAttribute("VTRAISprintRequested", sprintRequested)

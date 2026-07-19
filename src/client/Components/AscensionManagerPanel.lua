@@ -642,7 +642,9 @@ function ManagerPanel:_connectResize()
 		else
 			self.Root.AnchorPoint = Vector2.new(1, .5)
 			self.Root.Position = UDim2.new(1, -12, .5, 0)
-			self.Root.Size = UDim2.fromOffset(math.clamp(viewport.X * .235, 380, 470), math.clamp(viewport.Y * .90, 560, viewport.Y - 24))
+			local maxHeight = math.max(360, viewport.Y - 24)
+			local minHeight = math.min(560, maxHeight)
+			self.Root.Size = UDim2.fromOffset(math.clamp(viewport.X * .235, 380, 470), math.clamp(viewport.Y * .90, minHeight, maxHeight))
 		end
 	end
 	local camera = workspace.CurrentCamera

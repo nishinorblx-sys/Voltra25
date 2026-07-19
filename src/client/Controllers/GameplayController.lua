@@ -15,6 +15,7 @@ local CameraController = require(script.Parent.CameraController)
 
 local GameplayController = {}
 GameplayController.__index = GameplayController
+local TACTIC_LAB_SLIDERS = {"BuildUpSpeed", "PassTempo", "PassingDirectness", "RunsInBehind", "PressingIntensity", "DefensiveDepth", "BackLineCompactness", "LaneBlocking", "SupportDistance", "WidthDiscipline"}
 
 function GameplayController.new()
 	return setmetatable({ Move = Vector3.zero, Stamina = Config.Stamina.Maximum, ServerSprinting = false, Prediction = nil, PredictionSpin = 0, SuspendPredictionUntil = 0, TacticalMode = false, TacticalPanelOpen = false, TacticalSide = "Home", RuntimeTactics = {Home = LiteConfig.DefaultTactics(), Away = LiteConfig.DefaultTactics()} }, GameplayController)
@@ -325,7 +326,7 @@ function GameplayController:_formatRuntimeTactics(): string
 	local function sideBlock(side: string): string
 		local tactics = self.RuntimeTactics[side]
 		local parts = {}
-		for _, name in LiteConfig.TacticSliderNames do
+		for _, name in TACTIC_LAB_SLIDERS do
 			table.insert(parts, name .. "=" .. tostring(math.floor(tonumber(tactics.Sliders[name]) or 50)))
 		end
 		return side .. "={Identity=\"" .. tostring(tactics.Identity or "Balanced") .. "\",Sliders={" .. table.concat(parts, ",") .. "}}"
@@ -433,7 +434,7 @@ function GameplayController:_renderTacticalPanel()
 	list.Parent = panel
 
 	local y = 0
-	for _, name in LiteConfig.TacticSliderNames do
+	for _, name in TACTIC_LAB_SLIDERS do
 		local tactics = self.RuntimeTactics[self.TacticalSide]
 		tactics.Sliders[name] = tonumber(tactics.Sliders[name]) or 50
 		local value = math.floor(tactics.Sliders[name])

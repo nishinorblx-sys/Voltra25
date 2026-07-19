@@ -22,6 +22,7 @@ local DifficultyConfig=require(ReplicatedStorage.VTR.Shared.DifficultyConfig)
 local Remotes=require(ReplicatedStorage.VTR.Shared.Remotes)
 local PenaltyConfig=require(ReplicatedStorage.VTR.Shared.PenaltyConfig)
 local AITacticConfig=require(ReplicatedStorage.VTR.Shared.AITacticConfig)
+local AIPlaystyleResolver=require(ReplicatedStorage.VTR.Shared.AIPlaystyleResolver)
 local Catalog=require(ReplicatedStorage.VTR.Shared.Catalog)
 local TeamDatabase=require(script.Parent.Parent.Data.TeamDatabase)
 local TeamSpawnService=require(script.Parent.TeamSpawnService)
@@ -132,6 +133,10 @@ end
 local function developmentAccess(player:Player):boolean
 	return(RunService:IsStudio()or game.PrivateServerId~="")and DeveloperAccessService.IsAuthorized(player)
 end
+local function aiLabAccess(player:Player):boolean
+	if DeveloperAccessService.IsLabDeveloper then return DeveloperAccessService.IsLabDeveloper(player) end
+	return developmentAccess(player)
+end
 local function worldCupSession(session:any):boolean
 	local setup=session and session.Setup or{}
 	return session and session.PrivateWorldCupMatch==true or setup.WorldCup==true or setup.WorldCupSolo==true or setup.WorldCupOnboarding==true or setup.WorldCupTutorial==true or tostring(setup.Competition or"")=="WorldCup"
@@ -157,7 +162,16 @@ local function delayUnpaused(session:any,seconds:number,callback:() -> ())
 	end)
 end
 local function sanitizeRuntimeTactics(payload:any):any
-	return AITacticConfig.Normalize(payload)
+	if type(payload)=="table"and payload.Tactics~=nil then
+		return AIPlaystyleResolver.ResolveTactics(payload,nil)
+	end
+	local normalized=AITacticConfig.Normalize(payload)
+	if type(payload)=="table"then
+		for _,key in ipairs({"PlaystyleId","PlaystyleVersion","PlaystyleName","PlaystyleStatus","PassRules","PositioningRules","PressRules","RoleInstructions","SequenceRules","MetricsTargets"})do
+			if payload[key]~=nil then normalized[key]=payload[key]end
+		end
+	end
+	return normalized
 end
 local function getGoalkeeper(team:{Model}?):Model?
 	if not team then return nil end
@@ -410,7 +424,7 @@ function Service:StartMatch(player:Player,setup:any,opponent:Player?,opponentSet
 				activePlayer=tutorialStarter
 			end
 		end
-		local payload={Type="MatchStarted",MatchSessionId=world.Folder.Name,Ranked=session.Ranked,WatchMode=watchMode,PracticeMode=practiceMode,DeveloperAccess=developmentAccess(participant)and not session.Ranked and not worldCupSession(session),Setup=finalSetup,MatchFormat=session.MatchFormat,PresentationProfile=session.PresentationProfile,PresentationDuration=tonumber(presentation.Duration)or 8,ForceCameraMode=finalSetup.ForceCameraMode,NoPrematch=noPrematch,PrematchSkipDelay=(practiceMode or noPrematch)and 0 or math.max(0,tonumber(presentation.SkipLock)or 0),ControlledSide=side,Opponent=opponent and(opponent==participant and player.Name or opponent.Name)or(watchMode and"AI vs AI"or(practiceMode and"Goalkeeper"or"AI")),WorldName=world.Folder.Name,Ball=world.Ball,Home=home.Team.teamName,Away=away.Team.teamName,HomeSummary=homeSummary,AwaySummary=awaySummary,HomeLogo=home.Team.logo,AwayLogo=away.Team.logo,HomeFlagImage=home.Team.FlagImage or home.Team.flagImage or homeSummary.FlagImage or homeSummary.flagImage,AwayFlagImage=away.Team.FlagImage or away.Team.flagImage or awaySummary.FlagImage or awaySummary.flagImage,HomeBadgeIdentity=home.Team.BadgeIdentity or home.Team.badgeIdentity or homeSummary.BadgeIdentity or homeSummary.badgeIdentity,AwayBadgeIdentity=away.Team.BadgeIdentity or away.Team.badgeIdentity or awaySummary.BadgeIdentity or awaySummary.badgeIdentity,HomeColor=home.Team.colors.Primary,AwayColor=away.Team.colors.Primary,HomeTeamId=home.Team.teamId,AwayTeamId=away.Team.teamId,HomeKitData=kits and kits.Home or nil,AwayKitData=kits and kits.Away or nil,HomeFormation=home.Formation or home.Team.formation or finalSetup.HomeFormation or "4-3-3",AwayFormation=away.Formation or away.Team.formation or finalSetup.AwayFormation or "4-3-3",HomeSetup={Formation=home.Formation or home.Team.formation or "4-3-3"},AwaySetup={Formation=away.Formation or away.Team.formation or "4-3-3"},HomeLineup=home.StartingXI or{},AwayLineup=away.StartingXI or{},HomeBench=home.Bench or{},AwayBench=away.Bench or{},Duration=session.Remaining,Difficulty=finalSetup.Difficulty,ActivePlayer=activePlayer,ActivePlayerName=activePlayer and activePlayer.Name or nil,TeamModels=teams,PitchCFrame=world.PitchCFrame,PitchWidth=world.Width,PitchLength=world.Length}
+		local payload={Type="MatchStarted",MatchSessionId=world.Folder.Name,Ranked=session.Ranked,WatchMode=watchMode,PracticeMode=practiceMode,DeveloperAccess=aiLabAccess(participant)and not session.Ranked and not worldCupSession(session),Setup=finalSetup,MatchFormat=session.MatchFormat,PresentationProfile=session.PresentationProfile,PresentationDuration=tonumber(presentation.Duration)or 8,ForceCameraMode=finalSetup.ForceCameraMode,NoPrematch=noPrematch,PrematchSkipDelay=(practiceMode or noPrematch)and 0 or math.max(0,tonumber(presentation.SkipLock)or 0),ControlledSide=side,Opponent=opponent and(opponent==participant and player.Name or opponent.Name)or(watchMode and"AI vs AI"or(practiceMode and"Goalkeeper"or"AI")),WorldName=world.Folder.Name,Ball=world.Ball,Home=home.Team.teamName,Away=away.Team.teamName,HomeSummary=homeSummary,AwaySummary=awaySummary,HomeLogo=home.Team.logo,AwayLogo=away.Team.logo,HomeFlagImage=home.Team.FlagImage or home.Team.flagImage or homeSummary.FlagImage or homeSummary.flagImage,AwayFlagImage=away.Team.FlagImage or away.Team.flagImage or awaySummary.FlagImage or awaySummary.flagImage,HomeBadgeIdentity=home.Team.BadgeIdentity or home.Team.badgeIdentity or homeSummary.BadgeIdentity or homeSummary.badgeIdentity,AwayBadgeIdentity=away.Team.BadgeIdentity or away.Team.badgeIdentity or awaySummary.BadgeIdentity or awaySummary.badgeIdentity,HomeColor=home.Team.colors.Primary,AwayColor=away.Team.colors.Primary,HomeTeamId=home.Team.teamId,AwayTeamId=away.Team.teamId,HomeKitData=kits and kits.Home or nil,AwayKitData=kits and kits.Away or nil,HomeFormation=home.Formation or home.Team.formation or finalSetup.HomeFormation or "4-3-3",AwayFormation=away.Formation or away.Team.formation or finalSetup.AwayFormation or "4-3-3",HomeSetup={Formation=home.Formation or home.Team.formation or "4-3-3"},AwaySetup={Formation=away.Formation or away.Team.formation or "4-3-3"},HomeLineup=home.StartingXI or{},AwayLineup=away.StartingXI or{},HomeBench=home.Bench or{},AwayBench=away.Bench or{},Duration=session.Remaining,Difficulty=finalSetup.Difficulty,ActivePlayer=activePlayer,ActivePlayerName=activePlayer and activePlayer.Name or nil,TeamModels=teams,PitchCFrame=world.PitchCFrame,PitchWidth=world.Width,PitchLength=world.Length}
 		session.MatchStartPayloads[participant]=payload
 		self.State:FireClient(participant,payload)
 		self:_track(session,participant,"playability_runtime_ready",{stageDuration=os.clock()-session.StartedAt})
@@ -418,6 +432,58 @@ function Service:StartMatch(player:Player,setup:any,opponent:Player?,opponentSet
 	end
 	self:_beginClientReadiness(session)
 	return true,practiceMode and"Shooting practice loaded."or(opponent and"Ranked 1v1 match loaded."or(watchMode and"AI vs AI match loaded."or"Playable AI match loaded.")),{Setup=finalSetup,Home=homeSummary,Away=awaySummary,WorldName=world.Folder.Name,Objective="PLAY YOUR FIRST MATCH",ObjectiveCompletedNow=not watchMode and not practiceMode,WatchMode=watchMode,PracticeMode=practiceMode}
+end
+
+function Service:StartAILabMatch(player:Player,payload:any):(boolean,string,any?)
+	if not aiLabAccess(player)then return false,"Developer AI LAB access required.",nil end
+	payload=type(payload)=="table"and payload or{}
+	local homeTeam=TeamDatabase.GetRoster(tostring(payload.HomeTeamId or"eng_sunderland"))or TeamDatabase.GetRoster(tostring(payload.HomeTeamId or""))or TeamDatabase.GetRoster(TeamDatabase.Teams[1].teamId)
+	local awayTeam=TeamDatabase.GetRoster(tostring(payload.AwayTeamId or"eng_arsenal"))or TeamDatabase.GetRoster(tostring(payload.AwayTeamId or""))or TeamDatabase.GetRoster(TeamDatabase.Teams[2]and TeamDatabase.Teams[2].teamId or TeamDatabase.Teams[1].teamId)
+	if not homeTeam or not awayTeam then return false,"AI LAB rosters are unavailable.",nil end
+	local setup={
+		MatchMode="AILab",
+		MatchType="AI LAB",
+		AILab=true,
+		PrivateDevelopmentMatch=true,
+		WatchMode=true,
+		NoPrematch=true,
+		SkipPrematch=true,
+		PresentationProfile="Minimal",
+		MatchFormat="Standard",
+		MatchLength=90,
+		Difficulty=tostring(payload.Difficulty or"Professional"),
+		HomeTeamId=homeTeam.Team.teamId,
+		AwayTeamId=awayTeam.Team.teamId,
+		HomeKit="Home",
+		AwayKit="Away",
+		StadiumId=tostring(payload.StadiumId or"voltra_arena"),
+		Weather="Clear",
+		Time="Evening",
+		Completed=true,
+		HomeFormation=tostring(payload.HomeFormation or homeTeam.Formation or"4-3-3"),
+		AwayFormation=tostring(payload.AwayFormation or awayTeam.Formation or"4-3-3"),
+		HomeTactics=sanitizeRuntimeTactics(payload.HomeTactics or{PresetId="balanced_control"}),
+		AwayTactics=sanitizeRuntimeTactics(payload.AwayTactics or{PresetId="balanced_control"}),
+		AILabRevision=tonumber(payload.Revision)or 0,
+		ForceCameraMode="Tactical",
+	}
+	local ok,message,data=self:StartMatch(player,setup,nil,nil,homeTeam,awayTeam)
+	if not ok then return ok,message,data end
+	local session=self:GetSession(player)
+	if session then
+		session.AILab={Assignments=payload.Assignments or{},Revision=setup.AILabRevision,StartedAt=os.time(),Applied={Home=setup.HomeTactics,Away=setup.AwayTactics}}
+		session.PrematchSkipped=true
+		session.PresentationFinished=true
+		session.Phase="IN PLAY"
+		session.Running=false
+		session.Paused=true
+		session.ManualPaused=true
+		self:_freezeWorldForPause(session)
+		self:_setPlayersFrozen(session,true)
+		self.State:FireClient(player,{Type="AILabSessionStarted",Paused=true,Revision=setup.AILabRevision,Setup=setup,HomeTactics=setup.HomeTactics,AwayTactics=setup.AwayTactics})
+		self.State:FireClient(player,self:_pausePayload(session,true,player))
+	end
+	return true,"AI LAB match loaded.",data
 end
 
 function Service:StartRankedMatch(homePlayer:Player,awayPlayer:Player,homeSetup:any,awaySetup:any,homeRoster:any,awayRoster:any):(boolean,string,any?)
@@ -843,6 +909,37 @@ function Service:RejoinFiveVFivePlayer(player: Player, data: any): (boolean, str
 end
 
 function Service:GetSession(player:Player):any?return self.Sessions[player]end
+
+function Service:ApplyAIBehaviorLive(player: Player, side: string, tactics: any): (boolean, string, any?)
+	local session = self:GetSession(player)
+	if not session or session.Ended then
+		return false, "No live match found.", nil
+	end
+	if session.Ranked == true or worldCupSession(session) then
+		return false, "Live AI tuning is disabled for this match.", nil
+	end
+	local targetSide = side == "Away" and "Away" or "Home"
+	local normalized = sanitizeRuntimeTactics(tactics)
+	if not session.AI or not session.AI.UpdateTactics then
+		return false, "AI service is not active.", nil
+	end
+	session.AI:UpdateTactics(targetSide, normalized)
+	if session.AI.ClearTransientPlans then
+		session.AI:ClearTransientPlans(targetSide)
+	end
+	session.Setup = session.Setup or {}
+	if targetSide == "Away" then
+		session.Setup.AwayTactics = normalized
+	else
+		session.Setup.HomeTactics = normalized
+	end
+	if session.AILab then
+		session.AILab.Applied = session.AILab.Applied or {}
+		session.AILab.Applied[targetSide] = normalized
+		session.AILab.AppliedAt = os.time()
+	end
+	return true, "AI behavior applied to " .. targetSide .. ".", {Side = targetSide, Tactics = normalized}
+end
 local kickoffFormation={
 	Vector2.new(0,76),Vector2.new(-42,55),Vector2.new(-15,58),Vector2.new(15,58),Vector2.new(42,55),
 	Vector2.new(-28,22),Vector2.new(0,30),Vector2.new(28,22),Vector2.new(-38,-22),Vector2.new(0,-34),Vector2.new(38,-22),
@@ -4199,6 +4296,7 @@ function Service:_action(player:Player,payload:any)
 		local side=payload.Side=="Away"and"Away"or"Home"
 		local tactics=sanitizeRuntimeTactics(payload.Tactics)
 		if session.AI and session.AI.UpdateTactics then session.AI:UpdateTactics(side,tactics)end
+		if session.AI and session.AI.ClearTransientPlans then session.AI:ClearTransientPlans(side)end
 		for name,value in pairs(tactics.Sliders or{})do
 			if type(name)=="string"then workspace:SetAttribute("VTRTactic_"..side.."_"..name,math.clamp(tonumber(value)or 50,0,100))end
 		end

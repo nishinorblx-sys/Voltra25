@@ -35,7 +35,8 @@ local function evaluateAt(candidate: any, ball: any, contactDistance: number, co
 	if facing.Magnitude < 0.01 then facing = Vector3.zAxis else facing = facing.Unit end
 	local radius = math.max(0.2, tonumber(ball.Radius) or 1)
 	local expected = candidate.ExpectedReceiver == true
-	local reachMaximum = expected and 4.1 or 2.65
+	local targetedAI = candidate.TargetedAIReceiver == true
+	local reachMaximum = expected and (targetedAI and 5.85 or 5.05) or 2.65
 	local maximumDistance = radius + math.clamp(tonumber(candidate.ContactReach) or 1.75, 1.2, reachMaximum)
 	local maximumHeight = radius + math.clamp(tonumber(candidate.ControlHeight) or 2.15, 1.6, 6.4)
 	local relativeHeight = ballPosition.Y - math.min(contactPoint.Y, rootPosition.Y)
@@ -43,8 +44,8 @@ local function evaluateAt(candidate: any, ball: any, contactDistance: number, co
 	local facingDot = toBall.Magnitude > 0.05 and facing:Dot(toBall.Unit) or 1
 	local horizontalRootVelocity = flat(rootVelocity)
 	local relativeVelocity = flat(ballVelocity) - horizontalRootVelocity
-	local speedReach = math.clamp(relativeVelocity.Magnitude / 140, 0, expected and 0.95 or 0.65)
-	maximumDistance += (expected and 0.55 or 0.35) + speedReach
+	local speedReach = math.clamp(relativeVelocity.Magnitude / 125, 0, expected and (targetedAI and 1.25 or 1.05) or 0.65)
+	maximumDistance += (expected and (targetedAI and 0.85 or 0.68) or 0.35) + speedReach
 	maximumHeight += expected and 0.35 or 0.22
 	local control = math.clamp((tonumber(candidate.Control) or 60) / 100, 0.1, 0.99)
 	local balance = math.clamp((tonumber(candidate.Balance) or 60) / 100, 0.1, 0.99)

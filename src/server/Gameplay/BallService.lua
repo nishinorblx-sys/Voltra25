@@ -14,6 +14,7 @@ local Physics = require(ReplicatedStorage.VTR.Shared.BallPhysicsConfig)
 local PassingPower = require(ReplicatedStorage.VTR.Shared.PassingPowerConfig)
 local Scaling = require(ReplicatedStorage.VTR.Shared.StatScalingConfig)
 local BallCurveService = require(script.Parent.BallCurveService)
+local PassArrivalPlanner = require(script.Parent.PassArrivalPlanner)
 local PassInterceptService = require(script.Parent.PassInterceptService)
 local FreeKickTrajectory = require(ReplicatedStorage.VTR.Shared.FreeKickTrajectory)
 local AIPassingDecisionService = require(script.Parent.AIPassingDecisionService)
@@ -159,20 +160,29 @@ function Service:_primePassReceiver(passer: Model, receiver: Model?, target: Vec
 	local now = os.clock()
 	local ballETA = math.max(0.05, tonumber(eta) or distance / 52)
 	local receiveUntil = now + math.clamp(tonumber(duration) or ballETA + 1.35, 1.1, 5.5)
-	local sprint = distance > 7 or passType == "Through" or passType == "Lofted" or passType == "FarPostCross"
+	local arrival = PassArrivalPlanner.Solve({ReceiverModel = receiver, Target = target, BallETA = ballETA, PassFamily = passType or "Ground", BallPosition = self.Ball.Position})
+	local sprint = arrival and arrival.SelectedLocomotionMode == "SprintBurst" or false
 	receiver:SetAttribute("VTRReceiveTarget", target)
-	receiver:SetAttribute("VTRReceiveIntercept", target)
+	receiver:SetAttribute("VTRReceiveIntercept", arrival and arrival.InterceptPoint or target)
 	receiver:SetAttribute("VTRReceiveUntil", receiveUntil)
 	receiver:SetAttribute("VTRReceiveBallETA", ballETA)
-	receiver:SetAttribute("VTRReceiveReceiverETA", distance / 26)
+	receiver:SetAttribute("VTRReceiveReceiverETA", arrival and arrival.SelectedMovementETA or distance / 26)
 	receiver:SetAttribute("VTRReceiveOpponentETA", math.huge)
-	receiver:SetAttribute("VTRReceiveRouteConfidence", .86)
+	receiver:SetAttribute("VTRReceiveRouteConfidence", arrival and arrival.ExpectedContactQuality or .86)
 	receiver:SetAttribute("VTRReceiveTrajectoryConfidence", .72)
 	receiver:SetAttribute("VTRReceiveRouteSprintRequested", sprint)
 	receiver:SetAttribute("VTRReceiveDistance", distance)
+	receiver:SetAttribute("VTRReceiveLocomotionMode", arrival and arrival.SelectedLocomotionMode or "Run")
+	receiver:SetAttribute("VTRReceiveDesiredArrivalVelocity", arrival and arrival.DesiredArrivalVelocity or nil)
+	receiver:SetAttribute("VTRReceiveBrakingDistance", arrival and arrival.BrakingDistance or nil)
+	receiver:SetAttribute("VTRReceiveContactKind", arrival and arrival.ContactKind or nil)
+	receiver:SetAttribute("VTRReceivePreferredFoot", arrival and arrival.PreferredFoot or nil)
+	receiver:SetAttribute("VTRFirstTouchIntent", arrival and arrival.FirstTouchIntent or nil)
 	receiver:SetAttribute("VTRPreparingReceive", true)
 	receiver:SetAttribute("VTRReceiveCommitted", true)
 	receiver:SetAttribute("VTRReceiveLockedAt", now)
+	receiver:SetAttribute("VTRReceiveHardLock", true)
+	receiver:SetAttribute("VTRReceiveHardLockUntil", receiveUntil)
 	receiver:SetAttribute("VTRAITargetedPass", receiver:GetAttribute("aiControlled") == true and receiver:GetAttribute("controlledByUser") ~= true)
 	receiver:SetAttribute("VTRRunTicketId", nil)
 	receiver:SetAttribute("VTRRunApproved", false)
@@ -247,7 +257,8 @@ function Service:_contactCandidate(model: Model): any?
 	local ballRadius = math.max(self.Ball.Size.X * 0.5, Config.Ball.Radius or 1)
 	local expected = reception and reception.Expected == true or model == self.ExpectedReceiver
 	local receiveDistance = expected and (tonumber(model:GetAttribute("VTRReceiveDistance")) or 0) or 0
-	local receiveReach = reception and math.clamp((reception.Tolerance or 2.65) + math.clamp(receiveDistance / 38, 0, 0.9), 2.2, 4.05) or nil
+	local targetedAI = expected and model:GetAttribute("VTRAITargetedPass") == true
+	local receiveReach = reception and math.clamp((reception.Tolerance or 2.65) + math.clamp(receiveDistance / 30, 0, targetedAI and 1.9 or 1.25), 2.4, targetedAI and 5.65 or 4.85) or nil
 	return {
 		Model = model,
 		Key = model.Name,
@@ -263,6 +274,7 @@ function Service:_contactCandidate(model: Model): any?
 		PreferredFoot = tostring(model:GetAttribute("PreferredFoot") or "Right"),
 		Pressure = self:_pressure(model),
 		ExpectedReceiver = expected,
+		TargetedAIReceiver = targetedAI,
 		UserControlled = model:GetAttribute("controlledByUser") == true or model:GetAttribute("VTRUserId") ~= nil,
 		CanControl = (tonumber(model:GetAttribute("VTRStunnedUntil")) or 0) <= os.clock() and (tonumber(model:GetAttribute("VTRCannotRecoverBallUntil")) or 0) <= os.clock(),
 		ContactReach = receiveReach or tostring(model:GetAttribute("position") or "") == "GK" and 2.35 or 1.75,
@@ -276,6 +288,49 @@ function Service:_pressure(model:Model):number
 	local team=model:GetAttribute("VTRTeam");local pressure=0
 	for _,opponent in self.Models do if opponent:GetAttribute("VTRTeam")~=team then local opponentRoot=self:_root(opponent);if opponentRoot then local distance=(opponentRoot.Position-modelRoot.Position).Magnitude;if distance<12 then pressure=math.max(pressure,1-distance/12)end end end end
 	return pressure
+end
+
+function Service:_rollingBallClaimCandidate(preferred: Model?): Model?
+	if self.Possession:GetOwner() ~= nil then return nil end
+	local velocity = self.Ball.AssemblyLinearVelocity
+	local horizontalSpeed = Vector3.new(velocity.X, 0, velocity.Z).Magnitude
+	if horizontalSpeed < 0.05 and tostring(self.Ball:GetAttribute("VTRMotionKind") or self.MotionKind or "") ~= "Loose" then return nil end
+	local best: Model? = nil
+	local bestScore = math.huge
+	for _, model in self.Models do
+		local assignment = tostring(model:GetAttribute("currentAssignment") or model:GetAttribute("SupportRole") or "")
+		local activeChaser = assignment == "ChaseLooseBall" or assignment == "CoverLooseBall" or assignment == "ReceivePass" or model:GetAttribute("VTRPreparingReceive") == true or model:GetAttribute("VTRAITargetedPass") == true or model:GetAttribute("VTRAIAlternatePassChaser") == true
+		if model == preferred then activeChaser = true end
+		local looseClosePickup = tostring(self.Ball:GetAttribute("VTRMotionKind") or self.MotionKind or "") == "Loose"
+		if activeChaser == false and looseClosePickup and model:GetAttribute("aiControlled") == true and model:GetAttribute("controlledByUser") ~= true then
+			local root = self:_root(model)
+			activeChaser = root ~= nil and (Vector3.new(self.Ball.Position.X - root.Position.X, 0, self.Ball.Position.Z - root.Position.Z).Magnitude <= 5.8)
+		end
+		if activeChaser and model:GetAttribute("aiControlled") == true and model:GetAttribute("controlledByUser") ~= true and (self.Possession.Blocked[model] or 0) <= os.clock() then
+			local root = self:_root(model)
+			local humanoid = model:FindFirstChildOfClass("Humanoid")
+			if root and humanoid and humanoid.Health > 0 and model:GetAttribute("VTRSentOff") ~= true then
+				local offset = self.Ball.Position - root.Position
+				local horizontal = Vector3.new(offset.X, 0, offset.Z).Magnitude
+				local vertical = math.abs(offset.Y)
+				local reach = model == preferred and 9.25 or 8.25
+				if horizontal <= reach and vertical <= 5.4 then
+					local movingTowardBall = 0
+					local move = model:GetAttribute("VTRMoveDirection")
+					local toBall = Vector3.new(offset.X, 0, offset.Z)
+					if typeof(move) == "Vector3" and move.Magnitude > 0.05 and toBall.Magnitude > 0.05 then
+						movingTowardBall = move.Unit:Dot(toBall.Unit)
+					end
+					local score = horizontal - movingTowardBall * 1.4 - (model == preferred and 2.2 or 0)
+					if score < bestScore then
+						best = model
+						bestScore = score
+					end
+				end
+			end
+		end
+	end
+	return best
 end
 
 function Service:_allowed(model: Model, action: string): boolean
@@ -1028,7 +1083,11 @@ function Service:Kick(model: Model, kind: string, direction: Vector3, charge: nu
 		local distance = math.clamp(passDistance or direction.Magnitude, 0, PassingPower.MaxPassDistance)
 		local baseSpeed = PassInterceptService.RequiredInitialSpeed(distance, amount)
 		local consistency = 0.94 + passing / 1650 + weakFoot / 500 + balance / 3300
-		local variation = self.Random:NextNumber(-1, 1) * (1 - passing / 100) * 0.018
+		local aiPasser = model:GetAttribute("aiControlled") == true and model:GetAttribute("controlledByUser") ~= true
+		if aiPasser then
+			consistency = math.clamp(consistency + 0.025, 0.98, 1.045)
+		end
+		local variation = self.Random:NextNumber(-1, 1) * (1 - passing / 100) * (aiPasser and 0.004 or 0.018)
 		local throughScale = passType == "Through" and 0.94 or 1
 		local speedBias = passType == "BackPass" and 0.96 or passType == "Ground" and 1.12 or passType == "Through" and 1.1 or passType == "Lofted" and 1.06 or 1.08
 		local finalSpeed = math.clamp(baseSpeed * consistency * (1 + variation) * throughScale * speedBias, 40, PassingPower.AbsoluteMaxSpeed)
@@ -1064,6 +1123,12 @@ function Service:Kick(model: Model, kind: string, direction: Vector3, charge: nu
 		end
 		if not receiver and self.PassTargetPoint then
 			receiver = self:_closestPassReceiverToTarget(model, self.PassTargetPoint, nil)
+		end
+		if not receiver and targetPoint then
+			receiver = self:_closestPassReceiverToTarget(model, targetPoint, nil)
+		end
+		if not receiver and modelRoot then
+			receiver = self:_closestPassReceiverToTarget(model, modelRoot.Position + direction, nil)
 		end
 		if self.PassTargetPoint then self.Ball:SetAttribute("VTRPassTarget", self.PassTargetPoint) end
 		self.Ball:SetAttribute("VTRShotTarget", nil)
@@ -1250,6 +1315,12 @@ function Service:Kick(model: Model, kind: string, direction: Vector3, charge: nu
 		self.PassSequence = (self.PassSequence or 0) + 1
 		local activePass = self.ActiveTrajectory and self.ActiveTrajectory.Kind == "Pass" and self.ActiveTrajectory.Kicker == model and self.ActiveTrajectory or nil
 		local duration = activePass and activePass.Data and tonumber(activePass.Data.Duration) or (passDistance or direction.Magnitude) / math.max(flat(velocity).Magnitude, 1)
+		if not receiver and self.PassTargetPoint then
+			receiver = self:_closestPassReceiverToTarget(model, self.PassTargetPoint, nil)
+			self.ExpectedReceiver = receiver
+			self.Ball:SetAttribute("VTRPassReceiver", receiver and receiver.Name or nil)
+			self:_primePassReceiver(model, receiver, self.PassTargetPoint, duration, duration + 1.3, passType)
+		end
 		if self.PassReception then
 			self.PassReception:OnPassLaunched({
 				PassId = self.PassSequence,
@@ -1737,6 +1808,12 @@ function Service:Step(dt: number)
 		if not self.CornerPlan.Entered and distance<25 then self.CornerPlan.Entered=true;self.Ball:SetAttribute("VTRCornerEnteredBox",true);self.Stats:Add(self.CornerPlan.Team,"CornersIntoBox");self.Remote:FireAllClients({Type="CornerObjective",Event="cornerEnteredBox",Team=self.CornerPlan.Team})end
 		if age>8 then self.CornerPlan=nil end
 	end
+	local earlyClaimer = self:_rollingBallClaimCandidate(nil)
+	if earlyClaimer and self.Possession:ForcePickup(earlyClaimer, 9.25) then
+		self:_emitTelemetry(earlyClaimer, "playability_possession_contact", {contactOutcome = "ImmediateRollingClaim"})
+		self:_finalizePickup(earlyClaimer, false)
+		return
+	end
 	self.Accumulator += dt
 	if self.Accumulator <= 0.04 then
 		return
@@ -1762,7 +1839,21 @@ function Service:Step(dt: number)
 	if contact and contact.Outcome == "Controlled" then
 		nearest = contact.Candidate.Model
 		self:_emitTelemetry(nearest,"playability_possession_contact",{contactOutcome="Controlled"})
-	elseif contact and os.clock() - self.LastLooseContactAt >= 0.1 then
+	elseif contact then
+		local claimer = self:_rollingBallClaimCandidate(contact.Candidate.Model)
+		if claimer then
+			nearest = claimer
+			self:_emitTelemetry(nearest,"playability_possession_contact",{contactOutcome="RollingClaim"})
+		end
+	end
+	if not nearest then
+		local claimer = self:_rollingBallClaimCandidate(nil)
+		if claimer then
+			nearest = claimer
+			self:_emitTelemetry(nearest,"playability_possession_contact",{contactOutcome="RollingProximityClaim"})
+		end
+	end
+	if not nearest and contact and os.clock() - self.LastLooseContactAt >= 0.1 then
 		self.LastLooseContactAt = os.clock()
 		local model = contact.Candidate.Model
 		local modelRoot = model and self:_root(model)
@@ -1777,7 +1868,11 @@ function Service:Step(dt: number)
 			self.Remote:FireAllClients({Type="LooseBallContact",Actor=model})
 		end
 	end
-	if nearest and self.Possession:Pickup(nearest) then self:_finalizePickup(nearest, false) end
+	if nearest then
+		if self.Possession:Pickup(nearest) or self.Possession:ForcePickup(nearest, 8.75) then
+			self:_finalizePickup(nearest, false)
+		end
+	end
 end
 
 return Service

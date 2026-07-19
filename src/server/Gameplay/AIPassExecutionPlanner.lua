@@ -4,6 +4,7 @@ local ReceptionInterceptResolver = require(ReplicatedStorage.VTR.Shared.Receptio
 local PassingPowerConfig = require(ReplicatedStorage.VTR.Shared.PassingPowerConfig)
 local GameplayConfig = require(ReplicatedStorage.VTR.Shared.GameplayConfig)
 local PassFlightModel = require(ReplicatedStorage.VTR.Shared.PassFlightModel)
+local PassArrivalPlanner = require(script.Parent.PassArrivalPlanner)
 
 local Planner = {}
 
@@ -44,12 +45,13 @@ local function candidateTarget(pass: any, power: number): Vector3
 	local target = pass.Target
 	if not receiver or not receiver.Root then return target end
 	local family = tostring(pass.PassKind or "Ground")
-	if family ~= "Through" and family ~= "Lofted" and family ~= "FarPostCross" then return target end
 	local velocity = flat(receiver.Root.AssemblyLinearVelocity)
 	if velocity.Magnitude < 1 then return target end
 	local existingLead = flat(target - receiver.Root.Position).Magnitude
 	if existingLead >= 24 then return target end
-	local leadSeconds = family == "Through" and 0.12 + power * 0.14 or 0.15 + power * 0.12
+	local leadSeconds = family == "Through" and 0.12 + power * 0.14
+		or (family == "Lofted" or family == "FarPostCross") and 0.15 + power * 0.12
+		or 0.1 + power * 0.08
 	return target + velocity * leadSeconds
 end
 
@@ -68,8 +70,10 @@ function Planner.Plan(context: any, passer: any, pass: any, style: any, difficul
 		local passType = family == "Through" and "Through" or (family == "Lofted" or family == "FarPostCross") and "Lofted" or "Ground"
 		local ballETA = PassFlightModel.Duration(flight, distance, power, passType)
 		local arrivalSpeed = distance / math.max(ballETA, 0.05) * (family == "Through" and 0.48 or 0.42)
-		local receiverETA = ReceptionInterceptResolver.EstimateReachTime(reachInput(pass.Receiver, target, receiverEnergy))
 		local opponentETA = nearestOpponentETA(context, passer.Side, target)
+		local arrival = PassArrivalPlanner.Solve({Receiver = pass.Receiver, Target = target, BallETA = ballETA, PassFamily = passType, SprintEnergy = receiverEnergy, OpponentETA = opponentETA, BallPosition = context.BallWorld, AttackDirection = context.PitchCFrame.LookVector * (context.AttackSigns and context.AttackSigns[passer.Side] or 1)})
+		if not arrival then continue end
+		local receiverETA = arrival.SelectedMovementETA
 		local timingError = math.abs(ballETA - receiverETA)
 		local receiverLate = receiverETA - ballETA
 		local opponentMargin = opponentETA - math.min(ballETA, receiverETA)
@@ -83,10 +87,13 @@ function Planner.Plan(context: any, passer: any, pass: any, style: any, difficul
 		score += (passQuality - 60) * 0.004 + (receiverReception - 60) * 0.004
 		score += (tonumber(difficulty and difficulty.PassRisk) or 0) * 0.08
 		if style then score += style:Ratio("PassRisk") * 0.04 end
+		if receiverLate > 0.18 then score -= receiverLate * 0.55 end
 		if opponentETA + 0.08 < math.min(receiverETA, ballETA) then score -= 1.2 end
 		local committedRun = pass.Receiver.Model:GetAttribute("VTRRunTicketId") ~= nil or tostring(pass.Receiver.Model:GetAttribute("currentAssignment") or ""):find("Run") ~= nil
 		if committedRun and (family == "Through" or family == "Lofted") then score += 0.18 end
-		local result = {Target = target, Power = power, Distance = distance, BallETA = ballETA, ReceiverETA = receiverETA, OpponentETA = opponentETA, ExpectedContactSpeed = contactSpeed, Viability = score, Family = family}
+		if arrival.Reachable ~= true then score -= 1.35 end
+		score += (arrival.ExpectedContactQuality or 0) * .28
+		local result = {Target = target, InterceptPoint = arrival.InterceptPoint, Power = power, Distance = distance, BallETA = ballETA, ReceiverETA = receiverETA, OpponentETA = opponentETA, ExpectedContactSpeed = contactSpeed, Viability = score, Family = family, Arrival = arrival, SelectedLocomotionMode = arrival.SelectedLocomotionMode, TimingDeficit = arrival.TimingDeficit, DesiredArrivalVelocity = arrival.DesiredArrivalVelocity, BrakingDistance = arrival.BrakingDistance, FacingTarget = arrival.FacingTarget, ContactKind = arrival.ContactKind, PreferredFoot = arrival.PreferredFoot, FirstTouchIntent = arrival.FirstTouchIntent, Reachable = arrival.Reachable}
 		if not best or result.Viability > best.Viability then best = result end
 	end
 	if not best or best.Viability < -0.58 then return nil end

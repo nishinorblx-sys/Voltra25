@@ -95,6 +95,7 @@ function ServerApp.Start()
 	local rankedProfile = RankedProfileService.new(profiles, publish, progression)
 	if packs.SetRankedProfiles then packs:SetRankedProfiles(rankedProfile) end
 	if launch.SetRankedProfiles then launch:SetRankedProfiles(rankedProfile) end
+	if launch.SetMatchRuntime then launch:SetMatchRuntime(matchRuntime) end
 	local rankedSquads=RankedSquadService.new(profiles)
 	local matchSetup = MatchSetupService.new(profiles,publish,progression,matchRuntime,rankedSquads)
 	local campaignAscension=CampaignAscensionService.new(profiles,publish,progression,inventory,rankedSquads)

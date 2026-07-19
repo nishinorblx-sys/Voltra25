@@ -136,6 +136,80 @@ local function chooseBoxCross(context: any, carrier: any): any?
 	}
 end
 
+local function closestTeammateToTarget(context: any, passer: any, target: Vector3): any?
+	local best = nil
+	local bestScore = math.huge
+	for _, teammate in ipairs(context.Teams[passer.Side].List) do
+		if teammate.Model ~= passer.Model and teammate.Root and not teammate.IsGoalkeeper then
+			local distance = PitchConfig.GetDistanceStuds(teammate.World, target)
+			if distance < bestScore then
+				best = teammate
+				bestScore = distance
+			end
+		end
+	end
+	return best
+end
+
+local function distanceToPassSegment(start: Vector3, target: Vector3, point: Vector3): (number, Vector3, number)
+	local segment = Vector3.new(target.X - start.X, 0, target.Z - start.Z)
+	local offset = Vector3.new(point.X - start.X, 0, point.Z - start.Z)
+	local lengthSq = segment:Dot(segment)
+	local alpha = lengthSq > 0.001 and math.clamp(offset:Dot(segment) / lengthSq, 0, 1) or 0
+	local closest = start + segment * alpha
+	return PitchConfig.GetDistanceStuds(point, closest), Vector3.new(closest.X, point.Y, closest.Z), alpha
+end
+
+local function alternatePassChasers(context: any, passer: any, primary: any?, target: Vector3): {any}
+	local scored = {}
+	for _, teammate in ipairs(context.Teams[passer.Side].List) do
+		if teammate.Model ~= passer.Model and teammate.Root and not teammate.IsGoalkeeper and (not primary or teammate.Model ~= primary.Model) then
+			local lateral, intercept, alpha = distanceToPassSegment(passer.World, target, teammate.World)
+			local targetDistance = PitchConfig.GetDistanceStuds(teammate.World, target)
+			if lateral <= 28 or targetDistance <= 38 then
+				local stamina = tonumber(teammate.Model:GetAttribute("VTRSprintEnergy")) or teammate.Stamina or 75
+				local score = lateral + targetDistance * 0.22 - alpha * 8 - math.clamp(stamina, 0, 100) * 0.025
+				table.insert(scored, {Info = teammate, Target = targetDistance <= 18 and target or intercept, Score = score})
+			end
+		end
+	end
+	table.sort(scored, function(a, b) return a.Score < b.Score end)
+	local result = {}
+	for index = 1, math.min(2, #scored) do
+		table.insert(result, scored[index])
+	end
+	return result
+end
+
+local function primePassChaser(model: Model, target: Vector3, now: number, ballEta: number?, routeEta: number?, primary: boolean)
+	local receiveUntil = now + math.clamp((ballEta or 1.1) + (primary and 1.6 or 1.05), 1.15, primary and 5.6 or 3.8)
+	model:SetAttribute("VTRPrepareToReceive", nil)
+	model:SetAttribute("VTRPotentialReceiveTarget", nil)
+	model:SetAttribute("VTRPrepareReceiveUntil", nil)
+	model:SetAttribute("VTRReceiveTarget", target)
+	model:SetAttribute("VTRReceiveIntercept", target)
+	model:SetAttribute("VTRReceiveUntil", receiveUntil)
+	model:SetAttribute("VTRReceiveBallETA", ballEta or 0.8)
+	model:SetAttribute("VTRReceiveReceiverETA", routeEta or 0.7)
+	model:SetAttribute("VTRReceiveOpponentETA", math.huge)
+	model:SetAttribute("VTRReceiveRouteConfidence", primary and 0.92 or 0.72)
+	model:SetAttribute("VTRReceiveRouteSprintRequested", true)
+	model:SetAttribute("VTRReceiveDistance", 0)
+	model:SetAttribute("VTRPreparingReceive", true)
+	model:SetAttribute("VTRReceiveCommitted", primary)
+	model:SetAttribute("VTRReceiveLockedAt", now)
+	model:SetAttribute("VTRReceiveHardLock", primary)
+	model:SetAttribute("VTRReceiveHardLockUntil", receiveUntil)
+	model:SetAttribute("VTRAITargetedPass", primary)
+	model:SetAttribute("VTRAIAlternatePassChaser", not primary)
+	model:SetAttribute("VTRRunTicketId", nil)
+	model:SetAttribute("VTRRunApproved", false)
+	model:SetAttribute("currentAssignment", "ReceivePass")
+	model:SetAttribute("SupportRole", "ReceivePass")
+	model:SetAttribute("AttackAssignment", "ReceivePass")
+	model:SetAttribute("TeamPhase", "PassReception")
+end
+
 function Service.new(ballService: any, style: any, difficulty: any)
 	return setmetatable({BallService = ballService, Style = style, Difficulty = difficulty, NextDecision = {}, CarrySince = {}, LastAction = {}, Random = Random.new(), ImmediateReceiverRoute = nil}, Service)
 end
@@ -147,6 +221,12 @@ end
 function Service:_kickPass(context: any, passer: any, pass: any): boolean
 	if not passer.Root or not pass then
 		return false
+	end
+	if not pass.Receiver or not pass.Receiver.Model or not pass.Receiver.Root then
+		pass.Receiver = closestTeammateToTarget(context, passer, pass.Target or passer.World)
+		if not pass.Receiver then
+			return false
+		end
 	end
 	local direction = pass.Target - passer.Root.Position
 	local execution = AIPassExecutionPlanner.Plan(context, passer, pass, self.Style, self.Difficulty)
@@ -160,35 +240,76 @@ function Service:_kickPass(context: any, passer: any, pass: any): boolean
 	local receiverModel = pass.Receiver and pass.Receiver.Model
 	if receiverModel and receiverModel.Parent then
 		local now = context.Now or os.clock()
-		local receiveUntil = now + math.clamp((execution.BallETA or 1.1) + 1.35, 1.2, 5.2)
-		local sprint = (execution.ReceiverETA or math.huge) > math.max(0.08, (execution.BallETA or 0) - 0.08) or PitchConfig.GetDistanceStuds(pass.Receiver.World, pass.Target) > 8
-		receiverModel:SetAttribute("VTRReceiveTarget", pass.Target)
-		receiverModel:SetAttribute("VTRReceiveIntercept", pass.Target)
-		receiverModel:SetAttribute("VTRReceiveUntil", receiveUntil)
-		receiverModel:SetAttribute("VTRReceiveBallETA", execution.BallETA)
-		receiverModel:SetAttribute("VTRReceiveReceiverETA", execution.ReceiverETA)
-		receiverModel:SetAttribute("VTRReceiveOpponentETA", execution.OpponentETA)
-		receiverModel:SetAttribute("VTRReceiveRouteConfidence", math.clamp(tonumber(execution.Viability) or 0.7, 0, 1))
-		receiverModel:SetAttribute("VTRReceiveRouteSprintRequested", sprint)
-		receiverModel:SetAttribute("VTRReceiveDistance", PitchConfig.GetDistanceStuds(pass.Receiver.World, pass.Target))
-		receiverModel:SetAttribute("VTRPreparingReceive", true)
-		receiverModel:SetAttribute("VTRReceiveCommitted", true)
-		receiverModel:SetAttribute("VTRReceiveLockedAt", now)
-		receiverModel:SetAttribute("VTRAITargetedPass", true)
-		receiverModel:SetAttribute("VTRRunTicketId", nil)
-		receiverModel:SetAttribute("VTRRunApproved", false)
-		receiverModel:SetAttribute("currentAssignment", "ReceivePass")
-		receiverModel:SetAttribute("SupportRole", "ReceivePass")
-		if self.ImmediateReceiverRoute then
-			self.ImmediateReceiverRoute(receiverModel, pass.Target, passKind, execution)
-		end
+		receiverModel:SetAttribute("VTRPrepareToReceive", true)
+		receiverModel:SetAttribute("VTRPotentialReceiveTarget", pass.Target)
+		receiverModel:SetAttribute("VTRPrepareReceiveUntil", now + math.clamp((execution.BallETA or .8) * .55, .22, .7))
+		receiverModel:SetAttribute("VTRReceiveCommitted", false)
 	end
+	local alternates = alternatePassChasers(context, passer, pass.Receiver, execution.InterceptPoint or pass.Target)
 	passer.Model:SetAttribute("AIPassCentralLane", pass.MiddlePass == true)
 	passer.Model:SetAttribute("AIPassMiddleOutnumbered", pass.MiddleOutnumbered == true)
 	passer.Model:SetAttribute("AIPassWingEscape", pass.WingEscape == true)
 	passer.Model:SetAttribute("AIPassMiddleMemory", AIPassingDecisionService.GetMiddleMistakeMemory and AIPassingDecisionService.GetMiddleMistakeMemory(passer.Model) or 0)
 	local kicked = self.BallService:Kick(passer.Model, "Pass", direction, power, pass.Receiver.Model, passKind, pass.Distance or direction.Magnitude, pass.Target)
 	if kicked then
+		if receiverModel and receiverModel.Parent then
+			local now = context.Now or os.clock()
+			local receiveUntil = now + math.clamp((execution.BallETA or 1.1) + 1.35, 1.2, 5.2)
+			local sprint = tostring(execution.SelectedLocomotionMode or "") == "SprintBurst"
+			receiverModel:SetAttribute("VTRPrepareToReceive", nil)
+			receiverModel:SetAttribute("VTRPotentialReceiveTarget", nil)
+			receiverModel:SetAttribute("VTRPrepareReceiveUntil", nil)
+			receiverModel:SetAttribute("VTRReceiveTarget", pass.Target)
+			receiverModel:SetAttribute("VTRReceiveIntercept", execution.InterceptPoint or pass.Target)
+			receiverModel:SetAttribute("VTRReceiveUntil", receiveUntil)
+			receiverModel:SetAttribute("VTRReceiveBallETA", execution.BallETA)
+			receiverModel:SetAttribute("VTRReceiveReceiverETA", execution.ReceiverETA)
+			receiverModel:SetAttribute("VTRReceiveOpponentETA", execution.OpponentETA)
+			receiverModel:SetAttribute("VTRReceiveRouteConfidence", math.clamp(tonumber(execution.Viability) or 0.7, 0, 1))
+			receiverModel:SetAttribute("VTRReceiveRouteSprintRequested", sprint)
+			receiverModel:SetAttribute("VTRReceiveDistance", PitchConfig.GetDistanceStuds(pass.Receiver.World, pass.Target))
+			receiverModel:SetAttribute("VTRPreparingReceive", true)
+			receiverModel:SetAttribute("VTRReceiveCommitted", true)
+			receiverModel:SetAttribute("VTRReceiveLockedAt", now)
+			receiverModel:SetAttribute("VTRAITargetedPass", true)
+			receiverModel:SetAttribute("VTRRunTicketId", nil)
+			receiverModel:SetAttribute("VTRRunApproved", false)
+			receiverModel:SetAttribute("VTRReceiveLocomotionMode", execution.SelectedLocomotionMode)
+			receiverModel:SetAttribute("VTRReceiveDesiredArrivalVelocity", execution.DesiredArrivalVelocity)
+			receiverModel:SetAttribute("VTRReceiveBrakingDistance", execution.BrakingDistance)
+			receiverModel:SetAttribute("VTRReceiveContactKind", execution.ContactKind)
+			receiverModel:SetAttribute("VTRReceivePreferredFoot", execution.PreferredFoot)
+			receiverModel:SetAttribute("VTRFirstTouchIntent", execution.FirstTouchIntent)
+			receiverModel:SetAttribute("currentAssignment", "ReceivePass")
+			receiverModel:SetAttribute("SupportRole", "ReceivePass")
+			receiverModel:SetAttribute("AILastPasserRole", passer.Role)
+			receiverModel:SetAttribute("AILastPasserName", passer.Model.Name)
+			receiverModel:SetAttribute("AILastPassReceivedAt", now)
+			if self.ImmediateReceiverRoute then
+				self.ImmediateReceiverRoute(receiverModel, execution.InterceptPoint or pass.Target, passKind, execution)
+			end
+		end
+		local now = context.Now or os.clock()
+		for _, alternate in ipairs(alternates) do
+			local info = alternate.Info
+			if info and info.Model and info.Model.Parent then
+				local routeTarget = alternate.Target or execution.InterceptPoint or pass.Target
+				local eta = info.Root and PitchConfig.GetDistanceStuds(info.World, routeTarget) / math.max(22, tonumber(info.Stats and info.Stats.pace) or 60) or execution.ReceiverETA
+				primePassChaser(info.Model, routeTarget, now, execution.BallETA, eta, false)
+				if self.ImmediateReceiverRoute then
+					self.ImmediateReceiverRoute(info.Model, routeTarget, passKind, {
+						BallETA = execution.BallETA,
+						ReceiverETA = eta,
+						SelectedLocomotionMode = "SprintBurst",
+						DesiredArrivalVelocity = execution.DesiredArrivalVelocity,
+						BrakingDistance = execution.BrakingDistance,
+						ContactKind = execution.ContactKind,
+						PreferredFoot = execution.PreferredFoot,
+					})
+				end
+			end
+		end
+		pass.Receiver.Model:SetAttribute("AIPassAlternateChasers", #alternates)
 		pass.Receiver.Model:SetAttribute("AIDebugExpectedPass", true)
 		pass.Receiver.Model:SetAttribute("AIDebugPassTarget", pass.Target)
 		pass.Receiver.Model:SetAttribute("AIDebugPassKind", pass.PassKind or "Ground")
@@ -206,7 +327,7 @@ function Service:_shoot(context: any, shooter: any, shot: any): boolean
 		return false
 	end
 	local direction = shot.Target - shooter.Root.Position
-	local charge = math.clamp(0.46 + shooter.Stats.shotPower / 240 + (shot.Distance or 80) / 420, 0.45, 0.86)
+	local charge = math.clamp(0.46 + shooter.Stats.shotPower / 240 + (shot.Distance or 80) / 420, 0.45, 0.86) * 0.5
 	local kicked = self.BallService:Kick(shooter.Model, "Shot", direction, charge, nil, nil, nil, shot.Target)
 	if kicked then
 		self.LastAction[shooter.Model] = "Shot"
@@ -278,7 +399,17 @@ function Service:_carrierDecision(context: any, carrier: any, assignment: any)
 	local passTempo = math.min(self.Style:Ratio("PassTempo"), tonumber(context.FirstMatchPassTempoCap) or 1)
 	local firstMatchAssistance = math.clamp(tonumber(context.FirstMatchAssistance) or 0, 0, 1)
 	local firstTouchDirectness = self.Style:Ratio("FirstTouchDirectness")
+	local possessionPatience = self.Style:Ratio("PossessionPatience")
+	local drawPressure = self.Style:Ratio("DrawPressureBias")
+	local oneTouchPassing = self.Style:Ratio("OneTouchPassing")
+	local minimumHoldTime = math.max(0.18, self.Style:Get("MinimumHoldTime"))
+	local maximumHoldTime = self.Style:Get("MaximumHoldTime")
+	if maximumHoldTime < minimumHoldTime then
+		maximumHoldTime = minimumHoldTime
+	end
 	local holdLimit = pressure.Under and (0.38 - passTempo * 0.2) or (1.05 - passTempo * 0.52 - firstTouchDirectness * 0.22)
+	holdLimit += possessionPatience * 0.55 + drawPressure * (pressure.None and 0.16 or pressure.Under and 0.32 or 0)
+	holdLimit -= oneTouchPassing * math.clamp(firstTouchDirectness, 0, 1) * 0.2
 	if defensiveMood == "Passive" then
 		holdLimit += 0.45
 	elseif defensiveMood == "Pressing" then
@@ -305,12 +436,14 @@ function Service:_carrierDecision(context: any, carrier: any, assignment: any)
 	elseif storyMovement == "Direct" or storyMovement == "Target" then
 		holdLimit = math.min(holdLimit, 0.55)
 	end
-	holdLimit = math.clamp(holdLimit, 0.18, 1.45)
+	holdLimit = math.clamp(holdLimit, minimumHoldTime, maximumHoldTime)
 	local nextDecision = self.NextDecision[carrier.Model] or 0
 	carrier.Model:SetAttribute("AIPressureScore", pressure.Score)
 	carrier.Model:SetAttribute("AIHeavyPressure", pressure.Heavy)
 	carrier.Model:SetAttribute("AICarriedFor", carriedFor)
 	carrier.Model:SetAttribute("AIHoldLimit", holdLimit)
+	carrier.Model:SetAttribute("AIMinimumHoldTime", minimumHoldTime)
+	carrier.Model:SetAttribute("AIMaximumHoldTime", maximumHoldTime)
 	carrier.Model:SetAttribute("AIAttackStage", attackStage)
 	carrier.Model:SetAttribute("AIDefensiveMood", defensiveMood)
 	carrier.Model:SetAttribute("AICarryIntoSpace", false)
@@ -508,7 +641,9 @@ function Service:_carrierDecision(context: any, carrier: any, assignment: any)
 	carrier.Model:SetAttribute("AIPassReceiver", pass and pass.Receiver and pass.Receiver.Model.Name or "")
 	carrier.Model:SetAttribute("AIPassKind", pass and pass.PassKind or "")
 	carrier.Model:SetAttribute("AIPassLaneClear", pass and pass.LaneClear or false)
-	if pass and (runningIntoSpaceDanger or forcedSafe or pass.Kind ~= "Back" and pass.Score > (-8 - passTempo * 18) or pass.Kind == "Back" and pass.Score > 58 or carriedFor > math.max(0.025, 0.16 - passTempo * 0.1)) then
+	local preplannedOneTouch = oneTouchPassing > 0.72 and carriedFor <= math.max(0.22, minimumHoldTime * 0.75) and pass and pass.Safe and pass.Score > 18
+	local holdWindowDone = carriedFor >= minimumHoldTime or pressure.Heavy or pressure.Under or runningIntoSpaceDanger or forcedSafe or preplannedOneTouch
+	if pass and holdWindowDone and (runningIntoSpaceDanger or forcedSafe or preplannedOneTouch or pass.Kind ~= "Back" and pass.Score > (-8 - passTempo * 18) or pass.Kind == "Back" and pass.Score > 58 or carriedFor > math.max(minimumHoldTime, 0.16 - passTempo * 0.1)) then
 		if self:_kickPass(context, carrier, pass) then
 			self.CarrySince[carrier.Model] = nil
 			return
@@ -623,7 +758,10 @@ function Service:_receiverOverrides(context: any, assignmentsBySide: any, onlySi
 			if info.Model:GetAttribute("VTRReceptionContractId") ~= nil then
 				continue
 			end
-			local receiveTarget = info.Model:GetAttribute("VTRReceiveTarget")
+			local receiveTarget = info.Model:GetAttribute("VTRReceiveIntercept")
+			if typeof(receiveTarget) ~= "Vector3" then
+				receiveTarget = info.Model:GetAttribute("VTRReceiveTarget")
+			end
 			local receiveUntil = tonumber(info.Model:GetAttribute("VTRReceiveUntil")) or now
 			if context.Owner == info.Model then
 				info.Model:SetAttribute("VTRReceivedAt", now)
@@ -645,17 +783,23 @@ function Service:_receiverOverrides(context: any, assignmentsBySide: any, onlySi
 			elseif typeof(receiveTarget) == "Vector3" and not info.IsUserControlled then
 				local passKind=tostring(info.Model:GetAttribute("AIDebugPassKind") or "")
 				local lobbed=passKind=="Lofted" or passKind=="FarPostCross" or (context.Ball and context.Ball:GetAttribute("VTRLobPassActive")==true)
-				local target = lobbed and predictReceivePoint(context, info, receiveTarget) or cutPassCoursePoint(context, info, receiveTarget)
+				local committed = info.Model:GetAttribute("VTRReceiveCommitted") == true
+					or info.Model:GetAttribute("VTRReceptionContractId") ~= nil
+					or info.Model:GetAttribute("VTRAITargetedPass") == true
+					or info.Model:GetAttribute("VTRAIAlternatePassChaser") == true
+					or info.Model:GetAttribute("VTRReceiveHardLock") == true
+					or (tonumber(info.Model:GetAttribute("VTRReceiveHardLockUntil")) or 0) > now
+				local target = committed and receiveTarget or lobbed and predictReceivePoint(context, info, receiveTarget) or cutPassCoursePoint(context, info, receiveTarget)
 				local assignment = assignmentsBySide[side][info.Model]
 				if assignment then
-					assignment.PrimaryAssignment = lobbed and "WaitForLobbedPass" or "CutPassCourse"
+					assignment.PrimaryAssignment = committed and "ReceivePass" or lobbed and "WaitForLobbedPass" or "CutPassCourse"
 					assignment.TargetWorld = target
 					assignment.MovementTarget = target
-					assignment.MovementUrgency = lobbed and .92 or 1
-					assignment.SprintAllowed = not lobbed or PitchConfig.GetDistanceStuds(info.World,target)>10
+					assignment.MovementUrgency = committed and 1 or lobbed and .92 or 1
+					assignment.SprintAllowed = committed or not lobbed or PitchConfig.GetDistanceStuds(info.World,target)>10
 					assignment.FaceWorld = context.BallWorld
 					info.Model:SetAttribute("VTRReceiveIntercept", target)
-					info.Model:SetAttribute("VTRReceiveMode", lobbed and "WaitLob" or "CutCourse")
+					info.Model:SetAttribute("VTRReceiveMode", committed and "CommittedIntercept" or lobbed and "WaitLob" or "CutCourse")
 					info.Model:SetAttribute("VTRReceiveBallSpeed", flat(context.BallVelocity or Vector3.zero).Magnitude)
 					info.Model:SetAttribute("VTRReceiveDistance", PitchConfig.GetDistanceStuds(info.World, target))
 				end

@@ -196,6 +196,114 @@ local function wingerPassKind(passer: any, receiver: any, pressure: any): (strin
 	return nil, 0
 end
 
+local function isCenterBack(info: any): boolean
+	return info.Role == "CB"
+end
+
+local function isFullback(info: any): boolean
+	return info.Role == "Fullback"
+end
+
+local function isMidfielder(info: any): boolean
+	return info.Role == "CDM" or info.Role == "CM" or info.Role == "CAM"
+end
+
+local function isStriker(info: any): boolean
+	return info.Role == "ST"
+end
+
+local function sameWideLane(a: any, b: any): boolean
+	return (a.Pitch.X < PitchConfig.HALF_WIDTH and b.Pitch.X < PitchConfig.HALF_WIDTH) or (a.Pitch.X > PitchConfig.HALF_WIDTH and b.Pitch.X > PitchConfig.HALF_WIDTH)
+end
+
+local function fullbackCanProgress(context: any, passer: any): boolean
+	local pressure = AIContextBuilder.Pressure(context, passer)
+	if pressure.Heavy then return false end
+	local forwardPitch = PitchConfig.ClampInsidePitch(Vector3.new(passer.Pitch.X, 3, passer.Pitch.Z + 58))
+	return AIContextBuilder.SpaceAt(context, passer.Side, forwardPitch, pressure.Under and 16 or 24) == true
+end
+
+local function midfielderCanProgress(context: any, passer: any): boolean
+	local pressure = AIContextBuilder.Pressure(context, passer)
+	if pressure.Under or pressure.Heavy then return false end
+	local forwardPitch = PitchConfig.ClampInsidePitch(Vector3.new(passer.Pitch.X + (PitchConfig.HALF_WIDTH - passer.Pitch.X) * .2, 3, passer.Pitch.Z + 48))
+	return AIContextBuilder.SpaceAt(context, passer.Side, forwardPitch, 22) == true
+end
+
+local function stagedCandidate(context: any, passer: any, style: any, difficulty: any, predicate: (any) -> boolean, bonus: number): any?
+	local best = nil
+	for _, receiver in ipairs(context.Teams[passer.Side].List) do
+		if receiver.Model ~= passer.Model and receiver.Root and not receiver.IsGoalkeeper and predicate(receiver) then
+			local scored = Service.ScoreReceiver(context, passer, receiver, style, difficulty)
+			if scored and scored.LaneClear then
+				scored.Score += bonus
+				scored.PassKind = "Ground"
+				scored.Target = passTarget(context, passer, receiver, receiver.Pitch.Z < passer.Pitch.Z - 12 and "BackPass" or "Ground")
+				scored.StagePlay = true
+				if not best or scored.Score > best.Score then best = scored end
+			end
+		end
+	end
+	return best
+end
+
+local function chooseStagedPlay(context: any, passer: any, style: any, difficulty: any): (any?, boolean)
+	local role = passer.Role
+	local lastRole = tostring(passer.Model:GetAttribute("AILastPasserRole") or "")
+	local lastAt = tonumber(passer.Model:GetAttribute("AILastPassReceivedAt")) or 0
+	local freshLast = (context.Now or os.clock()) - lastAt <= 4
+	local resetUntil = type(context.TeamStageResetUntil) == "table" and tonumber(context.TeamStageResetUntil[passer.Side]) or 0
+	if resetUntil and (context.Now or os.clock()) <= resetUntil and not isCenterBack(passer) and role ~= "GK" then
+		local cb = stagedCandidate(context, passer, style, difficulty, isCenterBack, 420)
+		if cb then
+			passer.Model:SetAttribute("AITeamOffenseStage", 1)
+			return cb, true
+		end
+	end
+	if role == "GK" then
+		passer.Model:SetAttribute("AITeamOffenseStage", 1)
+		local cb = stagedCandidate(context, passer, style, difficulty, isCenterBack, 260)
+		if cb then return cb, true end
+	end
+	if isFullback(passer) and passer.Pitch.Z < 455 then
+		passer.Model:SetAttribute("AITeamOffenseStage", 1)
+		if fullbackCanProgress(context, passer) then
+			local mid = stagedCandidate(context, passer, style, difficulty, function(receiver) return isMidfielder(receiver) and sameWideLane(passer, receiver) and receiver.Pitch.Z >= passer.Pitch.Z - 18 end, 280)
+			if mid then return mid, true end
+			return nil, true
+		end
+		local cb = stagedCandidate(context, passer, style, difficulty, isCenterBack, 300)
+		if cb then return cb, true end
+	end
+	if isCenterBack(passer) and passer.Pitch.Z < 390 then
+		passer.Model:SetAttribute("AITeamOffenseStage", 1)
+		if freshLast and lastRole == "CB" then
+			local fullback = stagedCandidate(context, passer, style, difficulty, function(receiver) return isFullback(receiver) and receiver.Pitch.Z >= passer.Pitch.Z - 24 end, 320)
+			if fullback then return fullback, true end
+		end
+		local otherCB = stagedCandidate(context, passer, style, difficulty, isCenterBack, 330)
+		if otherCB then return otherCB, true end
+		local fullback = stagedCandidate(context, passer, style, difficulty, isFullback, 240)
+		if fullback then return fullback, true end
+	end
+	if isMidfielder(passer) then
+		passer.Model:SetAttribute("AITeamOffenseStage", 2)
+		if midfielderCanProgress(context, passer) and passer.Pitch.Z < 560 then
+			return nil, true
+		end
+		local striker = stagedCandidate(context, passer, style, difficulty, function(receiver) return isStriker(receiver) and receiver.Pitch.Z >= passer.Pitch.Z + 18 end, 310)
+		if striker then return striker, true end
+		local mid = stagedCandidate(context, passer, style, difficulty, function(receiver) return isMidfielder(receiver) end, 250)
+		if mid then return mid, true end
+	end
+	if isStriker(passer) then
+		passer.Model:SetAttribute("AITeamOffenseStage", 2)
+		local mid = stagedCandidate(context, passer, style, difficulty, function(receiver) return isMidfielder(receiver) and receiver.Pitch.Z <= passer.Pitch.Z + 12 end, 360)
+		if mid then return mid, true end
+	end
+	return nil, false
+end
+
 local function routeBias(stage: string, mood: string, receiver: any, kind: string, forwardGain: number): number
 	local bias = 0
 	if stage == "BuildUp" then
@@ -296,8 +404,19 @@ function Service.ScoreReceiver(context: any, passer: any, receiver: any, style: 
 	local dangerous = receiver.Pitch.Z > 495 or PitchConfig.InZone(receiver.Pitch, "OpponentBox") or math.abs(742 - receiver.Pitch.Z) < 35
 	local directness = style:Directness()
 	local risk = style:Risk()
+	local forwardBias = style:Get("ForwardPassBias")
+	local lateralBias = style:Get("LateralPassBias")
+	local backBias = style:Get("BackPassBias")
 	local forwardPriority = style:Ratio("ForwardPassPriority")
 	local backPassSafety = style:Ratio("BackPassSafety")
+	local sidePassPriority = style:Ratio("SidePassPriority")
+	local recycleBias = style:Ratio("RecycleBias")
+	local safePassBias = style:Ratio("SafePassBias")
+	local lineBreakBias = style:Ratio("LineBreakBias")
+	local lobPassBias = style:Ratio("LobPassBias")
+	local retentionWeight = style:Ratio("RetentionProbabilityWeight")
+	local isolationPenalty = style:Ratio("ReceiverIsolationPenalty")
+	local aerialContestPenalty = style:Ratio("AerialContestPenalty")
 	local throughFrequency = style:Ratio("ThroughBallFrequency")
 	local passRisk = style:Ratio("PassRisk")
 	local targetKind = "Ground"
@@ -343,21 +462,26 @@ function Service.ScoreReceiver(context: any, passer: any, receiver: any, style: 
 	local receiverWide = isWingLaneX(receiver.Pitch.X) or receiver.Role == "Winger" or receiver.Role == "Fullback"
 	local centralTrap = isCentralLaneX(passer.Pitch.X) and centralOutnumberedAround(context, passer, receiver.Pitch.Z)
 	local middleOutnumbered = centralPass and centralOutnumberedAround(context, passer, receiver.Pitch.Z)
-
-	local score = 0
-	score += (veryOpen and 24 or open and 14 or tight and -20 or 0)
-	score += laneClear and 38 or -86
-	score += kind == "Forward" and (42 + directness * 28 + forwardPriority * 28) or kind == "Side" and (26 - directness * 3) or (-42 + backPassSafety * 4 - directness * 30)
-	score += targetKind == "Through" and (12 + throughFrequency * 22) or targetKind == "Lofted" and (directness * 14 + style:Ratio("FreeKickLongPass") * 8) or 0
-	score += forwardGain > 45 and 16 or forwardGain > 24 and 10 or forwardGain > 8 and 5 or 0
-	score += dangerous and (10 + risk * 10 + passRisk * 10) or 0
-	score -= math.abs(distance - (directness > 0.55 and 48 or 28)) * 0.22
 	local passerPassQuality = passer.Stats and (passer.Stats.passQuality or passer.Stats.passing or 60) or 60
 	local passerVision = passer.Stats and (passer.Stats.passVision or passer.Stats.vision or passerPassQuality) or passerPassQuality
 	local receiverReception = receiver.Stats and (receiver.Stats.reception or receiver.Stats.ballControl or receiver.Stats.overall or 60) or 60
+
+	local orientationScore = kind == "Forward" and (forwardBias + directness * 22 + forwardPriority * 34 + math.clamp(forwardGain, 0, 70) * 0.28)
+		or kind == "Side" and (lateralBias + 12 + sidePassPriority * 30 - directness * 8)
+		or (backBias - 18 + backPassSafety * 46 + recycleBias * 28 - directness * 18)
+	local safetyScore = (laneClear and 28 or -72) + (open and 10 or veryOpen and 18 or tight and -18 or 0) + safePassBias * (safe and 22 or -8)
+	local spaceScore = (veryOpen and 20 or open and 12 or tight and -18 or 0)
+	local receptionScore = math.clamp((receiverReception - 55) * 0.28, -10, 18) - pressure.Score * (10 + isolationPenalty * 18)
+	local nextActionScore = (targetKind == "Through" and (throughFrequency * 28 + lineBreakBias * 16) or targetKind == "Lofted" and (lobPassBias * 24 - aerialContestPenalty * math.max(0, laneRisk - 0.18) * 80 + style:Ratio("FreeKickLongPass") * 8) or 0)
+	local sequenceScore = storyBias(context, passer, receiver, kind, targetKind, forwardGain, distance)
+	local progressionScore = forwardGain > 45 and 16 or forwardGain > 24 and 10 or forwardGain > 8 and 5 or kind == "Back" and recycleBias * 14 or 0
+	local riskScore = dangerous and (10 + risk * 10 + passRisk * 10) or 0
+	riskScore -= laneRisk * math.clamp(82 + retentionWeight * 62 - passRisk * 38, 58, 132)
+	local transitionRiskScore = not safe and math.max(risk, passRisk) < 0.45 and mood ~= "AggressiveRisk" and -18 or 0
+	local roleScore = routeBias(stage, mood, receiver, kind, forwardGain)
+	local score = orientationScore + safetyScore + spaceScore + receptionScore + nextActionScore + sequenceScore + progressionScore + riskScore + transitionRiskScore + roleScore
+	score -= math.abs(distance - (directness > 0.55 and 48 or 28)) * 0.22
 	score += (receiver.Stats.overall or 60) * 0.06 + (receiver.Stats.pace or 60) * 0.04 + receiverReception * 0.06 + passerPassQuality * 0.08 + passerVision * 0.05
-	score += routeBias(stage, mood, receiver, kind, forwardGain)
-	score += storyBias(context, passer, receiver, kind, targetKind, forwardGain, distance)
 	if middleOutnumbered then
 		score -= 42 + sideMemory * 76
 	elseif centralPass and sideMemory > 0.12 then
@@ -376,31 +500,31 @@ function Service.ScoreReceiver(context: any, passer: any, receiver: any, style: 
 	end
 	local fastDistributionBias = true
 	if kind == "Back" then
-		score -= passer.Pitch.Z >= PitchConfig.HALF_LENGTH and 58 or 34
+		score -= (passer.Pitch.Z >= PitchConfig.HALF_LENGTH and 34 or 18) * (1 - backPassSafety * 0.55) + (1 - recycleBias) * 18
 		if forwardGain < -38 then
-			score -= 20
+			score -= 12 * (1 - backPassSafety * 0.45)
 		end
 	elseif kind == "Side" then
-		score += laneClear and 24 or -28
+		score += laneClear and (10 + sidePassPriority * 18) or -28
 		if passerPressure.Under or passerPressure.Heavy then
 			score += (open or veryOpen) and 20 or 8
 		end
 	elseif kind == "Forward" then
-		score += laneClear and 28 or -42
-		score += math.clamp(forwardGain, 0, 70) * 0.36
+		score += laneClear and (12 + forwardPriority * 22) or -42
+		score += math.clamp(forwardGain, 0, 70) * (0.2 + lineBreakBias * 0.22)
 		if open or veryOpen then
 			score += 16
 		end
 	end
 	if kind == "Back" then
-		local backPenalty = passer.Pitch.Z >= PitchConfig.HALF_LENGTH and 42 or 24
+		local backPenalty = (passer.Pitch.Z >= PitchConfig.HALF_LENGTH and 28 or 14) * (1 - backPassSafety * 0.65)
 		if passerPressure.Heavy then
-			backPenalty -= 12
+			backPenalty -= 10 + recycleBias * 14
 		elseif not passerPressure.Under then
-			backPenalty += 10
+			backPenalty += 8 * (1 - recycleBias)
 		end
 		if forwardGain < -48 then
-			backPenalty += 18
+			backPenalty += 10 * (1 - backPassSafety)
 		end
 		score -= backPenalty
 	elseif forwardGain > 6 then
@@ -425,15 +549,15 @@ function Service.ScoreReceiver(context: any, passer: any, receiver: any, style: 
 	elseif movementProfile=="StayWide"then score+=receiverWide and 22 or 0
 	elseif movementProfile=="FreeRoam"then score+=(open or veryOpen)and 18 or 0
 	elseif movementProfile=="StayBack"and forwardGain>38 then score-=30 end
-	score -= pressure.Score * 18
-	score -= laneRisk * math.clamp(124 - passerVision * 0.42, 70, 116)
+	score -= pressure.Score * (10 + isolationPenalty * 14)
+	score -= laneRisk * math.clamp(100 - passerVision * 0.36 + retentionWeight * 44 - passRisk * 26, 58, 124)
 	if laneRisk >= 0.54 then
 		score -= 42
 	elseif laneRisk >= 0.36 then
 		score -= 20
 	end
 	if targetKind == "Lofted" and laneRisk < 0.26 and forwardGain >= -4 then
-		score += 10
+		score += 4 + lobPassBias * 14
 	end
 	score += difficulty.PassRisk * 10
 	if mood == "Passive" and forwardGain > 34 then
@@ -469,6 +593,20 @@ function Service.ScoreReceiver(context: any, passer: any, receiver: any, style: 
 		MiddlePass = centralPass,
 		MiddleOutnumbered = middleOutnumbered,
 		WingEscape = receiverWide and (centralTrap or sideMemory >= 0.22),
+		ScoreBreakdown = {
+			OrientationScore = orientationScore,
+			SafetyScore = safetyScore,
+			SpaceScore = spaceScore,
+			ReceptionScore = receptionScore,
+			NextActionScore = nextActionScore,
+			SequenceScore = sequenceScore,
+			ProgressionScore = progressionScore,
+			RiskScore = riskScore,
+			TransitionRiskScore = transitionRiskScore,
+			RoleScore = roleScore,
+			FinalScore = score,
+			ReasonCodes = {kind, targetKind, laneClear and "LaneClear" or "LaneBlocked", safe and "Safe" or "Risk"},
+		},
 	}
 end
 
@@ -545,6 +683,10 @@ function Service.ChooseWingerWide(context: any, passer: any, style: any, difficu
 end
 
 function Service.Choose(context: any, passer: any, style: any, difficulty: any, forcedSafe: boolean?): any?
+	local staged, stagedDecided = chooseStagedPlay(context, passer, style, difficulty)
+	if stagedDecided then
+		return staged
+	end
 	local best = nil
 	local bestSafe = nil
 	local fallback = nil

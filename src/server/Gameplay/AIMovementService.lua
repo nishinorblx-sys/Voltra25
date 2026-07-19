@@ -6,19 +6,39 @@ Service.__index = Service
 
 local burstProfiles = {
 	ReceivePass = {Maximum = 3, Cooldown = 0.8, Energy = 15, Essential = true},
+	BallCarrierDecision = {Maximum = 2.4, Cooldown = 0.75, Energy = 12, Essential = true},
+	DribbleSupport = {Maximum = 2.4, Cooldown = 0.85, Energy = 14, Essential = true},
+	CarryForwardSpace = {Maximum = 2.8, Cooldown = 0.85, Energy = 14, Essential = true},
+	TakeOnPressForward = {Maximum = 2.8, Cooldown = 0.75, Energy = 12, Essential = true},
+	ForcedCarry = {Maximum = 2.2, Cooldown = 0.8, Energy = 14, Essential = true},
+	WingerDiagonalGoalCarry = {Maximum = 2.8, Cooldown = 0.85, Energy = 14, Essential = true},
+	WingerEndLineCarry = {Maximum = 2.8, Cooldown = 0.85, Energy = 14, Essential = true},
 	RunBehind = {Maximum = 2.2, Cooldown = 3.5, Energy = 30},
 	RiskOffsideRun = {Maximum = 2.2, Cooldown = 3.5, Energy = 30},
 	RunBehindWide = {Maximum = 2.2, Cooldown = 3.5, Energy = 30},
 	OverlapRun = {Maximum = 2.5, Cooldown = 5, Energy = 35},
 	UnderlapRun = {Maximum = 2.2, Cooldown = 4.5, Energy = 35},
 	CounterSprint = {Maximum = 3, Cooldown = 3, Energy = 25, Essential = true},
+	ComeShortToEscapePressure = {Maximum = 2.4, Cooldown = 0.9, Energy = 14, Essential = true},
+	ComeShort = {Maximum = 2.2, Cooldown = 1, Energy = 16},
+	InsideTriangleSupport = {Maximum = 2.3, Cooldown = 0.95, Energy = 16},
+	BallSidePivotSupport = {Maximum = 2.2, Cooldown = 0.95, Energy = 16},
+	MidfieldSupport = {Maximum = 2.1, Cooldown = 1.05, Energy = 18},
+	StorySecondBallSupport = {Maximum = 2.2, Cooldown = 1.05, Energy = 18},
+	StoryRunBeyondOutlet = {Maximum = 2.6, Cooldown = 1, Energy = 16},
+	StoryDirectOutlet = {Maximum = 2.6, Cooldown = 1, Energy = 16},
+	StoryFullbackCommit = {Maximum = 2.5, Cooldown = 1.1, Energy = 18},
+	StoryLateBoxRun = {Maximum = 2.4, Cooldown = 1.1, Energy = 18},
+	StoryAttackBoxLane = {Maximum = 2.5, Cooldown = 1.1, Energy = 18},
+	StoryCentralFinishRun = {Maximum = 2.4, Cooldown = 1.1, Energy = 18},
 	PressBallCarrier = {Maximum = 1.8, Cooldown = 2.5, Energy = 28},
 	PrimaryPressRotation = {Maximum = 1.8, Cooldown = 2.5, Energy = 28},
 	AggressiveMidfieldPress = {Maximum = 1.8, Cooldown = 2.5, Energy = 28},
 	RecoveryRun = {Maximum = 3, Cooldown = 1.5, Energy = 18, Essential = true},
 	RecoverShape = {Maximum = 3, Cooldown = 1.5, Energy = 18, Essential = true},
 	RunBackWithAttacker = {Maximum = 3, Cooldown = 1.5, Energy = 18, Essential = true},
-	ChaseLooseBall = {Maximum = 2.5, Cooldown = 1, Energy = 18, Essential = true},
+	ChaseLooseBall = {Maximum = 3.2, Cooldown = 0.45, Energy = 8, Essential = true},
+	CoverLooseBall = {Maximum = 2.4, Cooldown = 0.65, Energy = 12, Essential = true},
 	AttackBox = {Maximum = 2, Cooldown = 4, Energy = 30},
 	AttackBackPost = {Maximum = 2, Cooldown = 4, Energy = 30},
 	ForwardMidfieldRun = {Maximum = 2, Cooldown = 4, Energy = 30},
@@ -44,7 +64,8 @@ local pressureAssignments = {
 	EarlyClosePassTargetPressure = true,
 }
 
-local tacticalBurstProfile = {Maximum = 1.65, Cooldown = 1.25, Energy = 22}
+local tacticalBurstProfile = {Maximum = 2.35, Cooldown = 0.95, Energy = 16}
+local supportBurstProfile = {Maximum = 2.45, Cooldown = 0.9, Energy = 14, Essential = true}
 
 function Service.new(executor: any)
 	return setmetatable({Executor = executor, State = {}}, Service)
@@ -62,9 +83,13 @@ end
 function Service:Apply(info: any, assignment: any, context: any, dt: number)
 	if info.IsUserControlled or not info.Root then return end
 	local model = info.Model
-	local receiveTarget = model:GetAttribute("VTRReceiveTarget")
+	local receiveTarget = model:GetAttribute("VTRReceiveIntercept")
+	if typeof(receiveTarget) ~= "Vector3" then
+		receiveTarget = model:GetAttribute("VTRReceiveTarget")
+	end
 	if model:GetAttribute("VTRPreparingReceive") == true and typeof(receiveTarget) == "Vector3" then
-		assignment = {PrimaryAssignment = "ReceivePass", TargetWorld = receiveTarget, FaceWorld = context.BallWorld, MovementUrgency = 1, SprintAllowed = model:GetAttribute("VTRReceiveRouteSprintRequested") == true, Phase = "PassReception", SprintConservation = assignment.SprintConservation}
+		local hardLock = model:GetAttribute("VTRReceiveHardLock") == true or (tonumber(model:GetAttribute("VTRReceiveHardLockUntil")) or 0) > (context.Now or os.clock())
+		assignment = {PrimaryAssignment = "ReceivePass", TargetWorld = receiveTarget, FaceWorld = context.BallWorld, MovementUrgency = 1, SprintAllowed = hardLock or model:GetAttribute("VTRReceiveRouteSprintRequested") == true, Phase = "PassReception", SprintConservation = 0}
 	end
 	local now = context.Now or os.clock()
 	local state = self:_state(model, info.World)
@@ -95,7 +120,8 @@ function Service:Apply(info: any, assignment: any, context: any, dt: number)
 	local moved = PitchConfig.GetDistanceStuds(info.World, state.LastPosition)
 	local profileKey = assignment.DefensiveDuty == "PrimaryPresser" and "PressBallCarrier" or assignmentName
 	local profile = burstProfiles[profileKey]
-	if not profile and assignment.SprintAllowed == true and distance > 11 and (assignment.MovementUrgency or 0) >= 0.76 then profile = tacticalBurstProfile end
+	if not profile and assignment.SprintAllowed == true and context.OwnerSide == info.Side and distance > 7 and (assignment.MovementUrgency or 0) >= 0.72 then profile = supportBurstProfile end
+	if not profile and assignment.SprintAllowed == true and distance > 9 and (assignment.MovementUrgency or 0) >= 0.72 then profile = tacticalBurstProfile end
 	local urgent = profile ~= nil
 	if now - state.LastMovedAt >= (urgent and 0.45 or 0.75) then
 		if distance > (urgent and 5 or 8) and moved < (urgent and 0.85 or 1.5) then
@@ -107,9 +133,19 @@ function Service:Apply(info: any, assignment: any, context: any, dt: number)
 		end
 		state.LastMovedAt, state.LastPosition = now, info.World
 	end
+	local ballSpeed = (context.BallVelocity and Vector3.new(context.BallVelocity.X, 0, context.BallVelocity.Z).Magnitude) or 0
+	local activeBallChase = assignmentName == "ChaseLooseBall" or assignmentName == "ReceivePass"
 	local mode = "Jog"
-	if distance < 2.5 then mode = "Idle" elseif distance < 7 then mode = "Walk" elseif distance > 18 then mode = "Run" end
-	local sprintAllowed = profile ~= nil and assignment.SprintAllowed == true and distance > 5
+	if activeBallChase and ballSpeed > 1.5 then
+		mode = distance > 1.1 and "Run" or "Jog"
+	elseif distance < 2.5 then
+		mode = "Idle"
+	elseif distance < 7 then
+		mode = "Walk"
+	elseif distance > 18 then
+		mode = "Run"
+	end
+	local sprintAllowed = profile ~= nil and assignment.SprintAllowed == true and (distance > 5 or activeBallChase and ballSpeed > 4 and distance > 1.4)
 	if sprintAllowed then mode = "SprintBurst" end
 	if pressureAssignments[assignmentName] and distance <= 6.5 then mode = "Run" end
 	local conservation = math.clamp(tonumber(assignment.SprintConservation) or 50, 0, 100) / 100

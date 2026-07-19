@@ -1,6 +1,7 @@
 --!strict
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local AITacticConfig = require(ReplicatedStorage.VTR.Shared.AITacticConfig)
+local AIBehaviorTuningConfig = require(ReplicatedStorage.VTR.Shared.AIBehaviorTuningConfig)
 local Service = {}
 Service.__index = Service
 
@@ -66,12 +67,13 @@ local DEFAULTS = {
 function Service.new(tactics: any?)
 	local normalized = AITacticConfig.Normalize(tactics)
 	local preset = AITacticConfig.Get(normalized.PresetId)
-	local self = {Sliders = normalized.Sliders, PresetId = normalized.PresetId, Preset = preset, MaxMajorRuns = preset.MaxMajorRuns, MaxPressers = preset.MaxPressers}
+	local resolved = AIBehaviorTuningConfig.Resolve(normalized.Sliders, normalized)
+	local self = {Sliders = normalized.Sliders, Resolved = resolved, Tactics = normalized, PresetId = normalized.PresetId, Preset = preset, MaxMajorRuns = resolved.MaxMajorRuns or preset.MaxMajorRuns, MaxPressers = resolved.MaxPressers or preset.MaxPressers}
 	return setmetatable(self, Service)
 end
 
 function Service:Get(name: string): number
-	return self.Sliders[name] or DEFAULTS[name] or 50
+	return self.Resolved[name] or self.Sliders[name] or DEFAULTS[name] or 50
 end
 
 function Service:Ratio(name: string): number

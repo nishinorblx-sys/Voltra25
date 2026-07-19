@@ -115,6 +115,8 @@ function Service:_routeReceiverBeforePass(model: Model, target: Vector3, passKin
 	model:SetAttribute("AttackAssignment", "ReceivePass")
 	model:SetAttribute("TeamPhase", "PassReception")
 	model:SetAttribute("MovementMode", sprint and "SprintBurst" or "Run")
+	model:SetAttribute("VTRReceiveHardLock", true)
+	model:SetAttribute("VTRReceiveHardLockUntil", (self.LastContext and self.LastContext.Now or os.clock()) + math.max(0.65, tonumber(execution and execution.BallETA) or 0.9))
 	model:SetAttribute("VTRAIMovementIntensity", 1)
 	model:SetAttribute("VTRAIIntentionUntil", (self.LastContext and self.LastContext.Now or os.clock()) + math.max(0.45, tonumber(execution and execution.BallETA) or 0.8))
 end
@@ -165,7 +167,7 @@ function Service:ResetFootballer(model: Model)
 		if brain then brain.NextDecision[model] = nil;brain.CarrySince[model] = nil;brain.LastAction[model] = nil end
 		self.CurrentAssignments[side][model] = nil
 	end
-	for _, attribute in {"VTRAISprintRequested", "VTRReceiveTarget", "VTRPreparingReceive", "VTRReceiveUntil", "VTRReceiveRouteSprintRequested", "AIMiddlePassMistakeMemory"} do model:SetAttribute(attribute, nil) end
+	for _, attribute in {"VTRAISprintRequested", "VTRReceiveTarget", "VTRPreparingReceive", "VTRReceiveUntil", "VTRReceiveRouteSprintRequested", "VTRAIAlternatePassChaser", "AIMiddlePassMistakeMemory"} do model:SetAttribute(attribute, nil) end
 end
 
 function Service:SetFirstMatchAssistance(active: boolean)

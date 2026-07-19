@@ -1,9 +1,10 @@
 --!strict
 
 return table.freeze({
-	Pages = table.freeze({ Home=true, UltimateTeam=true, WorldCup=true, Inventory=true, Campaign=true, Play=true, Ranked=true, Clubs=true, Career=true, Store=true, Settings=true }),
+	Pages = table.freeze({ Home=true, UltimateTeam=true, AILab=true, WorldCup=true, Inventory=true, Campaign=true, Play=true, Ranked=true, Clubs=true, Career=true, Store=true, Settings=true }),
 	Tabs = table.freeze({
 		UltimateTeam={Squad=true,Cards=true,Packs=true,Objectives=true,StorePacks=true,Club=true,Customize=true,Chemistry=true},
+		AILab={Playstyles=true},
 		Inventory={Packs=true,Players=true,Cosmetics=true,Kits=true,Stadiums=true,Consumables=true,History=true},
 		Play={Quick=true,Private=true,Training=true,MatchSettings=true,TeamSelect=true,StadiumSelect=true,KitSelect=true,Ready=true},
 		Ranked={Division=true,Rewards=true,History=true,Leaders=true,Season=true,Queue=true},

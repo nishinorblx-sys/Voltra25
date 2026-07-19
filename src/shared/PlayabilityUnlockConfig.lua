@@ -4,6 +4,7 @@ local PlayabilityUnlockConfig = {}
 
 local ALWAYS_AVAILABLE = {
 	Home = true,
+	AILab = true,
 	WorldCup = true,
 	Settings = true,
 }

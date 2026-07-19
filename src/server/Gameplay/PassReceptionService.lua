@@ -8,6 +8,7 @@ local ReceptionInterceptResolver = require(ReplicatedStorage.VTR.Shared.Receptio
 local ReceiverAssistConfig = require(ReplicatedStorage.VTR.Shared.ReceiverAssistConfig)
 local StaminaConfig = require(ReplicatedStorage.VTR.Shared.StaminaConfig)
 local ReceiverMovementService = require(script.Parent.ReceiverMovementService)
+local PassArrivalPlanner = require(script.Parent.PassArrivalPlanner)
 
 local Service = {}
 Service.__index = Service
@@ -287,7 +288,8 @@ function Service:OnPassLaunched(launch: any): any?
 	local family = PassReceptionConfig.NormalizeFamily(launch.PassFamily)
 	local manual = family == "Manual" or nextContext and nextContext.ManualPass == true
 	if manual then family = "Manual" end
-	local assistance = manual and "Manual" or ReceiverAssistConfig.Normalize(nextContext and nextContext.AssistanceMode or receiver:GetAttribute("VTRReceiverAssistMode"), "Standard")
+	local aiReceiver = receiver:GetAttribute("aiControlled") == true and receiver:GetAttribute("controlledByUser") ~= true
+	local assistance = manual and "Manual" or aiReceiver and "Newcomer" or ReceiverAssistConfig.Normalize(nextContext and nextContext.AssistanceMode or receiver:GetAttribute("VTRReceiverAssistMode"), "Standard")
 	local autoSwitch = ReceiverAssistConfig.Normalize(nextContext and nextContext.AutoSwitchMode or assistance, assistance)
 	local player = self:_playerForReceiver(receiver, side, nextContext and nextContext.Player or nil)
 	local alreadyControlled = player ~= nil and self.TeamControl ~= nil and self.TeamControl:GetActive(player) == receiver
@@ -338,7 +340,8 @@ function Service:OnPassLaunched(launch: any): any?
 		PassDistance = finiteNumber(launch.PassDistance, flat(initialPoint - self.Ball.Position).Magnitude),
 		InitialDirection = finiteVector(launch.InitialVelocity) and launch.InitialVelocity or self.Ball.AssemblyLinearVelocity,
 		LastDirection = finiteVector(launch.InitialVelocity) and launch.InitialVelocity or self.Ball.AssemblyLinearVelocity,
-		RouteSprintRequested = false,
+		RouteSprintRequested = aiReceiver,
+		AIReceiver = aiReceiver,
 		MaterialDeflection = false,
 	}
 	self.Active = contract
@@ -446,7 +449,7 @@ function Service:_solve(contract: any, deltaTime: number): any
 	local jog = self:_movementProfile(receiver, false)
 	local sprint = self:_movementProfile(receiver, true)
 	local samples = self:_trajectorySamples(contract)
-	local target = contract.PassFamily == "Lob" and contract.InitialReceivePoint or contract.LiveInterceptPoint or contract.InitialReceivePoint
+	local target = contract.LiveInterceptPoint or contract.InitialReceivePoint
 	local opponents = self:_opponents(contract, target)
 	local started = os.clock()
 	local solved = ReceptionInterceptResolver.Resolve({
@@ -465,10 +468,11 @@ function Service:_solve(contract: any, deltaTime: number): any
 	if solved.Point then
 		local force = contract.MaterialDeflection == true
 		local routePoint = solved.Point
-		if contract.PassFamily == "Lob" and finiteVector(contract.InitialReceivePoint) and contract.MaterialDeflection ~= true then
-			routePoint = contract.InitialReceivePoint
+		if contract.PassFamily == "Lob" and contract.MaterialDeflection ~= true then
 			solved.BallETA = self:_landingETA(contract)
-			solved.Point = routePoint
+			if finiteVector(contract.LiveInterceptPoint) and flat(routePoint - contract.LiveInterceptPoint).Magnitude < 5.5 then
+				routePoint = contract.LiveInterceptPoint
+			end
 		end
 		contract.PreviousInterceptPoint = contract.LiveInterceptPoint
 		contract.LiveInterceptPoint = ReceptionInterceptResolver.Smooth(contract.LiveInterceptPoint, routePoint, deltaTime, tuning.InterceptSmoothing, tuning.MaximumTargetSpeed, force)
@@ -478,12 +482,24 @@ function Service:_solve(contract: any, deltaTime: number): any
 		contract.OpponentETA = solved.OpponentETA
 		contract.RouteConfidence = solved.RouteConfidence
 		contract.TrajectoryConfidence = solved.TrajectoryConfidence
-		local jogETA = ReceptionInterceptResolver.EstimateReachTime({Position = receiverRoot.Position, Velocity = receiverRoot.AssemblyLinearVelocity, Facing = receiverRoot.CFrame.LookVector, Target = solved.Point, MaximumSpeed = jog.TargetSpeed, Acceleration = jog.AccelerationRate, ContactTolerance = tuning.ContactTolerance, PreparationSeconds = PassReceptionConfig.ContactPreparationSeconds})
+		local arrival = PassArrivalPlanner.Solve({ReceiverModel = receiver, Target = contract.LiveInterceptPoint, BallETA = contract.BallETA, PassFamily = contract.PassFamily, OpponentETA = contract.OpponentETA, BallPosition = self.Ball.Position})
+		local jogETA = arrival and arrival.JogETA or ReceptionInterceptResolver.EstimateReachTime({Position = receiverRoot.Position, Velocity = receiverRoot.AssemblyLinearVelocity, Facing = receiverRoot.CFrame.LookVector, Target = solved.Point, MaximumSpeed = jog.TargetSpeed, Acceleration = jog.AccelerationRate, ContactTolerance = tuning.ContactTolerance, PreparationSeconds = PassReceptionConfig.ContactPreparationSeconds})
 		local preSwitch = not contract.ControlTransferred
 		local sprintAllowed = tuning.AutoSprint == "Required" or tuning.AutoSprint == "ClearlyRequired" or tuning.AutoSprint == "PreSwitchOnly" and preSwitch
 		local sprintRequired = jogETA > solved.BallETA - PassReceptionConfig.ReachSafetySeconds
 		if tuning.AutoSprint == "ClearlyRequired" then sprintRequired = jogETA > solved.BallETA + 0.06 end
-		contract.RouteSprintRequested = sprint.SprintAllowed == true and sprintAllowed and sprintRequired
+		contract.RouteSprintRequested = sprint.SprintAllowed == true and sprintAllowed and (arrival and arrival.SelectedLocomotionMode == "SprintBurst" or sprintRequired)
+		if arrival then
+			contract.SelectedLocomotionMode = arrival.SelectedLocomotionMode
+			contract.DesiredArrivalVelocity = arrival.DesiredArrivalVelocity
+			contract.BrakingDistance = arrival.BrakingDistance
+			contract.FacingTarget = arrival.FacingTarget
+			contract.ContactKind = arrival.ContactKind
+			contract.PreferredFoot = arrival.PreferredFoot
+			contract.FirstTouchIntent = arrival.FirstTouchIntent
+			contract.TimingDeficit = arrival.TimingDeficit
+			contract.ExpectedContactQuality = arrival.ExpectedContactQuality
+		end
 	end
 	return solved
 end

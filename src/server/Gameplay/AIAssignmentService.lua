@@ -39,7 +39,10 @@ local function makeAssignment(context: any, info: any, name: string, pitch: Vect
 end
 
 local function receiveAssignment(context: any, info: any): any?
-	local target = info.Model:GetAttribute("VTRReceiveTarget")
+	local target = info.Model:GetAttribute("VTRReceiveIntercept")
+	if typeof(target) ~= "Vector3" then
+		target = info.Model:GetAttribute("VTRReceiveTarget")
+	end
 	local untilTime = tonumber(info.Model:GetAttribute("VTRReceiveUntil")) or 0
 	if info.Model:GetAttribute("VTRPreparingReceive") ~= true or typeof(target) ~= "Vector3" or untilTime <= (context.Now or os.clock()) then
 		return nil
@@ -47,13 +50,16 @@ local function receiveAssignment(context: any, info: any): any?
 	local targetPitch = PitchConfig.WorldToTeamPitchPosition(target, info.Side, context.Options)
 	local ballEta = tonumber(info.Model:GetAttribute("VTRReceiveBallETA")) or 0
 	local receiverEta = tonumber(info.Model:GetAttribute("VTRReceiveReceiverETA")) or math.huge
-	local sprint = info.Model:GetAttribute("VTRReceiveRouteSprintRequested") == true or receiverEta > math.max(0.1, ballEta - 0.08)
+	local aiTargeted = info.Model:GetAttribute("VTRAITargetedPass") == true
+	local hardLock = aiTargeted or info.Model:GetAttribute("VTRAIAlternatePassChaser") == true or info.Model:GetAttribute("VTRReceiveHardLock") == true or (tonumber(info.Model:GetAttribute("VTRReceiveHardLockUntil")) or 0) > (context.Now or os.clock())
+	local sprint = hardLock or info.Model:GetAttribute("VTRReceiveRouteSprintRequested") == true or receiverEta > math.max(0.1, ballEta - (aiTargeted and 0.18 or 0.08))
 	local assignment = makeAssignment(context, info, "ReceivePass", targetPitch, 1, sprint, context.BallWorld)
 	assignment.Phase = "PassReception"
 	assignment.ReceptionContractId = info.Model:GetAttribute("VTRReceptionContractId")
 	assignment.RunTicketId = nil
 	assignment.RunApproved = false
-	assignment.MovementProfile = "Balanced"
+	assignment.SprintConservation = 0
+	assignment.MovementProfile = sprint and "SprintBurst" or "Balanced"
 	return assignment
 end
 
@@ -1103,9 +1109,34 @@ local function applyStoryDefense(context: any, info: any, assignment: any, owner
 	info.Model:SetAttribute("AITacticalStoryAction", assignment.TeamStoryAction)
 end
 
+local function applyPossessionSprintBoost(context: any, side: string, assignments: any)
+	local ownerInfo = context.Owner and context.Players[context.Owner]
+	if not ownerInfo or ownerInfo.Side ~= side or not carrierIsPressed(context, ownerInfo) then
+		return
+	end
+	for model, assignment in assignments do
+		local info = assignment.Info
+		if info and model ~= context.Owner and not info.IsGoalkeeper and assignment.PrimaryAssignment ~= "GoalkeeperPosition" and assignment.PrimaryAssignment ~= "ReceivePass" then
+			local distance = PitchConfig.GetDistanceStuds(info.World, assignment.TargetWorld or info.World)
+			local stamina = tonumber(info.Stamina) or tonumber(model:GetAttribute("VTRSprintEnergy")) or 75
+			if distance >= 7 and stamina > 18 then
+				assignment.SprintAllowed = true
+				assignment.MovementUrgency = math.max(assignment.MovementUrgency or 0.72, distance > 14 and 0.94 or 0.88)
+				assignment.SprintConservation = math.min(tonumber(assignment.SprintConservation) or 50, 20)
+				model:SetAttribute("AIPossessionSprintBoost", true)
+			else
+				model:SetAttribute("AIPossessionSprintBoost", false)
+			end
+		elseif info then
+			model:SetAttribute("AIPossessionSprintBoost", false)
+		end
+	end
+end
+
 function Service:_assignLoose(context: any, side: string, phase: string, assignments: any)
 	local chaser, cover = AILooseBallService.ChooseChasers(context, side)
-	local projected = AILooseBallService.ProjectBall(context, 0.22)
+	local ballSpeed = (context.BallVelocity and Vector3.new(context.BallVelocity.X, 0, context.BallVelocity.Z).Magnitude) or 0
+	local projected = AILooseBallService.ProjectBall(context, ballSpeed > 20 and 0.38 or ballSpeed > 8 and 0.3 or 0.22)
 	local ballPitch = context.BallTeam[side]
 	for _, info in ipairs(context.Teams[side].List) do
 		local assignment
@@ -1114,6 +1145,7 @@ function Service:_assignLoose(context: any, side: string, phase: string, assignm
 			assignment = makeAssignment(context, info, "GoalkeeperPosition", target, 0.7, false)
 		elseif info == chaser then
 			assignment = makeAssignment(context, info, "ChaseLooseBall", PitchConfig.WorldToTeamPitchPosition(projected, side, context.Options), 1, true)
+			assignment.SprintConservation = 0
 		elseif info == cover then
 			assignment = makeAssignment(context, info, "CoverLooseBall", Vector3.new(ballPitch.X, 3, math.max(35, ballPitch.Z - 34)), 0.82, true)
 		elseif info.Role == "ST" or info.Role == "Winger" then
@@ -1203,8 +1235,11 @@ function Service:BuildSide(context: any, side: string, phase: string): any
 	applyReceiveOverrides(context, side, assignments, self.RunCoordinator)
 	if context.OwnerSide == side then self.RunCoordinator:Coordinate(context, side, assignments) elseif phase ~= "LooseBall" then self.DefensiveCoordinator:Coordinate(context, side, assignments) end
 	applyReceiveOverrides(context, side, assignments, self.RunCoordinator)
+	if context.OwnerSide == side then
+		applyPossessionSprintBoost(context, side, assignments)
+	end
 	local conservation = self.Style:Get("SprintConservation")
-	for _, assignment in assignments do assignment.SprintConservation = conservation end
+	for _, assignment in assignments do assignment.SprintConservation = math.min(tonumber(assignment.SprintConservation) or conservation, conservation) end
 	return assignments
 end
 

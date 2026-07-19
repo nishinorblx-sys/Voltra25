@@ -10,6 +10,7 @@ local RunService = game:GetService("RunService")
 
 local Theme = require(ReplicatedStorage.VTR.Shared.Theme)
 local Config = require(ReplicatedStorage.VTR.Shared.UIConfig)
+local DeveloperConfig = require(ReplicatedStorage.VTR.Shared.DeveloperConfig)
 local NavigationController = require(script.Parent.NavigationController)
 local SidebarItem = require(script.Parent.Parent.Components.SidebarItem)
 local ProgressBar = require(script.Parent.Parent.Components.ProgressBar)
@@ -44,6 +45,7 @@ local COINS_ICON = "rbxassetid://93869095461582"
 local PageModules = {
 	Home = require(script.Parent.Parent.Pages.HomePage),
 	UltimateTeam = require(script.Parent.Parent.Pages.UltimateTeamPage),
+	AILab = require(script.Parent.Parent.Pages.AILabPage),
 	WorldCup = require(script.Parent.Parent.Pages.WorldCupPage),
 	Inventory = require(script.Parent.Parent.Pages.InventoryPage),
 	Campaign = require(script.Parent.Parent.Pages.CampaignPage),
@@ -65,6 +67,17 @@ end
 
 local function progressionRouteUnlocked(progression: any, id: string): boolean
 	return PlayabilityUnlockConfig.RouteUnlocked(progression, id)
+end
+
+local function aiLabRouteVisible(player: Player): boolean
+	if RunService:IsStudio() then return true end
+	if game.PrivateServerOwnerId ~= 0 and player.UserId == game.PrivateServerOwnerId then return true end
+	if game.CreatorType == Enum.CreatorType.User and player.UserId == game.CreatorId then return true end
+	if game.CreatorType == Enum.CreatorType.Group then
+		local ok, rank = pcall(player.GetRankInGroup, player, game.CreatorId)
+		if ok and rank >= 200 then return true end
+	end
+	return table.find(DeveloperConfig.UserIds, player.UserId) ~= nil
 end
 
 local function label(text: string, size: number, color: Color3, font: Enum.Font): TextLabel
@@ -370,8 +383,13 @@ function UIController:Start()
 	local navigation = NavigationController.new(breadcrumb)
 	self.Navigation = navigation
 	local order = {}
+	local localPlayer = Players.LocalPlayer
 	for _, navData in Config.Navigation do
 		local item = SidebarItem.new(navData, function(id)
+			if id == "AILab" and not aiLabRouteVisible(localPlayer) then
+				self:_showNotification({Title = "AI LAB", Message = "Developer access required.", Kind = "Info"})
+				return
+			end
 			if not progressionRouteUnlocked(self.Data and self.Data.Progression, id) then
 				self:_showNotification({Title = "KEEP PLAYING", Message = PlayabilityUnlockConfig.RouteRequirement(id), Kind = "Info"})
 				return
@@ -380,7 +398,7 @@ function UIController:Start()
 		end)
 		item.Instance.Parent = navHolder
 		navigation:RegisterItem(navData.Id, item)
-		local unlocked = progressionRouteUnlocked(data.Progression, navData.Id)
+		local unlocked = progressionRouteUnlocked(data.Progression, navData.Id) and (navData.Id ~= "AILab" or aiLabRouteVisible(localPlayer))
 		item.Instance.Visible = unlocked
 		item.Instance.Selectable = unlocked
 		if unlocked then table.insert(order, navData.Id) end
@@ -393,6 +411,10 @@ function UIController:Start()
 		Data = data,
 		Navigate = function(id: string)
 			local route = normalizeRoute(id)
+			if route == "AILab" and not aiLabRouteVisible(localPlayer) then
+				self:_showNotification({Title = "AI LAB", Message = "Developer access required.", Kind = "Info"})
+				return
+			end
 			if not progressionRouteUnlocked(self.Data and self.Data.Progression, route) then
 				self:_showNotification({Title = "KEEP PLAYING", Message = PlayabilityUnlockConfig.RouteRequirement(route), Kind = "Info"})
 				return
@@ -664,7 +686,7 @@ function UIController:_bindDataUpdates()
 	ProgressionService:Observe(function(value)
 		self.Data.Progression = value
 		self:_syncProgressionNavigation()
-		for _, id in {"Home","UltimateTeam","Inventory","Campaign","Ranked","Store","Settings"} do self:_replacePage(id) end
+		for _, id in {"Home","UltimateTeam","AILab","Inventory","Campaign","Ranked","Store","Settings"} do self:_replacePage(id) end
 	end)
 end
 

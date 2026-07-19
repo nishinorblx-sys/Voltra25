@@ -5,6 +5,7 @@ local UIConfig = {}
 UIConfig.Navigation = {
 	{ Id = "Home", Label = "HOME", Icon = "H", Order = 1 },
 	{ Id = "UltimateTeam", Label = "SQUAD BUILDER", Icon = "XI", Order = 2 },
+	{ Id = "AILab", Label = "AI LAB", Icon = "AI", Order = 3 },
 	{ Id = "WorldCup", Label = "WORLD CUP", Icon = "WC", Order = 4 },
 	{ Id = "Campaign", Label = "ASCENSION", Icon = "A", Order = 5 },
 	{ Id = "MyPlayer", Label = "MY PLAYER", Icon = "MP", Order = 5.5 },
@@ -28,6 +29,7 @@ UIConfig.Home = {
 
 UIConfig.Pages = {
 	UltimateTeam = { Kicker = "VTR LITE SQUAD", Title = "SQUAD BUILDER", Subtitle = "Formation, tactics, bench, reserves and player instructions." },
+	AILab = { Kicker = "STUDIO ONLY", Title = "AI LAB", Subtitle = "Author reusable Home and Away AI playstyles in a paused AI-vs-AI match." },
 	Inventory = { Kicker = "YOUR COLLECTION", Title = "INVENTORY", Subtitle = "Packs, owned players and club items." },
 	Store = { Kicker = "VOLTRA MARKET", Title = "STORE", Subtitle = "Buy coins with Robux placeholders, then spend coins on sealed player packs." },
 	WorldCup = { Kicker = "NATIONAL STAGE", Title = "WORLD CUP", Subtitle = "Pick a nation, draw groups, qualify, and chase the trophy." },

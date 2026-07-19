@@ -47,7 +47,7 @@ function Service.Build(teams: any, formations: any, pitchCFrame: CFrame, width: 
 		and (lastTouchTeam == "Home" or lastTouchTeam == "Away")
 		and (typeof(passTarget) == "Vector3" or ball:GetAttribute("VTRLobPassActive") == true)
 		and (kinematicFlight or ballSpeed > 18 or receiveLocked and passAge < 2.4 or passAge < 0.35)
-		and ((passReceiver ~= "" and passAge < 3.2) or (receiveLocked and passAge < 3.6) or passAge < 0.35)
+		and ((passReceiver ~= "" and passAge < 3.2) or (typeof(passTarget) == "Vector3" and passAge < 2.6) or (receiveLocked and passAge < 3.6) or passAge < 0.35)
 	if passInFlight then
 		ownerSide = lastTouchTeam
 	end
