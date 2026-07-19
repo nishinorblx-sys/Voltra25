@@ -65,9 +65,26 @@ function Service.Evaluate(context: any, shooter: any, style: any, difficulty: an
 	local central = PitchConfig.InZone(shooter.Pitch, "CentralShootingZone")
 	local edge = PitchConfig.InZone(shooter.Pitch, "EdgeOfBoxZone")
 	local closeChance = inDangerBox and distance < 78
+	local facingGoal = true
+	if shooter.Root then
+		local toGoal = Vector3.new(goal.X - shooter.World.X, 0, goal.Z - shooter.World.Z)
+		local facing = Vector3.new(shooter.Root.CFrame.LookVector.X, 0, shooter.Root.CFrame.LookVector.Z)
+		facingGoal = toGoal.Magnitude < .01 or facing.Magnitude < .01 or facing.Unit:Dot(toGoal.Unit) > .18
+	end
 	local shootingIQ = shooter.Stats.shootingIQ or shooter.Stats.shooting or 60
 	local longShotAllowed = style:Ratio("LongShotFrequency") > 0.55 and (shooter.Stats.longShots >= 72 or shootingIQ >= 76)
 	local good = closeChance or (inDangerBox and distance < 115 and clearAngle and not pressure.Heavy) or (central and distance < 150 and shootingIQ >= 75 and clearAngle) or oneVOne
+	local obviousReason = ""
+	if inDangerBox and facingGoal and clearAngle and distance < 125 then
+		obviousReason = "PenaltyAreaFacingGoal"
+	elseif oneVOne and facingGoal and clearAngle then
+		obviousReason = "OneVOneCorridor"
+	elseif central and facingGoal and clearAngle and distance < 118 then
+		obviousReason = "CentralCloseLane"
+	elseif shooter.Pitch.Z >= 650 and math.abs(shooter.Pitch.X - PitchConfig.HALF_WIDTH) <= 62 and facingGoal then
+		obviousReason = "DirectlyInFrontOfGoal"
+	end
+	local obvious = obviousReason ~= "" and not pressure.Heavy
 	if shooter.Role == "ST" and (inDangerBox or central) then
 		good = true
 	end
@@ -100,6 +117,9 @@ function Service.Evaluate(context: any, shooter: any, style: any, difficulty: an
 		Distance = distance,
 		ClearAngle = clearAngle,
 		Pressure = pressure,
+		Obvious = obvious,
+		ObviousReason = obviousReason,
+		FacingGoal = facingGoal,
 	}
 end
 

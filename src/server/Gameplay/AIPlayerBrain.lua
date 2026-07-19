@@ -275,6 +275,9 @@ function Service:_kickPass(context: any, passer: any, pass: any): boolean
 	passer.Model:SetAttribute("AIPassMiddleMemory", AIPassingDecisionService.GetMiddleMistakeMemory and AIPassingDecisionService.GetMiddleMistakeMemory(passer.Model) or 0)
 	local kicked = self.BallService:Kick(passer.Model, "Pass", direction, power, pass.Receiver.Model, passKind, pass.Distance or direction.Magnitude, pass.Target)
 	if kicked then
+		if context.TeamMemory and context.TeamMemory.RememberPass then
+			context.TeamMemory:RememberPass(passer.Side, tostring(passer.Role or ""), tostring(pass.Receiver.Role or ""), pass.Receiver.Model, PitchConfig.GetLane(pass.Receiver.Pitch), pass.Receiver.Pitch.Z, context.Now or os.clock())
+		end
 		if receiverModel and receiverModel.Parent then
 			local now = context.Now or os.clock()
 			local receiveUntil = now + math.clamp((execution.BallETA or 1.1) + 1.35, 1.2, 5.2)
@@ -622,9 +625,19 @@ function Service:_carrierDecision(context: any, carrier: any, assignment: any)
 	local shot = AIShootingDecisionService.Evaluate(context, carrier, self.Style, self.Difficulty)
 	carrier.Model:SetAttribute("AIShotScore", shot.Score)
 	carrier.Model:SetAttribute("AIShotGood", shot.Good)
+	carrier.Model:SetAttribute("AIObviousShot", shot.Obvious == true)
+	carrier.Model:SetAttribute("AIObviousShotReason", shot.ObviousReason or "")
+	carrier.Model:SetAttribute("AIShotSuppressedByContract", shot.Obvious == true and not canShoot)
+	carrier.Model:SetAttribute("AIShotLaneOpen", shot.ClearAngle == true)
 	if canShoot and self:_tryMidfieldLongShot(context, carrier, pressure) then
 		self.CarrySince[carrier.Model] = nil
 		return
+	end
+	if canShoot and shot.Obvious == true and shot.ClearAngle == true and shot.FacingGoal ~= false then
+		if self:_shoot(context, carrier, shot) then
+			self.CarrySince[carrier.Model] = nil
+			return
+		end
 	end
 	local dangerZone = PitchConfig.Zones.OpponentBox
 	local closeToDanger = carrier.Pitch.X >= dangerZone.XMin - 5 and carrier.Pitch.X <= dangerZone.XMax + 5 and carrier.Pitch.Z >= dangerZone.ZMin - 5
@@ -654,6 +667,11 @@ function Service:_carrierDecision(context: any, carrier: any, assignment: any)
 	local forwardCarryPitch = PitchConfig.ClampInsidePitch(Vector3.new(carrier.Pitch.X, 3, carrier.Pitch.Z + (attackStage == "FinalChance" and 18 or 38)))
 	local forwardSpace = AIContextBuilder.SpaceAt(context, carrier.Side, forwardCarryPitch, pressure.Under and 16 or 22)
 	local takeOnPress = inOpponentHalf and passIsBackwards and forwardSpace and not pressure.Heavy
+	if shot.Obvious == true and canShoot and passIsBackwards and shot.ClearAngle == true and shot.FacingGoal ~= false then
+		pass = nil
+		passIsBackwards = false
+		carrier.Model:SetAttribute("AIAvoidBackPass", true)
+	end
 	if takeOnPress then
 		pass = nil
 		forcedSafe = false
@@ -766,7 +784,7 @@ function Service:_defensiveActions(context: any, assignmentsBySide: any, onlySid
 				local distanceToCarrier = PitchConfig.GetDistanceStuds(defender.World, carrier.World)
 				local closeAutoTackle = distanceToCarrier <= 8.75
 				local strikerEmergencyTackle = carrier.Role == "ST" and PitchConfig.GetDistanceStuds(defender.World, carrier.World) <= 18
-				if actionAllowed(assignment, "Tackle") and (closeAutoTackle or strikerEmergencyTackle or primary == "PressBallCarrier" or primary == "ContainBallCarrier" or primary == "CoverPresser" or primary == "CloseLongCarryGap" or primary == "EarlyCBPressPassTarget" or primary == "EarlyClosePassTargetPressure" or primary == "CenterBackPressureStriker" or primary == "AggressiveCBPressStriker" or primary == "AggressiveCBStepOut") then
+				if actionAllowed(assignment, "Tackle") and (closeAutoTackle or strikerEmergencyTackle or primary == "PressBallCarrier" or primary == "PressNextReceiver" or primary == "MidfieldPressSupport" or primary == "ContainBallCarrier" or primary == "CoverStep" or primary == "CarrierBreachPress" or primary == "EmergencyBoxContain" or primary == "BallSideDefenderStep" or primary == "CoverPresser" or primary == "CloseLongCarryGap" or primary == "EarlyCBPressPassTarget" or primary == "EarlyClosePassTargetPressure" or primary == "CenterBackPressureStriker" or primary == "AggressiveCBPressStriker" or primary == "AggressiveCBStepOut") then
 					local canTackle, slide = AITacklingDecisionService.CanTackle(context, defender, carrier, self.Style)
 					if canTackle then
 						if self.BallService:Tackle(model, slide) then

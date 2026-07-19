@@ -151,6 +151,7 @@ function Engine:_context(): any
 	context.DefensivePress = context.DefensivePress or {Home = {}, Away = {}}
 	context.PressPaused = context.PressPaused or {Home = false, Away = false}
 	context.PreviousAssignments = self.CurrentAssignments
+	context.TeamMemory = self.Memory
 	self.Metrics:Sample("WorldMs", os.clock() - start)
 	return context
 end

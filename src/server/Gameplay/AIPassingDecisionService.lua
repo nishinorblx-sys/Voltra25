@@ -1,6 +1,7 @@
 --!strict
 local PitchConfig = require(script.Parent.PitchConfig)
 local AIContextBuilder = require(script.Parent.AIContextBuilder)
+local OffsidePositionUtil = require(script.Parent.OffsidePositionUtil)
 
 local Service = {}
 local Randomizer = Random.new()
@@ -216,6 +217,12 @@ local function sameWideLane(a: any, b: any): boolean
 	return (a.Pitch.X < PitchConfig.HALF_WIDTH and b.Pitch.X < PitchConfig.HALF_WIDTH) or (a.Pitch.X > PitchConfig.HALF_WIDTH and b.Pitch.X > PitchConfig.HALF_WIDTH)
 end
 
+local function receiverOffside(context: any, passer: any, receiver: any): boolean
+	local ballPitch = context.BallTeam and context.BallTeam[passer.Side]
+	if typeof(receiver.Pitch) ~= "Vector3" or typeof(ballPitch) ~= "Vector3" then return false end
+	return OffsidePositionUtil.IsReceiverOffside(context, passer.Side, receiver.Pitch, ballPitch, .75)
+end
+
 local function fullbackCanProgress(context: any, passer: any): boolean
 	local pressure = AIContextBuilder.Pressure(context, passer)
 	if pressure.Heavy then return false end
@@ -386,6 +393,15 @@ function Service.ScoreReceiver(context: any, passer: any, receiver: any, style: 
 	if distance < 7 or distance > 135 then
 		return nil
 	end
+	if receiverOffside(context, passer, receiver) then
+		receiver.Model:SetAttribute("AIRecoverOnside", true)
+		receiver.Model:SetAttribute("AIOffsideRecovery", true)
+		receiver.Model:SetAttribute("AIOffsideLineZ", OffsidePositionUtil.SecondLastOpponentZ(context, passer.Side))
+		return nil
+	else
+		receiver.Model:SetAttribute("AIRecoverOnside", false)
+		receiver.Model:SetAttribute("AIOffsideRecovery", false)
+	end
 
 	local open, veryOpen, tight = AIContextBuilder.IsOpen(context, receiver)
 	local kind = passType(passer.Pitch.Z, receiver.Pitch.Z)
@@ -553,6 +569,36 @@ function Service.ScoreReceiver(context: any, passer: any, receiver: any, style: 
 	local receiverSupport = tostring(receiver.Model:GetAttribute("VTRSupportKind") or receiver.Model:GetAttribute("SupportRole") or "")
 	local passBias = tostring(passer.Model:GetAttribute("AITeamContractPassBias") or receiver.Model:GetAttribute("AITeamContractPassBias") or "")
 	local passRule = context.RuleEffects and context.RuleEffects[passer.Side] and context.RuleEffects[passer.Side].Pass
+	local currentStep = tostring(passer.Model:GetAttribute("AITeamContractPlanStep") or (context.TeamPlans and context.TeamPlans[passer.Side] and context.TeamPlans[passer.Side].Step) or "")
+	local sequencePenalty = context.TeamMemory and context.TeamMemory.RecentPassPenalty and context.TeamMemory:RecentPassPenalty(passer.Side, tostring(passer.Role or ""), tostring(receiver.Role or ""), receiver.Model, PitchConfig.GetLane(receiver.Pitch), receiver.Pitch.Z, currentStep) or 0
+	score -= sequencePenalty
+	local noNextAction = receiver.Role == "ST" and pressure.Under and not veryOpen and targetKind ~= "Through"
+	if noNextAction then
+		score -= 28
+	end
+	if receiver.Model:GetAttribute("AIRecoverOnside") == true then
+		score -= 80
+	end
+	if (passer.Role == "CM" or passer.Role == "CDM" or passer.Role == "CAM") and centralPass then
+		score -= 18 + laneRisk * 45
+		if pressure.Under or pressure.Heavy then
+			score -= 28
+		end
+	end
+	if centralPass and middleOutnumbered and receiverWide == false and receiver.Role ~= "ST" then
+		score -= 34
+	elseif (receiver.Role == "Fullback" or receiver.Role == "Winger") and centralTrap then
+		score += 24
+	end
+	if (receiver.Role == "CM" or receiver.Role == "CAM") and kind == "Back" and passer.Pitch.Z >= 560 then
+		score += 30
+	end
+	if kind == "Side" and math.abs(receiver.Pitch.X - passer.Pitch.X) > 118 then
+		score += 26
+	end
+	if receiver.Role == "CAM" and receiver.Pitch.Z > PitchConfig.HALF_LENGTH and (open or veryOpen) then
+		score += 18
+	end
 	if passBias == "ThirdMan" and (receiverSlot == "second-ball-midfielder" or receiverSupport == "ThirdManPosition") then
 		score += 38
 	elseif (passBias == "ForwardEarly" or passBias == "LoftedOrThrough" or passBias == "Through") and (receiverSlot == "central-forward" or receiver.Role == "ST") then

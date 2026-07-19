@@ -20,7 +20,18 @@ function Service.CanTackle(context: any, defender: any, carrier: any, style: any
 	end
 	local firstMatchAssistance = math.clamp(tonumber(context.FirstMatchAssistance) or 0, 0, 1)
 	local distance = PitchConfig.GetDistanceStuds(defender.World, carrier.World)
-	if distance > 11.25 - firstMatchAssistance * 3.75 then
+	local assignmentName = tostring(defender.Model and (defender.Model:GetAttribute("currentAssignment") or defender.Model:GetAttribute("AITacticalSlot")) or "")
+	local carrierPitchForDefender = PitchConfig.WorldToTeamPitchPosition(carrier.World, defender.Side, context.Options)
+	local centralDanger = math.abs(carrierPitchForDefender.X - PitchConfig.HALF_WIDTH) <= 70 and carrierPitchForDefender.Z <= PitchConfig.HALF_LENGTH
+	local engagement = 11.25 - firstMatchAssistance * 3.75
+	if assignmentName == "CarrierBreachPress" or assignmentName == "ContainBallCarrier" or assignmentName == "CoverStep" then
+		engagement = centralDanger and 18.5 or 14.5
+	elseif assignmentName == "PressBallCarrier" or assignmentName == "PressNextReceiver" or assignmentName == "MidfieldPressSupport" then
+		engagement = 13.5
+	elseif centralDanger then
+		engagement = 16.5
+	end
+	if distance > engagement then
 		return false, false
 	end
 	local toCarrier = flat(carrier.World - defender.World)
@@ -39,9 +50,19 @@ function Service.CanTackle(context: any, defender: any, carrier: any, style: any
 	local toDefender = flat(defender.World - carrier.World)
 	local fromBehind = carrierFacing.Magnitude > 0.01 and toDefender.Magnitude > 0.01 and carrierFacing.Unit:Dot(toDefender.Unit) < -0.35
 	local insideBox = PitchConfig.InZone(defender.Pitch, "OwnBox")
+	local coverBehind = false
+	for _, teammate in ipairs(context.Teams[defender.Side].List) do
+		if teammate.Model ~= defender.Model and teammate.Root and (teammate.Role == "CB" or teammate.Role == "Fullback" or teammate.Role == "CDM") then
+			if teammate.Pitch.Z < defender.Pitch.Z - 8 and math.abs(teammate.Pitch.X - defender.Pitch.X) < 90 then
+				coverBehind = true
+				break
+			end
+		end
+	end
 	local lowStamina = (defender.Stamina or 60) < 25
 	local tackleSkill = defender.Stats.tackleSkill or defender.Stats.defending or 60
-	local foulRisk = (fromBehind and 0.45 or 0.08) + (insideBox and 0.22 or 0) + (lowStamina and 0.14 or 0) + (1 - style:Risk()) * 0.08 - tackleSkill / 420
+	local bypassRisk = centralDanger and distance <= 18 and not coverBehind and 0.18 or 0
+	local foulRisk = (fromBehind and 0.45 or 0.08) + (insideBox and 0.22 or 0) + (lowStamina and 0.14 or 0) + (1 - style:Risk()) * 0.08 - tackleSkill / 420 - bypassRisk - (coverBehind and 0.08 or 0)
 	local slide = firstMatchAssistance < .2 and distance > 7.5 and not insideBox and style:Risk() > 0.65 and (defender.Stats.standingTackle > 70 or tackleSkill > 74)
 	return foulRisk < 0.28 - firstMatchAssistance * .1, slide
 end

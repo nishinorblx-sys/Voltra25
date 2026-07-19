@@ -5,6 +5,8 @@ local PassingPowerConfig = require(ReplicatedStorage.VTR.Shared.PassingPowerConf
 local GameplayConfig = require(ReplicatedStorage.VTR.Shared.GameplayConfig)
 local PassFlightModel = require(ReplicatedStorage.VTR.Shared.PassFlightModel)
 local PassArrivalPlanner = require(script.Parent.PassArrivalPlanner)
+local PitchConfig = require(script.Parent.PitchConfig)
+local OffsidePositionUtil = require(script.Parent.OffsidePositionUtil)
 
 local Planner = {}
 
@@ -49,14 +51,36 @@ local function candidateTarget(pass: any, power: number): Vector3
 	if velocity.Magnitude < 1 then return target end
 	local existingLead = flat(target - receiver.Root.Position).Magnitude
 	if existingLead >= 24 then return target end
+	if family == "Ground" then
+		local toTarget = flat(target - receiver.Root.Position)
+		if toTarget.Magnitude > 1 and velocity:Dot(toTarget.Unit) < -0.5 then
+			return target + velocity * math.clamp(power * 0.03, 0, 0.025)
+		end
+	end
 	local leadSeconds = family == "Through" and 0.12 + power * 0.14
 		or (family == "Lofted" or family == "FarPostCross") and 0.15 + power * 0.12
 		or 0.1 + power * 0.08
 	return target + velocity * leadSeconds
 end
 
+local function receiverOffsideAtPass(context: any, passer: any, receiver: any): boolean
+	if not passer or not receiver then return false end
+	local receiverPitch = receiver.Pitch or (receiver.World and PitchConfig.WorldToTeamPitchPosition(receiver.World, passer.Side, context.Options))
+	local ballPitch = context.BallTeam and context.BallTeam[passer.Side] or (context.BallWorld and PitchConfig.WorldToTeamPitchPosition(context.BallWorld, passer.Side, context.Options))
+	if typeof(receiverPitch) ~= "Vector3" or typeof(ballPitch) ~= "Vector3" then return false end
+	return OffsidePositionUtil.IsReceiverOffside(context, passer.Side, receiverPitch, ballPitch, .75)
+end
+
 function Planner.Plan(context: any, passer: any, pass: any, style: any, difficulty: any): any?
 	if not passer or not passer.Root or not pass or not pass.Receiver or not pass.Receiver.Root then return nil end
+	if receiverOffsideAtPass(context, passer, pass.Receiver) then
+		pass.Receiver.Model:SetAttribute("AIPassRejectedOffside", true)
+		pass.Receiver.Model:SetAttribute("AIOffsideRecovery", true)
+		pass.Receiver.Model:SetAttribute("AIOffsideLineZ", OffsidePositionUtil.SecondLastOpponentZ(context, passer.Side))
+		return nil
+	end
+	pass.Receiver.Model:SetAttribute("AIPassRejectedOffside", false)
+	pass.Receiver.Model:SetAttribute("AIOffsideRecovery", false)
 	local family = tostring(pass.PassKind or "Ground")
 	local powers = family == "Through" and {0.22, 0.3, 0.38, 0.46, 0.54} or (family == "Lofted" or family == "FarPostCross") and {0.34, 0.44, 0.54, 0.64} or {0.14, 0.24, 0.34, 0.46, 0.58}
 	local best = nil
@@ -89,6 +113,7 @@ function Planner.Plan(context: any, passer: any, pass: any, style: any, difficul
 		if style then score += style:Ratio("PassRisk") * 0.04 end
 		if receiverLate > 0.18 then score -= receiverLate * 0.55 end
 		if opponentETA + 0.08 < math.min(receiverETA, ballETA) then score -= 1.2 end
+		if family == "Ground" and pass.MiddlePass == true and opponentETA + 0.08 < math.max(receiverETA, ballETA) then continue end
 		local committedRun = pass.Receiver.Model:GetAttribute("VTRRunTicketId") ~= nil or tostring(pass.Receiver.Model:GetAttribute("currentAssignment") or ""):find("Run") ~= nil
 		if committedRun and (family == "Through" or family == "Lofted") then score += 0.18 end
 		if arrival.Reachable ~= true then score -= 1.35 end
@@ -96,7 +121,8 @@ function Planner.Plan(context: any, passer: any, pass: any, style: any, difficul
 		local result = {Target = target, InterceptPoint = arrival.InterceptPoint, Power = power, Distance = distance, BallETA = ballETA, ReceiverETA = receiverETA, OpponentETA = opponentETA, ExpectedContactSpeed = contactSpeed, Viability = score, Family = family, Arrival = arrival, SelectedLocomotionMode = arrival.SelectedLocomotionMode, TimingDeficit = arrival.TimingDeficit, DesiredArrivalVelocity = arrival.DesiredArrivalVelocity, BrakingDistance = arrival.BrakingDistance, FacingTarget = arrival.FacingTarget, ContactKind = arrival.ContactKind, PreferredFoot = arrival.PreferredFoot, FirstTouchIntent = arrival.FirstTouchIntent, Reachable = arrival.Reachable}
 		if not best or result.Viability > best.Viability then best = result end
 	end
-	if not best or best.Viability < -0.58 then return nil end
+	local floor = (family == "Ground" and pass.MiddlePass == true) and -0.05 or -0.22
+	if not best or best.Viability < floor then return nil end
 	return best
 end
 

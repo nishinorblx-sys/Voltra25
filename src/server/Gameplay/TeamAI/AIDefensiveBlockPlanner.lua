@@ -25,7 +25,7 @@ local function defensiveFunction(id: string, duty: string?): string
 	return name
 end
 
-local function slot(id: string, family: string, pitch: Vector3, priority: number, rest: boolean?, sprint: boolean?, duty: string?): any
+local function slot(id: string, family: string, pitch: Vector3, priority: number, rest: boolean?, sprint: boolean?, duty: string?, lockedModel: Model?, allowedRoles: {string}?): any
 	local targetPitch = PitchConfig.ClampInsidePitch(pitch)
 	local isRest = rest == true
 	local line = (family == "CB" or family == "Fullback") and "Back" or family == "ST" and "Forward" or "Midfield"
@@ -35,12 +35,13 @@ local function slot(id: string, family: string, pitch: Vector3, priority: number
 		Id = id,
 		Function = defensiveFunction(id, duty),
 		RoleFamily = family,
-		AllowedRoles = {family},
+		AllowedRoles = allowedRoles or {family},
 		PreferredRoles = {family},
 		TargetPitch = targetPitch,
 		TargetRegion = AITacticalContract.Region(targetPitch, isRest and 15 or 20, lane, line),
 		Lane = lane,
 		Line = line,
+		ActionProfile = isRest and "RestDefender" or "Presser",
 		Priority = priority,
 		RestDefense = isRest,
 		ContinuityKey = id .. ":" .. tostring(duty or id),
@@ -50,6 +51,7 @@ local function slot(id: string, family: string, pitch: Vector3, priority: number
 		CoverRequirement = isRest and "ProtectGoalSide" or "CloseBallSide",
 	})
 	slotData.DefensiveDuty = duty or id
+	slotData.LockedModel = lockedModel
 	return slotData
 end
 
@@ -154,15 +156,17 @@ function Planner:Build(context: any, side: string, style: any, intent: any): any
 		forceDirection = tostring(pressRules.PressDirection)
 	end
 	local used: {[Model]: boolean} = {}
-	local primaryTarget = Vector3.new(ball.X + (ballSide == "Left" and 10 or ballSide == "Right" and -10 or 0), 3, ball.Z + (high and 20 or 10))
-	local primary = nearestRole(context, side, {ST = true, Winger = true, CAM = true, CM = press > .82}, primaryTarget, used)
+	local primaryTarget = Vector3.new(ball.X + (ballSide == "Left" and 12 or ballSide == "Right" and -12 or 0), 3, clamp(ball.Z - 2, 48, PitchConfig.PITCH_LENGTH - 18))
+	local primary = nearestRole(context, side, {ST = true, Winger = true, CAM = true}, primaryTarget, used)
 	if primary then used[primary.Model] = true end
-	local coverTarget = Vector3.new(clamp((ball.X + centerX) * .5, 78, 346), 3, clamp(ball.Z - 18, midZ - 24, forwardZ))
+	local coverTarget = Vector3.new(clamp((ball.X + centerX) * .5, 78, 346), 3, clamp(ball.Z - 24, backZ + 24, forwardZ))
 	local cover = nearestRole(context, side, {CM = true, CDM = true, CAM = true}, coverTarget, used)
 	if cover then used[cover.Model] = true end
+	local supportTarget = Vector3.new(clamp(PitchConfig.HALF_WIDTH + (ball.X - PitchConfig.HALF_WIDTH) * .28, 100, 324), 3, clamp(ball.Z - 34, backZ + 18, midZ + 28))
 	local slots = {
-		slot("primary-presser", "ST", primaryTarget, high and 98 or 90, false, true, "PrimaryPress"),
-		slot("cover-presser", "CM", coverTarget, 88, false, high, "CoverPress"),
+		slot("primary-presser", "ST", primaryTarget, high and 98 or 90, false, true, "PrimaryPress", primary and primary.Model or nil, {"ST", "Winger", "CAM"}),
+		slot("cover-presser", "CM", coverTarget, 89, false, high, "CoverPress", cover and cover.Model or nil, {"CM", "CDM", "CAM"}),
+		slot("midfield-press-support", "CM", supportTarget, 87, false, high, "MidfieldPressSupport", nil, {"CM", "CDM", "CAM"}),
 		slot("pivot-lane-blocker", "CDM", Vector3.new(centerX, 3, midZ), 92, false, false, "PivotLaneBlock"),
 		slot("cam-feet-lane-blocker", "CM", Vector3.new(clamp(centerX + (ball.X < PitchConfig.HALF_WIDTH and 28 or -28), 96, 328), 3, clamp(midZ + 22, 120, 570)), 86, false, false, "CentralLaneBlock"),
 		slot("left-center-back", "CB", Vector3.new(leftX, 3, backZ), 94, true, false, "BackLine"),

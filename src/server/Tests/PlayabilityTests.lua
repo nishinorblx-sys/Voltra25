@@ -54,6 +54,8 @@ local AIOpponentObservationService = require(script.Parent.Parent.Gameplay.TeamA
 local AITacticalReactionService = require(script.Parent.Parent.Gameplay.TeamAI.AITacticalReactionService)
 local AIPlaystyleRuleService = require(script.Parent.Parent.Gameplay.TeamAI.AIPlaystyleRuleService)
 local AITeamMetrics = require(script.Parent.Parent.Gameplay.TeamAI.AITeamMetrics)
+local AITacticalStyleService = require(script.Parent.Parent.Gameplay.AITacticalStyleService)
+local AIPassExecutionPlanner = require(script.Parent.Parent.Gameplay.AIPassExecutionPlanner)
 local PassArrivalPlanner = require(script.Parent.Parent.Gameplay.PassArrivalPlanner)
 local MatchClock = require(script.Parent.Parent.Gameplay.MatchClockService)
 local PassReceptionRuntime = require(script.Parent.Parent.Gameplay.PassReceptionService)
@@ -1666,6 +1668,206 @@ function Tests.Run(): any
 		local before = copy(returning.PlayabilityProgress)
 		service:_migrate(returning)
 		for key, value in before do expectEqual(returning.PlayabilityProgress[key], value, "Second profile migration changed " .. key) end
+	end)
+
+	test("defensive intent only high presses in high zones", function()
+		local director = AITacticalIntentDirector.new()
+		local style = {Ratio = function(_, key: string)
+			if key == "PressingIntensity" then return .92 end
+			if key == "PressTriggerDistance" then return .9 end
+			if key == "CounterPress" then return .7 end
+			if key == "DefensiveDepth" then return .55 end
+			return .5
+		end}
+		local context = {Now = 1, OwnerSide = "Away", LooseBall = false, MatchState = "Live", BallTeam = {Home = Vector3.new(212, 3, 250), Away = Vector3.new(212, 3, 492)}, DefensivePress = {Home = {}, Away = {}}}
+		local first = director:Update(context, {Home = style, Away = style}, nil, nil)
+		expect(first.Home.Intent ~= "HighPress", "Home high pressed in a middle-zone defensive state")
+		context.Now = 2
+		context.BallTeam.Home = Vector3.new(212, 3, 486)
+		local second = director:Update(context, {Home = style, Away = style}, nil, nil)
+		expectEqual(second.Home.Intent, "HighPress", "Home did not high press in the correct high zone")
+		context.Now = 3
+		context.BallTeam.Home = Vector3.new(212, 3, 160)
+		local third = director:Update(context, {Home = style, Away = style}, nil, nil)
+		expectEqual(third.Home.Intent, "ProtectBox", "Box-zone defence did not protect the box")
+	end)
+
+	test("defensive block locks chosen pressers and keeps cover goal-side", function()
+		local function player(role: string, pitch: Vector3): any
+			local model = Instance.new("Model")
+			local root = Instance.new("Part")
+			root.Name = "HumanoidRootPart"
+			root.Position = pitch
+			root.Parent = model
+			return {Model = model, Root = root, Side = "Home", Role = role, Pitch = pitch, World = pitch, Stats = {pace = 70}, Stamina = 80}
+		end
+		local list = {player("ST", Vector3.new(210, 3, 430)), player("Winger", Vector3.new(70, 3, 420)), player("CM", Vector3.new(200, 3, 350)), player("CDM", Vector3.new(214, 3, 310)), player("CB", Vector3.new(150, 3, 180)), player("CB", Vector3.new(270, 3, 180))}
+		local style = {Ratio = function(_, key: string) if key == "PressingIntensity" then return .9 elseif key == "DefensiveDepth" then return .8 elseif key == "BackLineCompactness" then return .55 end return .5 end}
+		local context = {Now = 1, BallTeam = {Home = Vector3.new(212, 3, 430)}, Teams = {Home = {List = list}, Away = {List = {}}}}
+		local block = AIDefensiveBlockPlanner.new():Build(context, "Home", style, {Intent = "HighPress"})
+		local primary = nil
+		local cover = nil
+		local support = nil
+		for _, slot in ipairs(block.Slots) do
+			if slot.Id == "primary-presser" then primary = slot elseif slot.Id == "cover-presser" then cover = slot elseif slot.Id == "midfield-press-support" then support = slot end
+		end
+		expect(primary and primary.LockedModel == list[1].Model, "Primary press slot did not lock the chosen attacker")
+		expect(cover and cover.LockedModel == list[3].Model, "Cover press slot did not lock the chosen central midfielder")
+		expect(support ~= nil, "Midfield press support slot was not created")
+		expect(primary.TargetPitch.Z <= context.BallTeam.Home.Z and cover.TargetPitch.Z < context.BallTeam.Home.Z, "Press targets were not goal-side of the ball")
+		for _, info in ipairs(list) do info.Model:Destroy() end
+	end)
+
+	test("attacking shape caps forward slots to onside line", function()
+		local function info(side: string, role: string, pitch: Vector3): any
+			local model = Instance.new("Model")
+			model:SetAttribute("VTRTeam", side)
+			local root = Instance.new("Part")
+			root.Name = "HumanoidRootPart"
+			root.Position = pitch
+			root.Parent = model
+			return {Model = model, Root = root, Side = side, Role = role, Pitch = pitch, World = pitch, Stats = {pace = 70}, Stamina = 80, IsGoalkeeper = role == "GK"}
+		end
+		local home = {}
+		for index, role in ipairs({"GK", "CB", "CB", "Fullback", "Fullback", "CDM", "CM", "CAM", "Winger", "Winger", "ST"}) do
+			table.insert(home, info("Home", role, Vector3.new(52 + index * 30, 3, 160 + index * 34)))
+		end
+		local away = {info("Away", "GK", Vector3.new(212, 3, 700)), info("Away", "CB", Vector3.new(170, 3, 590)), info("Away", "CB", Vector3.new(254, 3, 585))}
+		local context = {OwnerSide = "Home", Formations = {Home = "4-3-3"}, BallTeam = {Home = Vector3.new(212, 3, 520)}, BallWorld = Vector3.new(212, 3, 520), TeamBrain = {Home = {AttackingIdentity = "DirectAssault"}}, Teams = {Home = {List = home}, Away = {List = away}}, Options = {PitchCFrame = CFrame.new(), Width = PitchConfig.PITCH_WIDTH, Length = PitchConfig.PITCH_LENGTH, AttackSigns = {Home = 1, Away = -1}}}
+		local slots = AIShapeTemplateService.Build(context, "Home", AITacticalStyleService.new({PresetId = "vertical_combination"}), nil, nil, nil)
+		for _, slot in ipairs(slots) do
+			if slot.Line == "Forward" then
+				expect(slot.TargetPitch.Z <= 583, "Forward slot was left beyond the second-last defender onside cap")
+			end
+		end
+		for _, team in {home, away} do for _, item in ipairs(team) do item.Model:Destroy() end end
+	end)
+
+	test("AI pass planner rejects receiver offside at kick moment", function()
+		local function player(side: string, role: string, pitch: Vector3): any
+			local model = Instance.new("Model")
+			model:SetAttribute("VTRTeam", side)
+			local root = Instance.new("Part")
+			root.Name = "HumanoidRootPart"
+			root.Position = pitch
+			root.Parent = model
+			return {Model = model, Root = root, Side = side, OpponentSide = side == "Home" and "Away" or "Home", Role = role, Pitch = pitch, World = pitch, Stats = {pace = 70, passQuality = 70, reception = 70}, Stamina = 80}
+		end
+		local passer = player("Home", "CM", Vector3.new(212, 3, 520))
+		local receiver = player("Home", "ST", Vector3.new(212, 3, 650))
+		local defenderA = player("Away", "CB", Vector3.new(190, 3, 600))
+		local defenderB = player("Away", "CB", Vector3.new(235, 3, 590))
+		local context = {Now = 1, BallWorld = passer.World, BallTeam = {Home = passer.Pitch}, Teams = {Home = {List = {passer, receiver}}, Away = {List = {defenderA, defenderB}}}, Options = {PitchCFrame = CFrame.new(), Width = PitchConfig.PITCH_WIDTH, Length = PitchConfig.PITCH_LENGTH, AttackSigns = {Home = 1, Away = -1}}}
+		local result = AIPassExecutionPlanner.Plan(context, passer, {Receiver = receiver, Target = receiver.World, PassKind = "Ground"}, AITacticalStyleService.new({PresetId = "balanced_control"}), {PassRisk = 0})
+		expect(result == nil, "Offside receiver was accepted by pass execution planner")
+		expect(receiver.Model:GetAttribute("AIPassRejectedOffside") == true, "Offside pass rejection attribute was not set")
+		for _, item in {passer, receiver, defenderA, defenderB} do item.Model:Destroy() end
+	end)
+
+	test("team pass memory penalizes repeated same-lane forward loops", function()
+		local memory = AITeamMemory.new()
+		local receiver = Instance.new("Model")
+		memory:RememberPass("Home", "Winger", "ST", receiver, "Center", 520, 1)
+		local loopPenalty = memory:RecentPassPenalty("Home", "ST", "Winger", receiver, "Center", 530, "progress")
+		local switchPenalty = memory:RecentPassPenalty("Home", "CM", "Fullback", nil, "RightWide", 360, "switch")
+		expect(loopPenalty >= 80, "Forward loop memory penalty was too weak")
+		expect(switchPenalty == 0, "Safe switch route was penalized by pass memory")
+		receiver:Destroy()
+	end)
+
+	test("tactical action profiles allow attackers to finish and restrict rest defence", function()
+		local depth = AITacticalContract.Slot({Id = "central-forward", Function = "Depth striker", RoleFamily = "ST", TargetPitch = Vector3.new(212, 3, 620), Line = "Forward"})
+		local checking = AITacticalContract.Slot({Id = "checking-striker", Function = "Checking striker", RoleFamily = "ST", TargetPitch = Vector3.new(190, 3, 590), Line = "Forward"})
+		local ballSide = AITacticalContract.Slot({Id = "left-width", Function = "Ball-side width", RoleFamily = "Winger", TargetPitch = Vector3.new(54, 3, 590), Line = "Forward"})
+		local farSide = AITacticalContract.Slot({Id = "right-width", Function = "Far-side width", RoleFamily = "Winger", TargetPitch = Vector3.new(370, 3, 590), Line = "Forward"})
+		local rest = AITacticalContract.Slot({Id = "rest-defense", Function = "Central rest defender", RoleFamily = "CB", TargetPitch = Vector3.new(212, 3, 120), RestDefense = true})
+		local pivot = AITacticalContract.Slot({Id = "ball-side-pivot", Function = "Ball-side pivot", RoleFamily = "CDM", TargetPitch = Vector3.new(212, 3, 360), Line = "Midfield", ForbiddenActions = {"BoxRun"}})
+		expect(AITacticalContract.ActionAllowed(AITacticalContract.Player({AllowedActions = depth.AllowedActions}), "Shoot"), "Depth striker cannot shoot")
+		expect(AITacticalContract.ActionAllowed(AITacticalContract.Player({AllowedActions = checking.AllowedActions}), "Shoot"), "Checking striker cannot shoot")
+		expect(AITacticalContract.ActionAllowed(AITacticalContract.Player({AllowedActions = ballSide.AllowedActions}), "Shoot") and AITacticalContract.ActionAllowed(AITacticalContract.Player({AllowedActions = ballSide.AllowedActions}), "Cross"), "Ball-side winger cannot shoot and cross")
+		expect(AITacticalContract.ActionAllowed(AITacticalContract.Player({AllowedActions = farSide.AllowedActions}), "Shoot") and AITacticalContract.ActionAllowed(AITacticalContract.Player({AllowedActions = farSide.AllowedActions}), "Cross"), "Far-side winger cannot shoot and cross")
+		expect(not AITacticalContract.ActionAllowed(AITacticalContract.Player({AllowedActions = rest.AllowedActions, ForbiddenActions = rest.ForbiddenActions}), "Shoot"), "Rest defender can shoot")
+		expect(not AITacticalContract.ActionAllowed(AITacticalContract.Player({AllowedActions = pivot.AllowedActions, ForbiddenActions = pivot.ForbiddenActions}), "BoxRun"), "Pivot can make unsupported box run")
+	end)
+
+	test("central carrier breach creates contain cover and deep-cover assignments", function()
+		local options = {PitchCFrame = CFrame.new(), Width = PitchConfig.PITCH_WIDTH, Length = PitchConfig.PITCH_LENGTH, AttackSigns = {Home = 1, Away = -1}}
+		local function player(side: string, role: string, pitch: Vector3): any
+			local model = Instance.new("Model")
+			model:SetAttribute("VTRTeam", side)
+			local root = Instance.new("Part")
+			root.Name = "HumanoidRootPart"
+			root.Position = PitchConfig.TeamPitchPositionToWorld(pitch, side, options)
+			root.Parent = model
+			return {Model = model, Root = root, Side = side, OpponentSide = side == "Home" and "Away" or "Home", Role = role, Pitch = pitch, World = root.Position, Stats = {pace = 70, defending = 70, tackleSkill = 70}, Stamina = 80}
+		end
+		local home = {player("Home", "ST", Vector3.new(212, 3, 470)), player("Home", "CM", Vector3.new(192, 3, 335)), player("Home", "CDM", Vector3.new(212, 3, 290)), player("Home", "CB", Vector3.new(160, 3, 190)), player("Home", "CB", Vector3.new(264, 3, 190)), player("Home", "Fullback", Vector3.new(80, 3, 205))}
+		local carrierWorld = PitchConfig.TeamPitchPositionToWorld(Vector3.new(212, 3, 245), "Home", options)
+		local carrier = player("Away", "CM", PitchConfig.WorldToTeamPitchPosition(carrierWorld, "Away", options))
+		carrier.World = carrierWorld
+		carrier.Root.Position = carrierWorld
+		local context = {Now = 1, Owner = carrier.Model, OwnerSide = "Away", BallWorld = carrier.World, BallTeam = {Home = Vector3.new(212, 3, 245), Away = carrier.Pitch}, Teams = {Home = {List = home}, Away = {List = {carrier}}}, Players = {[carrier.Model] = carrier}, Options = options}
+		for _, info in ipairs(home) do context.Players[info.Model] = info end
+		local block = AIDefensiveBlockPlanner.new():Build(context, "Home", {Ratio = function(_, key: string) if key == "DefensiveDepth" then return .55 elseif key == "PressingIntensity" then return .72 end return .55 end}, {Intent = "MidBlock"})
+		local assignments = AITacticalSlotAssignment.Assign(context, "Home", block.Slots)
+		AIDefensivePlan.Apply(context, "Home", assignments, {Intent = "MidBlock"}, block, {})
+		local roles = {}
+		for _, assignment in pairs(assignments) do roles[assignment.PrimaryAssignment] = (roles[assignment.PrimaryAssignment] or 0) + 1 end
+		expect((roles.CarrierBreachPress or roles.ContainBallCarrier or 0) >= 1, "No midfielder or defender contained the central breach")
+		expect((roles.CoverStep or 0) >= 1, "No cover step assigned behind breach contain")
+		expect((roles.DeepCover or 0) == 1, "Exactly one far-side center-back was not assigned deep cover")
+		expect((roles.HoldBackLineZone or 0) < 4, "Back line remained entirely passive during breach")
+		for _, info in ipairs(home) do info.Model:Destroy() end
+		carrier.Model:Destroy()
+	end)
+
+	test("obvious central box chance is classified before backward pass", function()
+		local options = {PitchCFrame = CFrame.new(), Width = PitchConfig.PITCH_WIDTH, Length = PitchConfig.PITCH_LENGTH, AttackSigns = {Home = 1, Away = -1}}
+		local shooterModel = Instance.new("Model")
+		local root = Instance.new("Part")
+		root.Name = "HumanoidRootPart"
+		local shooterPitch = Vector3.new(212, 3, 660)
+		local shooterWorld = PitchConfig.TeamPitchPositionToWorld(shooterPitch, "Home", options)
+		local goalWorld = PitchConfig.TeamPitchPositionToWorld(Vector3.new(212, 3, 742), "Home", options)
+		root.CFrame = CFrame.lookAt(shooterWorld, goalWorld)
+		root.Parent = shooterModel
+		local shooter = {Model = shooterModel, Root = root, Side = "Home", OpponentSide = "Away", Role = "CAM", Pitch = shooterPitch, World = root.Position, Stats = {shooting = 76, shootingIQ = 78, longShots = 70}, Stamina = 80}
+		local keeper = Instance.new("Model")
+		local keeperRoot = Instance.new("Part")
+		keeperRoot.Name = "HumanoidRootPart"
+		keeperRoot.Position = PitchConfig.TeamPitchPositionToWorld(Vector3.new(212, 3, 712), "Home", options)
+		keeperRoot.Parent = keeper
+		local context = {Now = 1, PitchCFrame = CFrame.new(), Width = PitchConfig.PITCH_WIDTH, Length = PitchConfig.PITCH_LENGTH, AttackSigns = {Home = 1, Away = -1}, Options = options, BallWorld = shooter.World, BallTeam = {Home = shooter.Pitch}, Teams = {Home = {List = {shooter}}, Away = {List = {{Model = keeper, Root = keeperRoot, Side = "Away", Role = "GK", Pitch = Vector3.new(212, 3, 30), World = keeperRoot.Position, Stats = {pace = 60}, Stamina = 80}}}}}
+		local shot = AIShootingDecisionService.Evaluate(context, shooter, AITacticalStyleService.new({PresetId = "balanced_control"}), {ShotSelect = .5})
+		local contract = AITacticalContract.Player({AllowedActions = AITacticalContract.Slot({Id = "between-lines-receiver", RoleFamily = "CAM", Line = "Midfield", TargetPitch = shooter.Pitch}).AllowedActions})
+		expect(AITacticalContract.ActionAllowed(contract, "Shoot"), "Creator contract suppresses obvious shot")
+		expect(shot.Obvious == true and shot.ClearAngle == true and shot.Good == true, "Central box chance was not classified as obvious")
+		shooterModel:Destroy();keeper:Destroy()
+	end)
+
+	test("offside cluster recovers while legal timed through option remains possible", function()
+		local options = {PitchCFrame = CFrame.new(), Width = PitchConfig.PITCH_WIDTH, Length = PitchConfig.PITCH_LENGTH, AttackSigns = {Home = 1, Away = -1}}
+		local function player(side: string, role: string, pitch: Vector3): any
+			local model = Instance.new("Model")
+			model:SetAttribute("VTRTeam", side)
+			local root = Instance.new("Part")
+			root.Name = "HumanoidRootPart"
+			root.Position = PitchConfig.TeamPitchPositionToWorld(pitch, side, options)
+			root.Parent = model
+			return {Model = model, Root = root, Side = side, OpponentSide = side == "Home" and "Away" or "Home", Role = role, Pitch = pitch, World = root.Position, Stats = {pace = 78, passQuality = 76, reception = 76}, Stamina = 80}
+		end
+		local passer = player("Home", "CM", Vector3.new(212, 3, 540))
+		local offsideForward = player("Home", "ST", Vector3.new(212, 3, 650))
+		local legalRunner = player("Home", "ST", Vector3.new(180, 3, 582))
+		local defenderA = player("Away", "CB", Vector3.new(170, 3, 600))
+		local defenderB = player("Away", "CB", Vector3.new(250, 3, 592))
+		local context = {Now = 1, BallWorld = passer.World, BallTeam = {Home = passer.Pitch}, Teams = {Home = {List = {passer, offsideForward, legalRunner}}, Away = {List = {defenderA, defenderB}}}, Options = options}
+		local style = AITacticalStyleService.new({PresetId = "vertical_combination"})
+		local rejected = AIPassExecutionPlanner.Plan(context, passer, {Receiver = offsideForward, Target = offsideForward.World, PassKind = "Through"}, style, {PassRisk = .5})
+		local legal = AIPassExecutionPlanner.Plan(context, passer, {Receiver = legalRunner, Target = PitchConfig.TeamPitchPositionToWorld(Vector3.new(180, 3, 620), "Home", options), PassKind = "Through"}, style, {PassRisk = .5})
+		expect(rejected == nil and offsideForward.Model:GetAttribute("AIPassRejectedOffside") == true, "Offside forward was not rejected")
+		expect(legal ~= nil, "Legal timed through-ball option was rejected")
+		for _, item in {passer, offsideForward, legalRunner, defenderA, defenderB} do item.Model:Destroy() end
 	end)
 
 	test("client gameplay modules load", function()

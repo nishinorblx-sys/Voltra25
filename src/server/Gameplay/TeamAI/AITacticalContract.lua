@@ -54,17 +54,35 @@ local function inferLine(roleFamily: string?, pitch: Vector3?): string
 	return "Midfield"
 end
 
-local function defaultActions(functionName: string, restDefense: boolean): {string}
+local function defaultActions(actionProfile: string, restDefense: boolean): {string}
 	if restDefense then
 		return {"Receive", "Pass", "Clear", "Tackle", "Cover"}
 	end
-	if functionName == "Finisher" then
+	if actionProfile == "Goalkeeper" then
+		return {"Receive", "Pass", "Clear"}
+	end
+	if actionProfile == "RestDefender" then
+		return {"Receive", "Pass", "Clear", "Tackle", "Cover"}
+	end
+	if actionProfile == "BuildUpDefender" then
+		return {"Receive", "Pass", "Carry", "Dribble", "Clear", "Cover"}
+	end
+	if actionProfile == "Pivot" then
+		return {"Receive", "Pass", "Carry", "Dribble", "Press", "Tackle", "Cover"}
+	end
+	if actionProfile == "SupportMidfielder" then
+		return {"Receive", "Pass", "Carry", "Dribble", "Shoot", "Press", "Run"}
+	end
+	if actionProfile == "Creator" then
 		return {"Receive", "Pass", "Carry", "Dribble", "Shoot", "Press"}
 	end
-	if functionName == "Runner" or functionName == "Width" then
-		return {"Receive", "Pass", "Carry", "Dribble", "Cross", "Shoot", "Run"}
+	if actionProfile == "Winger" then
+		return {"Receive", "Pass", "Carry", "Dribble", "Cross", "Shoot", "Press", "Run"}
 	end
-	if functionName == "Presser" then
+	if actionProfile == "Forward" then
+		return {"Receive", "Pass", "Carry", "Dribble", "Shoot", "Press", "Run"}
+	end
+	if actionProfile == "Presser" then
 		return {"Press", "Tackle", "Cover", "Receive", "Pass"}
 	end
 	return {"Receive", "Pass", "Carry", "Dribble", "Cover", "Press"}
@@ -85,15 +103,38 @@ function Contract.Slot(raw: any): any
 	local line = raw.Line or inferLine(roleFamily, targetPitch)
 	local lane = raw.Lane or inferLane(targetPitch)
 	local functionName = tostring(raw.Function or raw.Id or "Slot")
+	local actionProfile = tostring(raw.ActionProfile or "")
+	if actionProfile == "" then
+		if raw.RestDefense == true then
+			actionProfile = "RestDefender"
+		elseif roleFamily == "GK" or line == "Goalkeeper" then
+			actionProfile = "Goalkeeper"
+		elseif roleFamily == "Winger" or roleFamily == "Wingback" then
+			actionProfile = "Winger"
+		elseif roleFamily == "ST" or line == "Forward" then
+			actionProfile = "Forward"
+		elseif roleFamily == "CAM" then
+			actionProfile = "Creator"
+		elseif roleFamily == "CM" then
+			actionProfile = "SupportMidfielder"
+		elseif roleFamily == "CDM" then
+			actionProfile = "Pivot"
+		elseif roleFamily == "CB" or roleFamily == "Fullback" then
+			actionProfile = "BuildUpDefender"
+		else
+			actionProfile = "SupportMidfielder"
+		end
+	end
 	local restDefense = raw.RestDefense == true
 	local targetRegion = raw.TargetRegion or Contract.Region(targetPitch, raw.RegionRadius, lane, line)
 	local allowedActions = arrayFrom(raw.AllowedActions)
 	if #allowedActions == 0 then
-		allowedActions = defaultActions(functionName, restDefense)
+		allowedActions = defaultActions(actionProfile, restDefense)
 	end
 	local slot = table.clone(raw)
 	slot.Id = tostring(raw.Id or functionName)
 	slot.Function = functionName
+	slot.ActionProfile = actionProfile
 	slot.RoleFamily = raw.RoleFamily
 	slot.AllowedRoles = arrayFrom(raw.AllowedRoles or raw.RoleFamily)
 	slot.PreferredRoles = arrayFrom(raw.PreferredRoles or raw.RoleFamily)

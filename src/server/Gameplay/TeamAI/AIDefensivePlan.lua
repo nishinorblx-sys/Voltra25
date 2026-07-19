@@ -6,14 +6,80 @@ local PitchConfig = require(script.Parent.Parent.PitchConfig)
 local function dutyHold(duty: string): number
 	if duty == "PrimaryPress" then return .72 end
 	if duty == "CoverPress" then return .9 end
+	if duty == "MidfieldPressSupport" then return .95 end
 	if duty == "PivotLaneBlock" or duty == "CentralLaneBlock" then return 1.15 end
 	if duty == "CutbackProtect" or duty == "FarPostProtect" then return 1.55 end
 	return 1.05
 end
 
+local function nearestOpponent(context: any, side: string, predicate: ((any) -> boolean)?): any?
+	local opponentSide = side == "Home" and "Away" or "Home"
+	local ball = context.BallTeam[side]
+	local best = nil
+	local bestScore = math.huge
+	for _, info in ipairs(((context.Teams or {})[opponentSide] or {}).List or {}) do
+		if info.Root and (not predicate or predicate(info)) then
+			local inFrame = PitchConfig.WorldToTeamPitchPosition(info.World, side, context.Options)
+			local distance = PitchConfig.GetDistanceStuds(inFrame, ball)
+			local centralBonus = math.abs(inFrame.X - PitchConfig.HALF_WIDTH) < 72 and -12 or 0
+			local score = distance + centralBonus
+			if score < bestScore then
+				best = {Info = info, Pitch = inFrame, World = info.World}
+				bestScore = score
+			end
+		end
+	end
+	return best
+end
+
+local function assignmentDistance(context: any, model: Model, targetPitch: Vector3): number
+	local info = context.Players and context.Players[model]
+	if not info then return math.huge end
+	local pitch = info.Pitch
+	return PitchConfig.GetDistanceStuds(pitch, targetPitch)
+end
+
+local function pickAssigned(context: any, assignments: any, targetPitch: Vector3, used: {[Model]: boolean}, predicate: (any, any) -> boolean): Model?
+	local best = nil
+	local bestScore = math.huge
+	for model, assignment in pairs(assignments) do
+		if not used[model] then
+			local info = context.Players and context.Players[model]
+			if info and info.Root and predicate(info, assignment) then
+				local score = assignmentDistance(context, model, targetPitch)
+				if score < bestScore then
+					best = model
+					bestScore = score
+				end
+			end
+		end
+	end
+	if best then used[best] = true end
+	return best
+end
+
+local function setPitchTarget(context: any, side: string, assignment: any, pitch: Vector3, primary: string, urgency: number, sprint: boolean)
+	local target = PitchConfig.ClampInsidePitch(pitch)
+	assignment.PrimaryAssignment = primary
+	assignment.TargetPitch = target
+	assignment.TargetWorld = PitchConfig.TeamPitchPositionToWorld(target, side, context.Options)
+	assignment.MovementTarget = assignment.TargetWorld
+	assignment.MovementUrgency = urgency
+	assignment.SprintAllowed = sprint
+end
+
 function Plan.Apply(context: any, side: string, assignments: any, intent: any, block: any, dutyState: any?)
 	local primaryUsed = false
 	local now = context.Now or os.clock()
+	local carrier = context.Owner and context.Players[context.Owner]
+	local carrierPitch = carrier and PitchConfig.WorldToTeamPitchPosition(carrier.World, side, context.Options) or context.BallTeam[side]
+	local nearestMidfielder = nearestOpponent(context, side, function(info: any): boolean
+		return info.Role == "CM" or info.Role == "CDM" or info.Role == "CAM"
+	end)
+	local nearestForwardOutlet = nearestOpponent(context, side, function(info: any): boolean
+		return info.Role == "ST" or info.Role == "Winger" or info.Role == "CAM"
+	end)
+	local highPress = tostring(intent and intent.Intent or "") == "HighPress"
 	for model, assignment in pairs(assignments) do
 		local slot = assignment.TacticalSlot
 		if slot and slot.Id == "primary-presser" and not primaryUsed then
@@ -21,29 +87,70 @@ function Plan.Apply(context: any, side: string, assignments: any, intent: any, b
 			assignment.PrimaryAssignment = "PressBallCarrier"
 			assignment.MovementUrgency = 1
 			assignment.SprintAllowed = true
-			if block and context.Owner and context.Players[context.Owner] then
-				local carrier = context.Players[context.Owner]
+			if block and carrier then
 				local target = slot.TargetPitch
 				local force = tostring(block.ForceDirection or "")
 				if force == "TouchlineLeft" then
-					target = Vector3.new(math.max(28, carrier.Pitch.X - 9), 3, carrier.Pitch.Z + 8)
+					target = Vector3.new(math.max(28, carrierPitch.X - 10), 3, math.max(28, carrierPitch.Z - 2))
 				elseif force == "TouchlineRight" then
-					target = Vector3.new(math.min(396, carrier.Pitch.X + 9), 3, carrier.Pitch.Z + 8)
+					target = Vector3.new(math.min(396, carrierPitch.X + 10), 3, math.max(28, carrierPitch.Z - 2))
 				else
-					target = Vector3.new(carrier.Pitch.X, 3, carrier.Pitch.Z + 16)
+					target = Vector3.new(carrierPitch.X, 3, math.max(28, carrierPitch.Z - 8))
 				end
 				assignment.TargetPitch = target
 				assignment.TargetWorld = context.Options and PitchConfig.TeamPitchPositionToWorld(target, side, context.Options) or assignment.TargetWorld
 				assignment.MovementTarget = assignment.TargetWorld
+				assignment.FaceWorld = carrier.World
 			end
+			model:SetAttribute("AIChosenPressRole", "Carrier")
+			model:SetAttribute("AIPressTarget", assignment.TargetWorld)
+			model:SetAttribute("AIPressLayer", "Primary")
 		elseif slot and slot.Id == "cover-presser" then
-			assignment.PrimaryAssignment = "CoverPresser"
-			assignment.MovementUrgency = .88
-			assignment.SprintAllowed = tostring(intent and intent.Intent or "") == "HighPress"
+			local outlet = carrierPitch.Z <= PitchConfig.HALF_LENGTH and nearestMidfielder or nearestForwardOutlet or nearestMidfielder
+			if outlet then
+				local target = Vector3.new((outlet.Pitch.X + PitchConfig.HALF_WIDTH) * .5, 3, math.max(34, outlet.Pitch.Z - 10))
+				assignment.TargetPitch = PitchConfig.ClampInsidePitch(target)
+				assignment.TargetWorld = PitchConfig.TeamPitchPositionToWorld(assignment.TargetPitch, side, context.Options)
+				assignment.MovementTarget = assignment.TargetWorld
+				assignment.FaceWorld = outlet.World
+			end
+			assignment.PrimaryAssignment = carrierPitch.Z <= PitchConfig.HALF_LENGTH and "PressNextReceiver" or "CoverPresser"
+			assignment.MovementUrgency = highPress and .96 or .88
+			assignment.SprintAllowed = highPress or (outlet and PitchConfig.GetDistanceStuds((context.Players[model] and context.Players[model].Pitch) or assignment.TargetPitch, assignment.TargetPitch) > 14) or false
+			model:SetAttribute("AIChosenPressRole", "CentralOutlet")
+			model:SetAttribute("AIPressTarget", assignment.TargetWorld)
+			model:SetAttribute("AIPressLayer", "Cover")
+		elseif slot and slot.Id == "midfield-press-support" then
+			local outlet = nearestMidfielder or nearestForwardOutlet
+			if outlet then
+				local x = outlet.Pitch.X + (PitchConfig.HALF_WIDTH - outlet.Pitch.X) * .35
+				local z = math.max(48, math.min(outlet.Pitch.Z - 16, carrierPitch.Z - 8))
+				assignment.TargetPitch = PitchConfig.ClampInsidePitch(Vector3.new(x, 3, z))
+				assignment.TargetWorld = PitchConfig.TeamPitchPositionToWorld(assignment.TargetPitch, side, context.Options)
+				assignment.MovementTarget = assignment.TargetWorld
+				assignment.FaceWorld = outlet.World
+			end
+			assignment.PrimaryAssignment = "MidfieldPressSupport"
+			assignment.MovementUrgency = highPress and .94 or .84
+			assignment.SprintAllowed = highPress
+			model:SetAttribute("AIChosenPressRole", "MidfieldSupport")
+			model:SetAttribute("AIPressTarget", assignment.TargetWorld)
+			model:SetAttribute("AIPressLayer", "Support")
 		elseif slot and (slot.Id == "central-lane-block" or slot.Id == "pivot-lane-blocker" or slot.Id == "cam-feet-lane-blocker") then
-			assignment.PrimaryAssignment = "BlockPassingLane"
-			assignment.MovementUrgency = .78
+			local outlet = nearestForwardOutlet or nearestMidfielder
+			if outlet then
+				local midpoint = carrierPitch:Lerp(outlet.Pitch, .48)
+				assignment.TargetPitch = PitchConfig.ClampInsidePitch(Vector3.new(midpoint.X, 3, math.max(54, midpoint.Z - 4)))
+				assignment.TargetWorld = PitchConfig.TeamPitchPositionToWorld(assignment.TargetPitch, side, context.Options)
+				assignment.MovementTarget = assignment.TargetWorld
+				assignment.FaceWorld = carrier and carrier.World or outlet.World
+			end
+			assignment.PrimaryAssignment = "PivotLaneBlocker"
+			assignment.MovementUrgency = highPress and .86 or .78
 			assignment.SprintAllowed = false
+			model:SetAttribute("AIChosenPressRole", "PivotScreen")
+			model:SetAttribute("AIPressTarget", assignment.TargetWorld)
+			model:SetAttribute("AIPressLayer", "Screen")
 		elseif slot and (slot.Id == "left-center-back" or slot.Id == "right-center-back" or slot.Id == "left-fullback-zone" or slot.Id == "right-fullback-zone") then
 			assignment.PrimaryAssignment = "HoldBackLineZone"
 			assignment.MovementUrgency = .72
@@ -77,6 +184,54 @@ function Plan.Apply(context: any, side: string, assignments: any, intent: any, b
 			model:SetAttribute("AIDefensiveBlockWidth", block.BlockWidth)
 			model:SetAttribute("AIDefensiveBackLineZ", block.BackLineZ)
 			model:SetAttribute("AIDefensiveMidLineZ", block.MidfieldLineZ)
+		end
+	end
+	if block and carrier then
+		local centralCarrier = math.abs(carrierPitch.X - PitchConfig.HALF_WIDTH) <= 70
+		local closestPresser = math.huge
+		for model, assignment in pairs(assignments) do
+			local primary = tostring(assignment.PrimaryAssignment or "")
+			if primary == "PressBallCarrier" or primary == "ContainBallCarrier" or primary == "CarrierBreachPress" then
+				closestPresser = math.min(closestPresser, assignmentDistance(context, model, carrierPitch))
+			end
+		end
+		local breachedForward = carrierPitch.Z < (tonumber(block.ForwardLineZ) or PitchConfig.PITCH_LENGTH) - 10
+		local breachedMidfield = carrierPitch.Z < (tonumber(block.MidfieldLineZ) or PitchConfig.HALF_LENGTH) - 8
+		local betweenLines = carrierPitch.Z > (tonumber(block.BackLineZ) or 0) + 8 and carrierPitch.Z < (tonumber(block.MidfieldLineZ) or PitchConfig.HALF_LENGTH) - 6
+		local unpressedCentral = centralCarrier and closestPresser > (breachedMidfield and 38 or 32)
+		local breach = breachedForward or breachedMidfield or betweenLines or unpressedCentral
+		if breach then
+			local used: {[Model]: boolean} = {}
+			local contain = pickAssigned(context, assignments, carrierPitch, used, function(info: any)
+				return info.Role == "CM" or info.Role == "CDM" or info.Role == "CAM" or info.Role == "Fullback" or info.Role == "CB"
+			end)
+			local cover = pickAssigned(context, assignments, carrierPitch, used, function(info: any)
+				return info.Role == "CB" or info.Role == "Fullback" or info.Role == "CDM" or info.Role == "CM"
+			end)
+			local deep = pickAssigned(context, assignments, Vector3.new(carrierPitch.X < PitchConfig.HALF_WIDTH and 310 or 114, 3, math.max(42, carrierPitch.Z - 42)), used, function(info: any)
+				return info.Role == "CB"
+			end)
+			local screen = pickAssigned(context, assignments, Vector3.new(PitchConfig.HALF_WIDTH, 3, math.max(48, carrierPitch.Z - 20)), used, function(info: any)
+				return info.Role == "CDM" or info.Role == "CM"
+			end)
+			if contain and assignments[contain] then
+				local x = carrierPitch.X + (PitchConfig.HALF_WIDTH - carrierPitch.X) * .28
+				setPitchTarget(context, side, assignments[contain], Vector3.new(x, 3, math.max(28, carrierPitch.Z - (breachedMidfield and 8 or 4))), breachedMidfield and "CarrierBreachPress" or "ContainBallCarrier", 1, true)
+				contain:SetAttribute("AIDefensiveBreachRole", "Contain")
+				contain:SetAttribute("AIBreachCarrierZ", carrierPitch.Z)
+			end
+			if cover and assignments[cover] then
+				setPitchTarget(context, side, assignments[cover], Vector3.new(carrierPitch.X + (carrierPitch.X < PitchConfig.HALF_WIDTH and 28 or -28), 3, math.max(35, carrierPitch.Z - 22)), "CoverStep", .92, breachedMidfield)
+				cover:SetAttribute("AIDefensiveBreachRole", "CoverStep")
+			end
+			if deep and assignments[deep] then
+				setPitchTarget(context, side, assignments[deep], Vector3.new(carrierPitch.X < PitchConfig.HALF_WIDTH and 292 or 132, 3, math.max(28, carrierPitch.Z - 54)), "DeepCover", .84, false)
+				deep:SetAttribute("AIDefensiveBreachRole", "DeepCover")
+			end
+			if screen and assignments[screen] then
+				setPitchTarget(context, side, assignments[screen], Vector3.new(PitchConfig.HALF_WIDTH, 3, math.max(38, carrierPitch.Z - 24)), "ProtectCentralReturnLane", .86, false)
+				screen:SetAttribute("AIDefensiveBreachRole", "CentralReturnLane")
+			end
 		end
 	end
 end

@@ -364,6 +364,15 @@ function Service:SetOffsideService(service:any)self.Offside=service end
 function Service:SetFoulPolicy(policy:any)self.FoulPolicy=policy end
 
 function Service:_clearOffsideSnapshot()
+	if self.OffsideCandidates then
+		for candidate in pairs(self.OffsideCandidates) do
+			if candidate and candidate.Parent then
+				candidate:SetAttribute("VTRPassOffsideReceiver", nil)
+				candidate:SetAttribute("VTRPassOffsideAtKick", nil)
+				candidate:SetAttribute("VTRPassOffsideSnapshotAt", nil)
+			end
+		end
+	end
 	self.OffsideCandidate=nil
 	self.OffsideCandidates=nil
 	self.OffsidePasser=nil
@@ -386,6 +395,11 @@ function Service:_recordOffsideSnapshot(passer:Model,team:string,ballPosition:Ve
 		self.OffsideCandidates=candidates
 		self.OffsidePasser=passer
 		self.OffsidePassStartedAt=os.clock()
+		for candidate in pairs(candidates) do
+			candidate:SetAttribute("VTRPassOffsideReceiver", true)
+			candidate:SetAttribute("VTRPassOffsideAtKick", true)
+			candidate:SetAttribute("VTRPassOffsideSnapshotAt", self.OffsidePassStartedAt)
+		end
 	end
 end
 

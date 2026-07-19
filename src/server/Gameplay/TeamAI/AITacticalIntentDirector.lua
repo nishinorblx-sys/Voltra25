@@ -3,6 +3,8 @@
 local Director = {}
 Director.__index = Director
 
+local PitchConfig = require(script.Parent.Parent.PitchConfig)
+
 local MIN_COMMIT = .55
 
 function Director.new(): any
@@ -41,11 +43,15 @@ local function defenseIntent(context: any, side: string, style: any): string
 	local ball = context.BallTeam[side]
 	local press = style and style:Ratio("PressingIntensity") or .5
 	local depth = style and style:Ratio("DefensiveDepth") or .5
+	local trigger = style and style:Ratio("PressTriggerDistance") or .5
+	local counter = style and style:Ratio("CounterPress") or .5
 	if context.LooseBall then return "AttackLooseBall" end
-	if ball.Z < 155 then return "ProtectBox" end
-	if press > .78 and ball.Z < 500 then return "HighPress" end
-	if press > .62 then return "Counterpress" end
+	if ball.Z < 185 then return "ProtectBox" end
 	if depth < .34 then return "LowBlock" end
+	local pressCommit = press * .72 + trigger * .28
+	if ball.Z >= 470 and press >= .58 then return "HighPress" end
+	if ball.Z >= PitchConfig.HALF_LENGTH and pressCommit >= .68 then return "HighPress" end
+	if ball.Z >= 250 and counter >= .58 and press >= .54 then return "Counterpress" end
 	return "MidBlock"
 end
 

@@ -2,6 +2,7 @@
 
 local PitchConfig = require(script.Parent.Parent.PitchConfig)
 local AITacticalContract = require(script.Parent.AITacticalContract)
+local OffsidePositionUtil = require(script.Parent.Parent.OffsidePositionUtil)
 
 local Service = {}
 
@@ -83,6 +84,26 @@ local function slot(raw: any): any
 	local role = tostring(raw.RoleFamily or raw.Role or "CM")
 	local lane = raw.Lane or laneForX(target.X)
 	local line = raw.Line or lineForRole(role)
+	local profile = raw.ActionProfile
+	if not profile then
+		if raw.RestDefense == true then
+			profile = "RestDefender"
+		elseif role == "GK" then
+			profile = "Goalkeeper"
+		elseif role == "ST" or line == "Forward" and role ~= "Winger" and role ~= "Wingback" then
+			profile = "Forward"
+		elseif role == "Winger" or role == "Wingback" then
+			profile = "Winger"
+		elseif role == "CAM" then
+			profile = "Creator"
+		elseif role == "CDM" then
+			profile = "Pivot"
+		elseif role == "CM" then
+			profile = "SupportMidfielder"
+		else
+			profile = "BuildUpDefender"
+		end
+	end
 	return AITacticalContract.Slot({
 		Id = raw.Id,
 		Function = raw.Function,
@@ -93,6 +114,7 @@ local function slot(raw: any): any
 		TargetRegion = AITacticalContract.Region(target, raw.RegionRadius or 20, lane, line),
 		Lane = lane,
 		Line = line,
+		ActionProfile = profile,
 		Priority = raw.Priority or 50,
 		RestDefense = raw.RestDefense == true,
 		ContinuityKey = raw.ContinuityKey or raw.Id,
@@ -109,6 +131,9 @@ local function transform(base: {any}, context: any, side: string, style: any, pl
 	local reaction = context.TeamReactions and context.TeamReactions[side] and context.TeamReactions[side].AgainstOpponentDefense
 	local rules = context.RuleEffects and context.RuleEffects[side] and context.RuleEffects[side].Positioning
 	local ball = context.BallTeam[side]
+	local secondLastZ = OffsidePositionUtil.SecondLastOpponentZ(context, side)
+	local normalOnsideCap = math.max(PitchConfig.HALF_LENGTH, secondLastZ - 7)
+	local timedOnsideCap = math.max(PitchConfig.HALF_LENGTH, secondLastZ - 4)
 	local widthRatio = ratio(style, "AttackingWidth", .5)
 	local supportRatio = ratio(style, "SupportDistance", .5)
 	if reaction then
@@ -159,6 +184,16 @@ local function transform(base: {any}, context: any, side: string, style: any, pl
 				copy.Priority = (copy.Priority or 50) + 5
 				copy.TargetPitch = Vector3.new(copy.TargetPitch.X, 3, math.min(610, copy.TargetPitch.Z + 14))
 			end
+		end
+		local line = tostring(copy.Line or "")
+		local functionName = tostring(copy.Function or "")
+		if line == "Forward" and typeof(copy.TargetPitch) == "Vector3" then
+			local timed = functionName:find("Checking") ~= nil or functionName:find("Between") ~= nil
+			local cap = timed and timedOnsideCap or normalOnsideCap
+			if copy.TargetPitch.Z > cap then
+				copy.TargetPitch = Vector3.new(copy.TargetPitch.X, 3, cap)
+			end
+			copy.OffsideLineZ = secondLastZ
 		end
 		local forbidden = rules and rules.ForbiddenFunctions
 		local allowed = rules and rules.AllowedFunctions
