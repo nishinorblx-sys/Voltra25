@@ -61,6 +61,7 @@ local MatchClock = require(script.Parent.Parent.Gameplay.MatchClockService)
 local PassReceptionRuntime = require(script.Parent.Parent.Gameplay.PassReceptionService)
 local ReplayRestartGate = require(script.Parent.Parent.Gameplay.ReplayRestartGate)
 local StaminaService = require(script.Parent.Parent.Gameplay.StaminaService)
+local PenaltyBoxService = require(script.Parent.Parent.Gameplay.PenaltyBoxService)
 local DefaultProfile = require(script.Parent.Parent.Data.DefaultProfile)
 local ProfileService = require(script.Parent.Parent.Services.ProfileService)
 
@@ -2104,6 +2105,105 @@ function Tests.Run(): any
 		expectEqual(broken.Home.Intent, "PressBroken", "Forward line-breaking pass did not trigger PressBroken")
 		for _, item in ipairs(home) do item.Model:Destroy() end
 		for _, item in ipairs({awayCB, awayGK, awayST}) do item.Model:Destroy() end
+	end)
+
+	test("defensive line holds edge against central carrier and only drops for real depth threat", function()
+		local options = {PitchCFrame = CFrame.new(), Width = PitchConfig.PITCH_WIDTH, Length = PitchConfig.PITCH_LENGTH, AttackSigns = {Home = 1, Away = -1}}
+		local box = PenaltyBoxService.DefensiveBoxMetrics("Home", options)
+		local edge = box.BoxEdgeZ
+		local function info(side: string, role: string, homeFramePitch: Vector3, name: string): any
+			local model = Instance.new("Model")
+			model.Name = name
+			model:SetAttribute("VTRTeam", side)
+			local root = Instance.new("Part")
+			root.Name = "HumanoidRootPart"
+			root.CFrame = CFrame.new(PitchConfig.TeamPitchPositionToWorld(homeFramePitch, "Home", options))
+			root.Parent = model
+			local ownPitch = PitchConfig.WorldToTeamPitchPosition(root.Position, side, options)
+			return {Model = model, Root = root, Side = side, OpponentSide = side == "Home" and "Away" or "Home", Role = role, Pitch = ownPitch, World = root.Position, Stats = {pace = 72, defending = 74}, Stamina = 86, IsGoalkeeper = role == "GK"}
+		end
+		local home = {
+			info("Home", "GK", Vector3.new(212, 3, 30), "HGK"),
+			info("Home", "CB", Vector3.new(154, 3, edge + 8), "HCB1"),
+			info("Home", "CB", Vector3.new(270, 3, edge + 8), "HCB2"),
+			info("Home", "Fullback", Vector3.new(74, 3, edge + 12), "HLB"),
+			info("Home", "Fullback", Vector3.new(350, 3, edge + 12), "HRB"),
+			info("Home", "CDM", Vector3.new(212, 3, edge + 42), "HCDM"),
+			info("Home", "CM", Vector3.new(172, 3, edge + 74), "HCM1"),
+			info("Home", "CM", Vector3.new(252, 3, edge + 74), "HCM2"),
+			info("Home", "Winger", Vector3.new(80, 3, edge + 120), "HLW"),
+			info("Home", "Winger", Vector3.new(344, 3, edge + 120), "HRW"),
+			info("Home", "ST", Vector3.new(212, 3, edge + 150), "HST"),
+		}
+		local carrier = info("Away", "CAM", Vector3.new(212, 3, edge + 62), "ACarrier")
+		local outlet = info("Away", "ST", Vector3.new(244, 3, edge + 36), "AOutlet")
+		local context = {Now = 10, Owner = carrier.Model, OwnerSide = "Away", BallWorld = carrier.World, BallTeam = {Home = Vector3.new(212, 3, edge + 62), Away = PitchConfig.WorldToTeamPitchPosition(carrier.World, "Away", options)}, Teams = {Home = {List = home}, Away = {List = {carrier, outlet}}}, Players = {}, Options = options, PassInFlight = false, PassTargetTeam = {Home = nil, Away = nil}}
+		for _, item in ipairs(home) do context.Players[item.Model] = item end
+		for _, item in ipairs({carrier, outlet}) do context.Players[item.Model] = item end
+		local style = {Ratio = function(_, key: string)
+			if key == "DefensiveDepth" then return .48 end
+			if key == "BackLineCompactness" then return .74 end
+			if key == "BoxProtection" then return .64 end
+			if key == "PressingIntensity" then return .5 end
+			return .55
+		end}
+		local planner = AIDefensiveBlockPlanner.new()
+		local hold = planner:Build(context, "Home", style, {Intent = "ProtectBox"})
+		expectEqual(hold.DefensiveLineState, "StepToCarrier", "Central carrier outside box did not trigger step state")
+		expect(hold.BackLineZ >= edge + 8, "Back line retreated below edge anchor against carrier")
+		expect(hold.BackLineMinimumZ >= edge + 4, "Minimum line height did not protect box edge")
+		local assignments = AITacticalSlotAssignment.Assign(context, "Home", hold.Slots)
+		AIDefensivePlan.Apply(context, "Home", assignments, {Intent = "ProtectBox"}, hold, {})
+		local stepCount = 0
+		local insideCount = 0
+		local farCount = 0
+		local deepCount = 0
+		local deepest = math.huge
+		local cdmScreen = false
+		for model, assignment in pairs(assignments) do
+			local role = context.Players[model] and context.Players[model].Role
+			if role == "CB" or role == "Fullback" or role == "CDM" then
+				deepest = math.min(deepest, assignment.TargetPitch.Z)
+			end
+			if assignment.PrimaryAssignment == "StepToCarrier" or assignment.PrimaryAssignment == "EdgeOfBoxPress" then stepCount += 1 end
+			if assignment.PrimaryAssignment == "InsideCover" then insideCount += 1 end
+			if assignment.PrimaryAssignment == "FarSideCover" then farCount += 1 end
+			if assignment.PrimaryAssignment == "DeepCover" or assignment.PrimaryAssignment == "RunnerTrack" then deepCount += 1 end
+			if role == "CDM" and assignment.TargetPitch.Z >= edge + 4 and assignment.TargetPitch.Z <= edge + 48 then cdmScreen = true end
+		end
+		expect(stepCount == 1, "Exactly one defender did not step to the carrier")
+		expect(insideCount >= 1, "No inside cover defender assigned")
+		expect(farCount >= 1, "No far-side cover defender assigned")
+		expect(deepCount <= 1, "More than one defender became deep cover")
+		expect(deepest >= edge - 18, "Deepest cover collapsed too close to the six-yard area")
+		expect(cdmScreen, "CDM did not protect space in front of the back line")
+		context.PassInFlight = true
+		context.PassTargetTeam = {Home = Vector3.new(212, 3, edge - 24), Away = PitchConfig.WorldToTeamPitchPosition(PitchConfig.TeamPitchPositionToWorld(Vector3.new(212, 3, edge - 24), "Home", options), "Away", options)}
+		local emergency = planner:Build(context, "Home", style, {Intent = "PressBroken"})
+		expectEqual(emergency.DefensiveLineState, "EmergencyDrop", "Through ball behind line did not trigger emergency drop")
+		expect(emergency.BackLineZ < hold.BackLineZ, "Emergency line did not drop below hold line")
+		local emergencyAssignments = AITacticalSlotAssignment.Assign(context, "Home", emergency.Slots)
+		AIDefensivePlan.Apply(context, "Home", emergencyAssignments, {Intent = "PressBroken"}, emergency, {})
+		local runnerTracked = false
+		local keeperDropped = false
+		for model, assignment in pairs(emergencyAssignments) do
+			local role = context.Players[model] and context.Players[model].Role
+			if assignment.PrimaryAssignment == "RunnerTrack" or assignment.PrimaryAssignment == "DeepCover" then runnerTracked = true end
+			if role == "GK" and assignment.TargetPitch.Z < hold.BackLineZ then keeperDropped = true end
+		end
+		expect(runnerTracked, "Emergency drop did not assign depth tracking")
+		expect(keeperDropped, "Goalkeeper did not adjust behind emergency line")
+		context.Now = 11.4
+		context.PassTargetTeam = {Home = Vector3.new(212, 3, edge + 92), Away = PitchConfig.WorldToTeamPitchPosition(PitchConfig.TeamPitchPositionToWorld(Vector3.new(212, 3, edge + 92), "Home", options), "Away", options)}
+		local recovered = planner:Build(context, "Home", style, {Intent = "ProtectBox"})
+		expect(recovered.DefensiveLineState ~= "EmergencyDrop", "Line stayed in emergency drop after threat was resolved")
+		expect(recovered.BackLineZ >= edge + 4, "Recovered line did not return toward box edge")
+		local low = planner:Build(context, "Home", style, {Intent = "LowBlock"})
+		expectEqual(low.DefensiveLineState, "LowBlock", "Low-block tactic did not set low-block line state")
+		expect(low.BackLineZ < recovered.BackLineZ, "Low block was not deeper than recovered medium block")
+		expect(low.BackLineZ >= edge - 16, "Low block collapsed unnecessarily toward six-yard box")
+		for _, item in ipairs(home) do item.Model:Destroy() end
+		for _, item in ipairs({carrier, outlet}) do item.Model:Destroy() end
 	end)
 
 	test("client gameplay modules load", function()

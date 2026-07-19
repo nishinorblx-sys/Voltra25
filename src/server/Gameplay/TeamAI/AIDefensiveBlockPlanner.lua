@@ -1,6 +1,7 @@
 --!strict
 
 local PitchConfig = require(script.Parent.Parent.PitchConfig)
+local PenaltyBoxService = require(script.Parent.Parent.PenaltyBoxService)
 local AITacticalContract = require(script.Parent.AITacticalContract)
 
 local Planner = {}
@@ -44,7 +45,7 @@ local function slot(id: string, family: string, pitch: Vector3, priority: number
 		ActionProfile = isRest and "RestDefender" or "Presser",
 		Priority = priority,
 		RestDefense = isRest,
-		ContinuityKey = id .. ":" .. tostring(duty or id),
+		ContinuityKey = string.format("%03d:%s:%s", 999 - math.floor(priority), id, tostring(duty or id)),
 		SprintAllowed = sprint == true,
 		AllowedActions = actions,
 		ForbiddenActions = isRest and {"Shoot", "Dribble", "RiskDribble", "BoxRun", "CarryForward"} or {},
@@ -69,7 +70,7 @@ local function goalkeeperSlot(pitch: Vector3, high: boolean): any
 		Line = "Goalkeeper",
 		ActionProfile = "Goalkeeper",
 		Priority = 99,
-		ContinuityKey = "goalkeeper-sweeper-cover",
+		ContinuityKey = "000:goalkeeper-sweeper-cover",
 		SprintAllowed = high,
 		AllowedActions = {"Receive", "Pass", "Clear", "Cover"},
 	})
@@ -112,12 +113,44 @@ local function opponentClosest(context: any, defendingSide: string, roleSet: {[s
 	return best
 end
 
+local function opponentGoalFacing(info: any, pitch: Vector3): boolean
+	local root = info.Root
+	if not root then
+		return false
+	end
+	local facing = Vector3.new(root.CFrame.LookVector.X, 0, root.CFrame.LookVector.Z)
+	local moving = Vector3.new(root.AssemblyLinearVelocity.X, 0, root.AssemblyLinearVelocity.Z)
+	local goalward = Vector3.new(PitchConfig.HALF_WIDTH - pitch.X, 0, -math.max(1, pitch.Z))
+	local facingGoal = facing.Magnitude > .01 and goalward.Magnitude > .01 and facing.Unit:Dot(goalward.Unit) > .18
+	local carryingGoalward = moving.Magnitude > 4 and moving.Unit:Dot(Vector3.new(0, 0, -1)) > .22
+	return facingGoal or carryingGoalward
+end
+
+local function carrierInfo(context: any, side: string): any?
+	local owner = context.Owner
+	if not owner then
+		return nil
+	end
+	local info = context.Players and context.Players[owner]
+	if not info or info.Side == side then
+		return nil
+	end
+	local pitch = PitchConfig.WorldToTeamPitchPosition(info.World, side, context.Options)
+	return {Info = info, Pitch = pitch, World = info.World}
+end
+
 function Planner.new(): any
-	return setmetatable({Duties = {Home = {}, Away = {}}}, Planner)
+	return setmetatable({Duties = {Home = {}, Away = {}}, LineStates = {Home = nil, Away = nil}}, Planner)
 end
 
 function Planner:Reset(side: string?)
-	if side then self.Duties[side] = {} else self.Duties = {Home = {}, Away = {}} end
+	if side then
+		self.Duties[side] = {}
+		self.LineStates[side] = nil
+	else
+		self.Duties = {Home = {}, Away = {}}
+		self.LineStates = {Home = nil, Away = nil}
+	end
 end
 
 function Planner:Build(context: any, side: string, style: any, intent: any): any
@@ -167,13 +200,93 @@ function Planner:Build(context: any, side: string, style: any, intent: any): any
 		depthRatio = math.clamp(depthRatio + (tonumber(pressRules.PressHeight) or 0), 0, 1)
 		press = math.clamp(press + (tonumber(pressRules.Pressers) or 0) * .18, 0, 1)
 	end
-	local low = intentName == "LowBlock" or intentName == "ProtectBox" or intentName == "ProtectLead"
+	local low = intentName == "LowBlock" or intentName == "ProtectLead"
 	local high = intentName == "HighPress" or intentName == "HighPressBuildUp" or intentName == "HighPressLocked" or intentName == "HighPressCompression"
 	local compression = intentName == "HighPressCompression"
+	local boxMetrics = PenaltyBoxService.DefensiveBoxMetrics(side, context.Options)
+	local boxEdgeZ = tonumber(boxMetrics.BoxEdgeZ) or PitchConfig.Zones.OwnBox.ZMax
+	local carrier = carrierInfo(context, side)
+	local carrierPitch = carrier and carrier.Pitch or ball
+	local centralCarrier = carrier and math.abs(carrierPitch.X - PitchConfig.HALF_WIDTH) <= 74
+	local carrierOutsideBox = carrier and carrierPitch.Z > boxEdgeZ + 2
+	local carrierNearEdge = carrierOutsideBox and carrierPitch.Z <= boxEdgeZ + 96
+	local carrierAttackingBox = carrier and opponentGoalFacing(carrier.Info, carrierPitch)
+	local targetPitch = context.PassTargetTeam and context.PassTargetTeam[side]
+	local throughPassBehind = context.PassInFlight == true and typeof(targetPitch) == "Vector3" and targetPitch.Z <= boxEdgeZ + 14 and targetPitch.Z < ball.Z - 34
+	local attackerInBox = false
+	local dangerousRunnerBehind = false
+	local highestRunner = nil
+	for _, opponent in ipairs(((context.Teams or {})[side == "Home" and "Away" or "Home"] or {}).List or {}) do
+		if opponent.Root then
+			local pitch = PitchConfig.WorldToTeamPitchPosition(opponent.World, side, context.Options)
+			if pitch.Z <= boxEdgeZ + 2 and pitch.X >= boxMetrics.XMin and pitch.X <= boxMetrics.XMax then
+				attackerInBox = true
+			end
+			if (opponent.Role == "ST" or opponent.Role == "Winger" or opponent.Role == "CAM") and pitch.Z <= boxEdgeZ + 22 and pitch.Z < ball.Z - 28 then
+				local nearest = opponentClosest(context, side, {CB = true, Fullback = true, CDM = true}, pitch, false)
+				local unmarked = nearest == nil or PitchConfig.GetDistanceStuds(nearest.Pitch, pitch) > 28
+				if unmarked then
+					dangerousRunnerBehind = true
+					highestRunner = {Info = opponent, Pitch = pitch, World = opponent.World}
+				end
+			end
+		end
+	end
+	local previousLine = self.LineStates[side]
+	local lineState = "HoldEdge"
+	local emergencyReason = ""
+	if low then
+		lineState = "LowBlock"
+	elseif throughPassBehind or intentName == "PressBroken" then
+		lineState = "EmergencyDrop"
+		emergencyReason = throughPassBehind and "ThroughPassBehind" or "PressBroken"
+	elseif attackerInBox and (ball.Z <= boxEdgeZ + 4 or carrierAttackingBox) then
+		lineState = "ProtectSixYardBox"
+		emergencyReason = "AttackerInsideBox"
+	elseif dangerousRunnerBehind then
+		lineState = "TrackDepthRun"
+		emergencyReason = "RunnerBehind"
+	elseif centralCarrier and carrierNearEdge and carrierAttackingBox and context.PassInFlight ~= true then
+		lineState = "StepToCarrier"
+	elseif carrierOutsideBox and carrierPitch.Z <= boxEdgeZ + 70 and carrierAttackingBox then
+		lineState = "StepToCarrier"
+	end
+	local threatResolved = previousLine == "EmergencyDrop" and lineState == "HoldEdge"
+	self.LineStates[side] = lineState
+	local outsideBoxWithoutDepth = ball.Z > boxEdgeZ + 2 and not throughPassBehind and not dangerousRunnerBehind and not attackerInBox
+	local edgeAnchor = clamp(boxEdgeZ + 18 + depthRatio * 24 - box * 8, boxEdgeZ + 4, boxEdgeZ + 44)
+	local nearBoxAnchor = clamp(boxEdgeZ + 8 + depthRatio * 14 - box * 4, boxEdgeZ + 4, boxEdgeZ + 24)
+	local lowAnchor = clamp(boxEdgeZ - 12 + depthRatio * 18, boxEdgeZ - 14, boxEdgeZ + 12)
+	local emergencyAnchor = tonumber(boxMetrics.EmergencyBoxAnchorZ) or math.max(28, boxEdgeZ - 48)
+	local minimumBackLineZ = edgeAnchor
+	if high then
+		minimumBackLineZ = compression and 330 or 250
+	elseif lineState == "LowBlock" then
+		minimumBackLineZ = outsideBoxWithoutDepth and lowAnchor or math.max(emergencyAnchor, boxEdgeZ - 20)
+	elseif lineState == "EmergencyDrop" or lineState == "ProtectSixYardBox" then
+		minimumBackLineZ = emergencyAnchor
+	elseif lineState == "TrackDepthRun" then
+		minimumBackLineZ = math.max(boxEdgeZ - 2, nearBoxAnchor - 16)
+	elseif lineState == "StepToCarrier" then
+		minimumBackLineZ = nearBoxAnchor
+	elseif outsideBoxWithoutDepth then
+		minimumBackLineZ = edgeAnchor
+	end
 	local blockWidth = clamp(190 + widthRatio * 86 - compact * 42, 152, 258)
 	local centerShift = clamp((ball.X - PitchConfig.HALF_WIDTH) * (.22 + zone * .18), -32, 32)
 	local centerX = clamp(PitchConfig.HALF_WIDTH + centerShift, 110, 314)
 	local backZ = low and clamp(64 + depthRatio * 74, 58, 148) or high and clamp(285 + depthRatio * 145, 260, 455) or clamp(132 + depthRatio * 178, 112, 330)
+	backZ = math.max(backZ, minimumBackLineZ)
+	if lineState == "EmergencyDrop" or lineState == "ProtectSixYardBox" then
+		backZ = clamp(boxEdgeZ - 28 + depthRatio * 18, emergencyAnchor, boxEdgeZ + 6)
+	elseif lineState == "TrackDepthRun" then
+		backZ = clamp(boxEdgeZ + 2 + depthRatio * 16, minimumBackLineZ, boxEdgeZ + 22)
+	elseif lineState == "LowBlock" then
+		backZ = clamp(backZ, minimumBackLineZ, boxEdgeZ + 12)
+	end
+	if not high and (lineState == "StepToCarrier" or lineState == "HoldEdge") and ball.Z <= boxEdgeZ + 120 then
+		backZ = clamp(backZ, minimumBackLineZ, math.max(minimumBackLineZ, math.min(boxEdgeZ + 42, carrierPitch.Z - 12)))
+	end
 	local backMidGap = clamp(58 - compact * 20 + (low and -8 or high and 6 or 0), 36, 58)
 	local midForwardGap = clamp(68 - compact * 18 + (high and 5 or 0), 40, 68)
 	local midZ = clamp(backZ + backMidGap, 96, 540)
@@ -250,10 +363,24 @@ function Planner:Build(context: any, side: string, style: any, intent: any): any
 	local pivotTarget = Vector3.new(clamp(PitchConfig.HALF_WIDTH + centerShift * .35, 125, 299), 3, clamp(ball.Z - 62, backZ + 14, midZ))
 	local pivot = nearestRole(context, side, {CDM = true, CM = true}, pivotTarget, used)
 	if pivot then used[pivot.Model] = true end
+	local stepTarget = Vector3.new(carrierPitch.X + (PitchConfig.HALF_WIDTH - carrierPitch.X) * .18, 3, clamp(backZ + 14, backZ + 8, math.max(backZ + 8, carrierPitch.Z - 6)))
+	local stepDefender = nil
+	if lineState == "StepToCarrier" then
+		stepDefender = nearestRole(context, side, {CB = true, Fullback = true, CDM = true}, stepTarget, used)
+		if stepDefender then used[stepDefender.Model] = true end
+	end
+	local insideCoverTarget = Vector3.new(clamp(PitchConfig.HALF_WIDTH + (carrierPitch.X - PitchConfig.HALF_WIDTH) * .18, 132, 292), 3, clamp(backZ - 12, minimumBackLineZ - 18, backZ - 6))
+	local farCoverX = carrierPitch.X < PitchConfig.HALF_WIDTH and clamp(rightX - farSideTuck * .35, 222, 350) or clamp(leftX + farSideTuck * .35, 74, 202)
+	local farCoverTarget = Vector3.new(farCoverX, 3, clamp(backZ - 8, minimumBackLineZ - 14, backZ + 2))
 	local deepCoverTarget = Vector3.new(ballSide == "Left" and rightX or leftX, 3, clamp(backZ - (high and 10 or 0), 48, 560))
 	local highestThreat = opponentClosest(context, side, {ST = true, Winger = true, CAM = true}, Vector3.new(PitchConfig.HALF_WIDTH, 3, math.max(80, backZ - 22)), false)
 	if highestThreat and high then
 		deepCoverTarget = Vector3.new(highestThreat.Pitch.X + (PitchConfig.HALF_WIDTH - highestThreat.Pitch.X) * .2, 3, clamp(math.min(backZ - 10, highestThreat.Pitch.Z - 8), 80, backZ - 8))
+	end
+	if lineState == "StepToCarrier" or lineState == "HoldEdge" or lineState == "LowBlock" then
+		deepCoverTarget = Vector3.new(deepCoverTarget.X, 3, clamp(backZ - 12, minimumBackLineZ - 16, backZ - 6))
+	elseif lineState == "TrackDepthRun" and highestRunner then
+		deepCoverTarget = Vector3.new(highestRunner.Pitch.X + (PitchConfig.HALF_WIDTH - highestRunner.Pitch.X) * .16, 3, clamp(math.min(backZ - 14, highestRunner.Pitch.Z - 6), emergencyAnchor, backZ - 8))
 	end
 	if high then
 		local maxDepth = press >= .82 and 120 or 145
@@ -270,6 +397,9 @@ function Planner:Build(context: any, side: string, style: any, intent: any): any
 		slot("ball-side-midfield-squeezer", "CM", supportTarget, high and 91 or 85, false, high, "BallSideMidfieldSqueeze", support and support.Model or nil, {"CM", "CAM", "CDM"}),
 		slot("central-midfield-squeezer", "CM", centralSupportTarget, high and 89 or 83, false, high, "CentralMidfieldSqueeze", centralSupport and centralSupport.Model or nil, {"CM", "CDM", "CAM"}),
 		slot("pivot-screen", "CDM", pivotTarget, 93, false, false, "PivotScreen", pivot and pivot.Model or nil, {"CDM", "CM"}),
+		slot("edge-step-defender", "CB", stepTarget, lineState == "StepToCarrier" and 99 or 72, false, lineState == "StepToCarrier", "StepToCarrier", stepDefender and stepDefender.Model or nil, {"CB", "Fullback", "CDM"}),
+		slot("inside-cover-defender", "CB", insideCoverTarget, lineState == "StepToCarrier" and 96 or 78, true, false, "InsideCover", nil, {"CB", "Fullback", "CDM"}),
+		slot("far-side-cover-defender", "Fullback", farCoverTarget, lineState == "StepToCarrier" and 92 or 76, true, false, "FarSideCover", nil, {"Fullback", "CB", "CDM"}),
 		slot("deep-cover-defender", "CB", deepCoverTarget, 97, true, false, "DeepCover", deepCover and deepCover.Model or nil, {"CB", "Fullback"}),
 		slot("cover-presser", "CM", centralTarget, 84, false, high, "CoverPress", nil, {"CM", "CDM", "CAM"}),
 		slot("midfield-press-support", "CM", supportTarget, 82, false, high, "MidfieldPressSupport", nil, {"CM", "CDM", "CAM"}),
@@ -277,8 +407,8 @@ function Planner:Build(context: any, side: string, style: any, intent: any): any
 		slot("cam-feet-lane-blocker", "CM", Vector3.new(clamp(centerX + (ball.X < PitchConfig.HALF_WIDTH and 28 or -28), 96, 328), 3, clamp(midZ + 22, 120, 570)), 86, false, false, "CentralLaneBlock"),
 		slot("left-center-back", "CB", Vector3.new(leftX, 3, backZ), 94, true, false, "BackLine"),
 		slot("right-center-back", "CB", Vector3.new(rightX, 3, backZ), 94, true, false, "BackLine"),
-		slot("left-fullback-zone", "Fullback", Vector3.new(ballSide == "Right" and clamp(leftX + farSideTuck, 62, 202) or clamp(leftX - 36, 35, 172), 3, backZ + 18), 82, true, false, "WideZone"),
-		slot("right-fullback-zone", "Fullback", Vector3.new(ballSide == "Left" and clamp(rightX - farSideTuck, 222, 362) or clamp(rightX + 36, 252, 389), 3, backZ + 18), 82, true, false, "WideZone"),
+		slot("left-fullback-zone", "Fullback", Vector3.new(ballSide == "Right" and clamp(leftX + farSideTuck, 62, 202) or clamp(leftX - 36, 35, 172), 3, backZ + 18), 93, true, false, "WideZone"),
+		slot("right-fullback-zone", "Fullback", Vector3.new(ballSide == "Left" and clamp(rightX - farSideTuck, 222, 362) or clamp(rightX + 36, 252, 389), 3, backZ + 18), 93, true, false, "WideZone"),
 		slot("cutback-protector", "CDM", Vector3.new(PitchConfig.HALF_WIDTH, 3, clamp(92 + box * 52, 84, 160)), 90, true, false, "CutbackProtect"),
 		slot("far-post-protector", "Fullback", Vector3.new(ballSide == "Left" and 332 or 92, 3, clamp(58 + box * 44, 54, 126)), 80, true, false, "FarPostProtect"),
 	}
@@ -303,6 +433,17 @@ function Planner:Build(context: any, side: string, style: any, intent: any): any
 		PrimaryPresser = primary and primary.Model or nil,
 		CoverPresser = centralPresser and centralPresser.Model or nil,
 		DeepCover = deepCover and deepCover.Model or nil,
+		StepDefender = stepDefender and stepDefender.Model or nil,
+		InsideCoverTarget = insideCoverTarget,
+		FarSideCoverTarget = farCoverTarget,
+		DefensiveLineState = lineState,
+		BoxEdgeAnchorZ = boxEdgeZ,
+		DefensiveEdgeAnchorZ = edgeAnchor,
+		BackLineMinimumZ = minimumBackLineZ,
+		EmergencyBoxAnchorZ = emergencyAnchor,
+		EmergencyDropReason = emergencyReason,
+		ThreatResolved = threatResolved,
+		EdgeOfBoxPressure = lineState == "StepToCarrier",
 		Slots = slots,
 		GeneratedAt = now,
 		ExpiresAt = now + (high and .75 or 1.15),

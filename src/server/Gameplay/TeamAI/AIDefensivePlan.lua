@@ -236,14 +236,39 @@ function Plan.Apply(context: any, side: string, assignments: any, intent: any, b
 			model:SetAttribute("AIPressTargetRole", "CentralPass")
 			model:SetAttribute("AIPressTrigger", tostring(intent and intent.Intent or ""))
 		elseif slot and slot.Id == "deep-cover-defender" then
-			assignment.PrimaryAssignment = "DeepCover"
-			assignment.MovementUrgency = highPress and .82 or .72
+			assignment.PrimaryAssignment = block and block.DefensiveLineState == "TrackDepthRun" and "RunnerTrack" or "DeepCover"
+			assignment.MovementUrgency = highPress and .82 or block and block.DefensiveLineState == "TrackDepthRun" and .92 or .72
 			assignment.SprintAllowed = false
 			model:SetAttribute("AIDeepCover", true)
 			model:SetAttribute("AIPressLayer", "Depth")
 			model:SetAttribute("AIPressPhase", "Recover")
 			model:SetAttribute("AIPressAwarenessRange", highPress and 65 or 45)
 			model:SetAttribute("AIPressEngagementRange", highPress and 36 or 28)
+		elseif slot and slot.Id == "edge-step-defender" then
+			assignment.PrimaryAssignment = block and block.DefensiveLineState == "StepToCarrier" and "StepToCarrier" or "BallSideContain"
+			assignment.MovementUrgency = block and block.DefensiveLineState == "StepToCarrier" and 1 or .78
+			assignment.SprintAllowed = block and block.DefensiveLineState == "StepToCarrier"
+			assignment.FaceWorld = carrier and carrier.World or assignment.FaceWorld
+			model:SetAttribute("AIDeepCover", false)
+			model:SetAttribute("AIPressLayer", "BackLineStep")
+			model:SetAttribute("AIPressPhase", assignment.PrimaryAssignment)
+			model:SetAttribute("AIEdgeOfBoxPressure", block and block.DefensiveLineState == "StepToCarrier" or false)
+		elseif slot and slot.Id == "inside-cover-defender" then
+			assignment.PrimaryAssignment = "InsideCover"
+			assignment.MovementUrgency = .86
+			assignment.SprintAllowed = false
+			assignment.FaceWorld = carrier and carrier.World or assignment.FaceWorld
+			model:SetAttribute("AIDeepCover", false)
+			model:SetAttribute("AIPressLayer", "InsideCover")
+			model:SetAttribute("AIPressPhase", "Cover")
+		elseif slot and slot.Id == "far-side-cover-defender" then
+			assignment.PrimaryAssignment = "FarSideCover"
+			assignment.MovementUrgency = .82
+			assignment.SprintAllowed = false
+			assignment.FaceWorld = carrier and carrier.World or assignment.FaceWorld
+			model:SetAttribute("AIDeepCover", false)
+			model:SetAttribute("AIPressLayer", "FarSideCover")
+			model:SetAttribute("AIPressPhase", "Narrow")
 		elseif slot and (slot.Id == "left-center-back" or slot.Id == "right-center-back" or slot.Id == "left-fullback-zone" or slot.Id == "right-fullback-zone") then
 			assignment.PrimaryAssignment = highPress and "HighLineCompress" or "HoldBackLineZone"
 			assignment.MovementUrgency = highPress and .84 or .72
@@ -296,6 +321,16 @@ function Plan.Apply(context: any, side: string, assignments: any, intent: any, b
 			model:SetAttribute("AIForwardMidGap", block.ForwardMidGap or 0)
 			model:SetAttribute("AIMidBackGap", block.MidBackGap or 0)
 			model:SetAttribute("AIDeepCoverPlayer", block.DeepCover and block.DeepCover.Name or "")
+			model:SetAttribute("AIDefensiveLineState", block.DefensiveLineState or "")
+			model:SetAttribute("AIBoxEdgeAnchorZ", block.BoxEdgeAnchorZ or 0)
+			model:SetAttribute("AIBackLineMinimumZ", block.BackLineMinimumZ or 0)
+			model:SetAttribute("AIStepDefender", block.StepDefender and block.StepDefender.Name or "")
+			model:SetAttribute("AIInsideCoverDefender", assignment.PrimaryAssignment == "InsideCover" and model.Name or "")
+			model:SetAttribute("AIFarSideCoverDefender", assignment.PrimaryAssignment == "FarSideCover" and model.Name or "")
+			model:SetAttribute("AIDeepCoverDefender", (assignment.PrimaryAssignment == "DeepCover" or assignment.PrimaryAssignment == "RunnerTrack") and model.Name or "")
+			model:SetAttribute("AIEmergencyDropReason", block.EmergencyDropReason or "")
+			model:SetAttribute("AIThreatResolved", block.ThreatResolved == true)
+			model:SetAttribute("AIEdgeOfBoxPressure", block.EdgeOfBoxPressure == true)
 		end
 	end
 	local activePressers = 0
@@ -326,7 +361,9 @@ function Plan.Apply(context: any, side: string, assignments: any, intent: any, b
 		local betweenLines = carrierPitch.Z > (tonumber(block.BackLineZ) or 0) + 8 and carrierPitch.Z < (tonumber(block.MidfieldLineZ) or PitchConfig.HALF_LENGTH) - 6
 		local unpressedCentral = centralCarrier and closestPresser > (breachedMidfield and 38 or 32)
 		local breach = breachedForward or breachedMidfield or betweenLines or unpressedCentral
-		if breach then
+		local lineState = tostring(block.DefensiveLineState or "")
+		local emergencyBreach = lineState == "EmergencyDrop" or lineState == "ProtectSixYardBox" or lineState == "TrackDepthRun"
+		if breach and (emergencyBreach or carrierPitch.Z <= (tonumber(block.BoxEdgeAnchorZ) or 132) + 4) then
 			local used: {[Model]: boolean} = {}
 			local contain = pickAssigned(context, assignments, carrierPitch, used, function(info: any)
 				return info.Role == "CM" or info.Role == "CDM" or info.Role == "CAM" or info.Role == "Fullback" or info.Role == "CB"
@@ -357,6 +394,23 @@ function Plan.Apply(context: any, side: string, assignments: any, intent: any, b
 			if screen and assignments[screen] then
 				setPitchTarget(context, side, assignments[screen], Vector3.new(PitchConfig.HALF_WIDTH, 3, math.max(38, carrierPitch.Z - 24)), "ProtectCentralReturnLane", .86, false)
 				screen:SetAttribute("AIDefensiveBreachRole", "CentralReturnLane")
+			end
+		elseif breach and centralCarrier then
+			local used: {[Model]: boolean} = {}
+			local contain = pickAssigned(context, assignments, carrierPitch, used, function(info: any)
+				return info.Role == "CM" or info.Role == "CDM" or info.Role == "Fullback" or info.Role == "CB"
+			end)
+			local screen = pickAssigned(context, assignments, Vector3.new(PitchConfig.HALF_WIDTH, 3, math.max((tonumber(block.BoxEdgeAnchorZ) or 132) + 2, carrierPitch.Z - 20)), used, function(info: any)
+				return info.Role == "CDM" or info.Role == "CM" or info.Role == "CB"
+			end)
+			if contain and assignments[contain] then
+				setPitchTarget(context, side, assignments[contain], Vector3.new(carrierPitch.X + (PitchConfig.HALF_WIDTH - carrierPitch.X) * .22, 3, math.max((tonumber(block.BackLineMinimumZ) or 132) + 6, carrierPitch.Z - 8)), "EdgeOfBoxPress", 1, true)
+				contain:SetAttribute("AIDefensiveBreachRole", "EdgeOfBoxPress")
+				contain:SetAttribute("AIEdgeOfBoxPressure", true)
+			end
+			if screen and assignments[screen] then
+				setPitchTarget(context, side, assignments[screen], Vector3.new(PitchConfig.HALF_WIDTH, 3, math.max((tonumber(block.BoxEdgeAnchorZ) or 132) + 4, carrierPitch.Z - 24)), "CentralShotLaneBlock", .9, false)
+				screen:SetAttribute("AIDefensiveBreachRole", "CentralShotLaneBlock")
 			end
 		end
 	end
