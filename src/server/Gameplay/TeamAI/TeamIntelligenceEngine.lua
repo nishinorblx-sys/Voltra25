@@ -15,6 +15,9 @@ local AIDefensiveBlockPlanner = require(script.Parent.AIDefensiveBlockPlanner)
 local AITeamMemory = require(script.Parent.AITeamMemory)
 local AITeamMetrics = require(script.Parent.AITeamMetrics)
 local AITeamBrain = require(script.Parent.AITeamBrain)
+local AIOpponentObservationService = require(script.Parent.AIOpponentObservationService)
+local AITacticalReactionService = require(script.Parent.AITacticalReactionService)
+local AIPlaystyleRuleService = require(script.Parent.AIPlaystyleRuleService)
 local AIMovementService = require(script.Parent.Parent.AIMovementService)
 local AIDebugService = require(script.Parent.Parent.AIDebugService)
 local AIDifficultyService = require(script.Parent.Parent.AIDifficultyService)
@@ -102,6 +105,7 @@ function Engine.new(teams: any, formations: any, pitchCFrame: CFrame, width: num
 		DefensiveDuties = {Home = {}, Away = {}},
 		Movement = AIMovementService.new(executor),
 		TeamBrain = AITeamBrain.new(ballService, {Home = homeStyle, Away = awayStyle}, difficulty),
+		OpponentObserver = AIOpponentObservationService.new({Home = homeStyle, Away = awayStyle}),
 		Debug = AIDebugService.new(),
 		CurrentAssignments = {Home = {}, Away = {}},
 		CurrentStructures = {Home = {}, Away = {}},
@@ -146,6 +150,7 @@ function Engine:_context(): any
 	context.ManualTackleSides = self.ManualTackleSides
 	context.DefensivePress = context.DefensivePress or {Home = {}, Away = {}}
 	context.PressPaused = context.PressPaused or {Home = false, Away = false}
+	context.PreviousAssignments = self.CurrentAssignments
 	self.Metrics:Sample("WorldMs", os.clock() - start)
 	return context
 end
@@ -211,6 +216,12 @@ function Engine:_publishTeamContext(context: any)
 	context.TeamPlans = self.CurrentPlans
 	context.TeamStructures = self.CurrentStructures
 	context.TeamSpatialMap = self.Spatial
+	context.TeamReactions = context.TeamReactions or {}
+	context.RuleEffects = context.RuleEffects or {}
+	for _, side in ipairs({"Home", "Away"}) do
+		context.TeamReactions[side] = AITacticalReactionService.ForSide(context, side)
+		context.RuleEffects[side] = AIPlaystyleRuleService.Evaluate(self.Styles[side], context, side)
+	end
 	local stories = {}
 	for _, side in ipairs({"Home", "Away"}) do
 		local intent = self.CurrentIntents[side]
@@ -234,6 +245,8 @@ function Engine:_buildAssignments(context: any)
 		else
 			local plan = self.PossessionPlans:Update(context, side, intents[side], self.Spatial, self.Memory)
 			plans[side] = plan
+			context.TeamPlans = context.TeamPlans or {}
+			context.TeamPlans[side] = plan
 			local block = nil
 			local slots
 			if context.OwnerSide == side then
@@ -264,6 +277,10 @@ function Engine:_buildAssignments(context: any)
 	self.CurrentPlans = plans
 	self.CurrentStructures = structures
 	self.CurrentAssignments = assignments
+	context.TeamPlans = plans
+	context.TeamStructures = structures
+	context.PreviousAssignments = assignments
+	self.Metrics:Analyze(context, assignments)
 	self.Metrics:Sample("AssignmentMs", os.clock() - start)
 end
 
@@ -316,6 +333,7 @@ function Engine:UpdateTactics(side: string, tactics: any)
 	self.Memory:Reset(targetSide)
 	self.DefensiveBlock:Reset(targetSide)
 	self.DefensiveDuties[targetSide] = {}
+	self.OpponentObserver:UpdateStyles(self.Styles)
 end
 
 function Engine:ClearTransientPlans(side: string?)
@@ -380,6 +398,7 @@ function Engine:Step(dt: number)
 		end
 	end
 	self.LastContext = context
+	self.OpponentObserver:Observe(context, self.Styles)
 	self.Accum.Spatial += dt
 	if self.Accum.Spatial >= .2 then
 		local start = os.clock()
@@ -435,6 +454,28 @@ function Engine:Step(dt: number)
 			workspace:SetAttribute("VTRTeamAISpatialMs", self.Metrics.SpatialMs)
 			workspace:SetAttribute("VTRTeamAIIntentHome", self.CurrentIntents.Home and self.CurrentIntents.Home.Intent or "")
 			workspace:SetAttribute("VTRTeamAIIntentAway", self.CurrentIntents.Away and self.CurrentIntents.Away.Intent or "")
+			local homeObs = context.OpponentObservation and context.OpponentObservation.Home
+			local awayObs = context.OpponentObservation and context.OpponentObservation.Away
+			workspace:SetAttribute("VTRTeamAIOppAttackHome", homeObs and homeObs.OpponentAttackIdentity or "")
+			workspace:SetAttribute("VTRTeamAIOppDefenseHome", homeObs and homeObs.OpponentDefenseIdentity or "")
+			workspace:SetAttribute("VTRTeamAIOppAttackAway", awayObs and awayObs.OpponentAttackIdentity or "")
+			workspace:SetAttribute("VTRTeamAIOppDefenseAway", awayObs and awayObs.OpponentDefenseIdentity or "")
+			local homeReaction = context.TeamReactions and context.TeamReactions.Home
+			local awayReaction = context.TeamReactions and context.TeamReactions.Away
+			workspace:SetAttribute("VTRTeamAIReactionHome", homeReaction and ((context.OwnerSide == "Home" and "vsDef:" or "vsAtk:") .. tostring(homeReaction.Active and homeReaction.Active.Top or "")) or "")
+			workspace:SetAttribute("VTRTeamAIReactionAway", awayReaction and ((context.OwnerSide == "Away" and "vsDef:" or "vsAtk:") .. tostring(awayReaction.Active and awayReaction.Active.Top or "")) or "")
+			workspace:SetAttribute("VTRTeamAIOppAttackHomeConfidence", homeObs and tonumber(homeObs.OpponentAttackConfidence and homeObs.OpponentAttackConfidence[homeObs.OpponentAttackIdentity]) or 0)
+			workspace:SetAttribute("VTRTeamAIOppDefenseHomeConfidence", homeObs and tonumber(homeObs.OpponentDefenseConfidence and homeObs.OpponentDefenseConfidence[homeObs.OpponentDefenseIdentity]) or 0)
+			workspace:SetAttribute("VTRTeamAIOppAttackAwayConfidence", awayObs and tonumber(awayObs.OpponentAttackConfidence and awayObs.OpponentAttackConfidence[awayObs.OpponentAttackIdentity]) or 0)
+			workspace:SetAttribute("VTRTeamAIOppDefenseAwayConfidence", awayObs and tonumber(awayObs.OpponentDefenseConfidence and awayObs.OpponentDefenseConfidence[awayObs.OpponentDefenseIdentity]) or 0)
+			local tactical = self.Metrics.Tactical
+			for _, side in ipairs({"Home", "Away"}) do
+				local m = tactical[side]
+				workspace:SetAttribute("VTRTeamAI_" .. side .. "_LineGapBackMid", math.floor((m.AverageBackToMidfieldGap or 0) * 10) / 10)
+				workspace:SetAttribute("VTRTeamAI_" .. side .. "_LineGapMidForward", math.floor((m.AverageMidfieldToForwardGap or 0) * 10) / 10)
+				workspace:SetAttribute("VTRTeamAI_" .. side .. "_ShapeViolations", math.floor((m.ShapeViolations or 0) * 10) / 10)
+				workspace:SetAttribute("VTRTeamAI_" .. side .. "_AssignmentChurn", math.floor((m.AssignmentChangesPerMinute or 0) * 10) / 10)
+			end
 		end
 	end
 	self.Metrics:Frame(os.clock() - frameStart)

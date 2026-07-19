@@ -82,6 +82,37 @@ function PitchConfig.TeamPitchPositionToWorld(teamPitchPosition: Vector3, teamId
 	return pitchCFrame:PointToWorldSpace(Vector3.new(localX, teamPitchPosition.Y, localZ))
 end
 
+function PitchConfig.WorldToCanonicalPitchPosition(worldPosition: Vector3, options: PitchOptions?): Vector3
+	local pitchCFrame = optionCFrame(options)
+	local width = optionWidth(options)
+	local length = optionLength(options)
+	local localPosition = pitchCFrame:PointToObjectSpace(worldPosition)
+	local pitchX = (localPosition.X / (width * 0.5)) * PitchConfig.HALF_WIDTH + PitchConfig.HALF_WIDTH
+	local pitchZ = (localPosition.Z / (length * 0.5)) * PitchConfig.HALF_LENGTH + PitchConfig.HALF_LENGTH
+	return Vector3.new(math.clamp(pitchX, 0, PitchConfig.PITCH_WIDTH), worldPosition.Y, math.clamp(pitchZ, 0, PitchConfig.PITCH_LENGTH))
+end
+
+function PitchConfig.CanonicalPitchPositionToWorld(canonicalPitchPosition: Vector3, options: PitchOptions?): Vector3
+	local pitchCFrame = optionCFrame(options)
+	local width = optionWidth(options)
+	local length = optionLength(options)
+	local localX = ((canonicalPitchPosition.X - PitchConfig.HALF_WIDTH) / PitchConfig.HALF_WIDTH) * (width * 0.5)
+	local localZ = ((canonicalPitchPosition.Z - PitchConfig.HALF_LENGTH) / PitchConfig.HALF_LENGTH) * (length * 0.5)
+	return pitchCFrame:PointToWorldSpace(Vector3.new(localX, canonicalPitchPosition.Y, localZ))
+end
+
+function PitchConfig.TeamPitchToCanonicalPitchPosition(teamPitchPosition: Vector3, teamId: string, options: PitchOptions?): Vector3
+	local attackSign = PitchConfig.GetAttackDirection(teamId, options)
+	local z = attackSign >= 0 and teamPitchPosition.Z or PitchConfig.PITCH_LENGTH - teamPitchPosition.Z
+	return Vector3.new(teamPitchPosition.X, teamPitchPosition.Y, math.clamp(z, 0, PitchConfig.PITCH_LENGTH))
+end
+
+function PitchConfig.CanonicalPitchToTeamPitchPosition(canonicalPitchPosition: Vector3, teamId: string, options: PitchOptions?): Vector3
+	local attackSign = PitchConfig.GetAttackDirection(teamId, options)
+	local z = attackSign >= 0 and canonicalPitchPosition.Z or PitchConfig.PITCH_LENGTH - canonicalPitchPosition.Z
+	return Vector3.new(canonicalPitchPosition.X, canonicalPitchPosition.Y, math.clamp(z, 0, PitchConfig.PITCH_LENGTH))
+end
+
 function PitchConfig.GetDistanceStuds(a: Vector3, b: Vector3): number
 	local delta = a - b
 	return Vector3.new(delta.X, 0, delta.Z).Magnitude

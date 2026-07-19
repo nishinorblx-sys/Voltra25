@@ -1,14 +1,65 @@
 --!strict
 
 local PitchConfig = require(script.Parent.Parent.PitchConfig)
+local AITacticalContract = require(script.Parent.AITacticalContract)
+local AIShapeTemplateService = require(script.Parent.AIShapeTemplateService)
 
 local Planner = {}
 
+local function functionForSlot(id: string): string
+	if id == "goalkeeper-reset" then return "ResetOutlet" end
+	if id == "left-first-line" or id == "right-first-line" or id == "rest-defense" then return "RestDefense" end
+	if id == "pivot" then return "PivotControl" end
+	if id == "immediate-support" or id == "far-side-switch" then return "SupportOutlet" end
+	if id == "left-width" or id == "right-width" then return "Width" end
+	if id == "central-forward" then return "Finisher" end
+	if id == "primary-presser" then return "Presser" end
+	if id == "cover-presser" then return "CoverPress" end
+	if id == "central-lane-block" then return "LaneBlock" end
+	if id == "left-back-line" or id == "right-back-line" or id == "left-wide-cover" or id == "right-wide-cover" or id == "box-protection" then return "RestDefense" end
+	return id
+end
+
+local function forbiddenForSlot(id: string, rest: boolean): {string}
+	if rest then
+		return {"Shoot", "Dribble", "RiskDribble", "BoxRun", "CarryForward"}
+	end
+	if id == "pivot" or id == "immediate-support" then
+		return {"BoxRun"}
+	end
+	return {}
+end
+
 local function slot(id: string, family: string, pitch: Vector3, priority: number, rest: boolean?, sprint: boolean?): any
-	return {Id = id, RoleFamily = family, TargetPitch = PitchConfig.ClampInsidePitch(pitch), Priority = priority, RestDefense = rest == true, SprintAllowed = sprint == true}
+	local targetPitch = PitchConfig.ClampInsidePitch(pitch)
+	local functionName = functionForSlot(id)
+	local isRest = rest == true
+	local line = family == "GK" and "Goalkeeper" or (family == "CB" or family == "Fullback") and "Back" or family == "ST" and "Forward" or "Midfield"
+	local lane = targetPitch.X < 145 and "Left" or targetPitch.X > 279 and "Right" or "Central"
+	return AITacticalContract.Slot({
+		Id = id,
+		Function = functionName,
+		RoleFamily = family,
+		AllowedRoles = {family},
+		PreferredRoles = {family},
+		TargetPitch = targetPitch,
+		TargetRegion = AITacticalContract.Region(targetPitch, isRest and 16 or 22, lane, line),
+		Lane = lane,
+		Line = line,
+		Priority = priority,
+		RestDefense = isRest,
+		ContinuityKey = id .. ":" .. family,
+		SprintAllowed = sprint == true,
+		ForbiddenActions = forbiddenForSlot(id, isRest),
+		CoverRequirement = isRest and "ProtectCounterLane" or nil,
+	})
 end
 
 function Planner.Build(context: any, side: string, style: any, intent: any, spatial: any): {any}
+	local templated = AIShapeTemplateService.Build(context, side, style, intent, spatial, context.TeamPlans and context.TeamPlans[side])
+	if #templated > 0 then
+		return templated
+	end
 	local ball = context.BallTeam[side]
 	local width = style and style:Ratio("AttackingWidth") or .5
 	local support = 30 + (style and style:Ratio("SupportDistance") or .5) * 42

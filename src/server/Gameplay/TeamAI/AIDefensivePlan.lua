@@ -97,35 +97,35 @@ function Plan.ApplyIncomingPass(context: any, side: string, assignments: any, du
 	if typeof(target) ~= "Vector3" then
 		target = context.BallWorld
 	end
-	local bestAttacker = nil
-	local bestTracker = nil
-	local bestBlocker = nil
-	local bestAttackDistance = math.huge
-	local bestTrackDistance = math.huge
-	local bestBlockDistance = math.huge
-	for model, assignment in pairs(assignments) do
-		local info = context.Players[model]
-		if info and info.Root and info.IsUserControlled ~= true then
-			local distance = PitchConfig.GetDistanceStuds(info.World, target)
-			if (info.Role == "CM" or info.Role == "CDM" or info.Role == "Fullback" or info.Role == "CB") and distance < bestAttackDistance then
-				bestAttacker = model
-				bestAttackDistance = distance
-			end
-			if receiver then
-				local receiverDistance = PitchConfig.GetDistanceStuds(info.World, receiver.World)
-				if receiverDistance < bestTrackDistance then
-					bestTracker = model
-					bestTrackDistance = receiverDistance
+	local receiverPathWorld = receiver and (receiver.World:Lerp(target, .62)) or target
+	local receiverTargetPitch = PitchConfig.WorldToTeamPitchPosition(receiverPathWorld, side, context.Options)
+	local blockPitch = receiver and Vector3.new((receiverTargetPitch.X + PitchConfig.HALF_WIDTH) * .5, 3, math.max(70, receiverTargetPitch.Z - 34)) or PitchConfig.WorldToTeamPitchPosition(target, side, context.Options)
+	local blockWorld = PitchConfig.TeamPitchPositionToWorld(blockPitch, side, context.Options)
+	local used: {[Model]: boolean} = {}
+	local function choose(targetWorld: Vector3, predicate: ((any) -> boolean)?): (Model?, number)
+		local bestModel = nil
+		local bestDistance = math.huge
+		for model in pairs(assignments) do
+			local info = context.Players[model]
+			if info and info.Root and info.IsUserControlled ~= true and used[model] ~= true and (not predicate or predicate(info)) then
+				local distance = PitchConfig.GetDistanceStuds(info.World, targetWorld)
+				if distance < bestDistance then
+					bestModel = model
+					bestDistance = distance
 				end
 			end
-			local blockTarget = receiver and Vector3.new((receiver.Pitch.X + PitchConfig.HALF_WIDTH) * .5, 3, math.max(70, receiver.Pitch.Z - 34)) or target
-			local blockDistance = PitchConfig.GetDistanceStuds(info.Pitch, blockTarget)
-			if blockDistance < bestBlockDistance then
-				bestBlocker = model
-				bestBlockDistance = blockDistance
-			end
 		end
+		if bestModel then used[bestModel] = true end
+		return bestModel, bestDistance
 	end
+	local bestAttacker, bestAttackDistance = choose(target, function(info: any): boolean
+		return info.Role == "CM" or info.Role == "CDM" or info.Role == "Fullback" or info.Role == "CB"
+	end)
+	local bestTracker = receiver and choose(receiverPathWorld, nil) or nil
+	local bestBlocker = receiver and choose(blockWorld, nil) or nil
+	local bestCover = choose(PitchConfig.TeamPitchPositionToWorld(Vector3.new(PitchConfig.HALF_WIDTH, 3, 62), side, context.Options), function(info: any): boolean
+		return info.Role == "CB" or info.Role == "Fullback" or info.Role == "CDM"
+	end)
 	for model, assignment in pairs(assignments) do
 		local info = context.Players[model]
 		if info and info.Root then
@@ -137,20 +137,25 @@ function Plan.ApplyIncomingPass(context: any, side: string, assignments: any, du
 				assignment.SprintAllowed = bestAttackDistance > 18
 			elseif model == bestTracker and receiver then
 				assignment.PrimaryAssignment = "TrackIncomingReceiver"
-				assignment.TargetWorld = receiver.World
-				assignment.MovementTarget = receiver.World
+				assignment.TargetWorld = receiverPathWorld
+				assignment.MovementTarget = receiverPathWorld
 				assignment.MovementUrgency = .9
 				assignment.SprintAllowed = false
 			elseif model == bestBlocker and receiver then
-				local blockPitch = Vector3.new((receiver.Pitch.X + PitchConfig.HALF_WIDTH) * .5, 3, math.max(70, receiver.Pitch.Z - 34))
-				local blockWorld = PitchConfig.TeamPitchPositionToWorld(blockPitch, side, context.Options)
 				assignment.PrimaryAssignment = "BlockReturnPass"
 				assignment.TargetWorld = blockWorld
 				assignment.MovementTarget = blockWorld
 				assignment.MovementUrgency = .82
 				assignment.SprintAllowed = false
+			elseif model == bestCover then
+				local coverWorld = PitchConfig.TeamPitchPositionToWorld(Vector3.new(PitchConfig.HALF_WIDTH, 3, 62), side, context.Options)
+				assignment.PrimaryAssignment = "PreserveDeepestCover"
+				assignment.TargetWorld = coverWorld
+				assignment.MovementTarget = coverWorld
+				assignment.MovementUrgency = .7
+				assignment.SprintAllowed = false
 			end
-			if model == bestAttacker or model == bestTracker or model == bestBlocker then
+			if model == bestAttacker or model == bestTracker or model == bestBlocker or model == bestCover then
 				model:SetAttribute("AIIncomingPassDuty", assignment.PrimaryAssignment)
 				if dutyState then
 					dutyState[model] = {DutyId = assignment.PrimaryAssignment .. ":" .. tostring(math.floor((context.Now or os.clock()) * 10)), DutyType = assignment.PrimaryAssignment, StartedAt = context.Now or os.clock(), MinimumHoldUntil = (context.Now or os.clock()) + .58, ExpiresAt = (context.Now or os.clock()) + 1.05, Target = assignment.TargetWorld}

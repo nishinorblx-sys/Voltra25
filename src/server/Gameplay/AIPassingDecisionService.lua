@@ -549,6 +549,40 @@ function Service.ScoreReceiver(context: any, passer: any, receiver: any, style: 
 	elseif movementProfile=="StayWide"then score+=receiverWide and 22 or 0
 	elseif movementProfile=="FreeRoam"then score+=(open or veryOpen)and 18 or 0
 	elseif movementProfile=="StayBack"and forwardGain>38 then score-=30 end
+	local receiverSlot = tostring(receiver.Model:GetAttribute("AITacticalSlot") or receiver.Model:GetAttribute("AITeamContractSlot") or "")
+	local receiverSupport = tostring(receiver.Model:GetAttribute("VTRSupportKind") or receiver.Model:GetAttribute("SupportRole") or "")
+	local passBias = tostring(passer.Model:GetAttribute("AITeamContractPassBias") or receiver.Model:GetAttribute("AITeamContractPassBias") or "")
+	local passRule = context.RuleEffects and context.RuleEffects[passer.Side] and context.RuleEffects[passer.Side].Pass
+	if passBias == "ThirdMan" and (receiverSlot == "second-ball-midfielder" or receiverSupport == "ThirdManPosition") then
+		score += 38
+	elseif (passBias == "ForwardEarly" or passBias == "LoftedOrThrough" or passBias == "Through") and (receiverSlot == "central-forward" or receiver.Role == "ST") then
+		score += (targetKind == "Through" or targetKind == "Lofted") and 44 or 24
+	elseif passBias == "FarSideSwitch" or passBias == "Switch" then
+		if receiverSupport == "FarSideSwitchOption" or receiverSlot == "far-side-switch" or receiverSlot == "left-width" or receiverSlot == "right-width" then
+			score += math.abs(receiver.Pitch.X - passer.Pitch.X) > 120 and 42 or 16
+		end
+	elseif passBias == "WideTriangle" and receiverSupport == "NearPassingTriangle" then
+		score += 28
+	elseif passBias == "Cutback" and receiverSupport == "BoxEdgeProtection" then
+		score += 34
+	elseif passBias == "CentralCombination" and (receiverSlot == "ball-side-pivot" or receiverSlot == "far-side-pivot" or receiverSlot == "between-lines-receiver") then
+		score += 24
+	end
+	if passRule then
+		if passRule.PreferredReceiverFunction and (receiverSlot == passRule.PreferredReceiverFunction or receiverSupport == passRule.PreferredReceiverFunction) then
+			score += 36
+		end
+		if passRule.PassFamily and targetKind ~= tostring(passRule.PassFamily) then
+			score -= 18
+		end
+		if passRule.RequiredPlanStep and tostring(passer.Model:GetAttribute("AITeamContractPlanStep") or "") ~= tostring(passRule.RequiredPlanStep) then
+			score -= 35
+		end
+		if passRule.MinimumLaneQuality and (laneRisk > 1 - tonumber(passRule.MinimumLaneQuality)) then
+			score -= 48
+		end
+		score += (tonumber(passRule.Risk) or 0) * 30
+	end
 	score -= pressure.Score * (10 + isolationPenalty * 14)
 	score -= laneRisk * math.clamp(100 - passerVision * 0.36 + retentionWeight * 44 - passRisk * 26, 58, 124)
 	if laneRisk >= 0.54 then

@@ -68,6 +68,7 @@ function Service.Build(teams: any, formations: any, pitchCFrame: CFrame, width: 
 			Home = PitchConfig.WorldToTeamPitchPosition(ball.Position, "Home", options),
 			Away = PitchConfig.WorldToTeamPitchPosition(ball.Position, "Away", options),
 		},
+		BallCanonical = PitchConfig.WorldToCanonicalPitchPosition(ball.Position, options),
 		Possession = possession,
 		Owner = owner,
 		OwnerSide = ownerSide,
@@ -85,6 +86,7 @@ function Service.Build(teams: any, formations: any, pitchCFrame: CFrame, width: 
 			local slot = AIFormationService.GetSlot(formationName, index)
 			local worldPosition = modelRoot and modelRoot.Position or PitchConfig.TeamPitchPositionToWorld(Vector3.new(slot.X, 3, slot.Z), side, options)
 			local pitchPosition = PitchConfig.WorldToTeamPitchPosition(worldPosition, side, options)
+			local canonicalPitch = PitchConfig.WorldToCanonicalPitchPosition(worldPosition, options)
 			local stats = Service.PlayerStats(model)
 			local info = {
 				Model = model,
@@ -99,6 +101,7 @@ function Service.Build(teams: any, formations: any, pitchCFrame: CFrame, width: 
 				BaseWorld = PitchConfig.TeamPitchPositionToWorld(Vector3.new(slot.X, 3, slot.Z), side, options),
 				World = worldPosition,
 				Pitch = pitchPosition,
+				CanonicalPitch = canonicalPitch,
 				Lane = slot.Lane or PitchConfig.GetLane(pitchPosition),
 				Stats = stats,
 				Stamina = stats.currentStamina,

@@ -1,6 +1,7 @@
 --!strict
 
 local PitchConfig = require(script.Parent.Parent.PitchConfig)
+local AITacticalContract = require(script.Parent.AITacticalContract)
 
 local Planner = {}
 Planner.__index = Planner
@@ -15,8 +16,41 @@ local function sideOf(x: number): string
 	return "Center"
 end
 
+local function defensiveFunction(id: string, duty: string?): string
+	local name = tostring(duty or id)
+	if name == "PrimaryPress" then return "Presser" end
+	if name == "CoverPress" then return "CoverPress" end
+	if name == "PivotLaneBlock" or name == "CentralLaneBlock" then return "LaneBlock" end
+	if name == "CutbackProtect" or name == "FarPostProtect" or name == "BackLine" or name == "WideZone" then return "RestDefense" end
+	return name
+end
+
 local function slot(id: string, family: string, pitch: Vector3, priority: number, rest: boolean?, sprint: boolean?, duty: string?): any
-	return {Id = id, RoleFamily = family, TargetPitch = PitchConfig.ClampInsidePitch(pitch), Priority = priority, RestDefense = rest == true, SprintAllowed = sprint == true, DefensiveDuty = duty or id}
+	local targetPitch = PitchConfig.ClampInsidePitch(pitch)
+	local isRest = rest == true
+	local line = (family == "CB" or family == "Fullback") and "Back" or family == "ST" and "Forward" or "Midfield"
+	local lane = targetPitch.X < 145 and "Left" or targetPitch.X > 279 and "Right" or "Central"
+	local actions = isRest and {"Cover", "Tackle", "Clear", "Receive", "Pass"} or {"Press", "Tackle", "Cover", "Receive", "Pass"}
+	local slotData = AITacticalContract.Slot({
+		Id = id,
+		Function = defensiveFunction(id, duty),
+		RoleFamily = family,
+		AllowedRoles = {family},
+		PreferredRoles = {family},
+		TargetPitch = targetPitch,
+		TargetRegion = AITacticalContract.Region(targetPitch, isRest and 15 or 20, lane, line),
+		Lane = lane,
+		Line = line,
+		Priority = priority,
+		RestDefense = isRest,
+		ContinuityKey = id .. ":" .. tostring(duty or id),
+		SprintAllowed = sprint == true,
+		AllowedActions = actions,
+		ForbiddenActions = isRest and {"Shoot", "Dribble", "RiskDribble", "BoxRun", "CarryForward"} or {},
+		CoverRequirement = isRest and "ProtectGoalSide" or "CloseBallSide",
+	})
+	slotData.DefensiveDuty = duty or id
+	return slotData
 end
 
 local function nearestRole(context: any, side: string, roleSet: {[string]: boolean}, target: Vector3, used: {[Model]: boolean}): any?
@@ -57,6 +91,8 @@ function Planner:Build(context: any, side: string, style: any, intent: any): any
 	local press = style and style:Ratio("PressingIntensity") or .5
 	local intentName = tostring(intent and intent.Intent or "")
 	local teamBrain = context.TeamBrain and context.TeamBrain[side]
+	local reaction = context.TeamReactions and context.TeamReactions[side] and context.TeamReactions[side].AgainstOpponentAttack
+	local pressRules = context.RuleEffects and context.RuleEffects[side] and context.RuleEffects[side].Press
 	if teamBrain then
 		depthRatio = math.clamp(tonumber(teamBrain.DefensiveLineHeight) or depthRatio, 0, 1)
 		compact = math.clamp(tonumber(teamBrain.TeamCompactness) or compact, 0, 1)
@@ -78,6 +114,18 @@ function Planner:Build(context: any, side: string, style: any, intent: any): any
 			compact = math.max(compact, .72)
 		end
 	end
+	if reaction then
+		depthRatio = math.clamp(depthRatio + (tonumber(reaction.LineHeight) or 0), 0, 1)
+		widthRatio = math.clamp(widthRatio + (tonumber(reaction.BlockWidth) or 0), 0, 1)
+		compact = math.clamp(compact + (tonumber(reaction.CentralScreens) or 0) * .34 + (tonumber(reaction.ZoneDiscipline) or 0) * .24, 0, 1)
+		lane = math.clamp(lane + (tonumber(reaction.LaneProtection) or 0) + (tonumber(reaction.ForceOutside) or 0) * .4, 0, 1)
+		box = math.clamp(box + (tonumber(reaction.CutbackProtection) or 0) + (tonumber(reaction.FarPostProtection) or 0) + (tonumber(reaction.DepthCover) or 0) * .3, 0, 1)
+		press = math.clamp(press + (tonumber(reaction.PressChase) or 0) + (tonumber(reaction.LooseBallOvercommit) or 0), 0, 1)
+	end
+	if pressRules then
+		depthRatio = math.clamp(depthRatio + (tonumber(pressRules.PressHeight) or 0), 0, 1)
+		press = math.clamp(press + (tonumber(pressRules.Pressers) or 0) * .18, 0, 1)
+	end
 	local low = intentName == "LowBlock" or intentName == "ProtectBox" or intentName == "ProtectLead"
 	local high = intentName == "HighPress"
 	local blockWidth = clamp(190 + widthRatio * 86 - compact * 42, 152, 258)
@@ -86,14 +134,25 @@ function Planner:Build(context: any, side: string, style: any, intent: any): any
 	local backZ = low and clamp(64 + depthRatio * 74, 58, 148) or high and clamp(285 + depthRatio * 145, 260, 455) or clamp(132 + depthRatio * 178, 112, 330)
 	local backMidGap = clamp(58 - compact * 20 + (low and -8 or high and 6 or 0), 36, 58)
 	local midForwardGap = clamp(68 - compact * 18 + (high and 5 or 0), 40, 68)
+	if reaction then
+		local gapAdjust = (tonumber(reaction.LineGap) or 0) * 42
+		backMidGap = clamp(backMidGap + gapAdjust, 30, 64)
+		midForwardGap = clamp(midForwardGap + gapAdjust, 34, 74)
+	end
 	local midZ = clamp(backZ + backMidGap, 96, 540)
 	local forwardZ = clamp(midZ + midForwardGap, 138, 630)
 	local halfWidth = blockWidth * .5
 	local leftX = clamp(centerX - halfWidth * .45, 42, 180)
 	local rightX = clamp(centerX + halfWidth * .45, 244, 382)
 	local farSideTuck = clamp(20 + zone * 25 + compact * 12, 20, 52)
+	if reaction then
+		farSideTuck = clamp(farSideTuck + (tonumber(reaction.FarPostProtection) or 0) * 24 + (tonumber(reaction.SwitchDefender) or 0) * 18, 20, 72)
+	end
 	local ballSide = sideOf(ball.X)
 	local forceDirection = ballSide == "Left" and "TouchlineLeft" or ballSide == "Right" and "TouchlineRight" or "Backward"
+	if pressRules and pressRules.PressDirection then
+		forceDirection = tostring(pressRules.PressDirection)
+	end
 	local used: {[Model]: boolean} = {}
 	local primaryTarget = Vector3.new(ball.X + (ballSide == "Left" and 10 or ballSide == "Right" and -10 or 0), 3, ball.Z + (high and 20 or 10))
 	local primary = nearestRole(context, side, {ST = true, Winger = true, CAM = true, CM = press > .82}, primaryTarget, used)

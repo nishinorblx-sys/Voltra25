@@ -93,6 +93,10 @@ function Service:Apply(info: any, assignment: any, context: any, dt: number)
 	end
 	local now = context.Now or os.clock()
 	local state = self:_state(model, info.World)
+	local contract = assignment.PlayerContract
+	if contract and tonumber(contract.MinimumHoldUntil) and (tonumber(contract.MinimumHoldUntil) or 0) > state.MinimumHoldUntil then
+		state.MinimumHoldUntil = tonumber(contract.MinimumHoldUntil) or state.MinimumHoldUntil
+	end
 	local assignmentName = tostring(assignment.PrimaryAssignment or "RecoverShape")
 	local proposedTarget = assignment.TargetWorld or info.World
 	local targetShift = (proposedTarget - state.Target).Magnitude
@@ -180,6 +184,21 @@ function Service:Apply(info: any, assignment: any, context: any, dt: number)
 	model:SetAttribute("VTRAIMovementProfile",assignment.MovementProfile or"Balanced")
 	model:SetAttribute("VTRRunTicketId",assignment.RunTicketId)
 	model:SetAttribute("VTRRunApproved",assignment.RunApproved==true)
+	model:SetAttribute("VTRRunKind", assignment.RunKind)
+	model:SetAttribute("VTRRunTarget", assignment.RunTarget)
+	model:SetAttribute("VTRRunTrigger", assignment.RunTrigger)
+	model:SetAttribute("VTRRunExpiry", assignment.RunExpiry)
+	if contract then
+		model:SetAttribute("AITeamContractSlot", contract.SlotId)
+		model:SetAttribute("AITeamContractPlanStep", contract.PlanStep and contract.PlanStep.Id or "")
+		model:SetAttribute("AITeamContractPassBias", contract.PlanStep and contract.PlanStep.PassBias or contract.PassBias or "")
+		model:SetAttribute("AITeamContractAllowedActions", table.concat(contract.AllowedActions or {}, ","))
+		model:SetAttribute("AITeamContractForbiddenActions", table.concat(contract.ForbiddenActions or {}, ","))
+		model:SetAttribute("AITeamRunContract", contract.RunContract and contract.RunContract.Id or "")
+		if contract.TargetRegion and typeof(contract.TargetRegion.Center) == "Vector3" then
+			model:SetAttribute("AITeamContractRegionCenter", contract.TargetRegion.Center)
+		end
+	end
 	self.Executor:SetCommand(model, {
 		Target = Vector3.new(state.Target.X, info.World.Y, state.Target.Z),
 		Urgency = urgency,

@@ -8,6 +8,7 @@ local AIShootingDecisionService = require(script.Parent.AIShootingDecisionServic
 local AIDribblingDecisionService = require(script.Parent.AIDribblingDecisionService)
 local AITacklingDecisionService = require(script.Parent.AITacklingDecisionService)
 local AIGoalkeeperService = require(script.Parent.AIGoalkeeperService)
+local AITacticalContract = require(script.Parent.TeamAI.AITacticalContract)
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local GoalModelResolver = require(ReplicatedStorage.VTR.Shared.GoalModelResolver)
 
@@ -16,6 +17,11 @@ Service.__index = Service
 
 local function flat(v: Vector3): Vector3
 	return Vector3.new(v.X, 0, v.Z)
+end
+
+local function actionAllowed(assignment: any, action: string): boolean
+	local contract = assignment and assignment.PlayerContract
+	return AITacticalContract.ActionAllowed(contract, action)
 end
 
 local function estimateReceiverSpeed(receiverInfo: any): number
@@ -164,9 +170,22 @@ local function alternatePassChasers(context: any, passer: any, primary: any?, ta
 	local scored = {}
 	for _, teammate in ipairs(context.Teams[passer.Side].List) do
 		if teammate.Model ~= passer.Model and teammate.Root and not teammate.IsGoalkeeper and (not primary or teammate.Model ~= primary.Model) then
+			local slotId = tostring(teammate.Model:GetAttribute("AITacticalSlot") or teammate.Model:GetAttribute("AITeamContractSlot") or "")
+			local protected = teammate.Model:GetAttribute("AIRestDefense") == true
+				or teammate.Model:GetAttribute("AIDefensiveDuty") == "BackLine"
+				or slotId == "rest-defense"
+				or slotId == "ball-side-pivot"
+				or slotId == "far-side-pivot"
+				or slotId == "far-side-switch"
+				or teammate.Model:GetAttribute("VTRRunApproved") == true
+				or teammate.Model:GetAttribute("AITacticalReservedByUser") == true
+			if protected then
+				continue
+			end
 			local lateral, intercept, alpha = distanceToPassSegment(passer.World, target, teammate.World)
 			local targetDistance = PitchConfig.GetDistanceStuds(teammate.World, target)
-			if lateral <= 28 or targetDistance <= 38 then
+			local uncertainty = lateral <= 16 and alpha >= .18 and alpha <= .92 or targetDistance <= 24
+			if uncertainty then
 				local stamina = tonumber(teammate.Model:GetAttribute("VTRSprintEnergy")) or teammate.Stamina or 75
 				local score = lateral + targetDistance * 0.22 - alpha * 8 - math.clamp(stamina, 0, 100) * 0.025
 				table.insert(scored, {Info = teammate, Target = targetDistance <= 18 and target or intercept, Score = score})
@@ -175,7 +194,7 @@ local function alternatePassChasers(context: any, passer: any, primary: any?, ta
 	end
 	table.sort(scored, function(a, b) return a.Score < b.Score end)
 	local result = {}
-	for index = 1, math.min(2, #scored) do
+	for index = 1, math.min(1, #scored) do
 		table.insert(result, scored[index])
 	end
 	return result
@@ -216,6 +235,10 @@ end
 
 function Service:SetImmediateReceiverRoute(callback: any)
 	self.ImmediateReceiverRoute = callback
+end
+
+function Service:ContractAllows(assignment: any, action: string): boolean
+	return actionAllowed(assignment, action)
 end
 
 function Service:_kickPass(context: any, passer: any, pass: any): boolean
@@ -404,6 +427,11 @@ function Service:_carrierDecision(context: any, carrier: any, assignment: any)
 	local oneTouchPassing = self.Style:Ratio("OneTouchPassing")
 	local minimumHoldTime = math.max(0.18, self.Style:Get("MinimumHoldTime"))
 	local maximumHoldTime = self.Style:Get("MaximumHoldTime")
+	local canPass = actionAllowed(assignment, "Pass")
+	local canShoot = actionAllowed(assignment, "Shoot")
+	local canCarry = actionAllowed(assignment, "Carry") and not AITacticalContract.ActionForbidden(assignment and assignment.PlayerContract, "CarryForward")
+	local canDribble = actionAllowed(assignment, "Dribble")
+	local canClear = actionAllowed(assignment, "Clear")
 	if maximumHoldTime < minimumHoldTime then
 		maximumHoldTime = minimumHoldTime
 	end
@@ -448,7 +476,7 @@ function Service:_carrierDecision(context: any, carrier: any, assignment: any)
 	carrier.Model:SetAttribute("AIDefensiveMood", defensiveMood)
 	carrier.Model:SetAttribute("AICarryIntoSpace", false)
 	carrier.Model:SetAttribute("AITacticalStoryAction", storyAction)
-	if (tonumber(carrier.Model:GetAttribute("VTRKickoffReturnUntil")) or 0) > now and carriedFor >= 0.03 then
+	if canPass and (tonumber(carrier.Model:GetAttribute("VTRKickoffReturnUntil")) or 0) > now and carriedFor >= 0.03 then
 		local kickoffReturn = AIPassingDecisionService.ChooseKickoffReturn(context, carrier, self.Style, self.Difficulty)
 		if kickoffReturn and self:_kickPass(context, carrier, kickoffReturn) then
 			carrier.Model:SetAttribute("VTRKickoffReturnUntil", nil)
@@ -468,16 +496,16 @@ function Service:_carrierDecision(context: any, carrier: any, assignment: any)
 			return
 		end
 		local distribution = AIGoalkeeperService.ChooseDistribution(context, carrier)
-		if distribution and self:_kickPass(context, carrier, distribution) then
+		if canPass and distribution and self:_kickPass(context, carrier, distribution) then
 			self.CarrySince[carrier.Model] = nil
 			return
 		end
-		if self:_clear(context, carrier) then
+		if canClear and self:_clear(context, carrier) then
 			self.CarrySince[carrier.Model] = nil
 			return
 		end
 	end
-	if now < nextDecision and carriedFor < holdLimit and not pressure.Under and not pressure.Heavy then
+	if canCarry and now < nextDecision and carriedFor < holdLimit and not pressure.Under and not pressure.Heavy then
 		local dribble = AIDribblingDecisionService.Evaluate(context, carrier, self.Style)
 		assignment.TargetWorld = dribble.Target
 		assignment.MovementTarget = dribble.Target
@@ -490,7 +518,7 @@ function Service:_carrierDecision(context: any, carrier: any, assignment: any)
 
 	self.NextDecision[carrier.Model] = now + math.max(0.04, math.min(AIDifficultyService.NextDecisionDelay(self.Difficulty) * (0.72 - passTempo * 0.42) * (1 + firstMatchAssistance * .35), holdLimit * 0.65))
 
-	if carrier.Role == "Winger" and wingerWide and carrier.Pitch.Z >= 520 and pressure.Closest > 18 then
+	if canCarry and carrier.Role == "Winger" and wingerWide and carrier.Pitch.Z >= 520 and pressure.Closest > 18 then
 		local diagonalX = carrier.Pitch.X < PitchConfig.HALF_WIDTH and 154 or 270
 		local diagonalZ = math.min(PitchConfig.PITCH_LENGTH - 45, math.max(carrier.Pitch.Z + 36, 650))
 		local diagonalPitch = PitchConfig.ClampInsidePitch(Vector3.new(diagonalX, 3, diagonalZ))
@@ -527,7 +555,7 @@ function Service:_carrierDecision(context: any, carrier: any, assignment: any)
 	local boxCross = chooseBoxCross(context, carrier)
 	local wingerPass = boxCross or AIPassingDecisionService.ChooseWingerWide(context, carrier, self.Style, self.Difficulty)
 	carrier.Model:SetAttribute("AIWingerWideDecision", wingerPass and wingerPass.PassKind or "")
-	if wingerPass and (wingerEndLine or wingerChanceZone or pressure.Under or wingerPass.Score > 390) then
+	if canPass and wingerPass and (wingerEndLine or wingerChanceZone or pressure.Under or wingerPass.Score > 390) then
 		if self:_kickPass(context, carrier, wingerPass) then
 			self.CarrySince[carrier.Model] = nil
 			return
@@ -548,7 +576,7 @@ function Service:_carrierDecision(context: any, carrier: any, assignment: any)
 		carrier.Model:SetAttribute("AIStrikerDriveDeeperChance", strikerDriveChance)
 		carrier.Model:SetAttribute("AIStrikerGoalDistance", strikerGoalDistance)
 		carrier.Model:SetAttribute("AIStrikerDriveDeeperSpace", strikerCanDriveDeeper)
-		if strikerCanDriveDeeper and self.Random:NextNumber() <= strikerDriveChance then
+		if canCarry and strikerCanDriveDeeper and self.Random:NextNumber() <= strikerDriveChance then
 			local target = PitchConfig.TeamPitchPositionToWorld(deeperPitch, carrier.Side, context.Options)
 			assignment.TargetWorld = target
 			assignment.MovementTarget = target
@@ -564,7 +592,7 @@ function Service:_carrierDecision(context: any, carrier: any, assignment: any)
 		carrier.Model:SetAttribute("AIStrikerGoalDistance", strikerGoalDistance)
 		carrier.Model:SetAttribute("AIStrikerDriveDeeperSpace", false)
 	end
-	if strikerInDangerZone then
+	if canShoot and strikerInDangerZone then
 		local immediateShot = AIShootingDecisionService.Evaluate(context, carrier, self.Style, self.Difficulty)
 		carrier.Model:SetAttribute("AIStrikerBoxShootNow", true)
 		carrier.Model:SetAttribute("AIStrikerEscapePressure", false)
@@ -574,7 +602,7 @@ function Service:_carrierDecision(context: any, carrier: any, assignment: any)
 			self.CarrySince[carrier.Model] = nil
 			return
 		end
-	elseif strikerUnderClosePressure then
+	elseif canPass and strikerUnderClosePressure then
 		local strikerEscapePass = AIPassingDecisionService.Choose(context, carrier, self.Style, self.Difficulty, true)
 		carrier.Model:SetAttribute("AIStrikerBoxShootNow", false)
 		carrier.Model:SetAttribute("AIStrikerEscapePressure", true)
@@ -594,7 +622,7 @@ function Service:_carrierDecision(context: any, carrier: any, assignment: any)
 	local shot = AIShootingDecisionService.Evaluate(context, carrier, self.Style, self.Difficulty)
 	carrier.Model:SetAttribute("AIShotScore", shot.Score)
 	carrier.Model:SetAttribute("AIShotGood", shot.Good)
-	if self:_tryMidfieldLongShot(context, carrier, pressure) then
+	if canShoot and self:_tryMidfieldLongShot(context, carrier, pressure) then
 		self.CarrySince[carrier.Model] = nil
 		return
 	end
@@ -610,7 +638,7 @@ function Service:_carrierDecision(context: any, carrier: any, assignment: any)
 		carrier.Model:SetAttribute("VTROpenDangerShotChance", nil)
 		carrier.Model:SetAttribute("VTROpenDangerShotChanceUntil", nil)
 	end
-	if (shot.Good or openDangerShot) and (openDangerShot or strikerShootBias or shot.Score > 22 or enoughBoxSpace) and (not pressure.Heavy or enoughBoxSpace or strikerShootBias or openDangerShot) then
+	if canShoot and (shot.Good or openDangerShot) and (openDangerShot or strikerShootBias or shot.Score > 22 or enoughBoxSpace) and (not pressure.Heavy or enoughBoxSpace or strikerShootBias or openDangerShot) then
 		if self:_shoot(context, carrier, shot) then
 			self.CarrySince[carrier.Model] = nil
 			return
@@ -620,7 +648,7 @@ function Service:_carrierDecision(context: any, carrier: any, assignment: any)
 
 	local runningIntoSpaceDanger = pressure.Closest <= 25 or strikerUnderClosePressure or ((carrier.Model:GetAttribute("AICarryIntoSpace") == true or self.LastAction[carrier.Model] == "CarryForwardSpace" or self.LastAction[carrier.Model] == "TakeOnPressForward") and pressure.Closest <= 25)
 	local forcedSafe = wingerEndLine or runningIntoSpaceDanger or (defensiveMood ~= "AggressiveRisk" and (pressure.Heavy or carriedFor >= holdLimit * 0.45 or self.Style:Risk() < 0.3))
-	local pass = AIPassingDecisionService.Choose(context, carrier, self.Style, self.Difficulty, forcedSafe)
+	local pass = canPass and AIPassingDecisionService.Choose(context, carrier, self.Style, self.Difficulty, forcedSafe) or nil
 	local inOpponentHalf = carrier.Pitch.Z >= PitchConfig.HALF_LENGTH
 	local passIsBackwards = pass ~= nil and pass.Kind == "Back" and (pass.ForwardGain or 0) < -8
 	local forwardCarryPitch = PitchConfig.ClampInsidePitch(Vector3.new(carrier.Pitch.X, 3, carrier.Pitch.Z + (attackStage == "FinalChance" and 18 or 38)))
@@ -650,7 +678,7 @@ function Service:_carrierDecision(context: any, carrier: any, assignment: any)
 		end
 	end
 
-	if forwardSpace and not runningIntoSpaceDanger and not strikerUnderClosePressure and (pressure.None or takeOnPress or (inOpponentHalf and pressure.Under and not pass)) then
+	if canCarry and forwardSpace and not runningIntoSpaceDanger and not strikerUnderClosePressure and (pressure.None or takeOnPress or (inOpponentHalf and pressure.Under and not pass)) then
 		local target = PitchConfig.TeamPitchPositionToWorld(forwardCarryPitch, carrier.Side, context.Options)
 		assignment.TargetWorld = target
 		assignment.MovementTarget = target
@@ -671,7 +699,7 @@ function Service:_carrierDecision(context: any, carrier: any, assignment: any)
 	if wingerEndLine then
 		dribbleThreshold = 999
 	end
-	if dribble.CanDribble and dribble.Score > dribbleThreshold then
+	if canDribble and dribble.CanDribble and dribble.Score > dribbleThreshold then
 		assignment.TargetWorld = dribble.Target
 		assignment.MovementTarget = dribble.Target
 		assignment.PrimaryAssignment = "DribbleSupport"
@@ -681,14 +709,14 @@ function Service:_carrierDecision(context: any, carrier: any, assignment: any)
 		return
 	end
 
-	if PitchConfig.InZone(carrier.Pitch, "OwnBox") or pressure.Heavy then
+	if canClear and (PitchConfig.InZone(carrier.Pitch, "OwnBox") or pressure.Heavy) then
 		if self:_clear(context, carrier) then
 			self.CarrySince[carrier.Model] = nil
 			return
 		end
 	end
 
-	if pass and self:_kickPass(context, carrier, pass) then
+	if canPass and pass and self:_kickPass(context, carrier, pass) then
 		self.CarrySince[carrier.Model] = nil
 		return
 	end
@@ -697,6 +725,9 @@ function Service:_carrierDecision(context: any, carrier: any, assignment: any)
 	local fallbackX = wingerEndLine and (carrier.Pitch.X + (carrier.Pitch.X < PitchConfig.HALF_WIDTH and 28 or -28)) or carrier.Pitch.X
 	local targetPitch = PitchConfig.ClampInsidePitch(Vector3.new(fallbackX, 3, fallbackZ))
 	local target = PitchConfig.TeamPitchPositionToWorld(targetPitch, carrier.Side, context.Options)
+	if not canCarry then
+		return
+	end
 	assignment.TargetWorld = target
 	assignment.MovementTarget = target
 	assignment.PrimaryAssignment = "DribbleSupport"
@@ -735,7 +766,7 @@ function Service:_defensiveActions(context: any, assignmentsBySide: any, onlySid
 				local distanceToCarrier = PitchConfig.GetDistanceStuds(defender.World, carrier.World)
 				local closeAutoTackle = distanceToCarrier <= 8.75
 				local strikerEmergencyTackle = carrier.Role == "ST" and PitchConfig.GetDistanceStuds(defender.World, carrier.World) <= 18
-				if closeAutoTackle or strikerEmergencyTackle or primary == "PressBallCarrier" or primary == "ContainBallCarrier" or primary == "CoverPresser" or primary == "CloseLongCarryGap" or primary == "EarlyCBPressPassTarget" or primary == "EarlyClosePassTargetPressure" or primary == "CenterBackPressureStriker" or primary == "AggressiveCBPressStriker" or primary == "AggressiveCBStepOut" then
+				if actionAllowed(assignment, "Tackle") and (closeAutoTackle or strikerEmergencyTackle or primary == "PressBallCarrier" or primary == "ContainBallCarrier" or primary == "CoverPresser" or primary == "CloseLongCarryGap" or primary == "EarlyCBPressPassTarget" or primary == "EarlyClosePassTargetPressure" or primary == "CenterBackPressureStriker" or primary == "AggressiveCBPressStriker" or primary == "AggressiveCBStepOut") then
 					local canTackle, slide = AITacklingDecisionService.CanTackle(context, defender, carrier, self.Style)
 					if canTackle then
 						if self.BallService:Tackle(model, slide) then

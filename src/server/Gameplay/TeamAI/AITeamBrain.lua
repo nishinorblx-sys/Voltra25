@@ -119,7 +119,12 @@ local function buildDeclaration(context: any, side: string, style: any, opponent
 	local ownConfidence = styleConfidence(style)
 	local identity = leadingStyle(ownConfidence)
 	local opponentConfidence = observedOpponent(context, side, opponentStyle)
-	local opponentIdentity = leadingStyle(opponentConfidence)
+	local observation = context.OpponentObservation and context.OpponentObservation[side]
+	local opponentAttackConfidence = observation and observation.OpponentAttackConfidence or opponentConfidence
+	local opponentDefenseConfidence = observation and observation.OpponentDefenseConfidence or opponentConfidence
+	local opponentAttackIdentity = tostring(observation and observation.OpponentAttackIdentity or leadingStyle(opponentAttackConfidence))
+	local opponentDefenseIdentity = tostring(observation and observation.OpponentDefenseIdentity or leadingStyle(opponentDefenseConfidence))
+	local opponentIdentity = context.OwnerSide == side and opponentDefenseIdentity or opponentAttackIdentity
 	local attackCorridor = identity == "WideOverload" and "Wide" or identity == "CentralDomination" and "Central" or identity == "DirectAssault" and "Behind" or identity == "CounterattackingTrap" and "CounterLanes" or "Balanced"
 	local defensiveIdentity = DEFENSIVE_NAMES[identity] or "StructuredContainment"
 	local compactness = math.clamp((ratio(style, "BackLineCompactness") + ratio(style, "LaneBlocking") + ratio(style, "BoxProtection")) / 3, 0, 1)
@@ -143,6 +148,10 @@ local function buildDeclaration(context: any, side: string, style: any, opponent
 		DefensiveIdentity = defensiveIdentity,
 		OpponentIdentity = opponentIdentity,
 		OpponentStyleConfidence = opponentConfidence,
+		OpponentAttackIdentity = opponentAttackIdentity,
+		OpponentDefenseIdentity = opponentDefenseIdentity,
+		OpponentAttackConfidence = opponentAttackConfidence,
+		OpponentDefenseConfidence = opponentDefenseConfidence,
 		OwnStyleConfidence = ownConfidence,
 		AttackCorridor = attackCorridor,
 		FormationWidth = ratio(style, "AttackingWidth"),
@@ -158,7 +167,7 @@ local function buildDeclaration(context: any, side: string, style: any, opponent
 		CounterattackCommitment = ratio(style, "CounterAttackFrequency"),
 		PressingIntensity = press,
 		RestDefense = math.max(2, math.floor(2 + compactness * 3 + ratio(style, "RestDefenseMinimum", .5) * 2)),
-		AfterGain = identity == "CounterattackingTrap" or identity == "DirectAssault" and "ForwardFirst" or identity == "PositionalControl" and "SecureShape" or "ExploitOpening",
+		AfterGain = (identity == "CounterattackingTrap" or identity == "DirectAssault") and "ForwardFirst" or identity == "PositionalControl" and "SecureShape" or "ExploitOpening",
 		AfterLoss = press > .68 and "Counterpress" or compactness > .7 and "RestoreCompactShape" or "RecoverShape",
 	}
 end
@@ -216,6 +225,8 @@ function Brain:Declare(context: any): any
 			info.Model:SetAttribute("AITeamBrainAttack", declarations[side].AttackingIdentity)
 			info.Model:SetAttribute("AITeamBrainDefense", declarations[side].DefensiveIdentity)
 			info.Model:SetAttribute("AITeamBrainOpponent", declarations[side].OpponentIdentity)
+			info.Model:SetAttribute("AITeamBrainOpponentAttack", declarations[side].OpponentAttackIdentity)
+			info.Model:SetAttribute("AITeamBrainOpponentDefense", declarations[side].OpponentDefenseIdentity)
 			info.Model:SetAttribute("AITeamBrainCorridor", declarations[side].AttackCorridor)
 			info.Model:SetAttribute("AITeamBrainRunners", declarations[side].AttackingRunners)
 			info.Model:SetAttribute("AITeamBrainCompactness", declarations[side].TeamCompactness)

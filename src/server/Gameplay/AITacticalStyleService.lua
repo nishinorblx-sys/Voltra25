@@ -65,15 +65,43 @@ local DEFAULTS = {
 }
 
 function Service.new(tactics: any?)
+	local source = type(tactics) == "table" and tactics or {}
 	local normalized = AITacticConfig.Normalize(tactics)
 	local preset = AITacticConfig.Get(normalized.PresetId)
 	local resolved = AIBehaviorTuningConfig.Resolve(normalized.Sliders, normalized)
-	local self = {Sliders = normalized.Sliders, Resolved = resolved, Tactics = normalized, PresetId = normalized.PresetId, Preset = preset, MaxMajorRuns = resolved.MaxMajorRuns or preset.MaxMajorRuns, MaxPressers = resolved.MaxPressers or preset.MaxPressers}
+	local self = {
+		Sliders = normalized.Sliders,
+		Resolved = resolved,
+		Tactics = normalized,
+		PresetId = normalized.PresetId,
+		Preset = preset,
+		MaxMajorRuns = resolved.MaxMajorRuns or preset.MaxMajorRuns,
+		MaxPressers = resolved.MaxPressers or preset.MaxPressers,
+		PassRules = type(source.PassRules) == "table" and source.PassRules or {},
+		PositioningRules = type(source.PositioningRules) == "table" and source.PositioningRules or {},
+		PressRules = type(source.PressRules) == "table" and source.PressRules or {},
+		RoleInstructions = type(source.RoleInstructions) == "table" and source.RoleInstructions or {},
+		SequenceRules = type(source.SequenceRules) == "table" and source.SequenceRules or {},
+		MetricsTargets = type(source.MetricsTargets) == "table" and source.MetricsTargets or {},
+	}
 	return setmetatable(self, Service)
 end
 
 function Service:Get(name: string): number
 	return self.Resolved[name] or self.Sliders[name] or DEFAULTS[name] or 50
+end
+
+function Service:ResolvedForContext(context: any?): any
+	return AIBehaviorTuningConfig.Resolve(self.Sliders, self.Tactics, context)
+end
+
+function Service:GetForContext(name: string, context: any?): number
+	local resolved = self:ResolvedForContext(context)
+	return resolved[name] or self:Get(name)
+end
+
+function Service:RatioForContext(name: string, context: any?): number
+	return math.clamp(self:GetForContext(name, context) / 100, 0, 1)
 end
 
 function Service:Ratio(name: string): number
