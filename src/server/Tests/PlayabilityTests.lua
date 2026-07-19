@@ -2017,6 +2017,95 @@ function Tests.Run(): any
 		for _, item in {receiver, carrier, winger, cm, cb} do item.Model:Destroy() end
 	end)
 
+	test("high press compression pulls back line and keeper behind the press", function()
+		local options = {PitchCFrame = CFrame.new(), Width = PitchConfig.PITCH_WIDTH, Length = PitchConfig.PITCH_LENGTH, AttackSigns = {Home = 1, Away = -1}}
+		local function info(side: string, role: string, pitch: Vector3, name: string, pace: number?): any
+			local model = Instance.new("Model")
+			model.Name = name
+			model:SetAttribute("VTRTeam", side)
+			local root = Instance.new("Part")
+			root.Name = "HumanoidRootPart"
+			root.Position = PitchConfig.TeamPitchPositionToWorld(pitch, side, options)
+			root.Parent = model
+			return {Model = model, Root = root, Side = side, OpponentSide = side == "Home" and "Away" or "Home", Role = role, Pitch = pitch, World = root.Position, Stats = {pace = pace or 70, defending = 72}, Stamina = 84, IsGoalkeeper = role == "GK"}
+		end
+		local home = {
+			info("Home", "GK", Vector3.new(212, 3, 24), "HGK", 64),
+			info("Home", "ST", Vector3.new(212, 3, 560), "HST", 76),
+			info("Home", "Winger", Vector3.new(70, 3, 535), "HLW", 78),
+			info("Home", "Winger", Vector3.new(350, 3, 532), "HRW", 77),
+			info("Home", "CAM", Vector3.new(212, 3, 520), "HCAM", 74),
+			info("Home", "CM", Vector3.new(170, 3, 500), "HCM1", 72),
+			info("Home", "CM", Vector3.new(252, 3, 496), "HCM2", 72),
+			info("Home", "CDM", Vector3.new(212, 3, 470), "HDM", 70),
+			info("Home", "CB", Vector3.new(152, 3, 130), "HCB1", 80),
+			info("Home", "CB", Vector3.new(272, 3, 128), "HCB2", 70),
+			info("Home", "Fullback", Vector3.new(72, 3, 145), "HLB", 74),
+			info("Home", "Fullback", Vector3.new(352, 3, 145), "HRB", 74),
+		}
+		local awayCB = info("Away", "CB", Vector3.new(212, 3, 178), "ACB", 66)
+		local awayGK = info("Away", "GK", Vector3.new(212, 3, 40), "AGK", 60)
+		local awayST = info("Away", "ST", Vector3.new(212, 3, 430), "AST", 88)
+		local context = {Now = 1, Owner = awayCB.Model, OwnerSide = "Away", BallWorld = awayCB.World, BallTeam = {Home = Vector3.new(212, 3, 564), Away = awayCB.Pitch}, Teams = {Home = {List = home}, Away = {List = {awayCB, awayGK, awayST}}}, Players = {}, Options = options, PassInFlight = false, PassTargetTeam = {Home = nil, Away = nil}}
+		for _, item in ipairs(home) do context.Players[item.Model] = item end
+		for _, item in ipairs({awayCB, awayGK, awayST}) do context.Players[item.Model] = item end
+		local style = {Ratio = function(_, key: string)
+			if key == "PressingIntensity" then return .86 end
+			if key == "DefensiveDepth" then return .78 end
+			if key == "BackLineCompactness" then return .82 end
+			if key == "ZoneDiscipline" then return .75 end
+			if key == "PressTriggerDistance" then return .78 end
+			return .58
+		end}
+		local block = AIDefensiveBlockPlanner.new():Build(context, "Home", style, {Intent = "HighPressCompression"})
+		expect(block.BackLineZ > 405, "Compressed back line did not move significantly upward")
+		expect(block.MidBackGap <= 58 and block.ForwardMidGap <= 48, "Compressed line gaps exceeded maximum")
+		expect(block.TeamBlockDepth <= 145, "Compressed team block depth exceeded maximum")
+		local assignments = AITacticalSlotAssignment.Assign(context, "Home", block.Slots)
+		AIDefensivePlan.Apply(context, "Home", assignments, {Intent = "HighPressCompression"}, block, {})
+		local highDefenders = 0
+		local deepCoverZ = nil
+		local otherDefenderZ = {}
+		local keeperZ = nil
+		for model, assignment in pairs(assignments) do
+			local role = context.Players[model] and context.Players[model].Role
+			if role == "CB" or role == "Fullback" then
+				if assignment.PrimaryAssignment == "DeepCover" then
+					deepCoverZ = assignment.TargetPitch.Z
+				else
+					table.insert(otherDefenderZ, assignment.TargetPitch.Z)
+					if assignment.TargetPitch.Z >= 390 then highDefenders += 1 end
+				end
+			elseif role == "GK" then
+				keeperZ = assignment.TargetPitch.Z
+			end
+		end
+		expect(highDefenders >= 3, "At least three defenders did not move toward the halfway line")
+		expect(deepCoverZ ~= nil, "No deep-cover defender assigned")
+		for _, z in ipairs(otherDefenderZ) do
+			expect(deepCoverZ <= z - 6, "Deep cover was not held behind the high line")
+		end
+		expect(keeperZ ~= nil and keeperZ > 250 and keeperZ < block.BackLineZ, "Goalkeeper did not advance as sweeper behind compressed line")
+		local director = AITacticalIntentDirector.new()
+		local baseIntent = director:Update(context, {Home = style, Away = style}, nil, nil)
+		expectEqual(baseIntent.Home.Intent, "HighPressCompression", "Initial buildup did not enter compression")
+		context.Now = 1.3
+		context.PassInFlight = true
+		context.PassTargetTeam = {Home = Vector3.new(260, 3, 566), Away = Vector3.new(164, 3, 176)}
+		local sideways = director:Update(context, {Home = style, Away = style}, nil, nil)
+		expectEqual(sideways.Home.Intent, "HighPressCompression", "Sideways center-back pass dropped the high line")
+		context.Now = 2.8
+		context.PassTargetTeam = {Home = Vector3.new(212, 3, 615), Away = Vector3.new(212, 3, 127)}
+		local backward = director:Update(context, {Home = style, Away = style}, nil, nil)
+		expectEqual(backward.Home.Intent, "HighPressCompression", "Backward pass to goalkeeper did not preserve compression")
+		context.Now = 4.4
+		context.PassTargetTeam = {Home = Vector3.new(212, 3, 410), Away = Vector3.new(212, 3, 332)}
+		local broken = director:Update(context, {Home = style, Away = style}, nil, nil)
+		expectEqual(broken.Home.Intent, "PressBroken", "Forward line-breaking pass did not trigger PressBroken")
+		for _, item in ipairs(home) do item.Model:Destroy() end
+		for _, item in ipairs({awayCB, awayGK, awayST}) do item.Model:Destroy() end
+	end)
+
 	test("client gameplay modules load", function()
 		local root = StarterPlayer.StarterPlayerScripts.VTRClient
 		local input = require(root.Gameplay.InputController)

@@ -55,6 +55,26 @@ local function slot(id: string, family: string, pitch: Vector3, priority: number
 	return slotData
 end
 
+local function goalkeeperSlot(pitch: Vector3, high: boolean): any
+	local targetPitch = PitchConfig.ClampInsidePitch(pitch)
+	return AITacticalContract.Slot({
+		Id = "goalkeeper-sweeper-cover",
+		Function = "Sweeper cover",
+		RoleFamily = "GK",
+		AllowedRoles = {"GK"},
+		PreferredRoles = {"GK"},
+		TargetPitch = targetPitch,
+		TargetRegion = AITacticalContract.Region(targetPitch, 20, "Central", "Goalkeeper"),
+		Lane = "Central",
+		Line = "Goalkeeper",
+		ActionProfile = "Goalkeeper",
+		Priority = 99,
+		ContinuityKey = "goalkeeper-sweeper-cover",
+		SprintAllowed = high,
+		AllowedActions = {"Receive", "Pass", "Clear", "Cover"},
+	})
+end
+
 local function nearestRole(context: any, side: string, roleSet: {[string]: boolean}, target: Vector3, used: {[Model]: boolean}): any?
 	local best = nil
 	local bestScore = math.huge
@@ -148,7 +168,8 @@ function Planner:Build(context: any, side: string, style: any, intent: any): any
 		press = math.clamp(press + (tonumber(pressRules.Pressers) or 0) * .18, 0, 1)
 	end
 	local low = intentName == "LowBlock" or intentName == "ProtectBox" or intentName == "ProtectLead"
-	local high = intentName == "HighPress" or intentName == "HighPressBuildUp" or intentName == "HighPressLocked"
+	local high = intentName == "HighPress" or intentName == "HighPressBuildUp" or intentName == "HighPressLocked" or intentName == "HighPressCompression"
+	local compression = intentName == "HighPressCompression"
 	local blockWidth = clamp(190 + widthRatio * 86 - compact * 42, 152, 258)
 	local centerShift = clamp((ball.X - PitchConfig.HALF_WIDTH) * (.22 + zone * .18), -32, 32)
 	local centerX = clamp(PitchConfig.HALF_WIDTH + centerShift, 110, 314)
@@ -160,20 +181,26 @@ function Planner:Build(context: any, side: string, style: any, intent: any): any
 	local pressAnchorZ = ball.Z
 	if high then
 		local threatZ = 0
+		local fastestThreat = 0
 		for _, opponent in ipairs(((context.Teams or {})[side == "Home" and "Away" or "Home"] or {}).List or {}) do
 			if opponent.Root then
 				local pitch = PitchConfig.WorldToTeamPitchPosition(opponent.World, side, context.Options)
 				if pitch.Z < ball.Z - 20 then
 					threatZ = math.max(threatZ, pitch.Z)
+					fastestThreat = math.max(fastestThreat, tonumber(opponent.Stats and opponent.Stats.pace) or 60)
 				end
 			end
 		end
-		local speedThreat = threatZ > 0 and math.clamp((ball.Z - threatZ) / 240, 0, 1) or .25
-		local forwardMidGap = clamp(45 - compact * 10 - press * 7, 30, 45)
-		local midBackGap = clamp(48 - compact * 10 - zone * 5 + speedThreat * 12, 32, 54)
-		forwardZ = clamp(pressAnchorZ - 6, 410, 690)
+		local targetPitch = context.PassTargetTeam and context.PassTargetTeam[side]
+		if typeof(targetPitch) == "Vector3" and targetPitch.Z > pressAnchorZ - 12 then
+			pressAnchorZ = math.max(pressAnchorZ, targetPitch.Z)
+		end
+		local speedThreat = threatZ > 0 and math.clamp((fastestThreat - 62) / 35, 0, 1) or .2
+		local forwardMidGap = clamp((compression and 42 or 45) - compact * 10 - press * 7, 30, compression and 44 or 45)
+		local midBackGap = clamp((compression and 50 or 48) - compact * 9 - zone * 5 + speedThreat * 10, 38, compression and 58 or 54)
+		forwardZ = clamp(pressAnchorZ - (compression and 12 or 6), 410, 696)
 		midZ = clamp(forwardZ - forwardMidGap, 330, 650)
-		backZ = clamp(midZ - midBackGap, 250, threatZ > 0 and math.min(540, threatZ + 26) or 545)
+		backZ = clamp(midZ - midBackGap, compression and 330 or 250, 570)
 		backMidGap = midZ - backZ
 		midForwardGap = forwardZ - midZ
 	end
@@ -224,9 +251,18 @@ function Planner:Build(context: any, side: string, style: any, intent: any): any
 	local pivot = nearestRole(context, side, {CDM = true, CM = true}, pivotTarget, used)
 	if pivot then used[pivot.Model] = true end
 	local deepCoverTarget = Vector3.new(ballSide == "Left" and rightX or leftX, 3, clamp(backZ - (high and 10 or 0), 48, 560))
+	local highestThreat = opponentClosest(context, side, {ST = true, Winger = true, CAM = true}, Vector3.new(PitchConfig.HALF_WIDTH, 3, math.max(80, backZ - 22)), false)
+	if highestThreat and high then
+		deepCoverTarget = Vector3.new(highestThreat.Pitch.X + (PitchConfig.HALF_WIDTH - highestThreat.Pitch.X) * .2, 3, clamp(math.min(backZ - 10, highestThreat.Pitch.Z - 8), 80, backZ - 8))
+	end
+	if high then
+		local maxDepth = press >= .82 and 120 or 145
+		deepCoverTarget = Vector3.new(deepCoverTarget.X, 3, math.max(deepCoverTarget.Z, forwardZ - maxDepth))
+	end
 	local deepCover = nearestRole(context, side, {CB = true, Fullback = true}, deepCoverTarget, used)
 	if deepCover then used[deepCover.Model] = true end
 	local slots = {
+		goalkeeperSlot(Vector3.new(PitchConfig.HALF_WIDTH + centerShift * .2, 3, clamp(backZ - (compression and 72 or high and 82 or 105), 16, 460)), high),
 		slot("primary-presser", "ST", primaryTarget, high and 98 or 90, false, true, "PrimaryPress", primary and primary.Model or nil, {"ST", "Winger", "CAM"}),
 		slot("ball-side-outlet-presser", "Winger", nearOutletTarget, high and 96 or 86, false, high, "BallSideOutletPress", nearPresser and nearPresser.Model or nil, {"Winger", "ST", "CAM", "Fullback"}),
 		slot("central-outlet-presser", "CAM", centralTarget, high and 95 or 87, false, high, "CentralOutletPress", centralPresser and centralPresser.Model or nil, {"CAM", "CM", "ST"}),
@@ -255,6 +291,9 @@ function Planner:Build(context: any, side: string, style: any, intent: any): any
 		PressAnchorZ = pressAnchorZ,
 		HighPressPhase = high and intentName or "",
 		HighPressBlockDepth = forwardZ - backZ,
+		TeamBlockDepth = forwardZ - deepCoverTarget.Z,
+		ForwardMidGap = forwardZ - midZ,
+		MidBackGap = midZ - backZ,
 		BallSideShift = centerShift,
 		FarSideTuck = farSideTuck,
 		PressureDirection = forceDirection,

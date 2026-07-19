@@ -96,9 +96,17 @@ function Plan.Apply(context: any, side: string, assignments: any, intent: any, b
 	local highPress = tostring(intent and intent.Intent or "") == "HighPress"
 		or tostring(intent and intent.Intent or "") == "HighPressBuildUp"
 		or tostring(intent and intent.Intent or "") == "HighPressLocked"
+		or tostring(intent and intent.Intent or "") == "HighPressCompression"
 	for model, assignment in pairs(assignments) do
 		local slot = assignment.TacticalSlot
-		if slot and slot.Id == "primary-presser" and not primaryUsed then
+		if slot and slot.Id == "goalkeeper-sweeper-cover" then
+			assignment.PrimaryAssignment = highPress and "SweeperCover" or "GoalkeeperCover"
+			assignment.MovementUrgency = highPress and .78 or .62
+			assignment.SprintAllowed = highPress
+			model:SetAttribute("AIDeepCover", false)
+			model:SetAttribute("AIPressLayer", "Sweeper")
+			model:SetAttribute("AIPressPhase", highPress and "SweeperCover" or "Recover")
+		elseif slot and slot.Id == "primary-presser" and not primaryUsed then
 			primaryUsed = true
 			assignment.PrimaryAssignment = "PressBallCarrier"
 			assignment.MovementUrgency = 1
@@ -274,11 +282,20 @@ function Plan.Apply(context: any, side: string, assignments: any, intent: any, b
 			model:SetAttribute("AIDefensiveBackLineZ", block.BackLineZ)
 			model:SetAttribute("AIDefensiveMidLineZ", block.MidfieldLineZ)
 			model:SetAttribute("AIHighPressActive", highPress)
+			model:SetAttribute("AIHighPressCompression", tostring(intent and intent.Intent or "") == "HighPressCompression")
 			model:SetAttribute("AIHighPressPhase", block.HighPressPhase or "")
+			model:SetAttribute("AIPressAnchorZ", block.PressAnchorZ or 0)
 			model:SetAttribute("AIHighPressBlockDepth", block.HighPressBlockDepth or 0)
 			model:SetAttribute("AIHighPressForwardLineZ", block.ForwardLineZ)
 			model:SetAttribute("AIHighPressMidfieldLineZ", block.MidfieldLineZ)
 			model:SetAttribute("AIHighPressBackLineZ", block.BackLineZ)
+			model:SetAttribute("AIForwardLineTargetZ", block.ForwardLineZ)
+			model:SetAttribute("AIMidfieldLineTargetZ", block.MidfieldLineZ)
+			model:SetAttribute("AIBackLineTargetZ", block.BackLineZ)
+			model:SetAttribute("AITeamBlockDepth", block.TeamBlockDepth or block.HighPressBlockDepth or 0)
+			model:SetAttribute("AIForwardMidGap", block.ForwardMidGap or 0)
+			model:SetAttribute("AIMidBackGap", block.MidBackGap or 0)
+			model:SetAttribute("AIDeepCoverPlayer", block.DeepCover and block.DeepCover.Name or "")
 		end
 	end
 	local activePressers = 0

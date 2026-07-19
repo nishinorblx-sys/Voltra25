@@ -48,9 +48,14 @@ local function defenseIntent(context: any, side: string, style: any): string
 	local counter = style and style:Ratio("CounterPress") or .5
 	if context.LooseBall then return "AttackLooseBall" end
 	if ball.Z < 185 then return "ProtectBox" end
+	local targetPitch = context.PassTargetTeam and context.PassTargetTeam[side]
+	if context.PassInFlight == true and typeof(targetPitch) == "Vector3" and targetPitch.Z < ball.Z - 80 and ball.Z >= 420 then
+		return "PressBroken"
+	end
 	if depth < .34 then return "LowBlock" end
 	local pressCommit = press * .72 + trigger * .28
-	if ball.Z >= 520 and pressCommit >= .56 then return "HighPressBuildUp" end
+	local backwardBuildPass = context.PassInFlight == true and typeof(targetPitch) == "Vector3" and targetPitch.Z >= ball.Z - 8 and targetPitch.Z >= 500
+	if (ball.Z >= 520 or backwardBuildPass) and pressCommit >= .56 then return "HighPressCompression" end
 	if ball.Z >= 470 and press >= .58 then return "HighPressBuildUp" end
 	if ball.Z >= PitchConfig.HALF_LENGTH and pressCommit >= .68 then return "HighPressLocked" end
 	if ball.Z >= 250 and counter >= .58 and press >= .54 then return "Counterpress" end
@@ -70,7 +75,11 @@ function Director:Update(context: any, styles: any, spatial: any, memory: any): 
 		else
 			nextIntent = defenseIntent(context, side, styles[side])
 		end
-		local minimumCommit = previous and tostring(previous.Intent or ""):find("HighPress") and HIGH_PRESS_COMMIT or MIN_COMMIT
+		local previousIntent = tostring(previous and previous.Intent or "")
+		if previousIntent:find("HighPress") and nextIntent == "MidBlock" and context.BallTeam[side].Z >= 470 then
+			nextIntent = "HighPressCompression"
+		end
+		local minimumCommit = previous and previousIntent:find("HighPress") and HIGH_PRESS_COMMIT or MIN_COMMIT
 		if previous and previous.Intent ~= nextIntent and now - previous.StartedAt < minimumCommit then
 			nextIntent = previous.Intent
 		end

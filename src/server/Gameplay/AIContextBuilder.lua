@@ -74,6 +74,12 @@ function Service.Build(teams: any, formations: any, pitchCFrame: CFrame, width: 
 		OwnerSide = ownerSide,
 		LooseBall = loose,
 		PassInFlight = passInFlight,
+		PassTargetWorld = typeof(passTarget) == "Vector3" and passTarget or nil,
+		PassTargetTeam = {
+			Home = typeof(passTarget) == "Vector3" and PitchConfig.WorldToTeamPitchPosition(passTarget, "Home", options) or nil,
+			Away = typeof(passTarget) == "Vector3" and PitchConfig.WorldToTeamPitchPosition(passTarget, "Away", options) or nil,
+		},
+		PassReceiverName = passReceiver,
 		WorldCupFirstPassPending = ball:GetAttribute("VTRWorldCupFirstPassPending")==true,
 		MotionKind = motionKind,
 		Now = os.clock(),
