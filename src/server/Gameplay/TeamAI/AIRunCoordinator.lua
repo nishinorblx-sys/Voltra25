@@ -206,6 +206,22 @@ function Coordinator.Apply(context: any, side: string, assignments: any, plan: a
 			continue
 		end
 		local isRequested, runKind = requested(planStep, slot)
+		if assignment.OffBallInstruction == "HoldPosition" then
+			if assignment.PlayerContract then assignment.PlayerContract.ReplacementRequirement = "InstructionHoldPosition" end
+			model:SetAttribute("AIInstructionRunAllowed", false)
+			continue
+		elseif assignment.OffBallInstruction == "SupportBall" and runKind == "RunBehind" then
+			model:SetAttribute("AIInstructionRunAllowed", false)
+			continue
+		elseif assignment.OffBallInstruction == "AttackSpace" and not isRequested then
+			if slot.Id == "left-width" or slot.Id == "right-width" or slot.Id == "central-forward" then
+				isRequested = true;runKind = "RunBehind"
+			elseif slot.Id == "left-wingback" or slot.Id == "right-wingback" then
+				isRequested = true;runKind = "Overlap"
+			elseif slot.Id == "second-ball-midfielder" or slot.Id == "between-lines-receiver" then
+				isRequested = true;runKind = "ThirdManRun"
+			end
+		end
 		if roleRules and roleRules.RunTypes and next(roleRules.RunTypes) and runKind and roleRules.RunTypes[runKind] ~= true then
 			isRequested = false
 		end
@@ -263,6 +279,8 @@ function Coordinator.Apply(context: any, side: string, assignments: any, plan: a
 		assignment.RunTarget = targetPitch
 		assignment.RunTrigger = runContract.Trigger
 		assignment.RunExpiry = runContract.Expiry
+		assignment.InstructionEffect = assignment.OffBallInstruction == "AttackSpace" and "AttackSpaceRun" or assignment.InstructionEffect
+		assignment.InstructionRunAllowed = true
 		if assignment.PlayerContract then
 			assignment.PlayerContract.RunContract = runContract
 			assignment.PlayerContract.ReplacementRequirement = "RestDefenseCoverage"

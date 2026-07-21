@@ -2,6 +2,7 @@
 
 local PitchConfig = require(script.Parent.Parent.PitchConfig)
 local AITacticalContract = require(script.Parent.AITacticalContract)
+local AIPlayerInstructionConfig = require(game:GetService("ReplicatedStorage").VTR.Shared.AIPlayerInstructionConfig)
 
 local Solver = {}
 
@@ -61,6 +62,19 @@ local function assignmentCost(context: any, side: string, info: any, slot: any, 
 	cost -= stamina * (slot.SprintAllowed and .055 or .025)
 	if slot.RestDefense and (info.Role == "CB" or info.Role == "Fullback" or info.Role == "CDM") then
 		cost -= 16
+	end
+	if context.OwnerSide == side then
+		if info.OffBallInstruction == "HoldPosition" then
+			cost += PitchConfig.GetDistanceStuds(info.BasePitch, slot.TargetPitch) > 18 and 55 or -12
+			if slot.SprintAllowed then cost += 28 end
+		elseif info.OffBallInstruction == "SupportBall" and (slot.Id == "ball-side-pivot" or slot.Id == "left-support" or slot.Id == "right-support" or slot.Id == "between-lines-receiver") then
+			cost -= 34
+		elseif info.OffBallInstruction == "AttackSpace" and (slot.Line == "Forward" or slot.Id == "left-width" or slot.Id == "right-width" or slot.Id == "central-forward" or slot.Id == "second-ball-midfielder") then
+			cost -= 34
+		end
+	else
+		if info.DefensiveInstruction == "HoldShape" and slot.SprintAllowed then cost += 36 end
+		if info.DefensiveInstruction == "HuntBall" and slot.SprintAllowed then cost -= 34 end
 	end
 	if info.IsUserControlled then
 		cost -= 10
@@ -160,6 +174,9 @@ local function createAssignment(context: any, side: string, info: any, slot: any
 		PlanStep = planStep,
 		MinimumHoldUntil = playerContract.MinimumHoldUntil,
 		ReservedByUser = info.IsUserControlled == true,
+		OffBallInstruction = AIPlayerInstructionConfig.Normalize({OffBall=info.OffBallInstruction,Defending=info.DefensiveInstruction},info.SpecificRole).OffBall,
+		DefensiveInstruction = AIPlayerInstructionConfig.Normalize({OffBall=info.OffBallInstruction,Defending=info.DefensiveInstruction},info.SpecificRole).Defending,
+		InstructionEffect = "",
 	}
 end
 

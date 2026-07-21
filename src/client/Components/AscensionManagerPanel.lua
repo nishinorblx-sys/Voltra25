@@ -6,6 +6,7 @@ local TweenService = game:GetService("TweenService")
 
 local TacticConfig = require(ReplicatedStorage.VTR.Shared.AITacticConfig)
 local FormationConfig = require(ReplicatedStorage.VTR.Shared.FormationConfig)
+local AIPlayerInstructionConfig = require(ReplicatedStorage.VTR.Shared.AIPlayerInstructionConfig)
 local Config = require(ReplicatedStorage.VTR.Shared.CampaignAscensionConfig)
 local Theme = require(script.Parent.ManagerModeTheme)
 local ProgressBar = require(script.Parent.ProgressBar)
@@ -121,6 +122,64 @@ local function cloneSliders(source: any): any
 	return output
 end
 
+local function instructionKey(model: Model): string
+	local cardId = tostring(model:GetAttribute("VTRInstructionCardId") or "")
+	if cardId ~= "" then return "card:" .. cardId end
+	return "model:" .. model.Name
+end
+
+local function cloneInstructions(source: any): any
+	local output = {}
+	if type(source) == "table" then
+		for key, value in pairs(source) do
+			if type(value) == "table" then
+				output[tostring(key)] = {
+					CardId = tostring(value.CardId or ""),
+					ModelName = tostring(value.ModelName or ""),
+					Name = tostring(value.Name or value.ModelName or key),
+					Position = tostring(value.Position or ""),
+					OffBall = tostring(value.OffBall or "SupportBall"),
+					Defending = tostring(value.Defending or "Balanced"),
+				}
+			end
+		end
+	end
+	return output
+end
+
+local function instructionsFromModels(teamModels: any): any
+	local output = {}
+	local home = type(teamModels) == "table" and teamModels.Home or nil
+	if type(home) ~= "table" then return output end
+	for _, model in ipairs(home) do
+		if typeof(model) == "Instance" and model:IsA("Model") then
+			local role = tostring(model:GetAttribute("position") or "")
+			local defaults = AIPlayerInstructionConfig.RoleDefaults(role)
+			local key = instructionKey(model)
+			output[key] = {
+				CardId = tostring(model:GetAttribute("VTRInstructionCardId") or ""),
+				ModelName = model.Name,
+				Name = tostring(model:GetAttribute("DisplayName") or model.Name),
+				Position = role,
+				OffBall = tostring(model:GetAttribute("VTRAttackInstruction") or defaults.OffBall),
+				Defending = tostring(model:GetAttribute("VTRDefensiveInstruction") or defaults.Defending),
+			}
+		end
+	end
+	return output
+end
+
+local function instructionsChanged(a: any, b: any): boolean
+	for key, value in pairs(a or {}) do
+		local other = b and b[key]
+		if type(other) ~= "table" or tostring(value.OffBall) ~= tostring(other.OffBall) or tostring(value.Defending) ~= tostring(other.Defending) then return true end
+	end
+	for key in pairs(b or {}) do
+		if not a or a[key] == nil then return true end
+	end
+	return false
+end
+
 local function formationNames(): {string}
 	local preferred = {"4-3-3", "4-2-3-1", "4-4-2", "3-5-2", "5-3-2", "5V5"}
 	local names = {}
@@ -157,6 +216,7 @@ function ManagerPanel.new(parent: Instance, options: any): any
 		Mentality = normalizeMentality(self.Options.InitialMentality),
 		QuickTactic = nil,
 		Sliders = cloneSliders(startingTactics.Sliders),
+		PlayerInstructions = instructionsFromModels(self.Options.TeamModels),
 	}
 	self.Pending = {
 		TacticalPreset = self.Applied.TacticalPreset,
@@ -164,6 +224,7 @@ function ManagerPanel.new(parent: Instance, options: any): any
 		Mentality = self.Applied.Mentality,
 		QuickTactic = self.Applied.QuickTactic,
 		Sliders = cloneSliders(self.Applied.Sliders),
+		PlayerInstructions = cloneInstructions(self.Applied.PlayerInstructions),
 	}
 	self.Manager = {
 		Total = 0,
@@ -209,8 +270,8 @@ function ManagerPanel.new(parent: Instance, options: any): any
 	titleB.Position = UDim2.new(.50, 0, 0, 0)
 	local subtitle = makeLabel(header, "Adjust your team's approach in real time", UDim2.new(1, -48, 0, 24), 12, Theme.Colors.Silver, Theme.Fonts.Body)
 	subtitle.Position = UDim2.fromOffset(0, 34)
-	local close = makeButton(header, "II", UDim2.fromOffset(38, 38), function()
-		if self.Options.OnSubstitutions then self.Options.OnSubstitutions() end
+	local close = makeButton(header, "X", UDim2.fromOffset(38, 38), function()
+		if self.Options.OnClose then self.Options.OnClose() else self.Root.Visible = false end
 	end)
 	close.Position = UDim2.new(1, -38, 0, 0)
 	close.TextSize = 18
@@ -462,14 +523,50 @@ end
 
 function ManagerPanel:_buildInstructionsPage()
 	local page = self.Pages.Instructions
-	local card = self:_makeCard(page, 168)
+	local card = self:_makeCard(page, 110)
 	makeLabel(card, "PLAYER INSTRUCTIONS", UDim2.new(1, 0, 0, 24), 16, Theme.Colors.White, Theme.Fonts.Display).Position = UDim2.fromOffset(0, 0)
-	makeLabel(card, "Runtime tactical instructions are handled through the style, mentality, and quick tactic systems. Per-player role editing is kept out of live play until it has a server-authoritative apply path.", UDim2.new(1, 0, 0, 86), 12, Theme.Colors.Silver, Theme.Fonts.Body).Position = UDim2.fromOffset(0, 34)
-	local status = makeLabel(card, "LOCKED DURING MATCH", UDim2.new(1, 0, 0, 34), 12, Theme.Colors.Warning, Theme.Fonts.Strong, Enum.TextXAlignment.Center)
-	status.Position = UDim2.fromOffset(0, 118)
-	status.BackgroundColor3 = Theme.Colors.PanelRaised
-	status.BackgroundTransparency = 0
-	makeCorner(status, Theme.Radius.Control)
+	makeLabel(card, "Change the live role behavior for each player. These apply to the current match immediately after Apply Changes.", UDim2.new(1, 0, 0, 54), 12, Theme.Colors.Silver, Theme.Fonts.Body).Position = UDim2.fromOffset(0, 34)
+	self.InstructionRows = {}
+	local rows = {}
+	for key, instruction in pairs(self.Pending.PlayerInstructions or {}) do table.insert(rows, {Key = key, Data = instruction}) end
+	table.sort(rows, function(a, b)
+		local ap = tonumber(string.match(tostring(a.Data.ModelName), "%d+$")) or 99
+		local bp = tonumber(string.match(tostring(b.Data.ModelName), "%d+$")) or 99
+		if ap ~= bp then return ap < bp end
+		return tostring(a.Data.Name) < tostring(b.Data.Name)
+	end)
+	for _, rowData in ipairs(rows) do
+		local instruction = rowData.Data
+		local row = self:_makeCard(page, 154)
+		makeLabel(row, string.upper(instruction.Name), UDim2.new(.64, 0, 0, 22), 13, Theme.Colors.White, Theme.Fonts.Strong).Position = UDim2.fromOffset(0, 0)
+		makeLabel(row, string.upper(instruction.Position), UDim2.new(.32, 0, 0, 22), 11, Theme.Colors.Accent, Theme.Fonts.Strong, Enum.TextXAlignment.Right).Position = UDim2.new(.68, 0, 0, 0)
+		local holders = {OffBall = {}, Defending = {}}
+		local function buildRow(title: string, y: number, order: any, definitions: any, field: string)
+			makeLabel(row, title, UDim2.new(1, 0, 0, 16), 9, Theme.Colors.Silver, Theme.Fonts.Strong).Position = UDim2.fromOffset(0, y)
+			local frame = Instance.new("Frame")
+			frame.BackgroundTransparency = 1
+			frame.Position = UDim2.fromOffset(0, y + 20)
+			frame.Size = UDim2.new(1, 0, 0, 34)
+			frame.ZIndex = 144
+			frame.Parent = row
+			local layout = Instance.new("UIListLayout")
+			layout.FillDirection = Enum.FillDirection.Horizontal
+			layout.Padding = UDim.new(0, 6)
+			layout.Parent = frame
+			for _, id in ipairs(order) do
+				local definition = definitions[id]
+				local button = makeButton(frame, tostring(definition.Short or definition.Name), UDim2.new(1 / 3, -4, 0, 34), function()
+					self.Pending.PlayerInstructions[rowData.Key][field] = id
+					self:_markDirty()
+				end)
+				button.TextSize = 10
+				table.insert(holders[field], {Button = button, Id = id})
+			end
+		end
+		buildRow("OFF-BALL MOVEMENT", 32, AIPlayerInstructionConfig.OffBallOrder, AIPlayerInstructionConfig.OffBall, "OffBall")
+		buildRow("DEFENSIVE ENGAGEMENT", 88, AIPlayerInstructionConfig.DefendingOrder, AIPlayerInstructionConfig.Defending, "Defending")
+		self.InstructionRows[rowData.Key] = holders
+	end
 end
 
 function ManagerPanel:_buildTeamPage()
@@ -532,6 +629,7 @@ function ManagerPanel:_isDirty(): boolean
 	for _, field in SLIDER_FIELDS do
 		if math.floor((tonumber(self.Pending.Sliders[field.Key]) or 0) + .5) ~= math.floor((tonumber(self.Applied.Sliders[field.Key]) or 0) + .5) then return true end
 	end
+	if instructionsChanged(self.Pending.PlayerInstructions, self.Applied.PlayerInstructions) then return true end
 	return false
 end
 
@@ -544,6 +642,7 @@ function ManagerPanel:_apply()
 			Mentality = self.Pending.Mentality,
 			QuickTactic = self.Pending.QuickTactic,
 			Sliders = cloneSliders(self.Pending.Sliders),
+			PlayerInstructions = cloneInstructions(self.Pending.PlayerInstructions),
 		})
 	elseif self.Options.OnAction then
 		self.Options.OnAction("Mentality", self.Pending.Mentality)
@@ -568,6 +667,11 @@ function ManagerPanel:_refreshAll()
 		end
 	end
 	for _, item in QUICK_TACTICS do setButtonSelected(self.QuickButtons[item.Key], item.Key == self.Pending.QuickTactic) end
+	for key, holders in pairs(self.InstructionRows or {}) do
+		local instruction = self.Pending.PlayerInstructions and self.Pending.PlayerInstructions[key]
+		for _, item in ipairs(holders.OffBall or {}) do setButtonSelected(item.Button, instruction and item.Id == instruction.OffBall or false) end
+		for _, item in ipairs(holders.Defending or {}) do setButtonSelected(item.Button, instruction and item.Id == instruction.Defending or false) end
+	end
 	local dirty = self:_isDirty()
 	self.DirtyLabel.Text = dirty and "Pending tactical changes" or "Current plan applied"
 	self.DirtyLabel.TextColor3 = dirty and Theme.Colors.Warning or Theme.Colors.Silver
@@ -621,11 +725,13 @@ function ManagerPanel:Update(manager: any, objective: any?)
 		self.Applied.TacticalPreset = TacticConfig.ResolveId(manager.CurrentTacticalPreset or manager.CurrentQuickTactic or self.Applied.TacticalPreset)
 		self.Applied.QuickTactic = manager.CurrentQuickTactic
 		self.Applied.Sliders = cloneSliders(manager.CurrentSliders or self.Applied.Sliders)
+		if type(manager.CurrentPlayerInstructions) == "table" then self.Applied.PlayerInstructions = cloneInstructions(manager.CurrentPlayerInstructions) end
 		self.Pending.Formation = self.Applied.Formation
 		self.Pending.Mentality = self.Applied.Mentality
 		self.Pending.TacticalPreset = self.Applied.TacticalPreset
 		self.Pending.QuickTactic = self.Applied.QuickTactic
 		self.Pending.Sliders = cloneSliders(self.Applied.Sliders)
+		self.Pending.PlayerInstructions = cloneInstructions(self.Applied.PlayerInstructions)
 	end
 	self.Objective = objective or self.Objective
 	self:_refreshAll()

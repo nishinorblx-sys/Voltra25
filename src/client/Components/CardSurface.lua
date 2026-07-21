@@ -3,6 +3,7 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
 local CardVisualConfig = require(ReplicatedStorage.VTR.Shared.CardVisualConfig)
+local PackOpeningConfig = require(ReplicatedStorage.VTR.Shared.PackOpeningConfig)
 local Theme = require(ReplicatedStorage.VTR.Shared.Theme)
 
 local CardSurface = {}
@@ -13,8 +14,23 @@ local function corner(parent: Instance, radius: number)
 	item.Parent = parent
 end
 
+local function shapeFrame(parent: GuiObject, name: string, color: Color3, position: UDim2, size: UDim2, rotation: number, z: number): Frame
+	local item = Instance.new("Frame")
+	item.Name = name
+	item.BackgroundColor3 = color
+	item.BorderSizePixel = 0
+	item.Position = position
+	item.Rotation = rotation
+	item.Size = size
+	item.ZIndex = z
+	item.Parent = parent
+	return item
+end
+
 function CardSurface.apply(root: GuiObject, rarity: string?, cardType: string?, radius: number?): any
 	local visual = CardVisualConfig.Get(rarity, cardType)
+	local frameStyleName = PackOpeningConfig.FrameStyleForCard({ Rarity = rarity or "", CardType = cardType or "Base" })
+	local frameStyle = CardVisualConfig.FrameStyles[frameStyleName] or CardVisualConfig.FrameStyleFor(rarity, cardType)
 	root.BackgroundColor3 = visual.primaryColor
 	root.BorderSizePixel = 0
 	root.ClipsDescendants = true
@@ -33,9 +49,35 @@ function CardSurface.apply(root: GuiObject, rarity: string?, cardType: string?, 
 	local stroke = Instance.new("UIStroke")
 	stroke.Name = "RarityBorder"
 	stroke.Color = visual.trimColor
-	stroke.Thickness = visual.borderStyle == "Electric" and 2 or 1
+	stroke.Thickness = math.max(visual.borderStyle == "Electric" and 2 or 1, tonumber(frameStyle.BorderThickness) or 2)
 	stroke.Transparency = visual.borderStyle == "Single" and 0.25 or 0.05
 	stroke.Parent = root
+	local outerGlow = Instance.new("UIStroke")
+	outerGlow.Name = "HeroPerimeterGlow"
+	outerGlow.Color = visual.glowColor
+	outerGlow.Thickness = tonumber(frameStyle.GlowThickness) or 5
+	outerGlow.Transparency = 0.72
+	outerGlow.Parent = root
+	local topInset = tonumber(frameStyle.TopInset) or 0.16
+	local shoulder = tonumber(frameStyle.Shoulder) or 0.12
+	local bottomInset = tonumber(frameStyle.BottomInset) or 0.08
+	local shapeGlow = Instance.new("UIStroke")
+	shapeGlow.Name = "CardShapeGlow"
+	shapeGlow.Color = visual.glowColor
+	shapeGlow.Thickness = 1
+	shapeGlow.Transparency = 0.82
+	shapeGlow.Parent = root
+	local crown = shapeFrame(root, "SculptedTopCrown", visual.trimColor, UDim2.fromScale(0.5 - topInset * 0.5, 0.015), UDim2.fromScale(topInset, 0.055), 0, root.ZIndex + 3)
+	corner(crown, math.max(3, (radius or 8) - 4))
+	local leftShoulder = shapeFrame(root, "SculptedLeftShoulder", visual.trimColor, UDim2.fromScale(-0.02, 0.08), UDim2.fromScale(shoulder, 0.24), -18, root.ZIndex + 3)
+	local rightShoulder = shapeFrame(root, "SculptedRightShoulder", visual.trimColor, UDim2.fromScale(1 - shoulder + 0.02, 0.08), UDim2.fromScale(shoulder, 0.24), 18, root.ZIndex + 3)
+	leftShoulder.BackgroundTransparency = 0.18
+	rightShoulder.BackgroundTransparency = 0.18
+	local bottomLip = shapeFrame(root, "SculptedBottomLip", visual.glowColor, UDim2.fromScale(0.5 - bottomInset * 0.5, 0.93), UDim2.fromScale(bottomInset, 0.045), 0, root.ZIndex + 3)
+	corner(bottomLip, 4)
+	if visual.animationStyle ~= "None" and workspace:GetAttribute("VTRReducedMotion") ~= true then
+		TweenService:Create(outerGlow, TweenInfo.new(1.25, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true), { Transparency = 0.36 }):Play()
+	end
 	if visual.borderStyle == "Double" or visual.borderStyle == "Electric" then
 		local inner = Instance.new("Frame")
 		inner.Name = "InnerBorder"

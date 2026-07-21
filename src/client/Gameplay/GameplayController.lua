@@ -1302,6 +1302,120 @@ function Controller:_updateTacticalActionLabels(force:boolean?)
 		end
 	end
 end
+function Controller:_teamModelsForSide(side:string): {Model}
+	local teams=self.TeamModels
+	if type(teams)~="table"then return{}end
+	local direct=teams[side]
+	if type(direct)=="table"then return direct end
+	local found={}
+	for _,group in teams do
+		if type(group)=="table"then
+			for _,model in group do
+				if typeof(model)=="Instance"and model:IsA("Model")and tostring(model:GetAttribute("VTRTeam")or"")==side then
+					table.insert(found,model)
+				end
+			end
+		end
+	end
+	return found
+end
+function Controller:_sideForPlayerName(name:string): string?
+	if name==""then return nil end
+	for _,side in{"Home","Away"}do
+		for _,model in self:_teamModelsForSide(side)do
+			if model.Name==name then return side end
+		end
+	end
+	return nil
+end
+function Controller:_analysisLine(side:string): string
+	local models=self:_teamModelsForSide(side)
+	local ownerName=tostring(self.Ball and self.Ball:GetAttribute("OwnerModel")or"")
+	local ownerSide=self:_sideForPlayerName(ownerName)
+	local motionKind=tostring(self.Ball and self.Ball:GetAttribute("VTRMotionKind")or"")
+	local passTeam=tostring(self.Ball and self.Ball:GetAttribute("VTRPassTeam")or"")
+	local passReceiver=tostring(self.Ball and self.Ball:GetAttribute("VTRPassReceiver")or"")
+	local throughCount=0
+	local receiveCount=0
+	local pressCount=0
+	local restCount=0
+	local slotCounts={}
+	for _,model in models do
+		if model:GetAttribute("VTRThroughSpacePass")==true then throughCount+=1 end
+		if model:GetAttribute("VTRReceivePassFamily")~=nil or model:GetAttribute("VTRReceiveTarget")~=nil then receiveCount+=1 end
+		local assignment=tostring(model:GetAttribute("currentAssignment")or model:GetAttribute("AIAssignment")or"")
+		if string.find(string.lower(assignment),"press",1,true)then pressCount+=1 end
+		if model:GetAttribute("AIRestDefense")==true or string.find(string.lower(assignment),"rest",1,true)then restCount+=1 end
+		local slot=tostring(model:GetAttribute("AITacticalSlot")or model:GetAttribute("SupportRole")or model:GetAttribute("position")or"")
+		if slot~=""then slotCounts[slot]=(slotCounts[slot]or 0)+1 end
+	end
+	local strongestSlot,slotTotal="",0
+	for slot,total in slotCounts do
+		if total>slotTotal then strongestSlot,slotTotal=slot,total end
+	end
+	local teamState
+	if motionKind=="Pass"and(passTeam==side or passTeam=="")and passReceiver~=""then
+		teamState="pass target "..passReceiver
+	elseif ownerSide==side then
+		teamState="in possession"
+	elseif ownerSide and ownerSide~=side then
+		teamState="defending block"
+	elseif motionKind=="Shot"then
+		teamState="shot reaction"
+	else
+		teamState="loose ball race"
+	end
+	return string.format("%s  |  recv %d  through %d  press %d  rest %d  lane %s",teamState,receiveCount,throughCount,pressCount,restCount,strongestSlot~=""and strongestSlot or"balanced")
+end
+function Controller:_createAnalysisBoard()
+	if not self.HUD or not self.HUD.Gui then return end
+	local old=self.HUD.Gui:FindFirstChild("AIAnalysisBoard");if old then old:Destroy()end
+	local board=Instance.new("Frame");board.Name="AIAnalysisBoard";board.AnchorPoint=Vector2.new(1,.5);board.BackgroundColor3=Color3.fromHex("050907");board.BackgroundTransparency=.08;board.BorderSizePixel=0;board.Position=UDim2.new(1,-18,.5,10);board.Size=UDim2.fromOffset(340,292);board.ZIndex=172;board.Parent=self.HUD.Gui;self:_trackTemporary(board);self.AnalysisBoard=board
+	local corner=Instance.new("UICorner");corner.CornerRadius=UDim.new(0,10);corner.Parent=board
+	local stroke=Instance.new("UIStroke");stroke.Color=Color3.fromHex("55E6FF");stroke.Thickness=1;stroke.Transparency=.24;stroke.Parent=board
+	local glow=Instance.new("UIStroke");glow.Color=Color3.fromHex("B7FF1A");glow.Thickness=3;glow.Transparency=.82;glow.Parent=board
+	local title=Instance.new("TextLabel");title.BackgroundTransparency=1;title.Position=UDim2.fromOffset(16,12);title.Size=UDim2.new(1,-32,0,26);title.Text="ANALYSIS BOARD";title.TextColor3=Color3.fromHex("EFFFFF");title.TextSize=18;title.Font=Enum.Font.GothamBlack;title.TextXAlignment=Enum.TextXAlignment.Left;title.ZIndex=173;title.Parent=board
+	local subtitle=Instance.new("TextLabel");subtitle.BackgroundTransparency=1;subtitle.Position=UDim2.fromOffset(16,39);subtitle.Size=UDim2.new(1,-32,0,18);subtitle.Text="live team shape, pass routes, pressure";subtitle.TextColor3=Color3.fromHex("8FEAFF");subtitle.TextSize=10;subtitle.Font=Enum.Font.GothamBold;subtitle.TextXAlignment=Enum.TextXAlignment.Left;subtitle.ZIndex=173;subtitle.Parent=board
+	self.AnalysisLabels={}
+	local rows={{"Ball","Ball"},{"Home","Home"},{"Away","Away"},{"Press","Press"},{"Lines","Lines"},{"Through","Through"}}
+	for index,row in ipairs(rows)do
+		local y=66+(index-1)*34
+		local label=Instance.new("TextLabel");label.BackgroundTransparency=1;label.Position=UDim2.fromOffset(16,y);label.Size=UDim2.fromOffset(68,24);label.Text=string.upper(row[1]);label.TextColor3=Color3.fromHex("B7FF1A");label.TextSize=10;label.Font=Enum.Font.GothamBlack;label.TextXAlignment=Enum.TextXAlignment.Left;label.ZIndex=173;label.Parent=board
+		local value=Instance.new("TextLabel");value.BackgroundColor3=Color3.fromHex("101612");value.BackgroundTransparency=.18;value.BorderSizePixel=0;value.Position=UDim2.fromOffset(86,y-2);value.Size=UDim2.new(1,-102,0,28);value.Text="reading...";value.TextColor3=Color3.fromHex("F6FFF8");value.TextSize=10;value.Font=Enum.Font.Code;value.TextXAlignment=Enum.TextXAlignment.Left;value.TextTruncate=Enum.TextTruncate.AtEnd;value.ZIndex=173;value.Parent=board;self.AnalysisLabels[row[2]]=value
+		local pad=Instance.new("UIPadding");pad.PaddingLeft=UDim.new(0,8);pad.Parent=value
+	end
+	self:_updateAnalysisBoard(true)
+end
+function Controller:_updateAnalysisBoard(force:boolean?)
+	if not self.AnalysisLabels then return end
+	local now=os.clock()
+	if force~=true and now-(tonumber(self.AnalysisBoardUpdatedAt)or 0)<.18 then return end
+	self.AnalysisBoardUpdatedAt=now
+	local ownerName=tostring(self.Ball and self.Ball:GetAttribute("OwnerModel")or"")
+	local motionKind=tostring(self.Ball and self.Ball:GetAttribute("VTRMotionKind")or"")
+	local passReceiver=tostring(self.Ball and self.Ball:GetAttribute("VTRPassReceiver")or"")
+	local passTeam=tostring(self.Ball and self.Ball:GetAttribute("VTRPassTeam")or"")
+	local ballText=ownerName~=""and("owned by "..ownerName)or(motionKind=="Pass"and passReceiver~=""and("pass "..passTeam.." -> "..passReceiver)or(motionKind~=""and motionKind or"free"))
+	local homeLineGap=tonumber(workspace:GetAttribute("VTRAIMetricHomeBackMidGap")or workspace:GetAttribute("VTRHomeBackMidGap")or 0)or 0
+	local awayLineGap=tonumber(workspace:GetAttribute("VTRAIMetricAwayBackMidGap")or workspace:GetAttribute("VTRAwayBackMidGap")or 0)or 0
+	local homeWidth=tonumber(workspace:GetAttribute("VTRAIMetricHomeBlockWidthVariance")or workspace:GetAttribute("VTRHomeBlockWidthVariance")or 0)or 0
+	local awayWidth=tonumber(workspace:GetAttribute("VTRAIMetricAwayBlockWidthVariance")or workspace:GetAttribute("VTRAwayBlockWidthVariance")or 0)or 0
+	local throughText=passReceiver~=""and("route locked to "..passReceiver)or"scan forward runners"
+	for _,side in{"Home","Away"}do
+		for _,model in self:_teamModelsForSide(side)do
+			if model:GetAttribute("VTRThroughSpacePass")==true then
+				throughText=side.." through space +"..tostring(math.floor(tonumber(model:GetAttribute("VTRThroughSpaceAhead"))or 0)).." studs"
+				break
+			end
+		end
+	end
+	if self.AnalysisLabels.Ball then self.AnalysisLabels.Ball.Text=ballText end
+	if self.AnalysisLabels.Home then self.AnalysisLabels.Home.Text=self:_analysisLine("Home")end
+	if self.AnalysisLabels.Away then self.AnalysisLabels.Away.Text=self:_analysisLine("Away")end
+	if self.AnalysisLabels.Press then self.AnalysisLabels.Press.Text="1-2 pressers, lanes stay covered"end
+	if self.AnalysisLabels.Lines then self.AnalysisLabels.Lines.Text=string.format("gaps H %.0f / A %.0f  width %.0f / %.0f",homeLineGap,awayLineGap,homeWidth,awayWidth)end
+	if self.AnalysisLabels.Through then self.AnalysisLabels.Through.Text=throughText end
+end
 function Controller:_createDefaultActionReadout()
 	if not self.HUD or not self.HUD.Gui then return end
 	local old=self.HUD.Gui:FindFirstChild("AIDefaultActionReadout");if old then old:Destroy()end
@@ -1317,14 +1431,7 @@ function Controller:_createDefaultActionReadout()
 	self:_updateTacticalActionLabels(true)
 end
 function Controller:_toggleTacticalMode()
-	if not self.MatchData or self.MatchData.DeveloperAccess~=true then return end
-	if not self.TacticalOverlay then self:_createTacticalPanel()end
-	self.TacticalMode=not self.TacticalMode
-	if self.TacticalOverlay then self.TacticalOverlay.Visible=self.TacticalMode end
-	if self.Camera and self.Camera.SetTacticalView then self.Camera:SetTacticalView(self.TacticalMode,true)end
-	if not self.TacticalMode then
-		self:_sendRuntimeTactics(self.TacticalSide)
-	end
+	return
 end
 function Controller:_createTacticalPanel()
 	if not self.HUD or not self.HUD.Gui then return end
@@ -1509,6 +1616,7 @@ function Controller:_activate(data:any)
 			InitialMentality=initialTactics.Identity or"Balanced",
 			InitialTacticalPreset=initialTactics.PresetId,
 			InitialFormation=data.HomeFormation or data.Setup.HomeFormation or"4-3-3",
+			TeamModels=data.TeamModels,
 			SelectOnOpen=UserInputService.GamepadEnabled,
 			OnAction=function(action:string,value:string?)
 				if self.Action then self.Action:FireServer({Type="CampaignManagerAction",Action=action,Value=value})end
@@ -1517,6 +1625,9 @@ function Controller:_activate(data:any)
 				if self.Action then self.Action:FireServer({Type="CampaignManagerApply",Changes=changes})end
 			end,
 			OnSubstitutions=function()self:_setPaused(true)end,
+			OnClose=function()
+				if self.AscensionManagerPanel then self.AscensionManagerPanel:Destroy();self.AscensionManagerPanel=nil end
+			end,
 		})
 	end
 	if self.WatchMode then
@@ -1538,17 +1649,12 @@ function Controller:_activate(data:any)
 	if self.HUD and self.HUD.TouchFirstSession and self.Minimap then self.Minimap:SetMode("Off")end
 	self.AnimationCache={};for _,side in data.TeamModels do for _,footballer in side do self.AnimationCache[footballer]=AnimationController.new(footballer)end end
 	if self.ReplayController then self.ReplayController:Destroy()end;self.ReplayController=ReplayController.new(data,ball)
-	if data.DeveloperAccess==true then self.RuntimeTactics={Home=LiteConfig.DefaultTactics(),Away=LiteConfig.DefaultTactics()};self.RuntimeTactics.Home.Formation=data.HomeFormation or"4-3-3";self.RuntimeTactics.Away.Formation=data.AwayFormation or"4-3-3";applyTacticIdentity(self.RuntimeTactics.Home,1);applyTacticIdentity(self.RuntimeTactics.Away,1);self:_createDefaultActionReadout();self:_createTacticalPanel();self:_sendRuntimeTactics("Home");self:_sendRuntimeTactics("Away")end
+	if data.DeveloperAccess==true then self.RuntimeTactics={Home=LiteConfig.DefaultTactics(),Away=LiteConfig.DefaultTactics()};self.RuntimeTactics.Home.Formation=data.HomeFormation or"4-3-3";self.RuntimeTactics.Away.Formation=data.AwayFormation or"4-3-3";applyTacticIdentity(self.RuntimeTactics.Home,1);applyTacticIdentity(self.RuntimeTactics.Away,1);self:_createAnalysisBoard();self:_sendRuntimeTactics("Home");self:_sendRuntimeTactics("Away")end
 	self.HUD:SetResumeCallback(function()self:_setPaused(false)end)
 	self.Lifecycle:BindActionAtPriority(PAUSE_ACTION,function(_,state)if state==Enum.UserInputState.Begin and self.Active then self:_setPaused(not self.Paused)end;return Enum.ContextActionResult.Sink end,false,Enum.ContextActionPriority.High.Value+200,Enum.KeyCode.ButtonSelect,Enum.KeyCode.ButtonStart)
 	self.PauseConnection=self:_trackConnection(UserInputService.InputBegan:Connect(function(input,processed)
 		if not self.Active then return end
 		if input.KeyCode==(self.PauseKey or Enum.KeyCode.M) then self:_setPaused(not self.Paused);return end
-		if input.KeyCode==Enum.KeyCode.Eight and not processed and self.MatchData and self.MatchData.DeveloperAccess==true then
-			self:_toggleTacticalMode()
-			if self.HUD then self.HUD:Flash(self.TacticalMode and"AI BEHAVIOR LAB"or"LIVE CAMERA",.75)end
-			return
-		end
 		if input.KeyCode==Enum.KeyCode.One and not processed and self.Camera and self.Camera.ToggleShootingFocus and self.MatchInPlay and not self.Paused and self.WatchMode~=true then
 			local enabled:boolean
 			if self.WorldCupOnboardingTrainer and self.Camera.SetShootingFocus then
@@ -1861,7 +1967,7 @@ function Controller:_update(dt:number)
 		self.Trainer:Update()
 	end
 	self.Minimap:Update(dt)
-	self:_updateTacticalActionLabels(false)
+	self:_updateAnalysisBoard(false)
 	if self.Paused then return end
 	if not self.MatchInPlay and self.ActiveModel:GetAttribute("VTRForceIdle")==true then
 		self.Animation:Play(self.ActiveModel:GetAttribute("position")=="GK"and"GoalkeeperIdle"or"Idle")
@@ -2161,7 +2267,7 @@ function Controller:_state(payload:any)
 		end
 		local function showRewardsThenResult()
 			local rankedWin = payload.Ranked == true and (payload.Result == "Win" or payload.Result == "ForfeitWin")
-			if rankedWin and self.HUD and self.HUD.Gui then
+			if rankedWin and type(payload.RankedWinPack)=="table" and self.HUD and self.HUD.Gui then
 				VoltraPackRoulette.Play(self.HUD.Gui,payload,showResult)
 			else
 				showResult()

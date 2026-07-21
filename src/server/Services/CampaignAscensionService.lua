@@ -202,7 +202,7 @@ end
 function Service:RecordManagerInteraction(player: Player, session: any, kind: string, metadata: any?): (boolean, any?)
 	if type(session) ~= "table" or session.Player ~= player or type(session.CampaignAscension) ~= "table" or type(session.Setup) ~= "table" or session.Setup.WatchMode ~= true then return false, nil end
 	local manager = session.CampaignManager
-	if type(manager) ~= "table" or not table.find({ "Mentality", "Formation", "HalftimeInstruction", "Substitution" }, kind) then return false, nil end
+	if type(manager) ~= "table" or not table.find({ "Mentality", "Formation", "HalftimeInstruction", "Substitution", "PlayerInstructions" }, kind) then return false, nil end
 	local now = os.clock()
 	if now - (tonumber(manager.LastActionAt) or 0) < 0.35 then return false, manager end
 	manager.LastActionAt = now
@@ -219,6 +219,9 @@ function Service:RecordManagerInteraction(player: Player, session: any, kind: st
 		manager.HalftimeInstructions = (tonumber(manager.HalftimeInstructions) or 0) + 1
 	elseif kind == "Substitution" then
 		manager.Substitutions = (tonumber(manager.Substitutions) or 0) + 1
+	elseif kind == "PlayerInstructions" then
+		manager.TacticalChanges = (tonumber(manager.TacticalChanges) or 0) + 1
+		manager.PlayerInstructionChanges = (tonumber(manager.PlayerInstructionChanges) or 0) + 1
 	end
 	if type(metadata) == "table" and metadata.AfterHalf == true then
 		manager.AfterHalf = true

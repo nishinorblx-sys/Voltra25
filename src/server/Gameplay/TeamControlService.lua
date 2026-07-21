@@ -157,7 +157,8 @@ function Service:_set(player: Player, model: Model, reason: string)
 	if (tonumber(model:GetAttribute("VTRStunnedUntil")) or 0) > os.clock() then return end
 	local previous = self.Active[player]
 	if previous == model then return end
-	if reason == "Manual" and previous and self.Reception then
+	local preservedReception = reason == "Manual" and self.Reception and self.Reception.ManualSwitchToReceiver and self.Reception:ManualSwitchToReceiver(player, model) or false
+	if reason == "Manual" and previous and self.Reception and not preservedReception then
 		self.Reception:CancelForPlayer(player, "ManualOverride")
 	end
 	if previous then

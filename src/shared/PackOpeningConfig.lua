@@ -5,6 +5,35 @@ local Config = {}
 Config.PackOpenSoundId = "rbxassetid://76159397654832"
 Config.PackOpenSoundDelaySeconds = 0.7
 Config.PackOpenSoundVolume = 0.65
+Config.PremiumWalkoutMinimumRating = 85
+Config.SuperWalkoutMinimumRating = 90
+Config.PremiumConfettiEnabled = true
+Config.PremiumPyroEnabled = true
+Config.PremiumSmokeEnabled = true
+
+Config.ForcePremiumRarities = table.freeze({})
+
+Config.WalkoutColorPalettes = table.freeze({
+	Base = table.freeze({ Main = Color3.fromHex("B7FF1A"), Accent = Color3.fromHex("FFFFFF"), Secondary = Color3.fromHex("55F2D2"), Dark = Color3.fromHex("071009") }),
+	Gold = table.freeze({ Main = Color3.fromHex("B7FF1A"), Accent = Color3.fromHex("FFD84A"), Secondary = Color3.fromHex("FFFFFF"), Dark = Color3.fromHex("1F1805") }),
+	Rare = table.freeze({ Main = Color3.fromHex("B7FF1A"), Accent = Color3.fromHex("E6C24F"), Secondary = Color3.fromHex("FFFFFF"), Dark = Color3.fromHex("102407") }),
+	Elite = table.freeze({ Main = Color3.fromHex("B7FF1A"), Accent = Color3.fromHex("B86DFF"), Secondary = Color3.fromHex("FFFFFF"), Dark = Color3.fromHex("0B0615") }),
+	Legendary = table.freeze({ Main = Color3.fromHex("B7FF1A"), Accent = Color3.fromHex("FFCB45"), Secondary = Color3.fromHex("FFFFFF"), Dark = Color3.fromHex("070707") }),
+	Limited = table.freeze({ Main = Color3.fromHex("B7FF1A"), Accent = Color3.fromHex("FF5C91"), Secondary = Color3.fromHex("FFE45C"), Dark = Color3.fromHex("180711") }),
+	Icon = table.freeze({ Main = Color3.fromHex("E2BE63"), Accent = Color3.fromHex("FFF3C7"), Secondary = Color3.fromHex("B7FF1A"), Dark = Color3.fromHex("17120A") }),
+	Mythic = table.freeze({ Main = Color3.fromHex("B7FF1A"), Accent = Color3.fromHex("FFFFFF"), Secondary = Color3.fromHex("57FFB0"), Dark = Color3.fromHex("020302") }),
+})
+
+Config.CardFrameStyle = table.freeze({
+	Base = "Premium",
+	Gold = "Premium",
+	Rare = "Premium",
+	Elite = "Elite",
+	Legendary = "Elite",
+	Limited = "Limited",
+	Icon = "Icon",
+	Mythic = "Mythic",
+})
 
 Config.RarityRank = table.freeze({
 	Starter = 1,
@@ -73,7 +102,7 @@ Config.Tiers = table.freeze({
 		WalkDuration = 1.7,
 		Clues = table.freeze({ "Rarity", "Nationality", "Position", "Club" }),
 		Rarities = table.freeze({ Elite = true, Legendary = true }),
-		MinimumRating = 86,
+		MinimumRating = Config.PremiumWalkoutMinimumRating,
 	}),
 	SuperWalkout = table.freeze({
 		Rank = 4,
@@ -87,7 +116,7 @@ Config.Tiers = table.freeze({
 		WalkDuration = 2,
 		Clues = table.freeze({ "Rarity", "Nationality", "Position", "Club" }),
 		Rarities = table.freeze({ Icon = true, Mythic = true }),
-		MinimumRating = 90,
+		MinimumRating = Config.SuperWalkoutMinimumRating,
 	}),
 })
 
@@ -167,6 +196,24 @@ local function tierRank(tier: string): number
 	return tonumber(Config.Tiers[tier] and Config.Tiers[tier].Rank) or 0
 end
 
+function Config.PaletteForCard(card: any): any
+	local cardRarity = rarity(card)
+	local cardTypeName = cardType(card)
+	if cardTypeName == "Limited" then return Config.WalkoutColorPalettes.Limited end
+	if cardTypeName == "Mythic" or cardTypeName == "Storm" then return Config.WalkoutColorPalettes.Mythic end
+	if cardTypeName == "Champion" then return Config.WalkoutColorPalettes.Gold end
+	if cardTypeName == "Voltra Hero" or cardTypeName == "Hero" then return Config.WalkoutColorPalettes.Legendary end
+	return Config.WalkoutColorPalettes[cardRarity] or Config.WalkoutColorPalettes.Base
+end
+
+function Config.FrameStyleForCard(card: any): string
+	local cardTypeName = cardType(card)
+	if cardTypeName == "Limited" then return "Limited" end
+	if cardTypeName == "Mythic" or cardTypeName == "Storm" then return "Mythic" end
+	if cardTypeName == "Champion" or cardTypeName == "Voltra Hero" or cardTypeName == "Hero" then return "Elite" end
+	return tostring(Config.CardFrameStyle[rarity(card)] or Config.CardFrameStyle.Base)
+end
+
 function Config.SortReveals(reveals: any): { any }
 	local result = {}
 	for _, card in reveals or {} do table.insert(result, card) end
@@ -187,11 +234,14 @@ function Config.TierForCard(card: any): string
 	local best = "QuickReveal"
 	local cardRarity = rarity(card)
 	local cardRating = rating(card)
+	local premiumAllowed = cardRating >= Config.PremiumWalkoutMinimumRating or Config.ForcePremiumRarities[cardRarity] == true
 	local typeTier = Config.SpecialCardTypes[cardType(card)]
-	if typeTier and tierRank(typeTier) > tierRank(best) then best = typeTier end
+	if typeTier and (premiumAllowed or tierRank(typeTier) < tierRank("Walkout")) and tierRank(typeTier) > tierRank(best) then best = typeTier end
 	for tierName, tier in Config.Tiers do
-		if tier.Rarities and tier.Rarities[cardRarity] and tierRank(tierName) > tierRank(best) then best = tierName end
-		if tier.MinimumRating and cardRating >= tier.MinimumRating and tierRank(tierName) > tierRank(best) then best = tierName end
+		local rank = tierRank(tierName)
+		local walkoutTier = tier.Walkout == true
+		if tier.Rarities and tier.Rarities[cardRarity] and (not walkoutTier or premiumAllowed) and rank > tierRank(best) then best = tierName end
+		if tier.MinimumRating and cardRating >= tier.MinimumRating and rank > tierRank(best) then best = tierName end
 	end
 	return best
 end
@@ -224,8 +274,11 @@ function Config.PhaseTimeline(selection: any): { any }
 			{ Name = "Preparing", Duration = 0.08 },
 			{ Name = "Blackout", Duration = 0.12 },
 			{ Name = "PackRupture", Duration = 0.18 },
-			{ Name = "RatingReveal", Duration = 0.34 },
-			{ Name = "NameReveal", Duration = 0.25 },
+			{ Name = "Silhouette", Duration = 0.16 },
+			{ Name = "Walkout", Duration = 0.8 },
+			{ Name = "Celebration", Duration = 1.05 },
+			{ Name = "RatingReveal", Duration = 0.7 },
+			{ Name = "NameReveal", Duration = 0.75 },
 			{ Name = "HeroHold", Duration = tonumber(tier.HeroHold) and math.min(tier.HeroHold, 0.45) or 0.35 },
 			{ Name = "RemainingCards", Duration = 0.18 },
 			{ Name = "Results", Duration = 0 },
@@ -238,10 +291,13 @@ function Config.PhaseTimeline(selection: any): { any }
 			{ Name = "TunnelIgnition", Duration = 0.42 },
 			{ Name = "PackEntrance", Duration = 0.35 },
 			{ Name = "EnergyCharge", Duration = tier.Rank >= 2 and 0.55 or 0.28 },
-			{ Name = "ClueSequence", Duration = tier.Rank >= 2 and 0.72 or 0 },
+			{ Name = "ClueSequence", Duration = tier.Rank >= 2 and 2.25 or 0 },
 			{ Name = "PackRupture", Duration = 0.24 },
-			{ Name = "RatingReveal", Duration = 0.38 },
-			{ Name = "NameReveal", Duration = 0.28 },
+			{ Name = "Silhouette", Duration = 0.24 },
+			{ Name = "Walkout", Duration = 1.15 },
+			{ Name = "Celebration", Duration = 1.05 },
+			{ Name = "RatingReveal", Duration = 0.85 },
+			{ Name = "NameReveal", Duration = 0.85 },
 			{ Name = "HeroHold", Duration = tier.HeroHold },
 			{ Name = "RemainingCards", Duration = 0.28 },
 			{ Name = "Results", Duration = 0 },
@@ -253,13 +309,13 @@ function Config.PhaseTimeline(selection: any): { any }
 		{ Name = "TunnelIgnition", Duration = 0.55 },
 		{ Name = "PackEntrance", Duration = 0.45 },
 		{ Name = "EnergyCharge", Duration = 0.78 + tier.Intensity * 0.35 },
-		{ Name = "ClueSequence", Duration = tier.Rank >= 4 and 1.45 or 1.05 },
+		{ Name = "ClueSequence", Duration = tier.Rank >= 4 and 3.2 or 2.8 },
 		{ Name = "PackRupture", Duration = 0.32 },
 		{ Name = "Silhouette", Duration = 0.42 },
 		{ Name = "Walkout", Duration = tier.WalkDuration or 1.7 },
-		{ Name = "Celebration", Duration = 0.72 },
-		{ Name = "RatingReveal", Duration = 0.72 },
-		{ Name = "NameReveal", Duration = 0.42 },
+		{ Name = "Celebration", Duration = 4.35 },
+		{ Name = "RatingReveal", Duration = 1.25 },
+		{ Name = "NameReveal", Duration = 1.35 },
 		{ Name = "HeroHold", Duration = tier.HeroHold },
 		{ Name = "RemainingCards", Duration = 0.44 },
 		{ Name = "Results", Duration = 0 },

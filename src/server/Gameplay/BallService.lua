@@ -1366,6 +1366,7 @@ function Service:Kick(model: Model, kind: string, direction: Vector3, charge: nu
 		end
 		self.LastShooter=model
 		self.Stats:RecordShot(model,shotOnTarget,shotChance)
+		VTRGoalPassThrough.Force(self.Ball, shotType=="Penalty" and 3.1 or 1.85)
 	elseif kind == "Skill" then
 		self.Ball:SetAttribute("VTRPassStartedAt", nil)
 		self.Ball:SetAttribute("VTRPassTeam", nil)
@@ -1389,9 +1390,14 @@ function Service:Kick(model: Model, kind: string, direction: Vector3, charge: nu
 	self.MotionKind = kind
 	self.MotionStarted = os.clock()
 	self.Ball:SetAttribute("VTRMotionKind",kind)
+	local releaseBlock = kind == "Shot" and 0.55 or kind == "Pass" and 0.82 or 0.25
 	local kinematicStarted = self:_startKinematicFlight(model, kind, velocity, amount, receiver, passType, kind == "Pass" and self.PassTargetPoint or (self.ShotPlan and self.ShotPlan.Target or targetPoint))
+	if kind == "Pass" then
+		local travel = (passDistance or direction.Magnitude) / math.max(Vector3.new(velocity.X, 0, velocity.Z).Magnitude, 1)
+		self.Possession:Block(model, math.clamp(travel * 0.55, 0.82, 1.35))
+	end
 	if not kinematicStarted then
-		self.Possession:Release(velocity, kind == "Shot" and 0.55 or 0.25)
+		self.Possession:Release(velocity, releaseBlock)
 		if kind == "Pass" and self.PendingCurve then self.Curve:Start(self.PendingCurve.Model,self.PendingCurve.Direction,self.PendingCurve.Speed,self.PendingCurve.Distance);self.PendingCurve=nil elseif not (kind=="Pass" and self.PassCurveStarted==true) and (kind=="Pass"or kind~="Shot")then self.Curve:Stop()end
 	else
 		self.PendingCurve=nil

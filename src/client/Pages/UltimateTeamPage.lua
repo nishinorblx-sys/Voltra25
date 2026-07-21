@@ -33,14 +33,13 @@ local LiteConfig=require(ReplicatedStorage.VTR.Shared.VTRLiteConfig)
 local AIBehaviorTuningConfig=require(ReplicatedStorage.VTR.Shared.AIBehaviorTuningConfig)
 local QuickSellValueConfig=require(ReplicatedStorage.VTR.Shared.QuickSellValueConfig)
 local PlayabilityUnlockConfig=require(ReplicatedStorage.VTR.Shared.PlayabilityUnlockConfig)
-local AIMovementProfileConfig=require(ReplicatedStorage.VTR.Shared.AIMovementProfileConfig)
+local AIPlayerInstructionConfig=require(ReplicatedStorage.VTR.Shared.AIPlayerInstructionConfig)
 
 local UltimateTeamPage={}
 local TABS={"Starting XI","Bench","Reserves","Club","Customize"}
 local POSITIONS={"ALL","GK","LB","CB","RB","CDM","CM","CAM","LW","ST","RW"}
 local RARITIES={"ALL","STARTER","COMMON","BRONZE","SILVER","GOLD","RARE","ELITE","LEGENDARY","ICON","MYTHIC"}
 local RARITY_RANK={COMMON=1,STARTER=2,BRONZE=3,SILVER=4,GOLD=5,RARE=6,ELITE=7,LEGENDARY=8,ICON=9,MYTHIC=10}
-local TACTIC_PRESETS=LiteConfig.TacticPresetOrder
 local TACTIC_FORMATIONS={"4-3-3","4-2-3-1","4-4-2","4-1-2-1-2","4-5-1","3-4-3","4-3-2-1","3-5-2","5-3-2"}
 local TACTIC_IDENTITIES={{Id="basic_possession",Label="Slow Build Up",Name="SAFE Possession",PresetId="balanced_control"},{Id="quick_passing",Label="Tiki-Taka",Name="Quick Passing",PresetId="short_possession"}}
 local TACTIC_BEHAVIOR_CONTROLS={
@@ -69,6 +68,74 @@ end
 local function corner(parent:Instance,radius:number) local value=Instance.new("UICorner");value.CornerRadius=UDim.new(0,radius);value.Parent=parent end
 local function rosterMeta(snapshot:any,card:any):any return snapshot.CardMeta and snapshot.CardMeta[card.Id] or card.Meta or {} end
 local function indexOrDefault(list:{string},value:any,defaultIndex:number):number local numeric=tonumber(value);if numeric and list[numeric]then return numeric end;for index,item in list do if item==value then return index end end;return defaultIndex end
+local function setSimpleTacticControl(tactics:any,key:string,value:number)
+	tactics.Sliders=tactics.Sliders or{}
+	tactics.MetricsTargets=tactics.MetricsTargets or{}
+	value=math.clamp(value,0,100)
+	if key=="DefensiveLineReach"then
+		tactics.Sliders.DefensiveLineStepUp=value
+		tactics.Sliders.DefensiveDepth=math.clamp(42+value*.36,0,100)
+	elseif key=="FirstTimePassing"then
+		tactics.Sliders.OneTouchPassing=value
+		tactics.Sliders.FirstTouchDirectness=math.clamp(42+value*.58,0,100)
+		tactics.Sliders.ReceiverTrapAggression=math.clamp(70-value*.6,0,100)
+		tactics.MetricsTargets.FirstTimePassChance=value
+	elseif key=="LongBalls"then
+		tactics.Sliders.LobPassBias=value
+		tactics.Sliders.FreeKickLongPass=value
+		tactics.Sliders.LongGKDistribution=value
+		tactics.Sliders.ThroughBallFrequency=math.clamp(34+value*.5,0,100)
+		tactics.Sliders.PassingDirectness=math.clamp(28+value*.58,0,100)
+	elseif key=="Aggression"then
+		tactics.Sliders.TackleAggression=value
+		tactics.Sliders.PressTriggerDistance=math.clamp(32+value*.52,0,100)
+		tactics.Sliders.PressingIntensity=math.clamp(36+value*.48,0,100)
+	elseif key=="Character"then
+		tactics.Sliders.RiskLevel=math.clamp(28+value*.64,0,100)
+		tactics.Sliders.TackleAggression=math.max(tonumber(tactics.Sliders.TackleAggression)or 50,math.clamp(24+value*.62,0,100))
+		tactics.MetricsTargets.SlideTackleFrequency=value
+	elseif key=="ShotRate"then
+		tactics.Sliders.LongShotFrequency=value
+		tactics.Sliders.ShotPatience=math.clamp(100-value,0,100)
+		tactics.Sliders.RiskLevel=math.max(tonumber(tactics.Sliders.RiskLevel)or 50,math.clamp(30+value*.55,0,100))
+	end
+	tactics.Custom=true
+end
+local function simpleTacticValue(tactics:any,key:string):number
+	local sliders=tactics and tactics.Sliders or{}
+	local metrics=tactics and tactics.MetricsTargets or{}
+	if key=="DefensiveLineReach"then return tonumber(sliders.DefensiveLineStepUp)or 50 end
+	if key=="FirstTimePassing"then return tonumber(metrics.FirstTimePassChance)or tonumber(sliders.OneTouchPassing)or 50 end
+	if key=="LongBalls"then return tonumber(sliders.LobPassBias)or tonumber(sliders.FreeKickLongPass)or 50 end
+	if key=="Aggression"then return tonumber(sliders.TackleAggression)or 50 end
+	if key=="Character"then return tonumber(metrics.SlideTackleFrequency)or math.clamp(((tonumber(sliders.RiskLevel)or 50)-28)/.64,0,100) end
+	if key=="ShotRate"then return tonumber(sliders.LongShotFrequency)or math.clamp(100-(tonumber(sliders.ShotPatience)or 50),0,100) end
+	return 50
+end
+local function applyTacticIdentity(tactics:any,index:number)
+	local identity=TACTIC_IDENTITIES[((index-1)%#TACTIC_IDENTITIES)+1]
+	local currentMetrics=tactics.MetricsTargets
+	tactics.PresetId=identity.PresetId
+	tactics.BasePresetId=identity.PresetId
+	tactics.PlaystyleId=identity.Id
+	tactics.PlaystyleName=identity.Name
+	tactics.Identity=identity.Name
+	tactics.MetricsTargets=type(currentMetrics)=="table"and currentMetrics or{}
+	tactics.MetricsTargets.QuickPassing=identity.Id=="quick_passing"and 1 or 0
+	tactics.MetricsTargets.BoxEdgeRetreatLimit=identity.Id=="basic_possession"and 132 or nil
+	tactics.Sliders=tactics.Sliders or{}
+	if identity.Id=="quick_passing"then
+		tactics.Sliders.BuildUpSpeed=72;tactics.Sliders.PassTempo=92;tactics.Sliders.SupportDistance=28;tactics.Sliders.PassingDirectness=44
+		setSimpleTacticControl(tactics,"FirstTimePassing",math.max(simpleTacticValue(tactics,"FirstTimePassing"),100))
+	else
+		tactics.Sliders.BuildUpSpeed=48;tactics.Sliders.PassTempo=66;tactics.Sliders.SupportDistance=34;tactics.Sliders.PassingDirectness=32
+		setSimpleTacticControl(tactics,"FirstTimePassing",math.min(simpleTacticValue(tactics,"FirstTimePassing"),28))
+	end
+end
+local function currentTacticIdentityIndex(tactics:any):number
+	local id=tostring(tactics and(tactics.PlaystyleId or tactics.PlaystyleName or tactics.PresetId or tactics.Identity)or"")
+	return(id=="quick_passing"or id=="Quick Passing"or id=="short_possession"or id=="Tiki-Taka")and 2 or 1
+end
 
 local function bootPalette(bootStyle:string):(Color3,Color3,Enum.Material)
 	if bootStyle=="boots_limited_green"then return Color3.fromHex("B7FF1A"),Color3.fromHex("071007"),Enum.Material.Neon end
@@ -413,7 +480,7 @@ function UltimateTeamPage.new(context:any):CanvasGroup
 		local formation=FormationConfig.Formations[name]
 		if not formation then return end
 		snapshot.Formation=name
-		snapshot.FormationOptions=snapshot.FormationOptions or {"4-3-3","4-4-2","4-2-3-1","3-5-2","5-3-2"}
+		snapshot.FormationOptions=snapshot.FormationOptions or TACTIC_FORMATIONS
 		for slot,data in snapshot.Slots or {} do
 			local definition=formation[slot]
 			if definition then
@@ -505,6 +572,26 @@ function UltimateTeamPage.new(context:any):CanvasGroup
 			local outOfPosition=kind=="StartingXI" and snapshot.Slots[slot] and snapshot.Slots[slot].OutOfPosition
 			button=CompactPlayerCard.new({Parent=parent,Card=card,Size=size,Horizontal=compact==true,Selected=selected,Meta=rosterMeta(snapshot,card),ChemistryColor=compact and nil or (outOfPosition and Theme.Colors.Warning or Theme.Colors.Electric)})
 			button.Name="Card_"..card.Id;addDrag(button,card,kind,slot)
+			local instructionSummary=(kind=="StartingXI" and slot and snapshot.Slots[slot] and snapshot.Slots[slot].InstructionSummary) or card.InstructionSummary
+			if type(instructionSummary)=="string"and instructionSummary~=""then
+				local badge=Instance.new("TextLabel")
+				badge.Name="InstructionSummary"
+				badge.AnchorPoint=Vector2.new(.5,1)
+				badge.BackgroundColor3=Theme.Colors.Black
+				badge.BackgroundTransparency=.18
+				badge.BorderSizePixel=0
+				badge.Position=UDim2.new(.5,0,1,-4)
+				badge.Size=compact and UDim2.new(0,78,0,14)or UDim2.new(1,-8,0,14)
+				badge.Font=Theme.Fonts.Strong
+				badge.Text=tostring(instructionSummary)
+				badge.TextColor3=Theme.Colors.Electric
+				badge.TextScaled=true
+				badge.TextXAlignment=Enum.TextXAlignment.Center
+				badge.TextYAlignment=Enum.TextYAlignment.Center
+				badge.ZIndex=(button.ZIndex or 1)+3
+				badge.Parent=button
+				corner(badge,5)
+			end
 		else
 			button=Instance.new("TextButton");button.Name=kind.."Empty";button.AutoButtonColor=false;button.BackgroundColor3=Color3.fromHex("13200F");button.BackgroundTransparency=.28;button.BorderSizePixel=0;button.Size=size;button.Text="";button.Selectable=false;button.Parent=parent;corner(button,7)
 			local stroke=Instance.new("UIStroke");stroke.Color=Theme.Colors.Border;stroke.Thickness=1;stroke.Transparency=.2;stroke.Parent=button
@@ -516,22 +603,36 @@ function UltimateTeamPage.new(context:any):CanvasGroup
 	end
 
 	local function closeMenu(menu:Instance) menu:Destroy() end
-	local function movementProfileMenu(card:any,slot:string)
-		local existing=group:FindFirstChild("MovementProfileOverlay");if existing then existing:Destroy()end
-		local overlay=Instance.new("TextButton");overlay.Name="MovementProfileOverlay";overlay.AutoButtonColor=false;overlay.BackgroundColor3=Theme.Colors.Black;overlay.BackgroundTransparency=.2;overlay.BorderSizePixel=0;overlay.Size=UDim2.fromScale(1,1);overlay.Text="";overlay.ZIndex=70;overlay.Parent=group
-		local menu=Panel.new({Name="MovementProfiles",Size=UDim2.fromScale(.9,.88),ClipsDescendants=false});menu.AnchorPoint=Vector2.new(.5,.5);menu.Position=UDim2.fromScale(.5,.5);menu.ZIndex=71;menu.Parent=overlay
-		local menuConstraint=Instance.new("UISizeConstraint");menuConstraint.MinSize=Vector2.new(300,300);menuConstraint.MaxSize=Vector2.new(390,548);menuConstraint.Parent=menu
-		text(menu,"AI MOVEMENT PROFILE",UDim2.fromOffset(20,16),UDim2.new(1,-40,0,22),10,Theme.Colors.Electric,Theme.Fonts.Strong)
-		text(menu,string.upper(card.Name).."  /  "..string.upper(snapshot.Slots[slot].Label or slot),UDim2.fromOffset(20,40),UDim2.new(1,-40,0,24),14,Theme.Colors.White,Theme.Fonts.Display).TextTruncate=Enum.TextTruncate.AtEnd
-		local holder=Instance.new("ScrollingFrame");holder.BackgroundTransparency=1;holder.BorderSizePixel=0;holder.Position=UDim2.fromOffset(18,78);holder.Size=UDim2.new(1,-36,1,-96);holder.AutomaticCanvasSize=Enum.AutomaticSize.Y;holder.CanvasSize=UDim2.new();holder.ScrollBarThickness=4;holder.ScrollBarImageColor3=Theme.Colors.Electric;holder.ZIndex=72;holder.Parent=menu
-		local layout=Instance.new("UIListLayout");layout.Padding=UDim.new(0,5);layout.Parent=holder
-		local selected=tostring(snapshot.Slots[slot].MovementProfile or AIMovementProfileConfig.Default)
-		for _,profileId in AIMovementProfileConfig.Order do
-			local definition=AIMovementProfileConfig.Profiles[profileId]
-			local row=Button.new({Text="",Variant=profileId==selected and"Primary"or"Secondary",Size=UDim2.new(1,0,0,52),OnActivated=function()closeMenu(overlay);apply(SquadService:SetMovementProfile(slot,profileId))end});row.ZIndex=73;row.Parent=holder
-			local name=text(row,definition.Name,UDim2.fromOffset(12,6),UDim2.new(1,-24,0,16),9,profileId==selected and Theme.Colors.Black or Theme.Colors.White,Theme.Fonts.Strong);name.ZIndex=74
-			local description=text(row,definition.Description,UDim2.fromOffset(12,24),UDim2.new(1,-24,0,20),7,profileId==selected and Theme.Colors.Black or Theme.Colors.Silver,Theme.Fonts.Strong);description.ZIndex=74;description.TextWrapped=true;description.TextYAlignment=Enum.TextYAlignment.Top
+	local function playerInstructionsMenu(card:any,slot:string?)
+		local existing=group:FindFirstChild("PlayerInstructionsOverlay");if existing then existing:Destroy()end
+		local overlay=Instance.new("TextButton");overlay.Name="PlayerInstructionsOverlay";overlay.AutoButtonColor=false;overlay.BackgroundColor3=Theme.Colors.Black;overlay.BackgroundTransparency=.2;overlay.BorderSizePixel=0;overlay.Size=UDim2.fromScale(1,1);overlay.Text="";overlay.ZIndex=70;overlay.Parent=group
+		local menu=Panel.new({Name="PlayerInstructions",Size=UDim2.fromOffset(390,360),ClipsDescendants=false});menu.AnchorPoint=Vector2.new(.5,.5);menu.Position=UDim2.fromScale(.5,.5);menu.ZIndex=71;menu.Parent=overlay
+		text(menu,"PLAYER INSTRUCTIONS",UDim2.fromOffset(20,16),UDim2.new(1,-40,0,22),10,Theme.Colors.Electric,Theme.Fonts.Strong)
+		text(menu,string.upper(card.Name).."  /  "..string.upper(card.Position or(slot and snapshot.Slots[slot]and snapshot.Slots[slot].Label)or""),UDim2.fromOffset(20,40),UDim2.new(1,-40,0,24),14,Theme.Colors.White,Theme.Fonts.Display).TextTruncate=Enum.TextTruncate.AtEnd
+		local current=(slot and snapshot.Slots[slot] and snapshot.Slots[slot].PlayerInstructions) or card.PlayerInstructions or AIPlayerInstructionConfig.RoleDefaults(card.Position)
+		local offBall=tostring(current.OffBall or"SupportBall")
+		local defending=tostring(current.Defending or"Balanced")
+		local description=text(menu,"",UDim2.fromOffset(22,292),UDim2.new(1,-44,0,44),8,Theme.Colors.Silver,Theme.Fonts.Strong);description.TextWrapped=true;description.TextYAlignment=Enum.TextYAlignment.Top;description.ZIndex=73
+		local function save(nextOff:string,nextDef:string)
+			closeMenu(overlay)
+			apply(SquadService:SetPlayerInstructions(card.Id,nextOff,nextDef))
 		end
+		local function row(title:string,y:number,order:any,definitions:any,selected:string,onPick:(string)->())
+			text(menu,title,UDim2.fromOffset(22,y),UDim2.new(1,-44,0,18),8,Theme.Colors.Muted,Theme.Fonts.Strong).ZIndex=73
+			local holder=Instance.new("Frame");holder.BackgroundTransparency=1;holder.Position=UDim2.fromOffset(22,y+24);holder.Size=UDim2.new(1,-44,0,48);holder.ZIndex=72;holder.Parent=menu
+			local grid=Instance.new("UIGridLayout");grid.CellSize=UDim2.new(1/3,-7,1,0);grid.CellPadding=UDim2.fromOffset(10,0);grid.Parent=holder
+			for _,id in order do
+				local definition=definitions[id]
+				local button=Button.new({Text=tostring(definition.Short or definition.Name),Variant=id==selected and"Primary"or"Secondary",Size=UDim2.new(1,0,1,0),OnActivated=function()onPick(id)end});button.ZIndex=74;button.Parent=holder
+			end
+		end
+		local function renderDescription()
+			local off=AIPlayerInstructionConfig.OffBall[offBall];local def=AIPlayerInstructionConfig.Defending[defending]
+			description.Text=(off and off.Description or"").."\n"..(def and def.Description or"")
+		end
+		row("OFF-BALL MOVEMENT",86,AIPlayerInstructionConfig.OffBallOrder,AIPlayerInstructionConfig.OffBall,offBall,function(id)save(id,defending)end)
+		row("DEFENSIVE ENGAGEMENT",190,AIPlayerInstructionConfig.DefendingOrder,AIPlayerInstructionConfig.Defending,defending,function(id)save(offBall,id)end)
+		renderDescription()
 		overlay.Activated:Connect(function()closeMenu(overlay)end)
 	end
 	local function actionMenu()
@@ -549,7 +650,8 @@ function UltimateTeamPage.new(context:any):CanvasGroup
 		item("COMPARE PLAYER",function() compareCard=card;toast("Select another player to compare against "..card.Name..".") end)
 		item("MOVE PLAYER",function() pendingCardId=card.Id;tapMoveEnabled=UserInputService:GetLastInputType()==Enum.UserInputType.Touch;if tapMoveEnabled then toast("Tap a highlighted destination, then confirm the move.") else toast("Valid destinations are highlighted. Drag the card to move it.") end;renderAll() end)
 		local movementSlot=nil;for slot,data in snapshot.Slots do if data.Card and data.Card.Id==card.Id then movementSlot=slot;break end end
-		if movementSlot then item("AI MOVEMENT PROFILE",function()movementProfileMenu(card,movementSlot)end)end
+		local onBench=false;for _,entry in snapshot.Bench or{}do if entry.Card and entry.Card.Id==card.Id then onBench=true;break end end
+		if movementSlot or onBench then item("PLAYER INSTRUCTIONS",function()playerInstructionsMenu(card,movementSlot)end)end
 		item("SEND TO BENCH",function() local destination=1;for index=1,7 do if not snapshot.Bench[index] or not snapshot.Bench[index].Card then destination=index;break end end;requestMove(card.Id,"Bench",destination) end)
 		item("SEND TO RESERVES",function() requestMove(card.Id,"Reserves",nil) end)
 		item("REMOVE FROM SQUAD",function() requestMove(card.Id,"Club",nil) end)
@@ -750,33 +852,6 @@ function UltimateTeamPage.new(context:any):CanvasGroup
 		local body=Instance.new("Frame");body.BackgroundTransparency=1;body.Position=UDim2.fromOffset(24,88);body.Size=UDim2.new(1,-48,1,-112);body.ZIndex=72;body.Parent=hub
 		local pitch=Panel.new({Name="TacticsPitch",Position=UDim2.fromOffset(0,0),Size=UDim2.new(.32,-8,1,0),Color=Theme.Colors.Pitch,ClipsDescendants=true});pitch.ZIndex=73;pitch.Parent=body
 		local controls=Panel.new({Name="TacticsControls",Position=UDim2.new(.32,8,0,0),Size=UDim2.new(.68,-8,1,0),ClipsDescendants=true});controls.ZIndex=73;controls.Parent=body
-		local labResponse=LaunchService:Request("GetAIBehaviorLabState",{})
-		local labState=labResponse.Success and labResponse.Data or nil
-		local developerLab=labState and labState.DeveloperAllowed==true
-		local labMode=false
-		local metadata=labState and labState.Metadata or AIBehaviorTuningConfig.ClientMetadata(false)
-		if labState and labState.TeamTactics then tactics=labState.TeamTactics end
-		local settingById:any={}
-		for _,meta in metadata.Settings or{}do settingById[meta.Id]=meta end
-		local function currentSettingValue(name:string,meta:any):number
-			local overrides=type(tactics.GlobalOverrides)=="table"and tactics.GlobalOverrides or{}
-			local sliders=type(tactics.Sliders)=="table"and tactics.Sliders or{}
-			local value=tonumber(overrides[name])or tonumber(sliders[name])or tonumber(meta and meta.Default)or 50
-			local min=tonumber(meta and meta.Min)or 0
-			local max=tonumber(meta and meta.Max)or 100
-			return math.clamp(value,min,max)
-		end
-		local function setSettingValue(name:string,meta:any,nextValue:number)
-			tactics.Sliders=tactics.Sliders or{}
-			tactics.GlobalOverrides=tactics.GlobalOverrides or{}
-			local min=tonumber(meta and meta.Min)or 0
-			local max=tonumber(meta and meta.Max)or 100
-			local step=tonumber(meta and meta.Step)or 1
-			local value=math.clamp(math.round(nextValue/step)*step,min,max)
-			tactics.GlobalOverrides[name]=value
-			if tactics.Sliders[name]~=nil and min==0 and max==100 then tactics.Sliders[name]=value end
-			tactics.Custom=true
-		end
 		local function saveTactics():boolean
 			local result=LaunchService:Request("SaveTeamTactics",tactics)
 			if not result.Success then toast(result.Message or"Could not save AI tactics.","Error");return false end
@@ -788,7 +863,7 @@ function UltimateTeamPage.new(context:any):CanvasGroup
 			for _,child in pitch:GetChildren()do if child:IsA("GuiObject")then child:Destroy()end end
 			for _,child in controls:GetChildren()do if child:IsA("GuiObject")then child:Destroy()end end
 			text(pitch,string.upper(snapshot.Formation or"4-3-3"),UDim2.fromOffset(20,18),UDim2.new(1,-40,0,36),24,Theme.Colors.White,Theme.Fonts.Display).ZIndex=75
-			text(pitch,"CLICK A PLAYER TO SET AI MOVEMENT",UDim2.fromOffset(22,55),UDim2.new(1,-44,0,18),8,Theme.Colors.Electric,Theme.Fonts.Strong).ZIndex=75
+			text(pitch,"CLICK A PLAYER TO SET INSTRUCTIONS",UDim2.fromOffset(22,55),UDim2.new(1,-44,0,18),8,Theme.Colors.Electric,Theme.Fonts.Strong).ZIndex=75
 			local field=Instance.new("Frame");field.BackgroundTransparency=1;field.Position=UDim2.fromOffset(42,92);field.Size=UDim2.new(1,-84,1,-132);field.ZIndex=74;field.Parent=pitch
 			local stroke=Instance.new("UIStroke");stroke.Color=Theme.Colors.Border;stroke.Thickness=2;stroke.Transparency=.18;stroke.Parent=field
 			local half=Instance.new("Frame");half.BackgroundColor3=Theme.Colors.Border;half.BackgroundTransparency=.28;half.BorderSizePixel=0;half.Position=UDim2.fromScale(0,.5);half.Size=UDim2.new(1,0,0,2);half.ZIndex=75;half.Parent=field
@@ -799,78 +874,41 @@ function UltimateTeamPage.new(context:any):CanvasGroup
 				local card=slotData and slotData.Card
 				local node=Instance.new("TextButton");node.AnchorPoint=Vector2.new(.5,.5);node.Position=UDim2.fromScale(dot[1],dot[2]);node.Size=UDim2.fromOffset(index==1 and 28 or 24,index==1 and 28 or 24);node.BackgroundColor3=index==1 and Theme.Colors.Electric or card and Theme.Colors.White or Theme.Colors.Gunmetal;node.BorderSizePixel=0;node.AutoButtonColor=false;node.Text=slotData and tostring(slotData.Label or slot)or"";node.TextColor3=index==1 and Theme.Colors.Black or card and Theme.Colors.Black or Theme.Colors.Muted;node.TextSize=6;node.Font=Theme.Fonts.Strong;node.ZIndex=76;node.Parent=field
 				local round=Instance.new("UICorner");round.CornerRadius=UDim.new(1,0);round.Parent=node
-				if card and slot then node.Activated:Connect(function()movementProfileMenu(card,slot)end)end
+				if card and slot then node.Activated:Connect(function()playerInstructionsMenu(card,slot)end)end
 			end
 			text(controls,"FORMATION",UDim2.fromOffset(22,18),UDim2.new(1,-44,0,18),8,Theme.Colors.Muted,Theme.Fonts.Strong).ZIndex=75
-			local formationRow=Instance.new("Frame");formationRow.BackgroundTransparency=1;formationRow.Position=UDim2.fromOffset(22,42);formationRow.Size=UDim2.new(1,-44,0,82);formationRow.ZIndex=74;formationRow.Parent=controls
-			local formationGrid=Instance.new("UIGridLayout");formationGrid.CellSize=UDim2.new(.25,-7,0,34);formationGrid.CellPadding=UDim2.fromOffset(9,9);formationGrid.Parent=formationRow
-			for _,name in snapshot.FormationOptions or{"4-3-3","4-4-2","4-2-3-1","3-5-2","5-3-2"}do
+			local formationRow=Instance.new("Frame");formationRow.BackgroundTransparency=1;formationRow.Position=UDim2.fromOffset(22,42);formationRow.Size=UDim2.new(1,-44,0,108);formationRow.ZIndex=74;formationRow.Parent=controls
+			local formationGrid=Instance.new("UIGridLayout");formationGrid.CellSize=UDim2.new(1/3,-7,0,30);formationGrid.CellPadding=UDim2.fromOffset(9,8);formationGrid.Parent=formationRow
+			for _,name in snapshot.FormationOptions or TACTIC_FORMATIONS do
 				local option=Button.new({Text=name,Variant=name==snapshot.Formation and"Primary"or"Secondary",Size=UDim2.new(1,0,1,0),OnActivated=function()setFormationInstant(name);task.defer(renderHub)end});option.ZIndex=76;option.Parent=formationRow
 			end
-			text(controls,"AI IDENTITY",UDim2.fromOffset(22,142),UDim2.new(1,-44,0,18),8,Theme.Colors.Muted,Theme.Fonts.Strong).ZIndex=75
-			local presetRow=Instance.new("Frame");presetRow.BackgroundTransparency=1;presetRow.Position=UDim2.fromOffset(22,166);presetRow.Size=UDim2.new(1,-44,0,164);presetRow.ZIndex=74;presetRow.Parent=controls
-			local presetGrid=Instance.new("UIGridLayout");presetGrid.CellSize=UDim2.new(1/3,-8,0,34);presetGrid.CellPadding=UDim2.fromOffset(10,9);presetGrid.Parent=presetRow
-			for _,presetId in TACTIC_PRESETS do
-				local preset=LiteConfig.TacticPresets[presetId]
-				local option=Button.new({Text=string.upper(preset.Name),Variant=tactics.PresetId==presetId and"Primary"or"Secondary",Size=UDim2.new(1,0,1,0),OnActivated=function()
-					tactics=LiteConfig.NormalizeTactics({PresetId=presetId})
-					if labMode then tactics.GlobalOverrides={}end
-					renderHub()
-				end});option.ZIndex=76;option.Parent=presetRow
+			text(controls,"AI IDENTITY",UDim2.fromOffset(22,168),UDim2.new(1,-44,0,18),8,Theme.Colors.Muted,Theme.Fonts.Strong).ZIndex=75
+			local identityRow=Instance.new("Frame");identityRow.BackgroundTransparency=1;identityRow.Position=UDim2.fromOffset(22,192);identityRow.Size=UDim2.new(1,-44,0,74);identityRow.ZIndex=74;identityRow.Parent=controls
+			local identityGrid=Instance.new("UIGridLayout");identityGrid.CellSize=UDim2.new(.5,-6,0,64);identityGrid.CellPadding=UDim2.fromOffset(12,0);identityGrid.Parent=identityRow
+			local activeIdentity=currentTacticIdentityIndex(tactics)
+			for index,identity in TACTIC_IDENTITIES do
+				local option=Button.new({Text=identity.Label.." ("..identity.Name..")",Variant=index==activeIdentity and"Primary"or"Secondary",Size=UDim2.new(1,0,1,0),OnActivated=function()applyTacticIdentity(tactics,index);renderHub()end});option.ZIndex=76;option.Parent=identityRow
 			end
-			text(controls,labMode and"AI BEHAVIOR LAB"or"BEHAVIOR SETTINGS",UDim2.fromOffset(22,348),UDim2.new(1,-44,0,18),8,Theme.Colors.Muted,Theme.Fonts.Strong).ZIndex=75
-			if developerLab then
-				local labToggle=Button.new({Text=labMode and"STANDARD"or"AI LAB",Variant=labMode and"Primary"or"Secondary",Size=UDim2.fromOffset(104,30),OnActivated=function()labMode=not labMode;renderHub()end});labToggle.Position=UDim2.new(1,-126,0,338);labToggle.ZIndex=77;labToggle.Parent=controls
-			end
-			local sliderList=Instance.new("ScrollingFrame");sliderList.BackgroundTransparency=1;sliderList.BorderSizePixel=0;sliderList.Position=UDim2.fromOffset(22,374);sliderList.Size=UDim2.new(1,-44,1,-434);sliderList.AutomaticCanvasSize=Enum.AutomaticSize.Y;sliderList.CanvasSize=UDim2.new();sliderList.ScrollBarThickness=4;sliderList.ScrollBarImageColor3=Theme.Colors.Electric;sliderList.ZIndex=74;sliderList.Parent=controls
-			local categories:any=labMode and{}or{
-				{"BUILD UP",{"BuildUpSpeed","PassTempo","PassingDirectness","SupportDistance","ForwardPassPriority","BackPassSafety","SwitchPlayFrequency","ThroughBallFrequency","PassRisk","OneTouchPassing","FirstTouchDirectness","ReceiverTrapAggression"}},
-				{"ATTACK",{"AttackingWidth","WidthDiscipline","RunsInBehind","OverlapFrequency","UnderlapFrequency","FullbackAttack","MidfieldRotation","BoxRuns","CrossingFrequency","CutbackFrequency","FinalThirdPatience","ShotPatience","LongShotFrequency","DribblingFreedom","CreativeFreedom","CounterAttackFrequency"}},
-				{"DEFENSE",{"DefensiveWidth","DefensiveDepth","DefensiveLineStepUp","PressingIntensity","PressTriggerDistance","CounterPress","TackleAggression","InterceptionRisk","MarkingTightness","LaneBlocking","BackLineCompactness","BoxProtection","ZoneDiscipline","LooseBallAggression","RecoveryRuns","SprintConservation","StaminaPressLimit"}},
-				{"GOALKEEPER + SET PIECES",{"KeeperAggression","KeeperDistributionRisk","ShortGKDistribution","LongGKDistribution","FreeKickShortPass","FreeKickLongPass","CornerNearPost","CornerFarPost","SetPiecePatience","ClearanceHeight","RiskLevel"}},
-			}
-			if labMode then
-				local grouped:any={}
-				for _,meta in metadata.Settings or{}do grouped[meta.Category]=grouped[meta.Category]or{};table.insert(grouped[meta.Category],meta.Id)end
-				for _,categoryName in metadata.Categories or{}do if grouped[categoryName]then table.insert(categories,{string.upper(categoryName),grouped[categoryName]})end end
-			end
-			local y=0
-			local function drawSlider(name:string,row:number,column:number)
-				local meta=settingById[name] or {Min=0,Max=100,Step=5,Unit="%",Label=name,LowLabel="LOW",HighLabel="HIGH",Systems={}}
-				local value=currentSettingValue(name,meta)
+			text(controls,"BEHAVIOUR SETTINGS",UDim2.fromOffset(22,290),UDim2.new(1,-44,0,18),8,Theme.Colors.Muted,Theme.Fonts.Strong).ZIndex=75
+			local settings=Instance.new("Frame");settings.BackgroundTransparency=1;settings.Position=UDim2.fromOffset(22,318);settings.Size=UDim2.new(1,-44,0,210);settings.ZIndex=74;settings.Parent=controls
+			local function drawControl(spec:any,row:number,column:number)
+				local value=simpleTacticValue(tactics,spec.Key)
 				local xScale=column==1 and 0 or .5
-				local xPad=column==1 and 0 or 10
-				local rowFrame=Instance.new("Frame");rowFrame.BackgroundTransparency=1;rowFrame.Position=UDim2.new(xScale,xPad,0,row);rowFrame.Size=UDim2.new(.5,-10,0,34);rowFrame.ZIndex=75;rowFrame.Parent=sliderList
-				text(rowFrame,string.upper(tostring(meta.Label or name)),UDim2.fromOffset(0,0),UDim2.new(1,-92,0,16),7,Theme.Colors.Silver,Theme.Fonts.Strong).ZIndex=76
-				local bar=Instance.new("Frame");bar.BackgroundColor3=Theme.Colors.Gunmetal;bar.BorderSizePixel=0;bar.Position=UDim2.new(0,0,0,22);bar.Size=UDim2.new(1,-104,0,7);bar.ZIndex=76;bar.Parent=rowFrame
-				local min=tonumber(meta.Min)or 0;local max=tonumber(meta.Max)or 100;local step=tonumber(meta.Step)or 1;local alpha=max>min and(value-min)/(max-min)or 0
-				local fill=Instance.new("Frame");fill.BackgroundColor3=Theme.Colors.Electric;fill.BorderSizePixel=0;fill.Size=UDim2.fromScale(math.clamp(alpha,0,1),1);fill.ZIndex=77;fill.Parent=bar
-				local minus=Button.new({Text="-",Variant="Secondary",Size=UDim2.fromOffset(24,23),OnActivated=function()setSettingValue(name,meta,value-step);renderHub()end});minus.Position=UDim2.new(1,-98,0,9);minus.ZIndex=77;minus.Parent=rowFrame
-				local display=math.abs(value-math.floor(value))<.001 and tostring(value)or string.format("%.2f",value)
-				local valueText=text(rowFrame,display..tostring(meta.Unit=="%"and""or" "..tostring(meta.Unit or"")),UDim2.new(1,-72,0,10),UDim2.fromOffset(40,20),8,Theme.Colors.Electric,Theme.Fonts.Display);valueText.TextXAlignment=Enum.TextXAlignment.Center;valueText.ZIndex=77
-				local plus=Button.new({Text="+",Variant="Secondary",Size=UDim2.fromOffset(24,23),OnActivated=function()setSettingValue(name,meta,value+step);renderHub()end});plus.Position=UDim2.new(1,-26,0,9);plus.ZIndex=77;plus.Parent=rowFrame
+				local xPad=column==1 and 0 or 12
+				local frame=Instance.new("Frame");frame.BackgroundTransparency=1;frame.Position=UDim2.new(xScale,xPad,0,row);frame.Size=UDim2.new(.5,-12,0,58);frame.ZIndex=75;frame.Parent=settings
+				text(frame,spec.Label,UDim2.fromOffset(0,0),UDim2.new(1,-84,0,16),8,Theme.Colors.Silver,Theme.Fonts.Strong).ZIndex=76
+				text(frame,string.upper(spec.Low),UDim2.fromOffset(0,36),UDim2.new(.45,0,0,14),6,Theme.Colors.Muted,Theme.Fonts.Strong).ZIndex=76
+				local high=text(frame,string.upper(spec.High),UDim2.new(.55,0,0,36),UDim2.new(.45,0,0,14),6,Theme.Colors.Muted,Theme.Fonts.Strong);high.TextXAlignment=Enum.TextXAlignment.Right;high.ZIndex=76
+				local bar=Instance.new("Frame");bar.BackgroundColor3=Theme.Colors.Gunmetal;bar.BorderSizePixel=0;bar.Position=UDim2.fromOffset(0,24);bar.Size=UDim2.new(1,-92,0,8);bar.ZIndex=76;bar.Parent=frame
+				local fill=Instance.new("Frame");fill.BackgroundColor3=Theme.Colors.Electric;fill.BorderSizePixel=0;fill.Size=UDim2.fromScale(math.clamp(value/100,0,1),1);fill.ZIndex=77;fill.Parent=bar
+				local minus=Button.new({Text="-",Variant="Secondary",Size=UDim2.fromOffset(24,26),OnActivated=function()setSimpleTacticControl(tactics,spec.Key,value-10);renderHub()end});minus.Position=UDim2.new(1,-88,0,13);minus.ZIndex=77;minus.Parent=frame
+				local valueText=text(frame,tostring(math.floor(value+.5)),UDim2.new(1,-60,0,14),UDim2.fromOffset(32,22),9,Theme.Colors.Electric,Theme.Fonts.Display);valueText.TextXAlignment=Enum.TextXAlignment.Center;valueText.ZIndex=77
+				local plus=Button.new({Text="+",Variant="Secondary",Size=UDim2.fromOffset(24,26),OnActivated=function()setSimpleTacticControl(tactics,spec.Key,value+10);renderHub()end});plus.Position=UDim2.new(1,-24,0,13);plus.ZIndex=77;plus.Parent=frame
 			end
-			for _,category in categories do
-				text(sliderList,category[1],UDim2.fromOffset(0,y),UDim2.new(1,0,0,18),8,Theme.Colors.Electric,Theme.Fonts.Strong).ZIndex=76
-				y+=24
-				for index,name in category[2]do
-					local row=y+math.floor((index-1)/2)*40
-					drawSlider(name,row,((index-1)%2)+1)
-				end
-				y+=math.ceil(#category[2]/2)*40+16
+			for index,spec in TACTIC_BEHAVIOR_CONTROLS do
+				drawControl(spec,math.floor((index-1)/2)*68,((index-1)%2)+1)
 			end
-			local bottomPad=Instance.new("Frame");bottomPad.BackgroundTransparency=1;bottomPad.Position=UDim2.fromOffset(0,y);bottomPad.Size=UDim2.new(1,0,0,8);bottomPad.Parent=sliderList
 			local save=Button.new({Text="SAVE TACTICS",Variant="Primary",Size=UDim2.fromOffset(180,40),OnActivated=saveTactics});save.Position=UDim2.new(1,-202,1,-58);save.ZIndex=76;save.Parent=controls
-			if developerLab and labMode then
-				local saveProfile=Button.new({Text="SAVE AI PROFILE",Variant="Secondary",Size=UDim2.fromOffset(166,40),OnActivated=function()
-					local result=LaunchService:Request("SaveAIBehaviorProfile",{Name="Lab Profile",Tactics=tactics})
-					toast(result.Message or(result.Success and"AI profile saved."or"AI profile failed."),result.Success and"Reward"or"Error")
-				end});saveProfile.Position=UDim2.new(1,-382,1,-58);saveProfile.ZIndex=76;saveProfile.Parent=controls
-				local applyLive=Button.new({Text="APPLY LIVE",Variant="Secondary",Size=UDim2.fromOffset(140,40),OnActivated=function()
-					local result=LaunchService:Request("ApplyAIBehaviorLive",{Side="Home",Tactics=tactics})
-					toast(result.Message or(result.Success and"Applied live."or"Live apply failed."),result.Success and"Reward"or"Error")
-				end});applyLive.Position=UDim2.new(1,-536,1,-58);applyLive.ZIndex=76;applyLive.Parent=controls
-			end
 		end
 		renderHub()
 	end

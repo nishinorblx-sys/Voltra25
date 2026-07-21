@@ -433,7 +433,7 @@ function Service:_kickPass(context: any, passer: any, pass: any): boolean
 		if receiverModel and receiverModel.Parent then
 			local now = context.Now or os.clock()
 			local receiveUntil = now + math.clamp((execution.BallETA or 1.1) + 1.35, 1.2, 5.2)
-			local sprint = tostring(execution.SelectedLocomotionMode or "") == "SprintBurst"
+			local sprint = pass.ForwardSpaceThroughBall == true or passKind == "Through" or tostring(execution.SelectedLocomotionMode or "") == "SprintBurst"
 			receiverModel:SetAttribute("VTRPrepareToReceive", nil)
 			receiverModel:SetAttribute("VTRPotentialReceiveTarget", nil)
 			receiverModel:SetAttribute("VTRPrepareReceiveUntil", nil)
@@ -445,6 +445,8 @@ function Service:_kickPass(context: any, passer: any, pass: any): boolean
 			receiverModel:SetAttribute("VTRReceiveOpponentETA", execution.OpponentETA)
 			receiverModel:SetAttribute("VTRReceiveRouteConfidence", math.clamp(tonumber(execution.Viability) or 0.7, 0, 1))
 			receiverModel:SetAttribute("VTRReceiveRouteSprintRequested", sprint)
+			receiverModel:SetAttribute("VTRThroughSpacePass", pass.ForwardSpaceThroughBall == true)
+			receiverModel:SetAttribute("VTRThroughSpaceAhead", tonumber(pass.ForwardSpaceAhead) or 0)
 			receiverModel:SetAttribute("VTRReceiveDistance", PitchConfig.GetDistanceStuds(pass.Receiver.World, pass.Target))
 			receiverModel:SetAttribute("VTRPreparingReceive", true)
 			receiverModel:SetAttribute("VTRReceiveCommitted", true)
@@ -915,8 +917,13 @@ function Service:_carrierDecision(context: any, carrier: any, assignment: any)
 
 
 	local escapingPressure = carrier.Model:GetAttribute("AIEscapingClosePressure") == true or self.LastAction[carrier.Model] == "ForcedSafePass" or self.LastAction[carrier.Model] == "PressureEscape"
-	local runningIntoSpaceDanger = pressure.Closest <= 10 or strikerUnderClosePressure or (escapingPressure and pressure.Closest <= 10)
-	local forcedSafe = wingerEndLine or runningIntoSpaceDanger or (defensiveMood ~= "AggressiveRisk" and (pressure.Heavy or pressure.Approaching and (pressure.ApproachingCount or 0) >= 2 or carriedFor >= holdLimit * 0.45 or self.Style:Risk() < 0.3))
+	local retreatPressureActive = AIPassingDecisionService.ShouldRetreatFromPressure and AIPassingDecisionService.ShouldRetreatFromPressure(pressure) or pressure.Heavy or pressure.Closest <= 10
+	local runningIntoSpaceDanger = retreatPressureActive or strikerUnderClosePressure or (escapingPressure and retreatPressureActive)
+	local conservativeSafe = defensiveMood ~= "AggressiveRisk" and (pressure.Heavy or pressure.Approaching and (pressure.ApproachingCount or 0) >= 2 or carriedFor >= holdLimit * 0.45 or self.Style:Risk() < 0.3)
+	if defensiveCarrier and not retreatPressureActive then
+		conservativeSafe = false
+	end
+	local forcedSafe = wingerEndLine or runningIntoSpaceDanger or conservativeSafe
 	local pass = canPass and AIPassingDecisionService.Choose(context, carrier, self.Style, self.Difficulty, forcedSafe) or nil
 	local defenderDeepEnough = defensiveCarrier and carrier.Pitch.Z <= PitchConfig.Zones.OwnBox.ZMax + 48
 	local defenderMustExitSideOrLong = defenderDeepEnough

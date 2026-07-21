@@ -14,6 +14,7 @@ function SquadService:GetEligiblePlayersForSlot(slot:string):any return request(
 function SquadService:MovePlayer(cardId:string,destinationType:string,destinationSlot:any?):any return request("MovePlayer",{CardId=cardId,DestinationType=destinationType,DestinationSlot=destinationSlot}) end
 function SquadService:SetFormation(formation:string):any return request("SetFormation",{Formation=formation}) end
 function SquadService:SetMovementProfile(slot:string,profileId:string):any return request("SetMovementProfile",{Slot=slot,ProfileId=profileId}) end
+function SquadService:SetPlayerInstructions(cardInstanceId:string,offBall:string,defending:string):any return request("SetPlayerInstructions",{CardInstanceId=cardInstanceId,OffBall=offBall,Defending=defending}) end
 function SquadService:SetCardFlag(cardId:string,flag:string,value:boolean):any return request("SetCardFlag",{CardId=cardId,Flag=flag,Value=value}) end
 function SquadService:GetSquadState():any return request("GetSquadState") end
 function SquadService:GetClubPlayers():any return request("GetClubPlayers") end

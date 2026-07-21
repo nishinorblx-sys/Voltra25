@@ -110,15 +110,22 @@ function Director:_runPhase(phase: any): boolean
 	if name == "Preparing" then
 		self.Audio:Preload()
 		self.Audio:DuckMenu()
+		self.Audio:Play("AmbientHum")
+	elseif name == "Blackout" then
+		if self.Scene then self.Scene:Blackout() end
 	elseif name == "TunnelIgnition" then
 		self.Audio:Play("TunnelIgnition")
 		if self.Scene then self.Scene:IgniteTunnel() end
+	elseif name == "PackEntrance" then
+		self.Audio:Play("LightTick")
+		if self.Scene then self.Scene:EnterPack() end
 	elseif name == "EnergyCharge" then
 		self.Audio:Play("EnergyChargeLoop")
 		if self.Scene then self.Scene:ChargePack(tonumber(self.Selection.Profile.Intensity) or 0.5) end
 	elseif name == "ClueSequence" then
 		local clues = self.Selection.Profile.Clues or {}
-		local per = #clues > 0 and duration / #clues or duration
+		local minimumPerClue = self.Selection.ReducedMotion and 0.45 or 0.72
+		local per = #clues > 0 and math.max(duration / #clues, minimumPerClue) or duration
 		for _, clue in clues do
 			if self.Cancelled then return false end
 			self.Audio:Play("ClueHit")
@@ -130,7 +137,7 @@ function Director:_runPhase(phase: any): boolean
 		self.Audio:Stop("EnergyChargeLoop")
 		self.Audio:Play("PackCrack")
 		self.Audio:Play("PackBurst")
-		if self.Scene then self.Scene:Rupture() end
+		if self.Scene then self.Scene:HideCluePanel();self.Scene:Rupture() end
 	elseif name == "Silhouette" then
 		self.Audio:Play("SilhouetteRise")
 		if self.Scene then self.Scene:RevealSilhouette() end
@@ -145,12 +152,27 @@ function Director:_runPhase(phase: any): boolean
 		return not self.Cancelled
 	elseif name == "Celebration" then
 		self.Audio:Play("WalkoutImpact")
-		if self.Scene then self.Scene:Celebrate() end
+		if self.Scene then
+			self.Scene:Celebrate()
+			local finished = false
+			local orbitDuration = self.Selection.ReducedMotion and 1.05 or 4.35
+			local orbitTurns = self.Selection.ReducedMotion and 1 or 3
+			self.Scene:OrbitPlayer(orbitTurns, orbitDuration, function()
+				finished = true
+			end)
+			while not finished and not self.Cancelled do
+				task.wait(0.04)
+			end
+			return not self.Cancelled
+		end
 	elseif name == "RatingReveal" then
 		self.Audio:Play("RatingTick")
 		if self.Scene then self.Scene:RevealRating() end
 		task.delay(math.max(0.05, duration - 0.08), function()
-			if not self.Completed then self.Audio:Play("RatingFinalHit") end
+			if not self.Completed then
+				self.Audio:Play("RatingFinalHit")
+				if self.Scene then self.Scene:RatingImpact(1) end
+			end
 		end)
 	elseif name == "NameReveal" then
 		self.Audio:Play("NameReveal")
@@ -158,7 +180,10 @@ function Director:_runPhase(phase: any): boolean
 	elseif name == "RemainingCards" then
 		self.Audio:Play("CardShine")
 		if self.Scene then self.Scene:ShowRemaining() end
+	elseif name == "HeroHold" then
+		if self.Scene then self.Scene:SetHeroLighting() end
 	elseif name == "Results" then
+		self.Audio:Stop("AmbientHum")
 		self:_showResults()
 		return false
 	end
@@ -166,7 +191,9 @@ function Director:_runPhase(phase: any): boolean
 end
 
 function Director:Play(): CanvasGroup
+	local screenGui = self.Parent:FindFirstAncestorOfClass("ScreenGui")
 	local previous = self.Parent:FindFirstChild("PremiumPackOpening")
+		or (screenGui and screenGui:FindFirstChild("PremiumPackOpening"))
 	if previous then previous:Destroy() end
 	self.StartedAt = os.clock()
 	self.Audio = PackOpeningAudioService.new(self.Parent, self.Selection.ReducedMotion)

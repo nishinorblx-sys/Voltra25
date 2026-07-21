@@ -68,14 +68,17 @@ local function clearPackOverlays(root:Instance)
 end
 
 function FlowController:ModeTransition(title:string,callback:()->(),compact:boolean?)
-	if self.Busy then return end;self.Busy=true;UISoundService.PlayTransition();UISoundService.PlayTransition()
+	if self.Busy then return end;self.Busy=true;UISoundService.PlayTransition()
 	local reduced=workspace:GetAttribute("VTRReducedMotion")==true
 	local overlay=Instance.new("CanvasGroup");overlay.Name="ModeTransition";overlay.BackgroundColor3=Theme.Colors.Black;overlay.BorderSizePixel=0;overlay.GroupTransparency=1;overlay.Size=UDim2.fromScale(1,1);overlay.ZIndex=80;overlay.Active=true;overlay.Selectable=false;overlay.Parent=self.Root
 	local shield=Instance.new("TextButton");shield.Name="ModeTransitionShield";shield.BackgroundTransparency=1;shield.BorderSizePixel=0;shield.Size=UDim2.fromScale(1,1);shield.Text="";shield.AutoButtonColor=false;shield.Selectable=false;shield.Modal=true;shield.Active=true;shield.ZIndex=80;shield.Parent=overlay
 	local slash=Instance.new("Frame");slash.AnchorPoint=Vector2.new(.5,.5);slash.BackgroundColor3=Theme.Colors.Electric;slash.BorderSizePixel=0;slash.Position=UDim2.fromScale(-.25,.5);slash.Rotation=-16;slash.Size=UDim2.fromScale(.55,1.7);slash.ZIndex=81;slash.Parent=overlay
 	local label=Instance.new("TextLabel");label.AnchorPoint=Vector2.new(.5,.5);label.BackgroundTransparency=1;label.Position=UDim2.fromScale(.5,.5);label.Size=UDim2.fromOffset(700,80);label.Text=string.upper(title);label.TextColor3=Theme.Colors.White;label.TextSize=compact and 22 or 34;label.Font=Theme.Fonts.Display;label.ZIndex=82;label.Parent=overlay
-	TweenService:Create(overlay,TweenInfo.new(reduced and .06 or .16),{GroupTransparency=0}):Play();TweenService:Create(slash,TweenInfo.new(reduced and .14 or .36,Theme.Animation.EasingStyle,Theme.Animation.EasingDirection),{Position=UDim2.fromScale(1.22,.5)}):Play()
-	task.delay(reduced and .07 or .18,callback);task.delay(reduced and .15 or(compact and .3 or .42),function() TweenService:Create(overlay,TweenInfo.new(reduced and .06 or .16),{GroupTransparency=1}):Play();task.delay(reduced and .07 or .17,function() overlay:Destroy();self.Busy=false end) end)
+	local fadeIn=reduced and .04 or .08
+	local sweep=reduced and .08 or(compact and .16 or .2)
+	TweenService:Create(overlay,TweenInfo.new(fadeIn),{GroupTransparency=0}):Play();TweenService:Create(slash,TweenInfo.new(sweep,Theme.Animation.EasingStyle,Theme.Animation.EasingDirection),{Position=UDim2.fromScale(1.22,.5)}):Play()
+	task.defer(callback)
+	task.delay(sweep,function() TweenService:Create(overlay,TweenInfo.new(fadeIn),{GroupTransparency=1}):Play();task.delay(fadeIn,function() overlay:Destroy();self.Busy=false end) end)
 end
 
 function FlowController:_safe(action:any,perform:()->any,refresh:()->()):any

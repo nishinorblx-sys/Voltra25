@@ -46,6 +46,10 @@ function Service.GetMiddleMistakeMemory(passer: any): number
 	return memoryForPasser(passer)
 end
 
+function Service.ShouldRetreatFromPressure(pressure: any): boolean
+	return pressure ~= nil and (pressure.Heavy == true or (tonumber(pressure.Closest) or math.huge) <= 10)
+end
+
 function Service.RecordPassOutcome(passer: Model?, receiver: Model?, success: boolean, matchModels: {Model}?)
 	if not passer then return end
 	local side = tostring(passer:GetAttribute("VTRTeam") or "")
@@ -185,6 +189,35 @@ local function nearestOpponentDistance(context: any, side: string, point: Vector
 		end
 	end
 	return best
+end
+
+local function forwardSpaceThroughPoint(context: any, passer: any, receiver: any): (Vector3?, number)
+	if not receiver or not receiver.Root or receiver.IsGoalkeeper then return nil, 0 end
+	local gain = receiver.Pitch.Z - passer.Pitch.Z
+	if gain < 12 then return nil, 0 end
+	if receiverOffside(context, passer, receiver) then return nil, 0 end
+	local runner = Vector3.new(receiver.Root.AssemblyLinearVelocity.X, 0, receiver.Root.AssemblyLinearVelocity.Z)
+	local sideDrift = 0
+	if runner.Magnitude > 2 then
+		local future = PitchConfig.WorldToTeamPitchPosition(receiver.World + runner.Unit * math.min(18, runner.Magnitude * .32), passer.Side, context.Options)
+		sideDrift = math.clamp(future.X - receiver.Pitch.X, -18, 18)
+	else
+		sideDrift = math.clamp(receiver.Pitch.X - passer.Pitch.X, -18, 18) * .35
+	end
+	local openDistance = 0
+	for step = 20, 44, 6 do
+		local point = PitchConfig.ClampInsidePitch(Vector3.new(receiver.Pitch.X + sideDrift, 3, receiver.Pitch.Z + step))
+		if not AIContextBuilder.SpaceAt(context, passer.Side, point, 12) then
+			break
+		end
+		if nearestOpponentDistance(context, passer.Side, PitchConfig.TeamPitchPositionToWorld(point, passer.Side, context.Options)) < 20 then
+			break
+		end
+		openDistance = step
+	end
+	if openDistance < 20 then return nil, 0 end
+	local targetPitch = PitchConfig.ClampInsidePitch(Vector3.new(receiver.Pitch.X + sideDrift, 3, receiver.Pitch.Z + math.clamp(openDistance, 20, 38)))
+	return PitchConfig.TeamPitchPositionToWorld(targetPitch, passer.Side, context.Options), openDistance
 end
 
 local function centralOutnumberedAround(context: any, passer: any, targetZ: number?): boolean
@@ -444,6 +477,7 @@ function Service.ScoreReceiver(context: any, passer: any, receiver: any, style: 
 	local open, veryOpen, tight = AIContextBuilder.IsOpen(context, receiver)
 	local kind = passType(passer.Pitch.Z, receiver.Pitch.Z)
 	local forwardGain = receiver.Pitch.Z - passer.Pitch.Z
+	local receiverDistance = PitchConfig.GetDistanceStuds(passer.World, receiver.World)
 	local stage = AIContextBuilder.AttackStage(context, passer.Side)
 	local mood = AIContextBuilder.DefensiveMood(context, passer.Side, passer)
 	local defensiveLine = AIContextBuilder.DefensiveLineZ(context, passer.Side)
@@ -476,13 +510,13 @@ function Service.ScoreReceiver(context: any, passer: any, receiver: any, style: 
 	local targetKind = "Ground"
 	if timedStrikerRun and forwardGain > 12 then
 		targetKind = "Through"
-	elseif mood == "AggressiveRisk" and forwardGain > 16 and distance > 22 then
+	elseif mood == "AggressiveRisk" and forwardGain > 16 and receiverDistance > 22 then
 		targetKind = "Through"
 	elseif dangerous and forwardGain > 35 and directness + risk + throughFrequency > 1.15 then
 		targetKind = "Through"
-	elseif mood == "Pressing" and distance > 44 and (math.abs(receiver.Pitch.X - passer.Pitch.X) > 78 or forwardGain > 20) then
+	elseif mood == "Pressing" and receiverDistance > 44 and (math.abs(receiver.Pitch.X - passer.Pitch.X) > 78 or forwardGain > 20) then
 		targetKind = math.abs(receiver.Pitch.X - passer.Pitch.X) > 78 and "Lofted" or "Through"
-	elseif distance > 62 and forwardGain > 12 and directness + lobPassBias + style:Ratio("FreeKickLongPass") + style:Ratio("SwitchPlayFrequency") > 1.18 then
+	elseif receiverDistance > 62 and forwardGain > 12 and directness + lobPassBias + style:Ratio("FreeKickLongPass") + style:Ratio("SwitchPlayFrequency") > 1.18 then
 		targetKind = "Lofted"
 	end
 	local receiverAssignment = tostring(receiver.Model:GetAttribute("SupportRole") or receiver.Model:GetAttribute("currentAssignment") or "")
@@ -491,6 +525,22 @@ function Service.ScoreReceiver(context: any, passer: any, receiver: any, style: 
 		targetKind = "BackPass"
 	end
 	local target = passTarget(context, passer, receiver, targetKind)
+	local throughSpaceTarget, throughSpace = forwardSpaceThroughPoint(context, passer, receiver)
+	if throughSpaceTarget and kind == "Forward" then
+		local throughLaneClear = AIContextBuilder.PassingLaneClear(context, passer, throughSpaceTarget, "Driven")
+		local throughRisk = laneInterceptionRisk(context, passer, throughSpaceTarget, "Through")
+		if throughLaneClear and throughRisk <= 0.42 then
+			targetKind = "Through"
+			target = throughSpaceTarget
+			receiver.Model:SetAttribute("VTRThroughSpaceTarget", throughSpaceTarget)
+			receiver.Model:SetAttribute("VTRThroughSpaceUntil", (context.Now or os.clock()) + 2.4)
+			receiver.Model:SetAttribute("VTRReceiveRouteSprintRequested", true)
+		else
+			receiver.Model:SetAttribute("VTRThroughSpaceTarget", nil)
+			receiver.Model:SetAttribute("VTRThroughSpaceUntil", nil)
+		end
+	end
+	local distance = PitchConfig.GetDistanceStuds(passer.World, target)
 	local groundLaneClear = AIContextBuilder.PassingLaneClear(context, passer, target, targetKind == "Through" and "Driven" or "Ground")
 	if targetKind == "Ground" and not groundLaneClear and distance > 48 and forwardGain > 6 and directness + passRisk > 0.85 then
 		targetKind = "Lofted"
@@ -603,12 +653,13 @@ function Service.ScoreReceiver(context: any, passer: any, receiver: any, style: 
 	if timedStrikerRun then
 		score += 46
 	end
-	local movementProfile=tostring(receiver.MovementProfile or receiver.Model:GetAttribute("VTRAIMovementProfile")or"Balanced")
-	if movementProfile=="GetInBehind"then score+=targetKind=="Through"and 34 or forwardGain>12 and 12 or 0
-	elseif movementProfile=="ComeShort"then score+=targetKind=="Ground"and distance<52 and 24 or 0
-	elseif movementProfile=="StayWide"then score+=receiverWide and 22 or 0
-	elseif movementProfile=="FreeRoam"then score+=(open or veryOpen)and 18 or 0
-	elseif movementProfile=="StayBack"and forwardGain>38 then score-=30 end
+	if throughSpaceTarget and targetKind == "Through" then
+		score += 58 + math.clamp(throughSpace - 20, 0, 24) * 1.2
+	end
+	local offBallInstruction=tostring(receiver.OffBallInstruction or receiver.Model:GetAttribute("VTRAttackInstruction")or"SupportBall")
+	if offBallInstruction=="AttackSpace"then score+=(targetKind=="Through"or targetKind=="Lofted")and 34 or forwardGain>16 and 16 or 0
+	elseif offBallInstruction=="SupportBall"then score+=targetKind=="Ground"and distance<68 and 26 or 0;score-=targetKind=="Lofted"and 10 or 0
+	elseif offBallInstruction=="HoldPosition"then score-=forwardGain>28 and 34 or 0;score+=distance<58 and targetKind=="Ground"and 8 or 0 end
 	local receiverSlot = tostring(receiver.Model:GetAttribute("AITacticalSlot") or receiver.Model:GetAttribute("AITeamContractSlot") or "")
 	local receiverSupport = tostring(receiver.Model:GetAttribute("VTRSupportKind") or receiver.Model:GetAttribute("SupportRole") or "")
 	local passBias = tostring(passer.Model:GetAttribute("AITeamContractPassBias") or receiver.Model:GetAttribute("AITeamContractPassBias") or "")
@@ -618,7 +669,7 @@ function Service.ScoreReceiver(context: any, passer: any, receiver: any, style: 
 	local sequencePenalty = context.TeamMemory and context.TeamMemory.RecentPassPenalty and context.TeamMemory:RecentPassPenalty(passer.Side, tostring(passer.Role or ""), tostring(receiver.Role or ""), receiver.Model, PitchConfig.GetLane(receiver.Pitch), receiver.Pitch.Z, currentStep) or 0
 	score -= sequencePenalty
 	if basicPossession then
-		local closePressure = passerPressure.Heavy or passerPressure.Under or passerPressure.Closest <= 10
+		local closePressure = Service.ShouldRetreatFromPressure(passerPressure)
 		local boxEscapeLimit = passer.Pitch.Z <= 158
 		local defenderDeepExit = isDefensiveRole(passer) and passer.Pitch.Z <= PitchConfig.Zones.OwnBox.ZMax + 48
 		if closePressure and boxEscapeLimit then
@@ -630,7 +681,7 @@ function Service.ScoreReceiver(context: any, passer: any, receiver: any, style: 
 			end
 		elseif closePressure then
 			score += kind == "Back" and 44 or kind == "Side" and 28 or -38
-		elseif not passerPressure.Under and not passerPressure.Heavy then
+		elseif not closePressure then
 			score += kind == "Forward" and forwardGain > 8 and 24 or kind == "Side" and 14 or 0
 		end
 	end
@@ -730,6 +781,8 @@ function Service.ScoreReceiver(context: any, passer: any, receiver: any, style: 
 		LaneRisk = laneRisk,
 		Safe = safe,
 		ForwardGain = forwardGain,
+		ForwardSpaceAhead = throughSpace,
+		ForwardSpaceThroughBall = throughSpaceTarget ~= nil and targetKind == "Through",
 		Stage = stage,
 		DefensiveMood = mood,
 		MiddlePass = centralPass,
@@ -881,7 +934,7 @@ function Service.ChooseBasicPossession(context: any, passer: any, style: any, di
 			end
 		end
 	end
-	if forcedSafe then
+	if forcedSafe and Service.ShouldRetreatFromPressure(AIContextBuilder.Pressure(context, passer)) then
 		return side or back or bestSafe
 	end
 	return safeForward or side or back or bestSafe

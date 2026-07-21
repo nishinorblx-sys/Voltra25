@@ -66,6 +66,16 @@ local function insideGoalMouth(rectangle: any, point: Vector3, radius: number): 
 		and vertical <= rectangle.Top - radius * 0.15
 end
 
+local function insideGoalMouthLoose(rectangle: any, point: Vector3, radius: number): boolean
+	local offset = point - rectangle.PlanePoint
+	local horizontal = offset:Dot(rectangle.Right)
+	local vertical = offset:Dot(rectangle.Up)
+	return horizontal >= rectangle.Left - radius * 0.75
+		and horizontal <= rectangle.RightBound + radius * 0.75
+		and vertical >= rectangle.Bottom - radius * 0.35
+		and vertical <= rectangle.Top + radius * 0.45
+end
+
 local function createVolume(parent: Instance, team: string, rectangle: any): BasePart
 	local width = rectangle.RightBound - rectangle.Left
 	local height = rectangle.Top - rectangle.Bottom
@@ -171,15 +181,18 @@ function Service:Step()
 	local previous = self.PreviousBallPosition
 	local current = self.Ball.Position
 	local radius = self.Ball.Size.X * 0.5
+	local motionKind = tostring(self.Ball:GetAttribute("VTRMotionKind") or "")
+	local penaltyActive = self.Ball:GetAttribute("VTRPenaltyShotActive") == true
+	local shotTarget = self.Ball:GetAttribute("VTRShotTarget")
+	local shotActive = penaltyActive or motionKind == "Shot" or typeof(shotTarget) == "Vector3"
 	for _, goal in self.Goals do
 		local rectangle = goal.Rectangle
-		if self.Ball:GetAttribute("VTRPenaltyShotActive") == true then
-			local shotTarget = self.Ball:GetAttribute("VTRShotTarget")
-			if typeof(shotTarget) == "Vector3" and insideGoalMouth(rectangle, shotTarget, radius) then
+		if penaltyActive then
+			if typeof(shotTarget) == "Vector3" and insideGoalMouthLoose(rectangle, shotTarget, radius) then
 				local previousDistance = (previous - rectangle.PlanePoint):Dot(rectangle.Normal)
 				local currentDistance = (current - rectangle.PlanePoint):Dot(rectangle.Normal)
-				local nearTarget = segmentPointDistance(previous, current, shotTarget) <= math.max(radius * 2.35, 2.75)
-				local nearPlane = math.abs(currentDistance) <= math.max(radius * 1.45, 1.75)
+				local nearTarget = segmentPointDistance(previous, current, shotTarget) <= math.max(radius * 3.25, 3.5)
+				local nearPlane = math.abs(currentDistance) <= math.max(radius * 2.1, 2.4)
 				local crossedPlane = previousDistance == 0 or currentDistance == 0 or previousDistance * currentDistance <= 0
 				if nearTarget or nearPlane and crossedPlane then
 					self:_recordGoalEntry(goal, previous, current, now)
@@ -196,14 +209,18 @@ function Service:Step()
 		end
 		local previousDistance = (previous - rectangle.PlanePoint):Dot(rectangle.Normal)
 		local currentDistance = (current - rectangle.PlanePoint):Dot(rectangle.Normal)
-		if previousDistance < radius and currentDistance >= radius then
+		local crossedPlane = previousDistance == 0 or currentDistance == 0 or previousDistance * currentDistance <= 0 or previousDistance < radius and currentDistance >= radius
+		if crossedPlane then
 			local denominator = currentDistance - previousDistance
-			local alpha = denominator > 0.0001 and math.clamp((radius - previousDistance) / denominator, 0, 1) or 1
+			local alpha = math.abs(denominator) > 0.0001 and math.clamp((0 - previousDistance) / denominator, 0, 1) or 1
 			local crossing = previous:Lerp(current, alpha)
 			local offset = crossing - rectangle.PlanePoint
 			local horizontal = offset:Dot(rectangle.Right)
 			local vertical = offset:Dot(rectangle.Up)
 			local fullyInside = horizontal >= rectangle.Left + radius and horizontal <= rectangle.RightBound - radius and vertical >= rectangle.Bottom + radius * 0.72 and vertical <= rectangle.Top - radius
+			if shotActive then
+				fullyInside = insideGoalMouthLoose(rectangle, crossing, radius) or typeof(shotTarget) == "Vector3" and insideGoalMouthLoose(rectangle, shotTarget, radius) and segmentPointDistance(previous, current, shotTarget) <= math.max(radius * 3, 3)
+			end
 			if fullyInside then
 				self:_recordGoalEntry(goal, previous, current, now)
 				return

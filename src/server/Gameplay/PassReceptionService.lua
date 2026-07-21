@@ -235,6 +235,26 @@ function Service:CancelForPlayer(player: Player, reason: string): boolean
 	return contract and self:_terminal(contract, "Cancelled", reason) or false
 end
 
+function Service:ManualSwitchToReceiver(player: Player, receiver: Model): boolean
+	local contract = self.ByReceiver[receiver]
+	if not contract or contract.Terminal then return false end
+	if contract.Player and contract.Player ~= player and contract.Player.Parent then
+		self.ByPlayer[contract.Player] = nil
+	end
+	contract.Player = player
+	self.ByPlayer[player] = contract
+	if not contract.ControlTransferred then
+		contract.ControlTransferred = true
+		contract.ControlTransferredAt = os.clock()
+		self.Metrics.TransferCount += 1
+		self.Metrics.TransferETATotal += finiteNumber(contract.BallETA, 0)
+		self:_fire(contract, {Type = "ReceptionControlTransfer", ReceivePoint = contract.LiveInterceptPoint, BallETA = contract.BallETA, ManualSwitch = true})
+		self:_emit(contract, "playability_reception_control_transferred", {controlTransferETA = contract.BallETA, transferReason = "ManualSwitch"})
+	end
+	ReceiverMovementService.SetRoute(receiver, contract)
+	return true
+end
+
 function Service:CancelQueuedAction(player: Player, reason: string, contractId: any?, revision: any?)
 	local contract = self.ByPlayer[player]
 	if not contract or not contract.QueuedAction then return end

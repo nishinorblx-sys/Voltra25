@@ -434,7 +434,7 @@ function Engine:ClearTransientPlans(side: string?)
 	for _, model in ipairs(self.Teams[targetSide] or {}) do
 		self.Movement.State[model] = nil
 		self.Movement.Executor:Clear(model)
-		for _, attribute in ipairs({"AIAssignment", "AITacticalSlot", "AIRestDefense", "TeamPlan", "TeamDefensiveIntent", "AIDefensiveDutyId", "AIDefensiveDuty", "AIIncomingPassDuty", "VTRRunTicketId", "VTRRunApproved", "VTRRunKind", "VTRSupportRun"}) do
+		for _, attribute in ipairs({"AIAssignment", "AITacticalSlot", "AIRestDefense", "TeamPlan", "TeamDefensiveIntent", "AIDefensiveDutyId", "AIDefensiveDuty", "AIIncomingPassDuty", "VTRRunTicketId", "VTRRunApproved", "VTRRunKind", "VTRSupportRun", "AIInstructionEffect", "AIInstructionTarget", "AIInstructionRunAllowed", "AIInstructionPressPriority"}) do
 			model:SetAttribute(attribute, nil)
 		end
 	end

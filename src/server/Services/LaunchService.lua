@@ -39,14 +39,28 @@ local function autoFill(profile:any)
 	for _,slot in slots do local best=nil;for _,card in profile.PlayerCardInventory do if not used[card.Id] and card.Position==slot[2] and (not best or card.Rating>best.Rating) then best=card end end;if not best then for _,card in profile.PlayerCardInventory do if not used[card.Id] and (not best or card.Rating>best.Rating) then best=card end end end;if best then used[best.Id]=true;profile.UIState.SelectedSquad[slot[1]]=best.Name;profile.Squad[slot[1]]=best.Name end end
 	profile.Bench={};profile.Reserves={};local remaining={};for _,card in profile.PlayerCardInventory do if not used[card.Id] then table.insert(remaining,card) end end;table.sort(remaining,function(a,b) return a.Rating>b.Rating end);for index,card in remaining do if index<=7 then profile.Bench[index]=card.Id else table.insert(profile.Reserves,card.Id) end end
 end
-local function sanitizeTactics(payload:any):any
-	return AITacticConfig.Normalize(payload)
-end
 local function copy(value:any):any
 	if type(value)~="table"then return value end
 	local result={}
 	for key,child in pairs(value)do result[key]=copy(child)end
 	return result
+end
+local function sanitizeTactics(payload:any):any
+	local normalized=AITacticConfig.Normalize(payload)
+	if type(payload)~="table"then return normalized end
+	for _,key in {"Formation","PlaystyleId","PlaystyleVersion","PlaystyleName","PlaystyleStatus","PassRules","PositioningRules","PressRules","RoleInstructions","SequenceRules","MetricsTargets"}do
+		if payload[key]~=nil then normalized[key]=copy(payload[key])end
+	end
+	if type(payload.Sliders)=="table"then
+		normalized.Sliders=normalized.Sliders or{}
+		for _,key in {"LobPassBias","FreeKickLongPass","LongGKDistribution"}do
+			local value=tonumber(payload.Sliders[key])
+			if value and value==value and value~=math.huge and value~=-math.huge then
+				normalized.Sliders[key]=math.clamp(value,0,100)
+			end
+		end
+	end
+	return normalized
 end
 local function developerLabAllowed(player:Player):boolean
 	if DeveloperAccessService.IsLabDeveloper then return DeveloperAccessService.IsLabDeveloper(player) end

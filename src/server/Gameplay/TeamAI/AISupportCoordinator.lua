@@ -108,6 +108,15 @@ function Coordinator.Apply(context: any, side: string, assignments: any, plan: a
 		if assignment.ReservedByUser == true then
 			continue
 		end
+		if assignment.OffBallInstruction == "HoldPosition" then
+			model:SetAttribute("AIInstructionEffect", "HoldPositionSkippedSupport")
+			model:SetAttribute("AIInstructionRunAllowed", false)
+			continue
+		elseif assignment.OffBallInstruction == "SupportBall" then
+			assignment.MovementUrgency = math.max(assignment.MovementUrgency or 0, .86)
+		elseif assignment.OffBallInstruction == "AttackSpace" and (slot.Id == "ball-side-pivot" or slot.Id == "far-side-pivot") then
+			continue
+		end
 		if roleRules and roleRules.SupportBehavior then
 			model:SetAttribute("VTRSupportRule", roleRules.SupportBehavior)
 		end

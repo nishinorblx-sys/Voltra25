@@ -23,6 +23,7 @@ local Remotes=require(ReplicatedStorage.VTR.Shared.Remotes)
 local PenaltyConfig=require(ReplicatedStorage.VTR.Shared.PenaltyConfig)
 local AITacticConfig=require(ReplicatedStorage.VTR.Shared.AITacticConfig)
 local AIPlaystyleResolver=require(ReplicatedStorage.VTR.Shared.AIPlaystyleResolver)
+local AIPlayerInstructionConfig=require(ReplicatedStorage.VTR.Shared.AIPlayerInstructionConfig)
 local Catalog=require(ReplicatedStorage.VTR.Shared.Catalog)
 local TeamDatabase=require(script.Parent.Parent.Data.TeamDatabase)
 local TeamSpawnService=require(script.Parent.TeamSpawnService)
@@ -172,6 +173,50 @@ local function sanitizeRuntimeTactics(payload:any):any
 		end
 	end
 	return normalized
+end
+local function liveInstructionKey(model:Model):string
+	local cardId=tostring(model:GetAttribute("VTRInstructionCardId")or"")
+	if cardId~=""then return"card:"..cardId end
+	return"model:"..model.Name
+end
+local function snapshotLiveInstructions(team:{Model}?):any
+	local output={}
+	for _,model in team or{}do
+		local role=tostring(model:GetAttribute("position")or"")
+		local current=AIPlayerInstructionConfig.Normalize({OffBall=model:GetAttribute("VTRAttackInstruction"),Defending=model:GetAttribute("VTRDefensiveInstruction")},role)
+		output[liveInstructionKey(model)]={CardId=tostring(model:GetAttribute("VTRInstructionCardId")or""),ModelName=model.Name,Name=tostring(model:GetAttribute("DisplayName")or model.Name),Position=role,OffBall=current.OffBall,Defending=current.Defending}
+	end
+	return output
+end
+local function applyLiveInstructions(team:{Model}?,incoming:any):(boolean,any)
+	if type(incoming)~="table"then return false,snapshotLiveInstructions(team)end
+	local byKey={}
+	local byCard={}
+	local byName={}
+	for _,model in team or{}do
+		byKey[liveInstructionKey(model)]=model
+		local cardId=tostring(model:GetAttribute("VTRInstructionCardId")or"")
+		if cardId~=""then byCard[cardId]=model end
+		byName[model.Name]=model
+	end
+	local changed=false
+	for key,value in pairs(incoming)do
+		if type(value)~="table"then continue end
+		local model=byKey[tostring(key)] or byCard[tostring(value.CardId or"")] or byName[tostring(value.ModelName or"")]
+		if model then
+			local role=tostring(model:GetAttribute("position")or"")
+			local normalized=AIPlayerInstructionConfig.Normalize({OffBall=value.OffBall,Defending=value.Defending},role)
+			if tostring(model:GetAttribute("VTRAttackInstruction")or"")~=normalized.OffBall or tostring(model:GetAttribute("VTRDefensiveInstruction")or"")~=normalized.Defending then
+				model:SetAttribute("VTRAttackInstruction",normalized.OffBall)
+				model:SetAttribute("VTRDefensiveInstruction",normalized.Defending)
+				model:SetAttribute("AIInstructionOffBall",normalized.OffBall)
+				model:SetAttribute("AIInstructionDefending",normalized.Defending)
+				model:SetAttribute("AIInstructionEffect","ManagerInstructionApplied")
+				changed=true
+			end
+		end
+	end
+	return changed,snapshotLiveInstructions(team)
 end
 local function getGoalkeeper(team:{Model}?):Model?
 	if not team then return nil end
@@ -4362,6 +4407,7 @@ function Service:_action(player:Player,payload:any)
 		local afterHalf=half>=2 or session.HalfTimeBreak==true or session.ExtraTimeStarted==true
 		local applied=false
 		local recordedAction="Mentality"
+		local instructionChanged=false
 		local function supportedFormation(name:string):boolean
 			if not FormationConfig.Formations[name]then return false end
 			return #(FormationConfig.GetOrder(name)or{})>=11
@@ -4424,9 +4470,23 @@ function Service:_action(player:Player,payload:any)
 			applied=true
 			if recordedAction~="Formation"then recordedAction="Mentality"end
 		end
+		if type(changes.PlayerInstructions)=="table"then
+			local instructionSnapshot
+			instructionChanged,instructionSnapshot=applyLiveInstructions(session.Teams and session.Teams.Home,changes.PlayerInstructions)
+			manager.CurrentPlayerInstructions=instructionSnapshot
+			if instructionChanged then
+				applied=true
+				if recordedAction~="Formation"and not tacticChanged then recordedAction="PlayerInstructions"end
+			end
+		elseif manager.CurrentPlayerInstructions==nil then
+			manager.CurrentPlayerInstructions=snapshotLiveInstructions(session.Teams and session.Teams.Home)
+		end
 		if applied then
-			manager.LastActionAt=now
-			if self.CampaignAscension then self.CampaignAscension:RecordManagerInteraction(player,session,recordedAction,{AfterHalf=afterHalf})end
+			if self.CampaignAscension then
+				self.CampaignAscension:RecordManagerInteraction(player,session,recordedAction,{AfterHalf=afterHalf})
+			else
+				manager.LastActionAt=now
+			end
 			self.State:FireClient(player,{Type="CampaignManagerState",Manager=table.clone(manager),Objective=session.Setup.AscensionObjective,AppliedTactics=manager.CurrentTactics})
 		else
 			self:_track(session,player,"playability_manager_input_error",{actionFamily="CampaignManagerApply"})
@@ -5306,7 +5366,7 @@ function Service:EndMatch(player:Player,showResult:boolean):boolean
 					rewardPayload.Rarity=definition and packRarity(definition) or rewardPayload.Rarity or"Rare"
 				end
 				local pacing=session.Ranked==true and MatchFormatConfig.Ranked or session.Format
-				self.State:FireClient(participant,{Type="MatchEnded",Ranked=session.Ranked,LocalSide=side,Result=result,Forfeit=session.ForfeitBy~=nil,ForfeitReason=session.ForfeitReason,RankedLossUserId=session.RankedForceLossUserId,Home=homeScore,Away=awayScore,PenaltyShootout=session.PenaltyShootout,PenaltyShootoutWinner=session.PenaltyShootoutWinner,ExtraTime=session.ExtraTimeStarted==true,Stats=resultStats,Reward=rewardPayload,RankedWinPack=rankedWin and rewardPayload or nil,ResultDelay=math.clamp(tonumber(pacing and pacing.FinalWhistleFreezeSeconds)or 1.25,1,1.5),PostMatchSummarySeconds=math.clamp(tonumber(pacing and pacing.PostMatchSummarySeconds)or 2.4,1.5,3),NextMatchInputSeconds=math.max(4,tonumber(pacing and pacing.NextMatchInputSeconds)or 8)})
+				self.State:FireClient(participant,{Type="MatchEnded",Ranked=session.Ranked,LocalSide=side,Result=result,Forfeit=session.ForfeitBy~=nil,ForfeitReason=session.ForfeitReason,RankedLossUserId=session.RankedForceLossUserId,Home=homeScore,Away=awayScore,PenaltyShootout=session.PenaltyShootout,PenaltyShootoutWinner=session.PenaltyShootoutWinner,ExtraTime=session.ExtraTimeStarted==true,Stats=resultStats,Reward=rewardPayload,RankedWinPack=nil,ResultDelay=math.clamp(tonumber(pacing and pacing.FinalWhistleFreezeSeconds)or 1.25,1,1.5),PostMatchSummarySeconds=math.clamp(tonumber(pacing and pacing.PostMatchSummarySeconds)or 2.4,1.5,3),NextMatchInputSeconds=math.max(4,tonumber(pacing and pacing.NextMatchInputSeconds)or 8)})
 			end
 		end
 		if session.OnRankedEnded then task.defer(function()local ok,err=pcall(session.OnRankedEnded,session);if not ok then warn("[VTR MATCH RESULT] OnRankedEnded failed: "..tostring(err))end end)end

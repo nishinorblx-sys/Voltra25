@@ -9,7 +9,7 @@ local AIBehaviorTuning = require(Shared.AIBehaviorTuningConfig)
 local AITactic = require(Shared.AITacticConfig)
 local AIPlaystyleConfig = require(Shared.AIPlaystyleConfig)
 local AIPlaystyleResolver = require(Shared.AIPlaystyleResolver)
-local AIMovementProfiles = require(Shared.AIMovementProfileConfig)
+local AIPlayerInstructionConfig = require(Shared.AIPlayerInstructionConfig)
 local BallContact = require(Shared.BallContactResolver)
 local PassFlightModel = require(Shared.PassFlightModel)
 local DefensiveSwitch = require(Shared.DefensiveSwitchConfig)
@@ -23,6 +23,7 @@ local MatchFormat = require(Shared.MatchFormatConfig)
 local MobileControlLayout = require(Shared.MobileControlLayout)
 local Movement = require(Shared.MovementTuningConfig)
 local PackOpening = require(Shared.PackOpeningConfig)
+local WalkoutPresentation = require(Shared.WalkoutPresentationConfig)
 local PlayabilitySettings = require(Shared.PlayabilitySettingsConfig)
 local PlayabilityUnlocks = require(Shared.PlayabilityUnlockConfig)
 local PassError = require(Shared.PassErrorResolver)
@@ -62,6 +63,7 @@ local AIPlaystyleRuleService = require(script.Parent.Parent.Gameplay.TeamAI.AIPl
 local AITeamMetrics = require(script.Parent.Parent.Gameplay.TeamAI.AITeamMetrics)
 local AITacticalStyleService = require(script.Parent.Parent.Gameplay.AITacticalStyleService)
 local AIPassExecutionPlanner = require(script.Parent.Parent.Gameplay.AIPassExecutionPlanner)
+local AIPassingDecisionService = require(script.Parent.Parent.Gameplay.AIPassingDecisionService)
 local PassArrivalPlanner = require(script.Parent.Parent.Gameplay.PassArrivalPlanner)
 local AIGoalkeeperService = require(script.Parent.Parent.Gameplay.AIGoalkeeperService)
 local MatchClock = require(script.Parent.Parent.Gameplay.MatchClockService)
@@ -121,16 +123,27 @@ function Tests.Run(): any
 		expectEqual(PackOpening.TierForCard({Name="B",Rarity="Rare",Rating=79}), "Spotlight", "Rare should become spotlight")
 		expectEqual(PackOpening.TierForCard({Name="C",Rarity="Legendary",Rating=85}), "Walkout", "Legendary should become walkout")
 		expectEqual(PackOpening.TierForCard({Name="D",Rarity="Icon",Rating=88}), "SuperWalkout", "Icon should become super walkout")
+		expectEqual(PackOpening.TierForCard({Name="E",Rarity="Legendary",Rating=84}), "QuickReveal", "84 OVR Legendary should not force full premium walkout")
 	end)
 
 	test("pack walkout tier selection from rating", function()
-		expectEqual(PackOpening.TierForCard({Name="A",Rarity="Gold",Rating=86}), "Walkout", "86 OVR should raise to walkout")
+		expectEqual(PackOpening.TierForCard({Name="A",Rarity="Gold",Rating=85}), "Walkout", "85 OVR should raise to walkout")
 		expectEqual(PackOpening.TierForCard({Name="B",Rarity="Gold",Rating=90}), "SuperWalkout", "90 OVR should raise to super walkout")
 	end)
 
 	test("pack walkout card type raises tier", function()
-		expectEqual(PackOpening.TierForCard({Name="A",Rarity="Gold",Rating=82,CardType="Champion"}), "Walkout", "Champion card type should raise to walkout")
-		expectEqual(PackOpening.TierForCard({Name="B",Rarity="Rare",Rating=84,CardType="Limited"}), "SuperWalkout", "Limited card type should raise to super walkout")
+		expectEqual(PackOpening.TierForCard({Name="A",Rarity="Gold",Rating=82,CardType="Champion"}), "Spotlight", "Sub-85 Champion should stay below full premium")
+		expectEqual(PackOpening.TierForCard({Name="B",Rarity="Rare",Rating=84,CardType="Limited"}), "Spotlight", "Sub-85 Limited should stay below full premium by default")
+		expectEqual(PackOpening.TierForCard({Name="C",Rarity="Rare",Rating=85,CardType="Limited"}), "SuperWalkout", "85+ Limited should raise to super walkout")
+	end)
+
+	test("pack walkout premium config exposes palette and frame styles", function()
+		expectEqual(PackOpening.PremiumWalkoutMinimumRating, 85, "Premium walkout threshold should be configurable at 85")
+		expectEqual(PackOpening.SuperWalkoutMinimumRating, 90, "Super walkout threshold should be configurable at 90")
+		expectEqual(PackOpening.FrameStyleForCard({Rarity="Icon",Rating=88}), "Icon", "Icon should use the elegant frame style")
+		expectEqual(PackOpening.FrameStyleForCard({Rarity="Mythic",Rating=91}), "Mythic", "Mythic should use the dark premium frame style")
+		local limited = PackOpening.PaletteForCard({Rarity="Rare",Rating=85,CardType="Limited"})
+		expect(typeof(limited.Accent) == "Color3" and typeof(limited.Secondary) == "Color3", "Limited palette should expose accent and secondary colors")
 	end)
 
 	test("pack walkout quick reveal does not create full walkout", function()
@@ -212,6 +225,44 @@ function Tests.Run(): any
 		expect(PackOpening.EffectBudget.MaxRenderSteppedConnections <= 1, "Render connection budget escaped")
 	end)
 
+	test("pack walkout presentation uses paired tunnel lighting", function()
+		local left, right = WalkoutPresentation.PairedLightStationCount()
+		expectEqual(left, right, "Tunnel light stations must be paired left/right")
+		expectEqual(left + right, PackOpening.EffectBudget.MaxLightBars, "Paired stations should fill the light-bar budget exactly")
+	end)
+
+	test("pack walkout vignette leaves center readable", function()
+		local vignette = WalkoutPresentation.LineBandForNormalVignette()
+		expect(vignette.CenterTransparency >= 0.98, "Vignette center is still too dark for premium hero hold")
+		expect(vignette.EdgeTransparency >= 0.38 and vignette.EdgeTransparency <= 0.48, "Vignette edge should be bright enough for the arena reference")
+	end)
+
+	test("pack walkout pack entrance visibly travels to pedestal", function()
+		local entrance = WalkoutPresentation.PackEntrance()
+		expect(entrance.TravelDistance >= 20, "Pack entrance travel is not visually significant")
+		expect(entrance.Start.Z > entrance.Finish.Z, "Pack should begin down tunnel and move toward camera pedestal")
+	end)
+
+	test("pack walkout clue panel avoids center presentation", function()
+		local bounds = WalkoutPresentation.CluePanelBounds()
+		expect(bounds.Width <= 0.23 and bounds.Height <= 0.3, "Clue panel is too large")
+		expect(bounds.X + bounds.Width < 0.35, "Clue panel overlaps center presentation region")
+	end)
+
+	test("pack walkout hero layout leaves card space", function()
+		local layout = WalkoutPresentation.HeroLayout()
+		expect(layout.PlayerScreenCenterX >= 0.42 and layout.PlayerScreenCenterX <= 0.46, "Player hero position should stay slightly left of center")
+		expect(layout.CardScreenCenterX >= 0.76 and layout.CardScreenCenterX <= 0.82, "Hero card should occupy the right side")
+		expect(layout.CardScreenCenterX - layout.PlayerScreenCenterX >= layout.CardMinClearance, "Hero player/card composition is too crowded")
+	end)
+
+	test("pack walkout lighting phases brighten over time", function()
+		local black = WalkoutPresentation.LightingPhases.Blackout
+		local walk = WalkoutPresentation.LightingPhases.Walkout
+		local rating = WalkoutPresentation.LightingPhases.RatingReveal
+		expect(black.Light < walk.Light and walk.Light <= rating.Light, "Lighting phases should become brighter toward reveal")
+	end)
+
 	test("AI LAB playstyle schema normalizes high-impact controls", function()
 		local draft = AIPlaystyleConfig.DraftFromTactics("Aggressive Stage Test", {PresetId = "high_press", Sliders = {PressingIntensity = 93, DefensiveDepth = 82, LooseBallAggression = 88}}, 123)
 		expectEqual(draft.Status, "Draft", "Draft status changed")
@@ -235,6 +286,14 @@ function Tests.Run(): any
 		expect((quick.MetricsTargets.FirstTimePassChance or 0) == 100, "Quick Passing should force first-time pass triggers")
 		expect(#quick.PassRules >= 3 and #quick.SequenceRules >= 2, "Quick Passing does not define first-time pass-and-move rules")
 		expectEqual(AIPlaystyleConfig.ResolveBuiltIn("Wing Play"), nil, "Wing Play should not be exposed as a built-in playstyle")
+	end)
+
+	test("safe possession retreat only persists under close pressure", function()
+		expect(AIPassExecutionPlanner ~= nil, "Pass execution planner should stay loaded before pass decision checks")
+		expect(AIPassingDecisionService.ShouldRetreatFromPressure({Closest = 9.8, Heavy = false}) == true, "Pressure inside 10 studs should keep retreat active")
+		expect(AIPassingDecisionService.ShouldRetreatFromPressure({Closest = 14, Heavy = true}) == true, "Heavy pressure should keep retreat active")
+		expect(AIPassingDecisionService.ShouldRetreatFromPressure({Closest = 10.8, Under = true, Heavy = false}) == false, "Under pressure outside 10 studs should not force continued retreat")
+		expect(AIPassingDecisionService.ShouldRetreatFromPressure({Closest = 24, Approaching = true, Heavy = false}) == false, "Approaching pressure alone should not make defenders retreat to the box edge")
 	end)
 
 	test("AI LAB published versions resolve immutably by side", function()
@@ -707,6 +766,40 @@ function Tests.Run(): any
 		expect(assignments[runnerModel].PlayerContract.ReplacementRequirement == "RestDefenseCoverage", "Runner did not demand replacement coverage")
 		restModel:Destroy()
 		runnerModel:Destroy()
+	end)
+
+	test("player instructions gate optional support and attacking runs", function()
+		local restModel = Instance.new("Model")
+		local holdModel = Instance.new("Model")
+		local attackModel = Instance.new("Model")
+		local carrierModel = Instance.new("Model")
+		local restSlot = AITacticalContract.Slot({Id = "rest-defense", Function = "RestDefense", RoleFamily = "CB", TargetPitch = Vector3.new(212, 3, 120), RestDefense = true})
+		local holdSlot = AITacticalContract.Slot({Id = "ball-side-pivot", Function = "Pivot", RoleFamily = "CM", TargetPitch = Vector3.new(174, 3, 300)})
+		local attackSlot = AITacticalContract.Slot({Id = "left-width", Function = "Width", RoleFamily = "Winger", TargetPitch = Vector3.new(58, 3, 470), SprintAllowed = true})
+		local assignments = {
+			[restModel] = {TacticalSlot = restSlot, PlayerContract = AITacticalContract.Player({SlotId = restSlot.Id, AllowedActions = restSlot.AllowedActions}), OffBallInstruction = "HoldPosition", TargetWorld = Vector3.new(212, 3, 120), MovementUrgency = .7},
+			[holdModel] = {TacticalSlot = holdSlot, PlayerContract = AITacticalContract.Player({SlotId = holdSlot.Id, AllowedActions = holdSlot.AllowedActions}), OffBallInstruction = "HoldPosition", TargetWorld = Vector3.new(174, 3, 300), MovementUrgency = .7},
+			[attackModel] = {TacticalSlot = attackSlot, PlayerContract = AITacticalContract.Player({SlotId = attackSlot.Id, AllowedActions = attackSlot.AllowedActions}), OffBallInstruction = "AttackSpace", TargetWorld = Vector3.new(58, 3, 470), MovementUrgency = .7},
+		}
+		local context = {
+			Now = 20,
+			Owner = carrierModel,
+			OwnerSide = "Home",
+			BallWorld = Vector3.new(160, 3, 350),
+			BallTeam = {Home = Vector3.new(160, 3, 350)},
+			Options = {PitchCFrame = CFrame.new(), Width = PitchConfig.PITCH_WIDTH, Length = PitchConfig.PITCH_LENGTH, AttackSigns = {Home = 1, Away = -1}},
+			Players = {[carrierModel] = {Model = carrierModel, World = Vector3.new(160, 3, 350), OpponentSide = "Away"}},
+			Teams = {Home = {List = {}}, Away = {List = {}}},
+			TeamBrain = {Home = {AttackingRunners = 2, RestDefense = 1}},
+		}
+		AIRunCoordinator.Apply(context, "Home", assignments, {Intent = "SimplePossession", PlanStep = AITacticalContract.PlanStep({Id = "safe-pass", PassBias = "Commit"})}, {Ratio = function() return .8 end})
+		expect(holdModel:GetAttribute("VTRRunApproved") == false and assignments[holdModel].PlayerContract.ReplacementRequirement == "InstructionHoldPosition", "HoldPosition accepted an optional attacking run")
+		expect(attackModel:GetAttribute("VTRRunApproved") == true and assignments[attackModel].RunKind == "RunBehind", "AttackSpace did not create a run behind from the team plan")
+		expect(assignments[attackModel].InstructionEffect == "AttackSpaceRun", "AttackSpace run did not expose instruction debug effect")
+		restModel:Destroy()
+		holdModel:Destroy()
+		attackModel:Destroy()
+		carrierModel:Destroy()
 	end)
 
 	test("canonical mirrored spatial control uses one physical pitch frame", function()
@@ -1887,13 +1980,31 @@ function Tests.Run(): any
 		expect(short > 0 and long > short and driven > 0, "Pass flight duration is not distance aware")
 	end)
 
-	test("AI movement profile catalog is complete", function()
-		expect(AIMovementProfiles.IsValid(AIMovementProfiles.Default), "Default movement profile is invalid")
-		for _, profileId in AIMovementProfiles.Order do
-			local definition = AIMovementProfiles.Profiles[profileId]
-			expect(AIMovementProfiles.IsValid(profileId) and type(definition.Name) == "string" and type(definition.Description) == "string", "Movement profile metadata missing for " .. profileId)
+	test("AI player instruction catalog and legacy migration are complete", function()
+		expectEqual(AIPlayerInstructionConfig.Version, 2, "Player instruction version")
+		for _, instructionId in AIPlayerInstructionConfig.OffBallOrder do
+			local definition = AIPlayerInstructionConfig.OffBall[instructionId]
+			expect(AIPlayerInstructionConfig.IsOffBall(instructionId) and type(definition.Name) == "string" and type(definition.Description) == "string", "Off-ball instruction metadata missing for " .. instructionId)
 		end
-		expect(not AIMovementProfiles.IsValid("Exploit"), "Unknown movement profile was accepted")
+		for _, instructionId in AIPlayerInstructionConfig.DefendingOrder do
+			local definition = AIPlayerInstructionConfig.Defending[instructionId]
+			expect(AIPlayerInstructionConfig.IsDefending(instructionId) and type(definition.Name) == "string" and type(definition.Description) == "string", "Defensive instruction metadata missing for " .. instructionId)
+		end
+		local striker = AIPlayerInstructionConfig.RoleDefaults("ST")
+		expectEqual(striker.OffBall, "AttackSpace", "Striker default off-ball instruction")
+		expectEqual(striker.Defending, "Balanced", "Striker default defensive instruction")
+		local centerBack = AIPlayerInstructionConfig.RoleDefaults("CB")
+		expectEqual(centerBack.OffBall, "HoldPosition", "Center-back default off-ball instruction")
+		expectEqual(centerBack.Defending, "HoldShape", "Center-back default defensive instruction")
+		local legacyRun = AIPlayerInstructionConfig.FromLegacyProfile("GetInBehind", "ST")
+		expectEqual(legacyRun.OffBall, "AttackSpace", "GetInBehind migration")
+		expectEqual(legacyRun.Defending, "Balanced", "GetInBehind defensive migration")
+		local legacyPress = AIPlayerInstructionConfig.FromLegacyProfile("AggressivePress", "CB")
+		expectEqual(legacyPress.OffBall, "HoldPosition", "AggressivePress keeps role off-ball default")
+		expectEqual(legacyPress.Defending, "HuntBall", "AggressivePress defensive migration")
+		local safe = AIPlayerInstructionConfig.Normalize({OffBall = "Exploit", Defending = "Exploit"}, "CB")
+		expectEqual(safe.OffBall, "HoldPosition", "Malformed off-ball instruction was not role-defaulted")
+		expectEqual(safe.Defending, "HoldShape", "Malformed defensive instruction was not role-defaulted")
 	end)
 
 	test("tactic presets are complete and migrate legacy ids", function()

@@ -190,8 +190,10 @@ function AvatarPortraitGenerator.new(parent: Instance, playerData: any, size: UD
 	local special=playerData.appearance and playerData.appearance.specialPortrait==true
 	local viewport = Instance.new("ViewportFrame")
 	viewport.Name = "R6PlayerPortrait"
-	viewport.BackgroundColor3 = special and Color3.fromHex("090C07")or Color3.fromHex("25272A")
+	viewport.BackgroundColor3 = special and Color3.fromHex("0D1609") or Color3.fromHex("101410")
+	viewport.BackgroundTransparency = 0.18
 	viewport.BorderSizePixel = 0
+	viewport.ClipsDescendants = true
 	viewport.Size = size or UDim2.fromScale(1, 1)
 	viewport.Ambient = special and Color3.fromHex("D4E4BE")or Color3.fromHex("B8BCB5")
 	viewport.LightColor = special and Color3.fromHex("DFFF9E")or Color3.fromHex("F3F7EE")
@@ -203,7 +205,7 @@ function AvatarPortraitGenerator.new(parent: Instance, playerData: any, size: UD
 	local stroke = Instance.new("UIStroke")
 	stroke.Color = special and Color3.fromHex("B7FF1A")or Color3.fromHex("444941")
 	stroke.Thickness = special and 2 or 1
-	stroke.Transparency = 0.2
+	stroke.Transparency = special and 0.04 or 0.28
 	stroke.Parent = viewport
 	local world = Instance.new("WorldModel")
 	world.Parent = viewport
@@ -220,16 +222,24 @@ end
 function AvatarPortraitGenerator.CloneModel(playerData: any): Model
 	local playerId = portraitId(playerData)
 	local ok, model = pcall(function()
+		local walkoutData = playerData
+		if type(playerData) == "table" and type(playerData.appearance) == "table" and playerData.appearance.specialPortrait == true then
+			walkoutData = table.clone(playerData)
+			local appearance = table.clone(playerData.appearance)
+			appearance.specialPortrait = false
+			walkoutData.appearance = appearance
+		end
 		local key = cacheKey(playerData)
-		if not modelCache[key] then
-			modelCache[key] = buildR6Model(playerData)
-			table.insert(cacheOrder, key)
+		local walkoutKey = key .. "|walkout"
+		if not modelCache[walkoutKey] then
+			modelCache[walkoutKey] = buildR6Model(walkoutData)
+			table.insert(cacheOrder, walkoutKey)
 			if #cacheOrder > MAX_CACHED_MODELS then
 				local expired = table.remove(cacheOrder, 1)
 				if modelCache[expired] then modelCache[expired]:Destroy();modelCache[expired] = nil end
 			end
 		end
-		return modelCache[key]:Clone()
+		return modelCache[walkoutKey]:Clone()
 	end)
 	if ok and model and model:IsA("Model") then
 		model.Name = "WalkoutPlayer_" .. playerId

@@ -68,4 +68,22 @@ function CardVisualConfig.TypeForRarity(rarity: string): string
 		or "Base"
 end
 
+CardVisualConfig.FrameStyles = table.freeze({
+	Premium = table.freeze({ TopInset = 0.16, Shoulder = 0.11, BottomInset = 0.08, BorderThickness = 3, GlowThickness = 5 }),
+	Elite = table.freeze({ TopInset = 0.2, Shoulder = 0.14, BottomInset = 0.1, BorderThickness = 4, GlowThickness = 7 }),
+	Limited = table.freeze({ TopInset = 0.18, Shoulder = 0.16, BottomInset = 0.12, BorderThickness = 4, GlowThickness = 8 }),
+	Icon = table.freeze({ TopInset = 0.14, Shoulder = 0.09, BottomInset = 0.08, BorderThickness = 3, GlowThickness = 6 }),
+	Mythic = table.freeze({ TopInset = 0.22, Shoulder = 0.17, BottomInset = 0.13, BorderThickness = 5, GlowThickness = 9 }),
+})
+
+function CardVisualConfig.FrameStyleFor(rarity: string?, cardType: string?): any
+	local styleName = "Premium"
+	if cardType == "Limited" then styleName = "Limited"
+	elseif cardType == "Mythic" or cardType == "Storm" then styleName = "Mythic"
+	elseif rarity == "Mythic" then styleName = "Mythic"
+	elseif rarity == "Icon" then styleName = "Icon"
+	elseif rarity == "Elite" or rarity == "Legendary" or cardType == "Champion" or cardType == "Voltra Hero" or cardType == "Hero" then styleName = "Elite" end
+	return CardVisualConfig.FrameStyles[styleName] or CardVisualConfig.FrameStyles.Premium
+end
+
 return table.freeze(CardVisualConfig)

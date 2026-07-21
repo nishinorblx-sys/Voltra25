@@ -98,9 +98,11 @@ function DragController:_changed(input:InputObject)
 		self.State=nil
 		return
 	end
-	self:_ensureVisual(state,position)
 	if not state.Dragging and (position-state.Start).Magnitude>=self.Threshold then self:_startDrag(state,position) end
-	if state.Dragging then self:_setHover(state,self.HitTest and self.HitTest(position) or nil) end
+	if state.Dragging then
+		self:_ensureVisual(state,position)
+		self:_setHover(state,self.HitTest and self.HitTest(position) or nil)
+	end
 end
 
 function DragController:_ended(input:InputObject)
@@ -125,7 +127,6 @@ function DragController:Attach(cardRoot:GuiButton,payload:any,onClick:(any)->())
 		local start = pointer(input)
 		local scale = absoluteScale(self.Root)
 		self.State={CardRoot=cardRoot,Payload=payload,OnClick=onClick,Start=start,Dragging=false,DragOffset=(start-cardRoot.AbsolutePosition)/scale}
-		self:_ensureVisual(self.State,self.State.Start)
 	end)
 	cardRoot.Activated:Connect(function() if not self.State and os.clock()>(self.SuppressActivatedUntil or 0) then onClick(payload) end end)
 end

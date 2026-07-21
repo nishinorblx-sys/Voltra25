@@ -552,9 +552,12 @@ function Tests.Run(): any
 		expect(not service:RecordManagerInteraction(player :: any, session, "Formation", { AfterHalf = true }), "Manager spam counted")
 		session.CampaignManager.LastActionAt = -1
 		expect(service:RecordManagerInteraction(player :: any, session, "Formation", { AfterHalf = true }), "Second-half interaction rejected")
+		session.CampaignManager.LastActionAt = -1
+		expect(service:RecordManagerInteraction(player :: any, session, "PlayerInstructions", { AfterHalf = true }), "Live player instruction interaction rejected")
 		expect(Objective.ManagerQualified(session.CampaignManager), "Manager qualification failed")
-		expectEqual(session.CampaignManager.TacticalChanges, 2, "Manager tactical count")
-		expectEqual(session.CampaignManager.SecondHalfInteractions, 1, "Manager second-half count")
+		expectEqual(session.CampaignManager.TacticalChanges, 3, "Manager tactical count")
+		expectEqual(session.CampaignManager.PlayerInstructionChanges, 1, "Manager player instruction count")
+		expectEqual(session.CampaignManager.SecondHalfInteractions, 2, "Manager second-half count")
 		expect(not service:RecordManagerInteraction({ UserId = 2 } :: any, session, "Substitution", {}), "Foreign player counted a manager action")
 	end)
 

@@ -123,6 +123,9 @@ function Service.Build(teams: any, formations: any, pitchCFrame: CFrame, width: 
 				IsUserControlled = model:GetAttribute("aiControlled") ~= true and (model:GetAttribute("controlledByUser") == true or model:GetAttribute("VTRUserId") ~= nil),
 				IsGoalkeeper = tostring(slot.Role) == "GK" or tostring(model:GetAttribute("position")) == "GK",
 				HasBall = owner == model,
+				OffBallInstruction = tostring(model:GetAttribute("VTRAttackInstruction") or "SupportBall"),
+				DefensiveInstruction = tostring(model:GetAttribute("VTRDefensiveInstruction") or "Balanced"),
+				InstructionCardId = tostring(model:GetAttribute("VTRInstructionCardId") or model:GetAttribute("cardInstanceId") or ""),
 				MovementProfile = tostring(model:GetAttribute("VTRAIMovementProfile") or "Balanced"),
 			}
 			context.Players[model] = info

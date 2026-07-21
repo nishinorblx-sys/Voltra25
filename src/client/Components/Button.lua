@@ -32,6 +32,7 @@ function Button.new(props: Props): TextButton
 	instance.Selectable = false
 	instance:SetAttribute("VTRPrimary", primary)
 	instance:SetAttribute("VTRDanger", danger)
+	instance:SetAttribute("VTRUISoundBound", true)
 
 	local corner = Instance.new("UICorner")
 	corner.CornerRadius = UDim.new(0, Theme.Radius.Medium)
@@ -45,10 +46,16 @@ function Button.new(props: Props): TextButton
 
 	local scale = Instance.new("UIScale")
 	scale.Parent = instance
+	local scaleTween: Tween?
+	local colorTween: Tween?
 
 	local function tween(scaleValue: number, color: Color3)
-		TweenService:Create(scale, TweenInfo.new(Theme.Animation.Hover, Theme.Animation.EasingStyle, Theme.Animation.EasingDirection), { Scale = scaleValue }):Play()
-		TweenService:Create(instance, TweenInfo.new(Theme.Animation.Hover), { BackgroundColor3 = color }):Play()
+		if scaleTween then scaleTween:Cancel() end
+		if colorTween then colorTween:Cancel() end
+		scaleTween = TweenService:Create(scale, TweenInfo.new(Theme.Animation.Hover, Theme.Animation.EasingStyle, Theme.Animation.EasingDirection), { Scale = scaleValue })
+		colorTween = TweenService:Create(instance, TweenInfo.new(Theme.Animation.Hover), { BackgroundColor3 = color })
+		scaleTween:Play()
+		colorTween:Play()
 	end
 
 	local function focus()
@@ -71,7 +78,9 @@ function Button.new(props: Props): TextButton
 	instance.MouseButton1Up:Connect(focus)
 	instance.Activated:Connect(function()
 		UISoundService.PlayClick()
-		TweenService:Create(scale, TweenInfo.new(Theme.Animation.Press), { Scale = 0.94 }):Play()
+		if scaleTween then scaleTween:Cancel() end
+		scaleTween = TweenService:Create(scale, TweenInfo.new(Theme.Animation.Press), { Scale = 0.94 })
+		scaleTween:Play()
 		task.delay(Theme.Animation.Press, function()
 			if instance.Parent then TweenService:Create(scale, TweenInfo.new(Theme.Animation.Hover), { Scale = 1.035 }):Play() end
 		end)

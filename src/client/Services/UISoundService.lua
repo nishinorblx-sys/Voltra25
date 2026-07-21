@@ -19,6 +19,8 @@ local TRANSITION_SOUND = "rbxassetid://136186135240645"
 
 local lastPlayed: {[string]: number} = {}
 local activeTransitionSounds: {Sound} = {}
+local soundPools: {[string]: {Sound}} = {}
+local poolIndex: {[string]: number} = {}
 local preloaded = false
 
 local function preload()
@@ -50,30 +52,34 @@ local function preload()
 	end)
 end
 
+local function pooledSound(id: string): Sound
+	local pool = soundPools[id]
+	if not pool then
+		pool = {}
+		soundPools[id] = pool
+	end
+	if #pool < 4 then
+		local sound = Instance.new("Sound")
+		sound.Name = "VTRUISound"
+		sound.SoundId = id
+		sound.RollOffMode = Enum.RollOffMode.InverseTapered
+		sound.Parent = SoundService
+		table.insert(pool, sound)
+	end
+	local index = (poolIndex[id] or 0) % #pool + 1
+	poolIndex[id] = index
+	return pool[index]
+end
+
 local function play(id: string, volume: number, key: string?, cooldown: number?): Sound?
 	preload()
 	local now = os.clock()
 	if key and cooldown and (lastPlayed[key] or 0) + cooldown > now then return nil end
 	if key then lastPlayed[key] = now end
-	local sound = Instance.new("Sound")
-	sound.Name = "VTRUISound"
-	sound.SoundId = id
+	local sound = pooledSound(id)
 	sound.Volume = volume
-	sound.RollOffMode = Enum.RollOffMode.InverseTapered
-	sound.Parent = SoundService
-	sound.Ended:Connect(function()
-		for index, item in ipairs(activeTransitionSounds) do
-			if item == sound then
-				table.remove(activeTransitionSounds, index)
-				break
-			end
-		end
-		if sound.Parent then sound:Destroy() end
-	end)
+	sound.TimePosition = 0
 	sound:Play()
-	task.delay(8, function()
-		if sound.Parent then sound:Destroy() end
-	end)
 	return sound
 end
 
@@ -108,7 +114,6 @@ function Service.StopTransitions()
 	for _, sound in ipairs(activeTransitionSounds) do
 		if sound and sound.Parent then
 			sound:Stop()
-			sound:Destroy()
 		end
 	end
 	table.clear(activeTransitionSounds)

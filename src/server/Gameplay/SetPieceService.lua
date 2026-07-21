@@ -24,6 +24,8 @@ local KickoffPositionService = require(script.Parent.KickoffPositionService)
 local CornerPositioningService=require(script.Parent.CornerPositioningService)
 local Workspace=game:GetService("Workspace")
 local RunService=game:GetService("RunService")
+local ReplicatedStorage=game:GetService("ReplicatedStorage")
+local GoalModelResolver=require(ReplicatedStorage.VTR.Shared.GoalModelResolver)
 
 local Service = {}
 Service.__index = Service
@@ -244,6 +246,13 @@ local function penaltyBoxFromMarker(goalSign:number):BasePart?
 	return markerPart({"AwayBox","AwayPenaltyBox","AwayPenaltyArea","Away18Box"})
 end
 
+local function penaltyKeeperSpot(goalSign:number,pitchCFrame:CFrame,width:number,length:number):Vector3
+	local rectangle=GoalModelResolver.ResolveByAttackSign(goalSign,pitchCFrame,width,length)
+	local goalWidth=rectangle.RightBound-rectangle.Left
+	local goalHeight=rectangle.Top-rectangle.Bottom
+	return rectangle.PlanePoint+rectangle.Right*(rectangle.Left+goalWidth*.5)+rectangle.Up*(rectangle.Bottom+goalHeight*.08)-rectangle.Normal*1.35
+end
+
 local function setPieceGoalSign(team:string):number
 	-- Home attacks the Away goal in half one. StadiumAnalyzer defines
 	-- HomeGoal at +Z and AwayGoal at -Z, so Home set pieces target -Z.
@@ -265,7 +274,7 @@ local function arrangePenalty(teams:any,restartTeam:string,spot:Vector3,pitchCFr
 		for index,model in teams[side]do
 			if model~=taker then
 				if side==defending and isKeeper(model)then
-					local keeperSpot=localWorld(pitchCFrame,0,3,goalSign*(length*.5-2.2))
+					local keeperSpot=penaltyKeeperSpot(goalSign,pitchCFrame,width,length)
 					face(model,keeperSpot,spot)
 					model:SetAttribute("VTRForceIdle",true)
 				else
@@ -1226,13 +1235,16 @@ function Service:ReleaseRestartTaker()
 				modelRoot.Anchored=false
 				modelRoot.AssemblyLinearVelocity=Vector3.zero
 				modelRoot.AssemblyAngularVelocity=Vector3.zero
-				model:SetAttribute("VTRIntentionalRepositionUntil", os.clock() + .75)
-				model:SetAttribute("targetPosition", modelRoot.Position)
-				model:SetAttribute("MovementTarget", modelRoot.Position)
-				model:SetAttribute("currentAssignment", "PostSetPieceRecover")
-				model:SetAttribute("AIAssignment", "PostSetPieceRecover")
-				model:SetAttribute("SupportRole", "PostSetPieceRecover")
-				model:SetAttribute("AttackAssignment", "PostSetPieceRecover")
+				model:SetAttribute("VTRIntentionalRepositionUntil", nil)
+				for _,attribute in {"targetPosition","MovementTarget"} do
+					if model:GetAttribute(attribute)~=nil then model:SetAttribute(attribute,nil) end
+				end
+				for _,attribute in {"currentAssignment","AIAssignment","SupportRole","AttackAssignment"} do
+					local value=tostring(model:GetAttribute(attribute)or"")
+					if value=="PostSetPieceRecover"or value=="SetPiece"or string.find(value,"FreeKick",1,true)or string.find(value,"Penalty",1,true)then
+						model:SetAttribute(attribute,nil)
+					end
+				end
 			end
 		end
 	end

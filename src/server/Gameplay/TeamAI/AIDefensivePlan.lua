@@ -490,7 +490,39 @@ function Plan.Apply(context: any, side: string, assignments: any, intent: any, b
 		end
 	end
 	for model, assignment in pairs(assignments) do
+		local info=context.Players and context.Players[model]
+		local distance=info and carrierPitch and PitchConfig.GetDistanceStuds(info.Pitch,carrierPitch) or math.huge
+		if assignment.DefensiveInstruction=="HoldShape" and distance>28 then
+			local slot=assignment.TacticalSlot
+			if slot and assignment.PrimaryAssignment=="PressBallCarrier" then
+				assignment.PrimaryAssignment="InstructionHoldShapeLane"
+				assignment.TargetPitch=slot.TargetPitch
+				assignment.TargetWorld=PitchConfig.TeamPitchPositionToWorld(slot.TargetPitch,side,context.Options)
+				assignment.MovementTarget=assignment.TargetWorld
+				assignment.MovementUrgency=math.min(assignment.MovementUrgency or .7,.68)
+				assignment.SprintAllowed=false
+				assignment.InstructionEffect="HoldShapeBlockedDistantPress"
+			end
+		elseif assignment.DefensiveInstruction=="HuntBall" and distance<=95 and activePressers<2 and assignment.PrimaryAssignment~="PressBallCarrier" then
+			assignment.PrimaryAssignment="InstructionHuntBallPress"
+			assignment.TargetPitch=carrierPitch
+			assignment.TargetWorld=PitchConfig.TeamPitchPositionToWorld(carrierPitch,side,context.Options)
+			assignment.MovementTarget=assignment.TargetWorld
+			assignment.MovementUrgency=math.max(assignment.MovementUrgency or .7,.98)
+			assignment.SprintAllowed=true
+			assignment.PressPriority=(tonumber(assignment.PressPriority)or 0)+40
+			assignment.InstructionEffect="HuntBallEarlyPress"
+			activePressers+=1
+		end
+	end
+	for model, assignment in pairs(assignments) do
 		model:SetAttribute("AIPressersActive", activePressers)
+		model:SetAttribute("AIInstructionOffBall", assignment.OffBallInstruction or "")
+		model:SetAttribute("AIInstructionDefending", assignment.DefensiveInstruction or "")
+		model:SetAttribute("AIInstructionEffect", assignment.InstructionEffect or "")
+		model:SetAttribute("AIInstructionTarget", assignment.TargetWorld)
+		model:SetAttribute("AIInstructionRunAllowed", assignment.InstructionRunAllowed == true)
+		model:SetAttribute("AIInstructionPressPriority", assignment.PressPriority or 0)
 		model:SetAttribute("AIPressBroken", false)
 		if assignment.TargetWorld then
 			model:SetAttribute("AIPressDistance", assignmentDistance(context, model, assignment.TargetPitch or carrierPitch))

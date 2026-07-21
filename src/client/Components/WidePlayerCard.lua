@@ -38,6 +38,13 @@ function WidePlayerCard.new(props: any): TextButton
 	local portrait = AvatarPortraitGenerator.new(root, card, UDim2.fromOffset(82, 92), false)
 	portrait.Position = UDim2.fromOffset(8, 10)
 	portrait.ZIndex = root.ZIndex + 3
+	portrait.BackgroundTransparency = 0.28
+	local portraitMask = Instance.new("UIStroke")
+	portraitMask.Name = "PortraitShapeLine"
+	portraitMask.Color = visual.glowColor
+	portraitMask.Thickness = 1
+	portraitMask.Transparency = 0.28
+	portraitMask.Parent = portrait
 	label(root, tostring(card.Rating or card.overall), UDim2.fromOffset(98, 9), UDim2.fromOffset(36, 25), 20, Theme.Colors.White, Theme.Fonts.Display)
 	label(root, card.Position or card.bestPosition, UDim2.fromOffset(101, 36), UDim2.fromOffset(32, 18), 9, visual.trimColor, Theme.Fonts.Strong)
 	local name = label(root, card.Name or card.displayName, UDim2.fromOffset(140, 10), UDim2.new(1, -292, 0, 24), 13, Theme.Colors.White, Theme.Fonts.Display)
@@ -53,14 +60,18 @@ function WidePlayerCard.new(props: any): TextButton
 	local details = card.DetailedStats or card.detailedStats or card
 	local isGoalkeeper = string.upper(tostring(card.Position or card.bestPosition or "")) == "GK"
 	local holder = Instance.new("Frame")
-	holder.BackgroundColor3 = Color3.new()
-	holder.BackgroundTransparency = 0.68
+	holder.BackgroundTransparency = 1
 	holder.BorderSizePixel = 0
 	holder.Position = UDim2.new(1, -142, 0, 9)
 	holder.Size = UDim2.fromOffset(132, 94)
 	holder.ZIndex = root.ZIndex + 4
 	holder.Parent = root
-	local corner = Instance.new("UICorner"); corner.CornerRadius = UDim.new(0, 6); corner.Parent = holder
+	local holderLine = Instance.new("UIStroke")
+	holderLine.Name = "StatsShapeLine"
+	holderLine.Color = visual.trimColor
+	holderLine.Thickness = 1
+	holderLine.Transparency = 0.82
+	holderLine.Parent = holder
 	local grid = Instance.new("UIGridLayout")
 	grid.CellSize = UDim2.fromOffset(42, 42)
 	grid.CellPadding = UDim2.fromOffset(2, 4)

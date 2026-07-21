@@ -9,7 +9,7 @@ local AIRunCoordinator = require(script.Parent.AIRunCoordinator)
 local AIDefensiveCoordinator = require(script.Parent.AIDefensiveCoordinator)
 local Workspace = game:GetService("Workspace")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local AIMovementProfileConfig = require(ReplicatedStorage.VTR.Shared.AIMovementProfileConfig)
+local AIPlayerInstructionConfig = require(ReplicatedStorage.VTR.Shared.AIPlayerInstructionConfig)
 
 local Service = {}
 Service.__index = Service
@@ -176,43 +176,55 @@ local function applyReceiveOverrides(context: any, side: string, assignments: an
 	end
 end
 
-local function applyMovementProfile(context: any, info: any, assignment: any, attacking: boolean)
+local function applyPlayerInstructions(context: any, info: any, assignment: any, attacking: boolean)
 	if info.IsGoalkeeper then return end
-	local profileId = AIMovementProfileConfig.IsValid(info.MovementProfile) and info.MovementProfile or AIMovementProfileConfig.Default
-	assignment.MovementProfile = profileId
 	local pitch = assignment.TargetPitch
 	if attacking then
-		if profileId == "ComeShort" then
-			pitch = Vector3.new(pitch.X, 3, math.max(info.BasePitch.Z - 15, math.min(pitch.Z, context.BallTeam[info.Side].Z - 22)))
-			assignment.PrimaryAssignment = "ProfileComeShort"
+		local offBall = AIPlayerInstructionConfig.IsOffBall(info.OffBallInstruction) and info.OffBallInstruction or AIPlayerInstructionConfig.RoleDefaults(info.SpecificRole).OffBall
+		assignment.OffBallInstruction = offBall
+		if offBall == "HoldPosition" then
+			local dx=math.clamp(pitch.X-info.BasePitch.X,-14,14)
+			local dz=math.clamp(pitch.Z-info.BasePitch.Z,-14,14)
+			pitch = Vector3.new(info.BasePitch.X+dx,3,info.BasePitch.Z+dz)
+			assignment.PrimaryAssignment = assignment.PrimaryAssignment == "ReceivePass" and assignment.PrimaryAssignment or "InstructionHoldPosition"
 			assignment.SprintAllowed = false
-		elseif profileId == "GetInBehind" then
-			pitch = Vector3.new(pitch.X, 3, math.min(690, math.max(pitch.Z, context.BallTeam[info.Side].Z + 70)))
-			assignment.PrimaryAssignment = "RunBehind"
-			assignment.MovementUrgency = math.max(assignment.MovementUrgency, 0.92)
+			assignment.RunApproved = false
+			assignment.InstructionRunAllowed = false
+		elseif offBall == "SupportBall" then
+			local ball=context.BallTeam[info.Side]
+			local lateral=info.BasePitch.X < ball.X and -26 or 26
+			pitch = Vector3.new(math.clamp(ball.X+lateral,34,390),3,math.clamp(ball.Z-24,40,682))
+			assignment.PrimaryAssignment = "InstructionSupportBall"
+			assignment.MovementUrgency = math.max(assignment.MovementUrgency, 0.78)
+			assignment.SupportRole = "NearPassingTriangle"
+		elseif offBall == "AttackSpace" then
+			local role=tostring(info.Role)
+			local advance=(role=="Winger" or role=="ST") and 92 or role=="Fullback" and 72 or (role=="CM" or role=="CAM") and 58 or 34
+			pitch = Vector3.new(pitch.X,3,math.min(690,math.max(pitch.Z,context.BallTeam[info.Side].Z+advance)))
+			assignment.PrimaryAssignment = role=="Fullback" and "InstructionOverlap" or "InstructionAttackSpace"
+			assignment.MovementUrgency = math.max(assignment.MovementUrgency, 0.94)
 			assignment.SprintAllowed = true
-		elseif profileId == "StayWide" then
-			pitch = Vector3.new(info.BasePitch.X < PitchConfig.HALF_WIDTH and 38 or 386, 3, pitch.Z)
-			assignment.PrimaryAssignment = "ProfileStayWide"
-		elseif profileId == "FreeRoam" then
-			pitch = Vector3.new(pitch.X * 0.55 + context.BallTeam[info.Side].X * 0.45, 3, pitch.Z)
-			assignment.PrimaryAssignment = "ProfileFreeRoam"
-		elseif profileId == "StayBack" then
-			pitch = Vector3.new(pitch.X, 3, math.min(pitch.Z, info.BasePitch.Z + 22))
-			assignment.PrimaryAssignment = "ProfileStayBack"
-			assignment.SprintAllowed = false
+			assignment.InstructionRunAllowed = true
 		end
-	elseif profileId == "AggressivePress" then
-		assignment.MovementUrgency = math.max(assignment.MovementUrgency, 0.96)
-		assignment.PressPriority = 22
-	elseif profileId == "RecoveryRunner" then
-		pitch = Vector3.new(pitch.X, 3, math.min(pitch.Z, info.BasePitch.Z))
-		assignment.MovementUrgency = math.max(assignment.MovementUrgency, 0.94)
-		assignment.SprintAllowed = true
+	else
+		local defending = AIPlayerInstructionConfig.IsDefending(info.DefensiveInstruction) and info.DefensiveInstruction or AIPlayerInstructionConfig.RoleDefaults(info.SpecificRole).Defending
+		assignment.DefensiveInstruction = defending
+		if defending == "HoldShape" then
+			assignment.MovementUrgency = math.min(assignment.MovementUrgency, 0.72)
+			assignment.PressPriority = (tonumber(assignment.PressPriority) or 0) - 30
+			assignment.PrimaryAssignment = assignment.PrimaryAssignment == "PressBallCarrier" and "InstructionHoldShapeLane" or assignment.PrimaryAssignment
+			assignment.SprintAllowed = false
+		elseif defending == "HuntBall" then
+			assignment.MovementUrgency = math.max(assignment.MovementUrgency, 0.98)
+			assignment.PressPriority = (tonumber(assignment.PressPriority) or 0) + 34
+			assignment.SprintAllowed = true
+		end
 	end
 	assignment.TargetPitch = PitchConfig.ClampInsidePitch(pitch)
 	assignment.TargetWorld = asWorld(context, info.Side, assignment.TargetPitch)
 	assignment.MovementTarget = assignment.TargetWorld
+	assignment.InstructionEffect = attacking and tostring(assignment.OffBallInstruction or "") or tostring(assignment.DefensiveInstruction or "")
+	assignment.InstructionTarget = assignment.TargetPitch
 end
 
 local function baseWithPhase(info: any, phase: string, ballPitch: Vector3, style: any): Vector3
@@ -1951,7 +1963,7 @@ function Service:BuildSide(context: any, side: string, phase: string): any
 		applyFullbackWingerCarrierPress(context, side, assignments)
 	end
 	applyReceiveOverrides(context, side, assignments, self.RunCoordinator)
-	for _, assignment in assignments do applyMovementProfile(context, assignment.Info, assignment, context.OwnerSide == side) end
+	for _, assignment in assignments do applyPlayerInstructions(context, assignment.Info, assignment, context.OwnerSide == side) end
 	applyReceiveOverrides(context, side, assignments, self.RunCoordinator)
 	if context.OwnerSide == side then self.RunCoordinator:Coordinate(context, side, assignments) elseif phase ~= "LooseBall" then self.DefensiveCoordinator:Coordinate(context, side, assignments) end
 	applyReceiveOverrides(context, side, assignments, self.RunCoordinator)

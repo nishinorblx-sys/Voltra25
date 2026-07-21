@@ -135,10 +135,12 @@ function Controller:Update(dt: number, aimPosition: Vector3, hasBall: boolean, c
 	if not self.MatchActive or not self.Active or not hasBall then
 		self.Beam.Enabled = false
 		self.Marker.Transparency = 1
+		for _, dot in self.TrajectoryParts do dot.Transparency = 1 end
 		return nil
 	end
 	local activeRoot = self.Active:FindFirstChild("HumanoidRootPart") :: BasePart?
 	if not activeRoot then
+		for _, dot in self.TrajectoryParts do dot.Transparency = 1 end
 		return nil
 	end
 	-- The beam communicates raw mouse intent; the separate receiver marker
