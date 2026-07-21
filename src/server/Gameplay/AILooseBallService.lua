@@ -27,9 +27,12 @@ function Service.InterceptScore(context: any, info: any): number
 	if velocity.Magnitude > 0.5 and toBall.Magnitude > 0.1 then
 		angleScore = velocity.Unit:Dot(toBall.Unit) * 12
 	end
+	local ballPitch = context.BallTeam[info.Side]
 	local roleBias = info.Role == "GK" and -18 or info.Role == "CB" and -8 or info.Role == "CDM" and 8 or info.Role == "CM" and 6 or info.Role == "ST" and 4 or 0
-	if PitchConfig.InZone(context.BallTeam[info.Side], "OwnBox") and (info.Role == "GK" or info.Role == "CB") then
-		roleBias += 24
+	if info.Role == "GK" and ballPitch.Z <= PitchConfig.Zones.OwnBox.ZMax + 52 then
+		roleBias += 36
+	elseif PitchConfig.InZone(ballPitch, "OwnBox") and info.Role == "CB" then
+		roleBias += 18
 	end
 	local staminaScore = math.clamp(info.Stamina or 60, 0, 100) * 0.12
 	return -distance + angleScore + roleBias + staminaScore + (info.Stats.pace or 60) * 0.08
@@ -41,6 +44,38 @@ function Service.ChooseChasers(context: any, side: string): (any?, any?)
 			if info.Model:GetAttribute("VTRPreparingReceive") == true and (tonumber(info.Model:GetAttribute("VTRReceiveUntil")) or 0) > (context.Now or os.clock()) then
 				return info, nil
 			end
+		end
+	end
+	local projected = Service.ProjectBall(context, 0.28)
+	local ballPitch = context.BallTeam and context.BallTeam[side] or PitchConfig.WorldToTeamPitchPosition(context.BallWorld, side, context.Options)
+	local nearKeeperZone = ballPitch.Z <= PitchConfig.Zones.OwnBox.ZMax + 72
+	local keeperCandidate = nil
+	local keeperDistance = math.huge
+	if nearKeeperZone then
+		for _, info in ipairs(context.Teams[side].List) do
+			if info.IsGoalkeeper and info.Root and not info.IsUserControlled then
+				local distance = math.min(PitchConfig.GetDistanceStuds(info.World, context.BallWorld), PitchConfig.GetDistanceStuds(info.World, projected))
+				if distance < keeperDistance then
+					keeperCandidate = info
+					keeperDistance = distance
+				end
+			end
+		end
+	end
+	if keeperCandidate and keeperDistance <= 82 then
+		local bestOutfield = nil
+		local bestOutfieldDistance = math.huge
+		for _, info in ipairs(context.Teams[side].List) do
+			if not info.IsGoalkeeper and not info.IsUserControlled and info.Root then
+				local distance = math.min(PitchConfig.GetDistanceStuds(info.World, context.BallWorld), PitchConfig.GetDistanceStuds(info.World, projected))
+				if distance < bestOutfieldDistance then
+					bestOutfield = info
+					bestOutfieldDistance = distance
+				end
+			end
+		end
+		if keeperDistance <= bestOutfieldDistance + 18 or ballPitch.Z <= PitchConfig.Zones.OwnBox.ZMax + 34 then
+			return keeperCandidate, bestOutfield
 		end
 	end
 	local scored = {}

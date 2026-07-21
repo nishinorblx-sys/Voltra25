@@ -5,7 +5,7 @@ local Service = {}
 Service.__index = Service
 
 local burstProfiles = {
-	ReceivePass = {Maximum = 3, Cooldown = 0.8, Energy = 15, Essential = true},
+	ReceivePass = {Maximum = 7, Cooldown = 0.08, Energy = 1, Essential = true},
 	BallCarrierDecision = {Maximum = 2.4, Cooldown = 0.75, Energy = 12, Essential = true},
 	DribbleSupport = {Maximum = 2.4, Cooldown = 0.85, Energy = 14, Essential = true},
 	CarryForwardSpace = {Maximum = 2.8, Cooldown = 0.85, Energy = 14, Essential = true},
@@ -37,8 +37,22 @@ local burstProfiles = {
 	RecoveryRun = {Maximum = 3, Cooldown = 1.5, Energy = 18, Essential = true},
 	RecoverShape = {Maximum = 3, Cooldown = 1.5, Energy = 18, Essential = true},
 	RunBackWithAttacker = {Maximum = 3, Cooldown = 1.5, Energy = 18, Essential = true},
-	ChaseLooseBall = {Maximum = 3.2, Cooldown = 0.45, Energy = 8, Essential = true},
-	CoverLooseBall = {Maximum = 2.4, Cooldown = 0.65, Energy = 12, Essential = true},
+	AttackLooseBall = {Maximum = 5, Cooldown = 0.18, Energy = 3, Essential = true},
+	DangerZoneLooseBallRecovery = {Maximum = 5, Cooldown = 0.12, Energy = 2, Essential = true},
+	ChaseLooseBall = {Maximum = 5, Cooldown = 0.2, Energy = 4, Essential = true},
+	CoverLooseBall = {Maximum = 4, Cooldown = 0.25, Energy = 5, Essential = true},
+	CompactPrimaryPresser = {Maximum = 2.2, Cooldown = 0.55, Energy = 12, Essential = true},
+	CompactForwardLaneBlock = {Maximum = 2.1, Cooldown = 0.65, Energy = 10, Essential = true},
+	CompactCoverBehindPresser = {Maximum = 2.1, Cooldown = 0.65, Energy = 10, Essential = true},
+	CompactDirectPassAttackReceiver = {Maximum = 2.6, Cooldown = 0.5, Energy = 12, Essential = true},
+	CompactDirectPassCoverBehind = {Maximum = 2.3, Cooldown = 0.6, Energy = 10, Essential = true},
+	CompactSecondBallMidfielder = {Maximum = 2.2, Cooldown = 0.65, Energy = 10, Essential = true},
+	ShotGoalkeeperClaim = {Maximum = 5, Cooldown = 0.15, Energy = 3, Essential = true},
+	ShotEmergencyCenterBackCover = {Maximum = 2.8, Cooldown = 0.35, Energy = 10, Essential = true},
+	ShotEmergencyFullbackCover = {Maximum = 2.7, Cooldown = 0.35, Energy = 10, Essential = true},
+	ShotEmergencyMidfieldSecondBall = {Maximum = 2.7, Cooldown = 0.35, Energy = 10, Essential = true},
+	ShotEmergencyWideRecovery = {Maximum = 2.6, Cooldown = 0.4, Energy = 10, Essential = true},
+	ShotEmergencyFirstLineRecover = {Maximum = 2.5, Cooldown = 0.45, Energy = 10, Essential = true},
 	AttackBox = {Maximum = 2, Cooldown = 4, Energy = 30},
 	AttackBackPost = {Maximum = 2, Cooldown = 4, Energy = 30},
 	ForwardMidfieldRun = {Maximum = 2, Cooldown = 4, Energy = 30},
@@ -62,10 +76,90 @@ local pressureAssignments = {
 	EarlyMidfielderPressPassTarget = true,
 	EarlyMidfielderCoverPassTarget = true,
 	EarlyClosePassTargetPressure = true,
+	CompactPrimaryPresser = true,
+	CompactForwardLaneBlock = true,
+	CompactCoverBehindPresser = true,
+	CompactDirectPassAttackReceiver = true,
+	CompactDirectPassCoverBehind = true,
+	CompactSecondBallMidfielder = true,
+	ShotGoalkeeperClaim = true,
+	ShotEmergencyCenterBackCover = true,
+	ShotEmergencyFullbackCover = true,
+	ShotEmergencyMidfieldSecondBall = true,
+	ShotEmergencyWideRecovery = true,
+	ShotEmergencyFirstLineRecover = true,
+}
+
+local ballPriorityAssignments = {
+	ReceivePass = true,
+	AttackLooseBall = true,
+	DangerZoneLooseBallRecovery = true,
+	ChaseLooseBall = true,
+	CoverLooseBall = true,
+	ShotGoalkeeperClaim = true,
 }
 
 local tacticalBurstProfile = {Maximum = 2.35, Cooldown = 0.95, Energy = 16}
 local supportBurstProfile = {Maximum = 2.45, Cooldown = 0.9, Energy = 14, Essential = true}
+
+local function rollingLobCutoffTarget(context: any, receiverWorld: Vector3): Vector3
+	local ball = context.BallWorld
+	local velocity = context.BallVelocity or Vector3.zero
+	local horizontal = Vector3.new(velocity.X, 0, velocity.Z)
+	if horizontal.Magnitude < 1.5 then
+		return ball
+	end
+	local toReceiver = Vector3.new(receiverWorld.X - ball.X, 0, receiverWorld.Z - ball.Z)
+	local movingPastReceiver = toReceiver.Magnitude > 0.05 and horizontal.Unit:Dot(toReceiver.Unit) > 0.15
+	local lead = math.clamp(horizontal.Magnitude * (movingPastReceiver and 0.34 or 0.24), 8, 22)
+	local target = ball + horizontal.Unit * lead
+	return Vector3.new(target.X, receiverWorld.Y, target.Z)
+end
+
+local goalkeeperLockStates = {
+	Tracking = true,
+	Diving = true,
+	Falling = true,
+	Landing = true,
+	Recovering = true,
+	ReturnHome = true,
+	HoldBall = true,
+	Held = true,
+	ClosingDown = true,
+	CuttingPass = true,
+	SweepLooseBall = true,
+	SaveAttempt = true,
+}
+
+local goalkeeperPriorityAssignments = {
+	ShotGoalkeeperClaim = true,
+	ShotGoalkeeperSet = true,
+	GoalkeeperPosition = true,
+	CompactGoalkeeperBehindLine = true,
+	GoalkeeperDistribution = true,
+}
+
+local function clearReceiveIntent(model: Model)
+	model:SetAttribute("VTRPreparingReceive", nil)
+	model:SetAttribute("VTRReceiveCommitted", nil)
+	model:SetAttribute("VTRReceiveHardLock", nil)
+	model:SetAttribute("VTRForcedPassReceiver", nil)
+	model:SetAttribute("VTRAITargetedPass", nil)
+	model:SetAttribute("VTRAIAlternatePassChaser", nil)
+	model:SetAttribute("VTRForcedReceiveUntil", nil)
+	model:SetAttribute("VTRReceiveHardLockUntil", nil)
+end
+
+local function goalkeeperPriorityActive(model: Model, assignment: any, now: number): boolean
+	local state = tostring(model:GetAttribute("VTRGoalkeeperState") or model:GetAttribute("GKState") or "")
+	return (tonumber(model:GetAttribute("VTRGoalkeeperActionLockUntil")) or 0) > now
+		or model:GetAttribute("VTRGoalkeeperSaving") == true
+		or model:GetAttribute("VTRKeeperDiveAnimationLocked") == true
+		or model:GetAttribute("VTRGoalkeeperHolding") == true
+		or model:GetAttribute("AIGoalkeeperLooseClaim") == true
+		or goalkeeperLockStates[state] == true
+		or goalkeeperPriorityAssignments[tostring(assignment and assignment.PrimaryAssignment or "")] == true
+end
 
 function Service.new(executor: any)
 	return setmetatable({Executor = executor, State = {}}, Service)
@@ -83,26 +177,53 @@ end
 function Service:Apply(info: any, assignment: any, context: any, dt: number)
 	if info.IsUserControlled or not info.Root then return end
 	local model = info.Model
+	local now = context.Now or os.clock()
 	local receiveTarget = model:GetAttribute("VTRReceiveIntercept")
 	if typeof(receiveTarget) ~= "Vector3" then
 		receiveTarget = model:GetAttribute("VTRReceiveTarget")
 	end
-	if model:GetAttribute("VTRPreparingReceive") == true and typeof(receiveTarget) == "Vector3" then
-		local hardLock = model:GetAttribute("VTRReceiveHardLock") == true or (tonumber(model:GetAttribute("VTRReceiveHardLockUntil")) or 0) > (context.Now or os.clock())
-		assignment = {PrimaryAssignment = "ReceivePass", TargetWorld = receiveTarget, FaceWorld = context.BallWorld, MovementUrgency = 1, SprintAllowed = hardLock or model:GetAttribute("VTRReceiveRouteSprintRequested") == true, Phase = "PassReception", SprintConservation = 0}
+	local forcedUntil = tonumber(model:GetAttribute("VTRForcedReceiveUntil")) or 0
+	local hardLockUntil = tonumber(model:GetAttribute("VTRReceiveHardLockUntil")) or 0
+	local receiveUntil = math.max(tonumber(model:GetAttribute("VTRReceiveUntil")) or 0, forcedUntil, hardLockUntil)
+	local forcedActive = model:GetAttribute("VTRForcedPassReceiver") == true or forcedUntil > now
+	local hardLock = forcedActive or model:GetAttribute("VTRReceiveHardLock") == true or hardLockUntil > now or model:GetAttribute("VTRAITargetedPass") == true
+	local keeperPriority = info.IsGoalkeeper and goalkeeperPriorityActive(model, assignment, now)
+	if keeperPriority then
+		clearReceiveIntent(model)
 	end
-	local now = context.Now or os.clock()
+	local namedPassReceiver = context.PassInFlight == true and typeof(context.PassTargetWorld) == "Vector3" and (context.PassReceiverName == model.Name or context.PassReceiverName == tostring(model:GetAttribute("DisplayName") or ""))
+	if namedPassReceiver and typeof(receiveTarget) ~= "Vector3" then
+		receiveTarget = context.PassTargetWorld
+	end
+	local receiveActive = not keeperPriority and typeof(receiveTarget) == "Vector3" and (namedPassReceiver or receiveUntil > now and (model:GetAttribute("VTRPreparingReceive") == true or hardLock or forcedActive))
+	if receiveActive then
+		local receiveFamily = tostring(model:GetAttribute("VTRReceivePassFamily") or model:GetAttribute("VTRPrePassFamily") or model:GetAttribute("AIDebugPassKind") or "")
+		local lobbed = receiveFamily == "Lob" or receiveFamily == "Lofted" or receiveFamily == "ManualLobbed" or receiveFamily == "FarPostCross" or (context.Ball and context.Ball:GetAttribute("VTRLobPassActive") == true)
+		local ballVelocity = context.BallVelocity or Vector3.zero
+		local ballSpeed = Vector3.new(ballVelocity.X, 0, ballVelocity.Z).Magnitude
+		if lobbed and hardLock and (context.Ball and context.Ball:GetAttribute("VTRLobLanded") == true or PitchConfig.GetDistanceStuds(context.BallWorld, receiveTarget) > 5.5 and ballSpeed > 1.5) then
+			receiveTarget = rollingLobCutoffTarget(context, info.World)
+			model:SetAttribute("VTRReceiveIntercept", receiveTarget)
+			model:SetAttribute("VTRReceiveTarget", receiveTarget)
+			model:SetAttribute("VTRReceiveMode", "CollectLobAfterBounce")
+			model:SetAttribute("VTRLobCutoffLeadTarget", receiveTarget)
+		end
+		assignment = {PrimaryAssignment = "ReceivePass", TargetWorld = receiveTarget, FaceWorld = context.BallWorld, MovementUrgency = 1, SprintAllowed = true, Phase = "PassReception", SprintConservation = 0, ForcedReceiver = forcedActive or hardLock or namedPassReceiver, MovementProfile = "SprintBurst"}
+	end
 	local state = self:_state(model, info.World)
 	local contract = assignment.PlayerContract
-	if contract and tonumber(contract.MinimumHoldUntil) and (tonumber(contract.MinimumHoldUntil) or 0) > state.MinimumHoldUntil then
+	if receiveActive then
+		state.MinimumHoldUntil = 0
+	elseif contract and tonumber(contract.MinimumHoldUntil) and (tonumber(contract.MinimumHoldUntil) or 0) > state.MinimumHoldUntil then
 		state.MinimumHoldUntil = tonumber(contract.MinimumHoldUntil) or state.MinimumHoldUntil
 	end
 	local assignmentName = tostring(assignment.PrimaryAssignment or "RecoverShape")
 	local proposedTarget = assignment.TargetWorld or info.World
 	local targetShift = (proposedTarget - state.Target).Magnitude
-	local emergency = assignmentName == "ReceivePass" or assignmentName == "ChaseLooseBall" or assignmentName == "RecoveryRun" or assignment.Phase ~= model:GetAttribute("TeamPhase")
+	local emergency = ballPriorityAssignments[assignmentName] == true or assignmentName == "RecoveryRun" or assignment.Phase ~= model:GetAttribute("TeamPhase")
 	local movementIQ = info.Stats and tonumber(info.Stats.movementIQ) or tonumber(model:GetAttribute("Reactions")) or 60
-	local targetCommitSeconds = math.clamp(0.32 + (movementIQ - 55) * 0.006, 0.24, 0.62)
+	local forcedReceiver = assignment.ForcedReceiver == true or model:GetAttribute("VTRForcedPassReceiver") == true
+	local targetCommitSeconds = forcedReceiver and 0 or math.clamp(0.32 + (movementIQ - 55) * 0.006, 0.24, 0.62)
 	if state.LastAssignment ~= assignmentName and (emergency or now >= state.MinimumHoldUntil) then
 		state.LastAssignment = assignmentName
 		state.AssignmentChangedAt = now
@@ -124,6 +245,14 @@ function Service:Apply(info: any, assignment: any, context: any, dt: number)
 	local moved = PitchConfig.GetDistanceStuds(info.World, state.LastPosition)
 	local profileKey = assignment.DefensiveDuty == "PrimaryPresser" and "PressBallCarrier" or assignmentName
 	local profile = burstProfiles[profileKey]
+	local staminaEnergy = tonumber(info.Stamina) or tonumber(model:GetAttribute("VTRSprintEnergy")) or 100
+	local hasBall = model:GetAttribute("VTRHasBall") == true or info.HasBall == true
+	if hasBall and staminaEnergy > 50 and distance > 3 and (assignmentName == "BallCarrierDecision" or assignment.SprintAllowed == true or (assignment.MovementUrgency or 0) >= .82) then
+		profile = profile or burstProfiles.BallCarrierDecision
+		assignment.SprintAllowed = true
+		assignment.SprintConservation = 0
+		assignment.MovementProfile = "SprintBurst"
+	end
 	if not profile and assignment.SprintAllowed == true and context.OwnerSide == info.Side and distance > 7 and (assignment.MovementUrgency or 0) >= 0.72 then profile = supportBurstProfile end
 	if not profile and assignment.SprintAllowed == true and distance > 9 and (assignment.MovementUrgency or 0) >= 0.72 then profile = tacticalBurstProfile end
 	local urgent = profile ~= nil
@@ -138,10 +267,10 @@ function Service:Apply(info: any, assignment: any, context: any, dt: number)
 		state.LastMovedAt, state.LastPosition = now, info.World
 	end
 	local ballSpeed = (context.BallVelocity and Vector3.new(context.BallVelocity.X, 0, context.BallVelocity.Z).Magnitude) or 0
-	local activeBallChase = assignmentName == "ChaseLooseBall" or assignmentName == "ReceivePass"
+	local activeBallChase = ballPriorityAssignments[assignmentName] == true
 	local mode = "Jog"
-	if activeBallChase and ballSpeed > 1.5 then
-		mode = distance > 1.1 and "Run" or "Jog"
+	if activeBallChase then
+		mode = distance > 0.25 and "Run" or "Jog"
 	elseif distance < 2.5 then
 		mode = "Idle"
 	elseif distance < 7 then
@@ -149,13 +278,17 @@ function Service:Apply(info: any, assignment: any, context: any, dt: number)
 	elseif distance > 18 then
 		mode = "Run"
 	end
-	local sprintAllowed = profile ~= nil and assignment.SprintAllowed == true and (distance > 5 or activeBallChase and ballSpeed > 4 and distance > 1.4)
+	local sprintAllowed = profile ~= nil and assignment.SprintAllowed == true and (activeBallChase and distance > 0.25 or forcedReceiver and distance > 0.75 or distance > 5)
+	if activeBallChase and profile ~= nil and assignment.SprintAllowed == true and distance > 0.08 then sprintAllowed = true end
 	if sprintAllowed then mode = "SprintBurst" end
-	if pressureAssignments[assignmentName] and distance <= 6.5 then mode = "Run" end
+	if pressureAssignments[assignmentName] and distance <= 6.5 and not activeBallChase then mode = "Run" end
 	local conservation = math.clamp(tonumber(assignment.SprintConservation) or 50, 0, 100) / 100
 	local maximum = profile and profile.Maximum or 0
 	local cooldown = profile and profile.Cooldown or 0
 	local minimumEnergy = profile and profile.Energy or 100
+	if hasBall and profile then
+		minimumEnergy = math.max(minimumEnergy, 50)
+	end
 	if profile and not profile.Essential then
 		maximum *= 1 - conservation * 0.3
 		cooldown *= 1 + conservation * 0.45

@@ -25,7 +25,10 @@ local routeAttributes = {
 	"VTRReceiveLockedAt",
 	"VTRReceiveHardLock",
 	"VTRReceiveHardLockUntil",
+	"VTRForcedPassReceiver",
+	"VTRForcedReceiveUntil",
 	"VTRReceiveMode",
+	"VTRReceivePassFamily",
 	"VTRReceiveBallSpeed",
 	"VTRReceiveDistance",
 	"VTRReceiveLocomotionMode",
@@ -77,6 +80,7 @@ function Service.SetRoute(receiver: Model, contract: any)
 	receiver:SetAttribute("VTRReceiveRouteSprintRequested", sprintRequested)
 	receiver:SetAttribute("VTRReceiveDistance", distance)
 	receiver:SetAttribute("VTRReceiveLocomotionMode", mode)
+	receiver:SetAttribute("VTRReceivePassFamily", contract.PassFamily)
 	receiver:SetAttribute("VTRReceiveDesiredArrivalVelocity", contract.DesiredArrivalVelocity)
 	receiver:SetAttribute("VTRReceiveBrakingDistance", contract.BrakingDistance)
 	receiver:SetAttribute("VTRReceiveFacingTarget", contract.FacingTarget)
@@ -88,6 +92,17 @@ function Service.SetRoute(receiver: Model, contract: any)
 	receiver:SetAttribute("VTRReceiveCommitted", true)
 	receiver:SetAttribute("VTRReceiveLockedAt", os.clock())
 	receiver:SetAttribute("VTRAITargetedPass", aiReceiver)
+	if aiReceiver then
+		receiver:SetAttribute("VTRReceiveHardLock", true)
+		receiver:SetAttribute("VTRReceiveHardLockUntil", contract.ExpiresAt)
+		receiver:SetAttribute("VTRForcedPassReceiver", true)
+		receiver:SetAttribute("VTRForcedReceiveUntil", contract.ExpiresAt)
+		receiver:SetAttribute("currentAssignment", "ReceivePass")
+		receiver:SetAttribute("AIAssignment", "ReceivePass")
+		receiver:SetAttribute("SupportRole", "ReceivePass")
+		receiver:SetAttribute("AttackAssignment", "ReceivePass")
+		receiver:SetAttribute("TeamPhase", "PassReception")
+	end
 	receiver:SetAttribute("VTRReceiverAssist", contract.AssistanceMode)
 	receiver:SetAttribute("VTRReceiverAssistMode", contract.AssistanceMode)
 end

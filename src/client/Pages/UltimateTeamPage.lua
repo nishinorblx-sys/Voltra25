@@ -41,10 +41,24 @@ local POSITIONS={"ALL","GK","LB","CB","RB","CDM","CM","CAM","LW","ST","RW"}
 local RARITIES={"ALL","STARTER","COMMON","BRONZE","SILVER","GOLD","RARE","ELITE","LEGENDARY","ICON","MYTHIC"}
 local RARITY_RANK={COMMON=1,STARTER=2,BRONZE=3,SILVER=4,GOLD=5,RARE=6,ELITE=7,LEGENDARY=8,ICON=9,MYTHIC=10}
 local TACTIC_PRESETS=LiteConfig.TacticPresetOrder
+local TACTIC_FORMATIONS={"4-3-3","4-2-3-1","4-4-2","4-1-2-1-2","4-5-1","3-4-3","4-3-2-1","3-5-2","5-3-2"}
+local TACTIC_IDENTITIES={{Id="basic_possession",Label="Slow Build Up",Name="SAFE Possession",PresetId="balanced_control"},{Id="quick_passing",Label="Tiki-Taka",Name="Quick Passing",PresetId="short_possession"}}
+local TACTIC_BEHAVIOR_CONTROLS={
+	{Key="DefensiveLineReach",Label="DEFENSIVE LINE REACH",Low="Halfway cap",High="Higher reach"},
+	{Key="FirstTimePassing",Label="FIRST TIME PASSING",Low="Control first",High="One-touch"},
+	{Key="LongBalls",Label="LONG BALLS",Low="Short first",High="Furthest open"},
+	{Key="Aggression",Label="AGGRESSION",Low="Delay tackles",High="Attempt tackles"},
+	{Key="Character",Label="CHARACTER",Low="Stay upright",High="More slides"},
+	{Key="ShotRate",Label="SHOT RATE",Low="Work chance",High="Shoot earlier"},
+}
 local FORMATION_DOTS={
 	["4-3-3"]={{.5,.9},{.18,.68},{.38,.7},{.62,.7},{.82,.68},{.28,.48},{.5,.52},{.72,.48},{.2,.24},{.5,.18},{.8,.24}},
 	["4-2-3-1"]={{.5,.9},{.18,.68},{.38,.7},{.62,.7},{.82,.68},{.38,.52},{.62,.52},{.24,.32},{.5,.3},{.76,.32},{.5,.15}},
 	["4-4-2"]={{.5,.9},{.18,.68},{.38,.7},{.62,.7},{.82,.68},{.2,.45},{.4,.48},{.6,.48},{.8,.45},{.38,.18},{.62,.18}},
+	["4-1-2-1-2"]={{.5,.9},{.18,.68},{.38,.7},{.62,.7},{.82,.68},{.5,.56},{.31,.43},{.69,.43},{.5,.3},{.39,.16},{.61,.16}},
+	["4-5-1"]={{.5,.9},{.18,.68},{.38,.7},{.62,.7},{.82,.68},{.5,.54},{.34,.44},{.66,.44},{.16,.38},{.5,.18},{.84,.38}},
+	["3-4-3"]={{.5,.9},{.28,.7},{.5,.72},{.72,.7},{.84,.48},{.39,.48},{.61,.48},{.16,.48},{.2,.23},{.5,.16},{.8,.23}},
+	["4-3-2-1"]={{.5,.9},{.18,.68},{.38,.7},{.62,.7},{.82,.68},{.5,.53},{.33,.46},{.67,.46},{.4,.3},{.5,.16},{.6,.3}},
 	["3-5-2"]={{.5,.9},{.28,.7},{.5,.72},{.72,.7},{.12,.48},{.34,.5},{.5,.46},{.66,.5},{.88,.48},{.38,.18},{.62,.18}},
 	["5-3-2"]={{.5,.9},{.12,.68},{.32,.72},{.5,.74},{.68,.72},{.88,.68},{.3,.45},{.5,.48},{.7,.45},{.38,.18},{.62,.18}},
 }

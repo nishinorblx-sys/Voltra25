@@ -100,7 +100,7 @@ function AILabPage.new(context: any): CanvasGroup
 	end
 
 	local function saveDraft()
-		local payload = {DraftId = state.Draft and state.Draft.Status == "Draft" and state.Draft.PlaystyleId or nil, Playstyle = {Name = state.Name, BasePresetId = state.Draft and state.Draft.BasePresetId or "balanced_control", Tactics = activeTactics(state)}}
+		local payload = {DraftId = state.Draft and state.Draft.Status == "Draft" and state.Draft.PlaystyleId or nil, Playstyle = {Name = state.Name, BasePresetId = state.Draft and state.Draft.BasePresetId or "balanced_control", Tactics = activeTactics(state), RoleInstructions = state.Draft and state.Draft.RoleInstructions or nil, PassRules = state.Draft and state.Draft.PassRules or nil, PositioningRules = state.Draft and state.Draft.PositioningRules or nil, PressRules = state.Draft and state.Draft.PressRules or nil, SequenceRules = state.Draft and state.Draft.SequenceRules or nil, MetricsTargets = state.Draft and state.Draft.MetricsTargets or nil}}
 		local response = request("SaveAILabDraft", payload)
 		if response.Success then
 			state.Server = response.Data.State
@@ -112,7 +112,7 @@ function AILabPage.new(context: any): CanvasGroup
 
 	render = function()
 		clear()
-		PageBase.heading(scroll, "STUDIO ONLY", "AI LAB", "Author reusable Home and Away playstyles against a real paused AI-vs-AI match.")
+		PageBase.heading(scroll, "STUDIO ONLY", "AI LAB", "Choose SAFE Possession or Quick Passing and apply the tactic live.")
 		if not state.Loaded then
 			text(scroll, "Loading AI LAB...", UDim2.fromOffset(0, 104), UDim2.new(1, 0, 0, 32), 14, Theme.Colors.Silver, Theme.Fonts.Strong)
 			task.defer(refresh)
@@ -188,7 +188,7 @@ function AILabPage.new(context: any): CanvasGroup
 		local library = Panel.new({Name = "Library", Position = UDim2.new(.66, 8, 0, 278), Size = UDim2.new(.34, -8, 0, 860)})
 		library.Parent = scroll
 		text(library, "PLAYSTYLE LIBRARY", UDim2.fromOffset(18, 16), UDim2.new(1, -36, 0, 26), 15, Theme.Colors.White, Theme.Fonts.Display)
-		text(library, "Drafts and built-ins can be assigned to either side.", UDim2.fromOffset(18, 45), UDim2.new(1, -36, 0, 32), 9, Theme.Colors.Silver, Theme.Fonts.Body)
+		text(library, "Select a base tactic or a saved draft, then assign it to Home or Away.", UDim2.fromOffset(18, 45), UDim2.new(1, -36, 0, 32), 9, Theme.Colors.Silver, Theme.Fonts.Body)
 		local list = Instance.new("ScrollingFrame")
 		list.BackgroundTransparency = 1
 		list.BorderSizePixel = 0

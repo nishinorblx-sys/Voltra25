@@ -81,6 +81,71 @@ local function setPitchTarget(context: any, side: string, assignment: any, pitch
 	assignment.SprintAllowed = sprint
 end
 
+local function isBackLineSlot(slot: any): boolean
+	if not slot then return false end
+	local id = tostring(slot.Id or "")
+	return id == "left-center-back" or id == "right-center-back" or id == "left-fullback-zone" or id == "right-fullback-zone"
+end
+
+local function isBackLineInfo(info: any, assignment: any): boolean
+	if not info or info.IsGoalkeeper then return false end
+	if info.Role == "CB" or info.Role == "Fullback" then return true end
+	local slot = assignment and assignment.TacticalSlot
+	if not slot then return false end
+	return slot.Line == "Back" or slot.RestDefense == true
+end
+
+local function canStayDeeper(context: any, side: string, assignment: any, block: any): boolean
+	local primary = tostring(assignment and assignment.PrimaryAssignment or "")
+	if primary == "RunnerTrack" or primary == "TrackIncomingReceiver" or primary == "RunBackWithAttacker" or primary == "AttackPassTrajectory" then
+		return true
+	end
+	local lineState = tostring(block and block.DefensiveLineState or "")
+	if lineState == "EmergencyDrop" or lineState == "TrackDepthRun" or lineState == "ProtectSixYardBox" then
+		return true
+	end
+	local target = context.PassTargetTeam and context.PassTargetTeam[side]
+	if context.PassInFlight == true and typeof(target) == "Vector3" and target.Z <= (tonumber(block and block.BackLineZ) or 0) - 6 then
+		return true
+	end
+	return false
+end
+
+local function finalBackLineClamp(context: any, side: string, assignments: any, block: any)
+	if not block then return end
+	local lineZ = tonumber(block.BackLineZ)
+	if not lineZ then return end
+	local maxBehind = 3
+	for model, assignment in pairs(assignments) do
+		local info = context.Players and context.Players[model]
+		if isBackLineInfo(info, assignment) and not canStayDeeper(context, side, assignment, block) then
+			local target = assignment.TargetPitch
+			if typeof(assignment.TargetWorld) == "Vector3" then
+				target = PitchConfig.WorldToTeamPitchPosition(assignment.TargetWorld, side, context.Options)
+			end
+			if typeof(target) == "Vector3" and target.Z < lineZ - maxBehind then
+				local corrected = PitchConfig.ClampInsidePitch(Vector3.new(target.X, 3, lineZ))
+				assignment.TargetPitch = corrected
+				assignment.TargetWorld = PitchConfig.TeamPitchPositionToWorld(corrected, side, context.Options)
+				assignment.MovementTarget = assignment.TargetWorld
+				assignment.PrimaryAssignment = "RecoverBackLineLevel"
+				assignment.MovementUrgency = math.max(assignment.MovementUrgency or 0, .96)
+				assignment.SprintAllowed = true
+				model:SetAttribute("AIDeepCover", false)
+				model:SetAttribute("AIDeepCoverDefender", "")
+				model:SetAttribute("AIDefensiveBreachRole", "")
+				model:SetAttribute("AINormalBackLineCorrected", true)
+				model:SetAttribute("AINormalBackLineRawDelta", math.abs(target.Z - lineZ))
+				model:SetAttribute("AIBackLineFinalClamp", true)
+			else
+				model:SetAttribute("AIBackLineFinalClamp", false)
+			end
+		else
+			model:SetAttribute("AIBackLineFinalClamp", false)
+		end
+	end
+end
+
 function Plan.Apply(context: any, side: string, assignments: any, intent: any, block: any, dutyState: any?)
 	local primaryUsed = false
 	local now = context.Now or os.clock()
@@ -197,6 +262,25 @@ function Plan.Apply(context: any, side: string, assignments: any, intent: any, b
 			model:SetAttribute("AIPressPhase", "CloseLane")
 			model:SetAttribute("AIPressTargetRole", "FarReturn")
 			model:SetAttribute("AIPressTrigger", tostring(intent and intent.Intent or ""))
+		elseif slot and slot.Id == "normal-nearest-pass-blocker" then
+			assignment.PrimaryAssignment = "BlockNearestPass"
+			assignment.MovementUrgency = .78
+			assignment.SprintAllowed = false
+			assignment.FaceWorld = carrier and carrier.World or assignment.FaceWorld
+			model:SetAttribute("AIChosenPressRole", "NearestPassBlocker")
+			model:SetAttribute("AIPressLayer", "ForwardBlock")
+			model:SetAttribute("AIPressPhase", "BlockLane")
+			model:SetAttribute("AIPressTargetRole", "NearestOutlet")
+		elseif slot and (slot.Id == "normal-left-midfield-lane" or slot.Id == "normal-central-midfield-screen" or slot.Id == "normal-right-midfield-lane" or slot.Id == "normal-far-switch-guard") then
+			local role = slot.Id == "normal-central-midfield-screen" and "CoverCenter" or slot.Id == "normal-left-midfield-lane" and "CoverLeftSide" or slot.Id == "normal-right-midfield-lane" and "CoverRightSide" or "GuardFarSwitch"
+			assignment.PrimaryAssignment = role
+			assignment.MovementUrgency = .74
+			assignment.SprintAllowed = false
+			assignment.FaceWorld = carrier and carrier.World or assignment.FaceWorld
+			model:SetAttribute("AIChosenPressRole", role)
+			model:SetAttribute("AIPressLayer", slot.Id == "normal-far-switch-guard" and "FarSwitch" or "MidfieldLine")
+			model:SetAttribute("AIPressPhase", "HoldShape")
+			model:SetAttribute("AIPressTargetRole", role)
 		elseif slot and (slot.Id == "midfield-press-support" or slot.Id == "ball-side-midfield-squeezer" or slot.Id == "central-midfield-squeezer") then
 			local outlet = nearestMidfielder or nearestForwardOutlet
 			if slot.Id == "ball-side-midfield-squeezer" and committedReceiver then
@@ -251,14 +335,15 @@ function Plan.Apply(context: any, side: string, assignments: any, intent: any, b
 			model:SetAttribute("AIPressAwarenessRange", highPress and 65 or 45)
 			model:SetAttribute("AIPressEngagementRange", highPress and 36 or 28)
 		elseif slot and slot.Id == "edge-step-defender" then
-			assignment.PrimaryAssignment = block and block.DefensiveLineState == "StepToCarrier" and "StepToCarrier" or "BallSideContain"
-			assignment.MovementUrgency = block and block.DefensiveLineState == "StepToCarrier" and 1 or .78
-			assignment.SprintAllowed = block and block.DefensiveLineState == "StepToCarrier"
+			local state = block and tostring(block.DefensiveLineState or "") or ""
+			assignment.PrimaryAssignment = block and block.NoPressureAdvance == true and "NoPressureAdvance" or state == "ContainAtEdge" and "EdgeCarrierPress" or state == "StepToCarrier" and "StepToCarrier" or state == "RecoverForward" and "RecoverForward" or "BallSideContain"
+			assignment.MovementUrgency = (state == "StepToCarrier" or state == "ContainAtEdge" or block and block.NoPressureAdvance == true) and 1 or state == "RecoverForward" and .9 or .78
+			assignment.SprintAllowed = state == "StepToCarrier" or state == "ContainAtEdge" or block and block.NoPressureAdvance == true
 			assignment.FaceWorld = carrier and carrier.World or assignment.FaceWorld
 			model:SetAttribute("AIDeepCover", false)
 			model:SetAttribute("AIPressLayer", "BackLineStep")
 			model:SetAttribute("AIPressPhase", assignment.PrimaryAssignment)
-			model:SetAttribute("AIEdgeOfBoxPressure", block and block.DefensiveLineState == "StepToCarrier" or false)
+			model:SetAttribute("AIEdgeOfBoxPressure", state == "StepToCarrier" or state == "ContainAtEdge")
 		elseif slot and slot.Id == "inside-cover-defender" then
 			assignment.PrimaryAssignment = "InsideCover"
 			assignment.MovementUrgency = .86
@@ -276,11 +361,11 @@ function Plan.Apply(context: any, side: string, assignments: any, intent: any, b
 			model:SetAttribute("AIPressLayer", "FarSideCover")
 			model:SetAttribute("AIPressPhase", "Narrow")
 		elseif slot and (slot.Id == "left-center-back" or slot.Id == "right-center-back" or slot.Id == "left-fullback-zone" or slot.Id == "right-fullback-zone") then
-			assignment.PrimaryAssignment = highPress and "HighLineCompress" or "HoldBackLineZone"
-			assignment.MovementUrgency = highPress and .84 or .72
-			assignment.SprintAllowed = false
+			assignment.PrimaryAssignment = highPress and "HighLineCompress" or block and block.NoPressureAdvance == true and "AdvanceBackLine" or "HoldBackLineZone"
+			assignment.MovementUrgency = highPress and .84 or block and block.NoPressureAdvance == true and .86 or .72
+			assignment.SprintAllowed = block and block.NoPressureAdvance == true or false
 			model:SetAttribute("AIPressLayer", "HighLine")
-			model:SetAttribute("AIPressPhase", highPress and "CloseLane" or "Observe")
+			model:SetAttribute("AIPressPhase", highPress and "CloseLane" or block and block.NoPressureAdvance == true and "AdvanceNoPressure" or "Observe")
 			model:SetAttribute("AIPressAwarenessRange", highPress and 64 or 42)
 			model:SetAttribute("AIPressEngagementRange", highPress and 34 or 24)
 		elseif slot and (slot.Id == "cutback-protector" or slot.Id == "far-post-protector") then
@@ -307,6 +392,38 @@ function Plan.Apply(context: any, side: string, assignments: any, intent: any, b
 			model:SetAttribute("AIDefensiveForceDirection", duty.ForceDirection)
 			model:SetAttribute("AIDefensiveBlockedLane", duty.BlockedLane)
 		end
+		if block and block.NormalShape == true and isBackLineSlot(slot) then
+			local lineZ = tonumber(block.BackLineZ) or assignment.TargetPitch.Z
+			local maxDelta = tonumber(block.NormalBackLineMaxDelta) or 3
+			local target = assignment.TargetPitch or slot.TargetPitch
+			if typeof(assignment.TargetWorld) == "Vector3" then
+				target = PitchConfig.WorldToTeamPitchPosition(assignment.TargetWorld, side, context.Options)
+			end
+			local rawDelta = math.abs(target.Z - lineZ)
+			local correctedZ = rawDelta > maxDelta and lineZ or target.Z
+			local corrected = PitchConfig.ClampInsidePitch(Vector3.new(target.X, 3, correctedZ))
+			assignment.TargetPitch = corrected
+			assignment.TargetWorld = PitchConfig.TeamPitchPositionToWorld(corrected, side, context.Options)
+			assignment.MovementTarget = assignment.TargetWorld
+			assignment.PrimaryAssignment = "HoldBackLineZone"
+			assignment.SprintAllowed = false
+			if rawDelta > 10 then
+				assignment.MovementUrgency = math.max(assignment.MovementUrgency or 0, .94)
+			elseif rawDelta > 7 then
+				assignment.MovementUrgency = math.max(assignment.MovementUrgency or 0, .88)
+			elseif rawDelta > maxDelta then
+				assignment.MovementUrgency = math.max(assignment.MovementUrgency or 0, .8)
+			end
+			model:SetAttribute("AIDeepCover", false)
+			model:SetAttribute("AIDeepCoverDefender", "")
+			model:SetAttribute("AIDefensiveBreachRole", "")
+			model:SetAttribute("AIEmergencyDropReason", "")
+			model:SetAttribute("AINormalBackLineCorrected", rawDelta > maxDelta)
+			model:SetAttribute("AINormalBackLineRawDelta", rawDelta)
+		else
+			model:SetAttribute("AINormalBackLineCorrected", false)
+			model:SetAttribute("AINormalBackLineRawDelta", 0)
+		end
 		model:SetAttribute("TeamDefensiveIntent", tostring(intent and intent.Intent or ""))
 		if block then
 			model:SetAttribute("AIDefensiveBlockWidth", block.BlockWidth)
@@ -329,13 +446,26 @@ function Plan.Apply(context: any, side: string, assignments: any, intent: any, b
 			model:SetAttribute("AIDeepCoverPlayer", block.DeepCover and block.DeepCover.Name or "")
 			model:SetAttribute("AIDefensiveLineState", block.DefensiveLineState or "")
 			model:SetAttribute("AIBoxEdgeAnchorZ", block.BoxEdgeAnchorZ or 0)
+			model:SetAttribute("AIBoxFrontEdgeZ", block.BoxFrontEdgeZ or block.BoxEdgeAnchorZ or 0)
+			model:SetAttribute("AINormalLineAnchorZ", block.NormalLineAnchorZ or 0)
+			model:SetAttribute("AIEmergencyLineAnchorZ", block.EmergencyLineAnchorZ or 0)
+			model:SetAttribute("AIResolvedBackLineTargetZ", block.ResolvedBackLineTargetZ or block.BackLineZ or 0)
+			model:SetAttribute("AIRetreatCapped", block.RetreatCapped == true)
+			model:SetAttribute("AINoPressureAdvance", block.NoPressureAdvance == true)
+			model:SetAttribute("AIClosestPresserDistance", block.ClosestPresserDistance or 0)
 			model:SetAttribute("AIBackLineMinimumZ", block.BackLineMinimumZ or 0)
+			model:SetAttribute("AIBackLineCeilingZ", block.BackLineCeilingZ or 0)
 			model:SetAttribute("AIStepDefender", block.StepDefender and block.StepDefender.Name or "")
+			model:SetAttribute("AIInsideCover", assignment.PrimaryAssignment == "InsideCover" and model.Name or "")
+			model:SetAttribute("AIFarSideCover", assignment.PrimaryAssignment == "FarSideCover" and model.Name or "")
+			model:SetAttribute("AIDeepCover", assignment.PrimaryAssignment == "DeepCover" or assignment.PrimaryAssignment == "RunnerTrack")
 			model:SetAttribute("AIInsideCoverDefender", assignment.PrimaryAssignment == "InsideCover" and model.Name or "")
 			model:SetAttribute("AIFarSideCoverDefender", assignment.PrimaryAssignment == "FarSideCover" and model.Name or "")
 			model:SetAttribute("AIDeepCoverDefender", (assignment.PrimaryAssignment == "DeepCover" or assignment.PrimaryAssignment == "RunnerTrack") and model.Name or "")
 			model:SetAttribute("AIEmergencyDropReason", block.EmergencyDropReason or "")
 			model:SetAttribute("AIThreatResolved", block.ThreatResolved == true)
+			model:SetAttribute("AIRecoverForward", block.RecoverForward == true)
+			model:SetAttribute("AIAdvanceLineTrigger", block.AdvanceLineTrigger == true)
 			model:SetAttribute("AIEdgeOfBoxPressure", block.EdgeOfBoxPressure == true)
 			model:SetAttribute("AIOpponentResetPress", block.OpponentResetPress == true)
 			model:SetAttribute("AIResetPressReceiver", block.ResetPressReceiverName or "")
@@ -355,7 +485,7 @@ function Plan.Apply(context: any, side: string, assignments: any, intent: any, b
 	local activePressers = 0
 	for _, assignment in pairs(assignments) do
 		local primary = tostring(assignment.PrimaryAssignment or "")
-		if primary == "PressBallCarrier" or primary == "PressOutletLane" or primary == "PressCentralOutlet" or primary == "MidfieldPressSupport" or primary == "CentralMidfieldSqueeze" or primary == "BlockFarReturn" then
+		if primary == "PressBallCarrier" or primary == "PressOutletLane" or primary == "PressCentralOutlet" or primary == "MidfieldPressSupport" or primary == "CentralMidfieldSqueeze" or primary == "BlockFarReturn" or primary == "NoPressureAdvance" or primary == "EdgeCarrierPress" or primary == "StepToCarrier" then
 			activePressers += 1
 		end
 	end
@@ -371,7 +501,7 @@ function Plan.Apply(context: any, side: string, assignments: any, intent: any, b
 		local closestPresser = math.huge
 		for model, assignment in pairs(assignments) do
 			local primary = tostring(assignment.PrimaryAssignment or "")
-			if primary == "PressBallCarrier" or primary == "ContainBallCarrier" or primary == "CarrierBreachPress" then
+			if primary == "PressBallCarrier" or primary == "ContainBallCarrier" or primary == "CarrierBreachPress" or primary == "NoPressureAdvance" or primary == "EdgeCarrierPress" or primary == "StepToCarrier" then
 				closestPresser = math.min(closestPresser, assignmentDistance(context, model, carrierPitch))
 			end
 		end
@@ -381,7 +511,8 @@ function Plan.Apply(context: any, side: string, assignments: any, intent: any, b
 		local unpressedCentral = centralCarrier and closestPresser > (breachedMidfield and 38 or 32)
 		local breach = breachedForward or breachedMidfield or betweenLines or unpressedCentral
 		local lineState = tostring(block.DefensiveLineState or "")
-		local emergencyBreach = lineState == "EmergencyDrop" or lineState == "ProtectSixYardBox" or lineState == "TrackDepthRun"
+		local boxEdge = tonumber(block.BoxEdgeAnchorZ) or 132
+		local emergencyBreach = lineState == "EmergencyDrop" or lineState == "ProtectSixYardBox" and carrierPitch.Z <= boxEdge + 4
 		if breach and (emergencyBreach or carrierPitch.Z <= (tonumber(block.BoxEdgeAnchorZ) or 132) + 4) then
 			local used: {[Model]: boolean} = {}
 			local contain = pickAssigned(context, assignments, carrierPitch, used, function(info: any)
@@ -433,6 +564,22 @@ function Plan.Apply(context: any, side: string, assignments: any, intent: any, b
 			end
 		end
 	end
+	if block and carrier and carrier.Role == "ST" and carrierPitch.Z <= (tonumber(block.BoxEdgeAnchorZ) or PitchConfig.Zones.OwnBox.ZMax) + 118 then
+		local used: {[Model]: boolean} = {}
+		local cb = pickAssigned(context, assignments, carrierPitch, used, function(info: any)
+			return info.Role == "CB"
+		end)
+		if cb and assignments[cb] then
+			setPitchTarget(context, side, assignments[cb], Vector3.new(carrierPitch.X + (PitchConfig.HALF_WIDTH - carrierPitch.X) * .18, 3, math.max(30, carrierPitch.Z - 6)), "CBPressStrikerDefensiveThird", 1, true)
+			assignments[cb].FaceWorld = carrier.World
+			cb:SetAttribute("AIDefensiveBreachRole", "CBPressStriker")
+			cb:SetAttribute("AIPressLayer", "CenterBackPress")
+			cb:SetAttribute("AIPressPhase", "PressStriker")
+			cb:SetAttribute("AIPressTargetRole", "Striker")
+			cb:SetAttribute("AIEdgeOfBoxPressure", true)
+		end
+	end
+	finalBackLineClamp(context, side, assignments, block)
 end
 
 function Plan.ApplyIncomingPass(context: any, side: string, assignments: any, dutyState: any?)
@@ -477,7 +624,24 @@ function Plan.ApplyIncomingPass(context: any, side: string, assignments: any, du
 	end)
 	local bestTracker = receiver and choose(receiverPathWorld, nil) or nil
 	local bestBlocker = receiver and choose(blockWorld, nil) or nil
-	local bestCover = choose(PitchConfig.TeamPitchPositionToWorld(Vector3.new(PitchConfig.HALF_WIDTH, 3, 62), side, context.Options), function(info: any): boolean
+	local lineSamples = {}
+	for model, assignment in pairs(assignments) do
+		local info = context.Players[model]
+		if info and (info.Role == "CB" or info.Role == "Fullback") then
+			local pitch = assignment.TargetPitch
+			if typeof(assignment.TargetWorld) == "Vector3" then
+				pitch = PitchConfig.WorldToTeamPitchPosition(assignment.TargetWorld, side, context.Options)
+			end
+			if typeof(pitch) == "Vector3" then
+				table.insert(lineSamples, pitch.Z)
+			end
+		end
+	end
+	table.sort(lineSamples)
+	local sharedLineZ = lineSamples[math.min(2, #lineSamples)] or (receiverTargetPitch.Z + 28)
+	local preservePitch = PitchConfig.ClampInsidePitch(Vector3.new(PitchConfig.HALF_WIDTH, 3, math.max(28, sharedLineZ - 3)))
+	local preserveWorld = PitchConfig.TeamPitchPositionToWorld(preservePitch, side, context.Options)
+	local bestCover = choose(preserveWorld, function(info: any): boolean
 		return info.Role == "CB" or info.Role == "Fullback" or info.Role == "CDM"
 	end)
 	for model, assignment in pairs(assignments) do
@@ -502,12 +666,13 @@ function Plan.ApplyIncomingPass(context: any, side: string, assignments: any, du
 				assignment.MovementUrgency = .82
 				assignment.SprintAllowed = false
 			elseif model == bestCover then
-				local coverWorld = PitchConfig.TeamPitchPositionToWorld(Vector3.new(PitchConfig.HALF_WIDTH, 3, 62), side, context.Options)
 				assignment.PrimaryAssignment = "PreserveDeepestCover"
-				assignment.TargetWorld = coverWorld
-				assignment.MovementTarget = coverWorld
-				assignment.MovementUrgency = .7
+				assignment.TargetPitch = preservePitch
+				assignment.TargetWorld = preserveWorld
+				assignment.MovementTarget = preserveWorld
+				assignment.MovementUrgency = .82
 				assignment.SprintAllowed = false
+				model:SetAttribute("AIBackLineFinalClamp", false)
 			end
 			if model == bestAttacker or model == bestTracker or model == bestBlocker or model == bestCover then
 				model:SetAttribute("AIIncomingPassDuty", assignment.PrimaryAssignment)

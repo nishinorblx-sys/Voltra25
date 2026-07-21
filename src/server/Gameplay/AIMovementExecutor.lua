@@ -79,12 +79,24 @@ function Service:Step(dt: number)
 			humanoid.WalkSpeed = 0;humanoid:Move(Vector3.zero, false);modelRoot.AssemblyLinearVelocity = Vector3.zero;model:SetAttribute("VTRAISprintRequested", false);continue
 		end
 		if model:GetAttribute("VTRGoalkeeperSaving") == true then continue end
+		if modelRoot.Anchored then
+			modelRoot.Anchored = false
+			modelRoot.AssemblyLinearVelocity = Vector3.zero
+			modelRoot.AssemblyAngularVelocity = Vector3.zero
+		end
+		if humanoid.PlatformStand or humanoid.Sit then
+			humanoid.PlatformStand = false
+			humanoid.Sit = false
+			humanoid:ChangeState(Enum.HumanoidStateType.Running)
+		end
+		humanoid.AutoRotate = true
 		local offset = command.Target - modelRoot.Position
 		local horizontal = Vector3.new(offset.X, 0, offset.Z)
 		local distance = horizontal.Magnitude
 		local velocity = Vector3.new(modelRoot.AssemblyLinearVelocity.X, 0, modelRoot.AssemblyLinearVelocity.Z)
 		local receiving = model:GetAttribute("VTRPreparingReceive") == true and typeof(model:GetAttribute("VTRReceiveTarget")) == "Vector3"
-		local chasingLoose = tostring(command.AssignmentId or ""):find("ChaseLooseBall", 1, true) ~= nil
+		local assignmentId = tostring(command.AssignmentId or "")
+		local chasingLoose = assignmentId:find("ChaseLooseBall", 1, true) ~= nil or assignmentId:find("CoverLooseBall", 1, true) ~= nil or assignmentId:find("AttackLooseBall", 1, true) ~= nil or assignmentId:find("DangerZoneLooseBallRecovery", 1, true) ~= nil or assignmentId:find("ShotGoalkeeperClaim", 1, true) ~= nil
 		local ballETA = tonumber(model:GetAttribute("VTRReceiveBallETA")) or math.huge
 		local faceTarget = typeof(command.FaceTarget) == "Vector3" and command.FaceTarget or nil
 		local faceOffset = faceTarget and Vector3.new(faceTarget.X - modelRoot.Position.X, 0, faceTarget.Z - modelRoot.Position.Z) or Vector3.zero

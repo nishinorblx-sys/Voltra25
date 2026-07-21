@@ -105,13 +105,13 @@ function Page.new(context:any):CanvasGroup
 	end
 	local function bulkSelectedIds():{string}local ids={};for id,selected in bulkSelected do if selected then table.insert(ids,id)end end;table.sort(ids);return ids end
 	local function bulkSelectedTotal():number local lookup={};for _,card in data.Players or{}do lookup[tostring(card.Id)]=card end;local total=0;local count=0;for id,selected in bulkSelected do if selected and lookup[id]and not protectionReason(lookup[id])then total+=quickSellValue(lookup[id]);count+=1 elseif selected then bulkSelected[id]=nil end end;return total,count end
-	local function finishOpen(title:string,reveals:any)packActionDebounce=false;context.Flow:PackOpening(title,function()if group.Parent and isCurrent()then refresh();render()end;toast("Pack contents added to Players.","Reward")end,reveals)end
+	local function finishOpen(title:string,reveals:any,metadata:any?)packActionDebounce=false;context.Flow:PackOpening(title,function()if group.Parent and isCurrent()then refresh();render()end;toast("Pack contents added to Players.","Reward")end,reveals,metadata)end
 	local function openOne(pack:any)
 		if packActionDebounce then return end
 		packActionDebounce=true
 		if context.Root and context.Root:FindFirstChild("PremiumPackOpening")then packActionDebounce=false;toast("Finish the current pack opening first.");return end
 		clearTransientOverlays(true)
-		context.Flow:PackPreview({Title=packName(pack),Subtitle=packCardCount(pack).." PLAYER CARDS",Detail=packDescription(pack).."\n\n"..oddsText(pack)},{Label="OPEN PACK",OnCancel=function()packActionDebounce=false end},function()local opened=PackService:Open(packInstanceId(pack));if not opened.Success then packActionDebounce=false;toast(opened.Message or "Pack opening failed.","Error");return end;finishOpen(packName(pack),opened.Data)end)
+		context.Flow:PackPreview({Title=packName(pack),Subtitle=packCardCount(pack).." PLAYER CARDS",Detail=packDescription(pack).."\n\n"..oddsText(pack)},{Label="OPEN PACK",OnCancel=function()packActionDebounce=false end},function()local opened=PackService:Open(packInstanceId(pack));if not opened.Success then packActionDebounce=false;toast(opened.Message or "Pack opening failed.","Error");return end;finishOpen(packName(pack),opened.Data,{PackId=packId(pack),PackDefinition=pack,PackCount=1,PackSource="Inventory"})end)
 		task.defer(function()if packActionDebounce and context.Root and not context.Root:FindFirstChild("ModalOverlay")and not context.Root:FindFirstChild("PremiumPackOpening")then packActionDebounce=false end end)
 	end
 	local function openAll(groupData:any)
@@ -119,7 +119,7 @@ function Page.new(context:any):CanvasGroup
 		packActionDebounce=true
 		if context.Root and context.Root:FindFirstChild("PremiumPackOpening")then packActionDebounce=false;toast("Finish the current pack opening first.");return end
 		clearTransientOverlays(true)
-		context.Flow:Confirmation("OPEN ALL "..string.upper(packName(groupData)),"Open all "..groupData.quantity.." sealed packs of this type? Rewards remain server controlled.","OPEN ALL",function()local opened=PackService:OpenAll(packId(groupData));if not opened.Success then packActionDebounce=false;toast(opened.Message or "Open All failed.","Error");return end;finishOpen(packName(groupData).."  x"..opened.OpenedCount,opened.Data)end,function()packActionDebounce=false end)
+		context.Flow:Confirmation("OPEN ALL "..string.upper(packName(groupData)),"Open all "..groupData.quantity.." sealed packs of this type? Rewards remain server controlled.","OPEN ALL",function()local opened=PackService:OpenAll(packId(groupData));if not opened.Success then packActionDebounce=false;toast(opened.Message or "Open All failed.","Error");return end;finishOpen(packName(groupData).."  x"..opened.OpenedCount,opened.Data,{PackId=packId(groupData),PackDefinition=groupData,PackCount=opened.OpenedCount,PackSource="Inventory",OpenAll=true})end,function()packActionDebounce=false end)
 		task.defer(function()if packActionDebounce and context.Root and not context.Root:FindFirstChild("ModalOverlay")and not context.Root:FindFirstChild("PremiumPackOpening")then packActionDebounce=false end end)
 	end
 	local function scrolling(parent:Instance,top:number?):ScrollingFrame local list=Instance.new("ScrollingFrame");list.BackgroundTransparency=1;list.BorderSizePixel=0;list.Position=UDim2.fromOffset(0,top or 0);list.Size=UDim2.new(1,0,1,-(top or 0));list.AutomaticCanvasSize=Enum.AutomaticSize.Y;list.CanvasSize=UDim2.new();list.ScrollBarThickness=3;list.ScrollBarImageColor3=Theme.Colors.Electric;list.Parent=parent;return list end

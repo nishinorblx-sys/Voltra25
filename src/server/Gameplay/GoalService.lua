@@ -49,6 +49,23 @@ local function configureGoalDetector(instance: Instance?)
 	instance.CanQuery = true
 end
 
+local function segmentPointDistance(a: Vector3, b: Vector3, p: Vector3): number
+	local ab = b - a
+	local denominator = ab:Dot(ab)
+	local t = denominator > 0.0001 and math.clamp((p - a):Dot(ab) / denominator, 0, 1) or 0
+	return (p - (a + ab * t)).Magnitude
+end
+
+local function insideGoalMouth(rectangle: any, point: Vector3, radius: number): boolean
+	local offset = point - rectangle.PlanePoint
+	local horizontal = offset:Dot(rectangle.Right)
+	local vertical = offset:Dot(rectangle.Up)
+	return horizontal >= rectangle.Left + radius * 0.15
+		and horizontal <= rectangle.RightBound - radius * 0.15
+		and vertical >= rectangle.Bottom + radius * 0.2
+		and vertical <= rectangle.Top - radius * 0.15
+end
+
 local function createVolume(parent: Instance, team: string, rectangle: any): BasePart
 	local width = rectangle.RightBound - rectangle.Left
 	local height = rectangle.Top - rectangle.Bottom
@@ -155,6 +172,21 @@ function Service:Step()
 	local current = self.Ball.Position
 	local radius = self.Ball.Size.X * 0.5
 	for _, goal in self.Goals do
+		local rectangle = goal.Rectangle
+		if self.Ball:GetAttribute("VTRPenaltyShotActive") == true then
+			local shotTarget = self.Ball:GetAttribute("VTRShotTarget")
+			if typeof(shotTarget) == "Vector3" and insideGoalMouth(rectangle, shotTarget, radius) then
+				local previousDistance = (previous - rectangle.PlanePoint):Dot(rectangle.Normal)
+				local currentDistance = (current - rectangle.PlanePoint):Dot(rectangle.Normal)
+				local nearTarget = segmentPointDistance(previous, current, shotTarget) <= math.max(radius * 2.35, 2.75)
+				local nearPlane = math.abs(currentDistance) <= math.max(radius * 1.45, 1.75)
+				local crossedPlane = previousDistance == 0 or currentDistance == 0 or previousDistance * currentDistance <= 0
+				if nearTarget or nearPlane and crossedPlane then
+					self:_recordGoalEntry(goal, previous, current, now)
+					return
+				end
+			end
+		end
 		if goal.Hitbox and goal.Hitbox.Parent then
 			local localBall=goal.Hitbox.CFrame:PointToObjectSpace(current);local half=goal.Hitbox.Size*.5
 			local inside=math.abs(localBall.X)<=math.max(.1,half.X-radius*.55)and math.abs(localBall.Y)<=math.max(.1,half.Y-radius*.55)and math.abs(localBall.Z)<=half.Z+radius
@@ -162,7 +194,6 @@ function Service:Step()
 			goal.WasInside=inside
 			if inside then continue end
 		end
-		local rectangle = goal.Rectangle
 		local previousDistance = (previous - rectangle.PlanePoint):Dot(rectangle.Normal)
 		local currentDistance = (current - rectangle.PlanePoint):Dot(rectangle.Normal)
 		if previousDistance < radius and currentDistance >= radius then

@@ -67,10 +67,10 @@ function Memory:RememberPlan(side: string, plan: any)
 	while #list > 6 do table.remove(list) end
 end
 
-function Memory:RememberPass(side: string, passerRole: string, receiverRole: string, receiver: Model?, lane: string?, z: number?, now: number)
+function Memory:RememberPass(side: string, passerRole: string, receiverRole: string, receiver: Model?, lane: string?, z: number?, now: number, passer: Model?)
 	local list = self.RecentPasses[side]
 	if not list then return end
-	table.insert(list, 1, {PasserRole = passerRole, ReceiverRole = receiverRole, Receiver = receiver, Lane = lane, Z = z or 0, At = now})
+	table.insert(list, 1, {PasserRole = passerRole, ReceiverRole = receiverRole, Passer = passer, Receiver = receiver, Lane = lane, Z = z or 0, At = now})
 	while #list > 10 do table.remove(list) end
 end
 

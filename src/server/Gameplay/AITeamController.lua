@@ -45,7 +45,7 @@ function Service.new(teams: any, formations: any, pitchCFrame: CFrame, width: nu
 		},
 		Debug = AIDebugService.new(),
 		Stories = AITacticalStoryService.new(),
-		Accum = {Phase = 0.16, Assignment = 0.12, OnBall = 0.08, Movement = 0.03, Debug = 0.25},
+		Accum = {Phase = 0.16, Assignment = 0.12, OnBall = 0.04, Movement = 0.03, Debug = 0.25},
 		Phases = {Home = "LooseBall", Away = "LooseBall"},
 		CurrentAssignments = {Home = {}, Away = {}},
 		LastContext = nil,
@@ -79,6 +79,7 @@ function Service:_routeReceiverBeforePass(model: Model, target: Vector3, passKin
 	if not modelRoot or not humanoid or humanoid.Health <= 0 then return end
 	local side = tostring(model:GetAttribute("VTRTeam") or "")
 	local sprint = model:GetAttribute("VTRReceiveRouteSprintRequested") == true or tostring(passKind or "") == "Lofted" or (target - modelRoot.Position).Magnitude > 7
+	local forcedUntil = (self.LastContext and self.LastContext.Now or os.clock()) + math.clamp((tonumber(execution and execution.BallETA) or 0.9) + 1.2, 1.35, 4.8)
 	local assignment = {
 		PrimaryAssignment = "ReceivePass",
 		TargetWorld = target,
@@ -87,6 +88,7 @@ function Service:_routeReceiverBeforePass(model: Model, target: Vector3, passKin
 		SprintAllowed = sprint,
 		Phase = "PassReception",
 		SprintConservation = 0,
+		ForcedReceiver = true,
 	}
 	if self.CurrentAssignments[side] then
 		self.CurrentAssignments[side][model] = assignment
@@ -101,24 +103,43 @@ function Service:_routeReceiverBeforePass(model: Model, target: Vector3, passKin
 		SprintAllowed = sprint,
 		SprintRequired = sprint,
 		Essential = true,
-		BurstMaximumSeconds = 3,
-		RecoveryMinimumSeconds = 0.8,
-		MinimumEnergy = 15,
+		BurstMaximumSeconds = 3.4,
+		RecoveryMinimumSeconds = 0.45,
+		MinimumEnergy = 5,
 		AssignmentId = ticket,
 		RunTicketId = ticket,
 		FaceTarget = self.Ball and self.Ball.Position or target,
 	})
 	model:SetAttribute("currentAssignment", "ReceivePass")
+	model:SetAttribute("AIAssignment", "ReceivePass")
 	model:SetAttribute("targetPosition", target)
 	model:SetAttribute("MovementTarget", target)
 	model:SetAttribute("SupportRole", "ReceivePass")
 	model:SetAttribute("AttackAssignment", "ReceivePass")
 	model:SetAttribute("TeamPhase", "PassReception")
 	model:SetAttribute("MovementMode", sprint and "SprintBurst" or "Run")
+	model:SetAttribute("VTRReceiveTarget", target)
+	model:SetAttribute("VTRReceiveIntercept", target)
+	model:SetAttribute("VTRPreparingReceive", true)
+	model:SetAttribute("VTRReceiveCommitted", true)
 	model:SetAttribute("VTRReceiveHardLock", true)
-	model:SetAttribute("VTRReceiveHardLockUntil", (self.LastContext and self.LastContext.Now or os.clock()) + math.max(0.65, tonumber(execution and execution.BallETA) or 0.9))
+	model:SetAttribute("VTRReceiveHardLockUntil", forcedUntil)
+	model:SetAttribute("VTRForcedPassReceiver", true)
+	model:SetAttribute("VTRForcedReceiveUntil", forcedUntil)
+	model:SetAttribute("VTRAITargetedPass", true)
+	model:SetAttribute("VTRAIAlternatePassChaser", false)
+	model:SetAttribute("VTRRunTicketId", nil)
+	model:SetAttribute("VTRRunApproved", false)
+	model:SetAttribute("VTRRunKind", nil)
+	model:SetAttribute("VTRRunTrigger", nil)
+	model:SetAttribute("VTRRunTarget", nil)
+	model:SetAttribute("VTRRunExpiry", nil)
+	model:SetAttribute("VTRSupportRun", nil)
+	model:SetAttribute("VTRSupportKind", nil)
+	model:SetAttribute("AIDefensiveDuty", nil)
+	model:SetAttribute("AIIncomingPassDuty", nil)
 	model:SetAttribute("VTRAIMovementIntensity", 1)
-	model:SetAttribute("VTRAIIntentionUntil", (self.LastContext and self.LastContext.Now or os.clock()) + math.max(0.45, tonumber(execution and execution.BallETA) or 0.8))
+	model:SetAttribute("VTRAIIntentionUntil", forcedUntil)
 end
 
 local function debugEnabled(): boolean
@@ -368,7 +389,7 @@ function Service:Step(dt: number)
 	end
 
 	self.Accum.OnBall += dt
-	if self.Accum.OnBall >= 0.08 then
+	if self.Accum.OnBall >= 0.04 then
 		self.Accum.OnBall = 0
 		self.Brain.Home:StepSide(context, self.CurrentAssignments, "Home")
 		self.Brain.Away:StepSide(context, self.CurrentAssignments, "Away")

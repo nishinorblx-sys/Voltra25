@@ -25,6 +25,9 @@ local HIGH_IMPACT = {
 	"WidthDiscipline",
 }
 
+local BASIC_PLAYSTYLE_ID = "basic_possession"
+local QUICK_PASSING_PLAYSTYLE_ID = "quick_passing"
+
 local function clone(value: any): any
 	if type(value) ~= "table" then return value end
 	local result = {}
@@ -98,12 +101,161 @@ local function builtInPlaystyle(presetId: string): any
 	}
 end
 
-local builtIns = {}
-local builtInOrder = {}
-for _, id in ipairs(AITacticConfig.Order) do
-	builtIns[id] = table.freeze(builtInPlaystyle(id))
-	table.insert(builtInOrder, id)
+local function basicPossessionPlaystyle(): any
+	local preset = AITacticConfig.Get("balanced_control")
+	local tactics = AITacticConfig.Normalize({
+		PresetId = "balanced_control",
+		Sliders = {
+			BuildUpSpeed = 48,
+			PassTempo = 66,
+			PassingDirectness = 32,
+			ForwardPassPriority = 46,
+			BackPassSafety = 78,
+			SwitchPlayFrequency = 68,
+			SupportDistance = 34,
+			PressingIntensity = 54,
+			DefensiveDepth = 58,
+			BackLineCompactness = 66,
+			LaneBlocking = 72,
+			ZoneDiscipline = 76,
+			DefensiveLineStepUp = 68,
+			RunsInBehind = 34,
+			WidthDiscipline = 76,
+		},
+	})
+	return {
+		SchemaVersion = Config.SchemaVersion,
+		PlaystyleId = BASIC_PLAYSTYLE_ID,
+		Version = 1,
+		Status = "Published",
+		Name = "SAFE Possession",
+		Description = "Simple unit football: safe possession plus compact five-lane defending with two central CBs, wide fullback cover, midfield screens, and limited pressers.",
+		BasePresetId = preset.Id,
+		Tactics = tactics,
+		RoleInstructions = {
+			{Phase = "InPossession", Role = {"CB", "Fullback", "CDM", "CM", "CAM", "Winger", "ST"}, AllowedFunctions = {"SupportShort", "SupportBehind", "HoldLane", "StretchFarSide", "RunBehindBlockedLane"}, SupportBehavior = "TwoShortOptionsAndReset"},
+			{Phase = "InPossession", Role = {"Winger", "ST", "CAM"}, RunTypes = {"BlockedLaneRunBehind"}, RiskPermissions = "OnlyWhenPasserFacesForwardAndOnside"},
+			{Phase = "OutOfPossession", Role = {"ST", "Winger", "CAM", "CM", "CDM", "Fullback", "CB"}, DefensiveDuty = "CompactFiveLaneBlock", AllowedFunctions = {"PressBall", "BlockForwardLane", "CoverBehindPresser", "CoverWing", "TrackDirectPass", "HoldLine"}},
+		},
+		PassRules = {
+			{Phase = "InPossession", PassFamily = "Safe Forward", Risk = -.28, MinimumLaneQuality = .68, RequiredPlanStep = "FirstLook"},
+			{Phase = "InPossession", PassFamily = "Sideways", Risk = -.36, MinimumLaneQuality = .62, RequiredPlanStep = "ForwardBlocked"},
+			{Phase = "InPossession", PassFamily = "Backward Reset", Risk = -.42, MinimumLaneQuality = .58, RequiredPlanStep = "NoSafeSidePass"},
+			{Phase = "InPossession", PreferredReceiverFunction = "FarSideWide", PassFamily = "Switch", Risk = -.14, MinimumLaneQuality = .64, RequiredPlanStep = "AfterSafePasses"},
+		},
+		PositioningRules = {
+			{Phase = "InPossession", TargetRegion = "BallSideTriangle", SupportDistance = -.28, Width = .1, RestDefense = 1},
+			{Phase = "InPossession", TargetRegion = "FiveLaneOccupation", Width = .18, Rotation = "MoveWithBallAfterPass"},
+			{Phase = "InPossession", Function = "FarSideWide", Width = .24, Depth = .04},
+			{Phase = "OutOfPossession", Depth = .12, Width = -.06, RestDefense = 1, SupportDistance = -.12},
+		},
+		PressRules = {
+			{Phase = "OutOfPossession", Trigger = "OpponentCarrier", PresserEligibility = {"NearestNonGoalkeeper"}, PressDirection = "CenterSideToWide", CoverResponsibility = "SecondNearestBlocksForwardPass", Pressers = 1, PressHeight = .08, AbortCondition = "PassThroughFirstPressure"},
+			{Phase = "OutOfPossession", Trigger = "DirectPassLaunched", PresserEligibility = {"NearestBackLine"}, PressDirection = "AttackReceiver", CoverResponsibility = "OneDefenderBehindOneMidfielderSecondBall", Pressers = 1},
+			{Phase = "OutOfPossession", PitchZone = "DefensiveThird", Trigger = "ProtectBoxEdge", PressDirection = "HoldLineAndScreenCenter", CoverResponsibility = "TwoCBsCentralFullbacksWide", Pressers = 1},
+		},
+		SequenceRules = {
+			{Phase = "InPossession", NextStep = "safe-forward", PreferredReceiver = "free-midfielder-or-winger", RequiredOccupations = {"short-option", "reset-behind", "far-side-wide"}, FallbackStep = "sideways"},
+			{Phase = "InPossession", NextStep = "sideways", PreferredReceiver = "different-angle-option", RequiredOccupations = {"five-lanes"}, FallbackStep = "reset"},
+			{Phase = "InPossession", NextStep = "blocked-lane-run", PreferredReceiver = "runner-behind-defender", RequiredOccupations = {"passer-facing-forward", "runner-onside"}, FallbackStep = "return-to-shape"},
+		},
+		MetricsTargets = {Possession = 56, PassCompletion = 88, ShotQuality = 46, Compactness = 82, DistributedPress = 72, BoxEdgeRetreatLimit = 132, ShortOptions = 2, MaxRunsBehind = 2, LaneOccupation = 5, CompactDefense = 1, MaxNormalBackLineSteppers = 1},
+		CreatedAt = 0,
+		UpdatedAt = 0,
+		PublishedAt = 0,
+		AuthorUserId = 0,
+		BuiltIn = true,
+	}
 end
+
+local function quickPassingPlaystyle(): any
+	local preset = AITacticConfig.Get("short_possession")
+	local tactics = AITacticConfig.Normalize({
+		PresetId = "short_possession",
+		Sliders = {
+			BuildUpSpeed = 72,
+			PassTempo = 92,
+			PassingDirectness = 44,
+			ForwardPassPriority = 62,
+			BackPassSafety = 58,
+			SwitchPlayFrequency = 62,
+			SupportDistance = 28,
+			FirstTouchDirectness = 92,
+			OneTouchPassing = 94,
+			ReceiverTrapAggression = 18,
+			RunsInBehind = 66,
+			MidfieldRotation = 82,
+			CreativeFreedom = 58,
+			PressingIntensity = 58,
+			DefensiveDepth = 58,
+			BackLineCompactness = 64,
+			LaneBlocking = 70,
+			ZoneDiscipline = 72,
+			DefensiveLineStepUp = 68,
+			WidthDiscipline = 70,
+		},
+		GlobalOverrides = {
+			MinimumHoldTime = 0.05,
+			MaximumHoldTime = 0.85,
+		},
+		ExecutionOverrides = {
+			PassReception = {
+				MinimumHoldTime = 0,
+				FirstTouchDirectness = 94,
+				OneTouchPassing = 96,
+				ReceiverTrapAggression = 10,
+			},
+		},
+	})
+	return {
+		SchemaVersion = Config.SchemaVersion,
+		PlaystyleId = QUICK_PASSING_PLAYSTYLE_ID,
+		Version = 1,
+		Status = "Published",
+		Name = "Quick Passing",
+		Description = "One-touch pass-and-move football: receivers play first time when a clean option exists, then sprint into forward or open space to create the next passing lane.",
+		BasePresetId = preset.Id,
+		Tactics = tactics,
+		RoleInstructions = {
+			{Phase = "InPossession", Role = {"CB", "Fullback", "CDM", "CM", "CAM", "Winger", "ST"}, AllowedFunctions = {"FirstTimePass", "SupportShort", "ThirdManRun", "ForwardOpenSpaceRun", "HoldLane"}, SupportBehavior = "PassAndMoveTwoOptions"},
+			{Phase = "InPossession", Role = {"CM", "CAM", "Winger", "ST"}, RunTypes = {"PostPassOpenSpaceRun", "ThirdManRun", "BounceRun"}, SupportBehavior = "RunAfterPass"},
+			{Phase = "OutOfPossession", Role = {"ST", "Winger", "CAM", "CM", "CDM", "Fullback", "CB"}, DefensiveDuty = "CompactFiveLaneBlock", AllowedFunctions = {"PressBall", "BlockForwardLane", "CoverBehindPresser", "CoverWing", "HoldLine"}},
+		},
+		PassRules = {
+			{Phase = "InPossession", Trigger = "JustReceived", PassFamily = "Ground", Risk = -.2, MinimumLaneQuality = .62, RequiredPlanStep = "FirstTimeOption"},
+			{Phase = "InPossession", PreferredReceiverFunction = "NearPassingTriangle", PassFamily = "Ground", Risk = -.24, MinimumLaneQuality = .58, RequiredPlanStep = "OneTouch"},
+			{Phase = "InPossession", PreferredReceiverFunction = "ThirdManPosition", PassFamily = "Ground", Risk = -.12, MinimumLaneQuality = .6, RequiredPlanStep = "Bounce"},
+			{Phase = "InPossession", PassFamily = "Safe Forward", Risk = -.1, MinimumLaneQuality = .64, RequiredPlanStep = "ForwardSpace"},
+		},
+		PositioningRules = {
+			{Phase = "InPossession", TargetRegion = "BallSideTriangle", SupportDistance = -.36, Width = .04, Rotation = "PassAndMove"},
+			{Phase = "InPossession", TargetRegion = "FiveLaneOccupation", Width = .14, Rotation = "MoveWithBallAfterPass"},
+			{Phase = "InPossession", Function = "PostPassRun", Depth = .18, SupportDistance = -.1},
+			{Phase = "OutOfPossession", Depth = .1, Width = -.04, RestDefense = 1, SupportDistance = -.1},
+		},
+		PressRules = {
+			{Phase = "OutOfPossession", Trigger = "OpponentCarrier", PresserEligibility = {"NearestNonGoalkeeper"}, PressDirection = "CenterSideToWide", CoverResponsibility = "SecondNearestBlocksForwardPass", Pressers = 1, PressHeight = .08, AbortCondition = "PassThroughFirstPressure"},
+			{Phase = "OutOfPossession", Trigger = "DirectPassLaunched", PresserEligibility = {"NearestBackLine"}, PressDirection = "AttackReceiver", CoverResponsibility = "OneDefenderBehindOneMidfielderSecondBall", Pressers = 1},
+		},
+		SequenceRules = {
+			{Phase = "InPossession", NextStep = "first-time-pass", PreferredReceiver = "clean-short-option", RequiredOccupations = {"short-option", "third-man-option"}, FallbackStep = "trap-if-open-space"},
+			{Phase = "InPossession", NextStep = "post-pass-run", PreferredReceiver = "previous-passer", RequiredOccupations = {"open-forward-space"}, FallbackStep = "return-to-shape"},
+			{Phase = "InPossession", NextStep = "third-man-bounce", PreferredReceiver = "runner-after-pass", RequiredOccupations = {"two-short-options"}, FallbackStep = "safe-reset"},
+		},
+		MetricsTargets = {Possession = 54, PassCompletion = 86, ShotQuality = 50, Compactness = 76, OneTouchPasses = 100, FirstTimePassChance = 100, PostPassRuns = 28, ShortOptions = 2, LaneOccupation = 5, MaxRunsBehind = 3, QuickPassing = 1},
+		CreatedAt = 0,
+		UpdatedAt = 0,
+		PublishedAt = 0,
+		AuthorUserId = 0,
+		BuiltIn = true,
+	}
+end
+
+local builtIns = {
+	[BASIC_PLAYSTYLE_ID] = table.freeze(basicPossessionPlaystyle()),
+	[QUICK_PASSING_PLAYSTYLE_ID] = table.freeze(quickPassingPlaystyle()),
+}
+local builtInOrder = {BASIC_PLAYSTYLE_ID, QUICK_PASSING_PLAYSTYLE_ID}
 
 function Config.SafeId(value: any, fallback: string?): string
 	return slug(value, fallback or ("playstyle_" .. HttpService:GenerateGUID(false):gsub("%-", ""):sub(1, 10)))
@@ -163,7 +315,13 @@ function Config.DraftFromTactics(name: string, tactics: any, authorUserId: numbe
 end
 
 function Config.ResolveBuiltIn(id: any): any?
-	return builtIns[AITacticConfig.ResolveId(id)]
+	local key = tostring(id or "")
+	if builtIns[key] then return builtIns[key] end
+	if key == "" or key == "balanced_control" or key == "short_possession" or key == "Possession" or key == "Basic Possession" or key == "SAFE Possession" or key == "Safe Possession" then
+		return builtIns[BASIC_PLAYSTYLE_ID]
+	end
+	if key == "Quick Passing" then return builtIns[QUICK_PASSING_PLAYSTYLE_ID] end
+	return nil
 end
 
 function Config.NextVersion(publishedByVersion: any): number
@@ -222,5 +380,7 @@ end
 Config.BuiltIns = table.freeze(builtIns)
 Config.BuiltInOrder = table.freeze(builtInOrder)
 Config.HighImpactSettingIds = table.freeze(HIGH_IMPACT)
+Config.BasicPlaystyleId = BASIC_PLAYSTYLE_ID
+Config.QuickPassingPlaystyleId = QUICK_PASSING_PLAYSTYLE_ID
 
 return table.freeze(Config)

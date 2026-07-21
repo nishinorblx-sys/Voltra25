@@ -9,7 +9,7 @@ Config.ProfileNameMax = 32
 
 Config.Scopes = table.freeze({"Global", "Phase", "Role", "MatchState", "Execution"})
 Config.Phases = table.freeze({"BuildUp", "Progression", "FinalThird", "TransitionAttack", "TransitionDefense", "DefensiveBlock", "Press", "SetPiece"})
-Config.Roles = table.freeze({"GK", "CB", "Fullback", "CDM", "CM", "CAM", "Winger", "ST"})
+Config.Roles = table.freeze({"GK", "CB", "Fullback", "CDM", "CM", "CAM", "LM", "RM", "Winger", "ST"})
 Config.MatchStates = table.freeze({"Neutral", "Leading", "Trailing", "LateLeading", "LateTrailing"})
 Config.Categories = table.freeze({"Possession", "Pass Direction", "Reception", "Support", "Runs", "Defense", "Stamina", "Chance Creation", "Goalkeeper", "Set Pieces", "Execution"})
 

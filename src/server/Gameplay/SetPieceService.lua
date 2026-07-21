@@ -28,7 +28,7 @@ local RunService=game:GetService("RunService")
 local Service = {}
 Service.__index = Service
 
-local DURATIONS = {ThrowIn = 1.5, Corner = 2.0, GoalKick = 1.8, FreeKick=1.6, Penalty=2.0, Kickoff = 1.4}
+local DURATIONS = {ThrowIn = 0.15, Corner = 2.0, GoalKick = 1.8, FreeKick=1.6, Penalty=2.0, Kickoff = 1.4}
 
 local function vtrClearSetPiecePreview(self, player)
 	if self.Remote then
@@ -71,9 +71,11 @@ local function primeSetPieceReceiver(taker: Model?, receiver: Model?, target: Ve
 	if not receiverRoot or not takerRoot then return end
 	local now = os.clock()
 	local distance = Vector3.new(target.X - takerRoot.Position.X, 0, target.Z - takerRoot.Position.Z).Magnitude
-	local eta = math.clamp(distance / 56, .25, 2.8)
+	local airFamily = family == "Lofted" or family == "Cross" or family == "FarPostCross"
+	local eta = airFamily and math.clamp(distance / 42, .45, 3.4) or math.clamp(distance / 56, .25, 2.8)
 	local receiverEta = math.clamp(Vector3.new(target.X - receiverRoot.Position.X, 0, target.Z - receiverRoot.Position.Z).Magnitude / 25, .15, 2.8)
-	local mode = receiverEta > eta + .18 and "SprintBurst" or receiverEta > eta - .08 and "Run" or "Jog"
+	local mode = airFamily and "SprintBurst" or receiverEta > eta + .18 and "SprintBurst" or receiverEta > eta - .08 and "Run" or "Jog"
+	local expires = now + math.clamp(eta + 1.45, 1.25, 5.2)
 	receiver:SetAttribute("VTRPrePassId", tostring(taker.Name) .. ":" .. tostring(receiver.Name) .. ":SetPiece:" .. tostring(math.floor(now * 100)))
 	receiver:SetAttribute("VTRPrePassPhase", "Committed")
 	receiver:SetAttribute("VTRPrePassPasser", taker.Name)
@@ -84,12 +86,44 @@ local function primeSetPieceReceiver(taker: Model?, receiver: Model?, target: Ve
 	receiver:SetAttribute("VTRPrePassReceiverETA", receiverEta)
 	receiver:SetAttribute("VTRPrePassConfidence", confidence or .82)
 	receiver:SetAttribute("VTRPrePassMovementMode", mode)
-	receiver:SetAttribute("VTRPrePassExpiresAt", now + math.clamp(eta + 1.2, 1, 4))
+	receiver:SetAttribute("VTRPrePassExpiresAt", expires)
 	receiver:SetAttribute("VTRPrePassFirstTouchIntent", family == "Cross" and "Finish" or "Secure")
 	receiver:SetAttribute("VTRPrepareToReceive", true)
 	receiver:SetAttribute("VTRPotentialReceiveTarget", target)
-	receiver:SetAttribute("VTRPrepareReceiveUntil", now + math.clamp(eta + 1.2, 1, 4))
+	receiver:SetAttribute("VTRPrepareReceiveUntil", expires)
+	receiver:SetAttribute("VTRReceiveTarget", target)
+	receiver:SetAttribute("VTRReceiveIntercept", target)
+	receiver:SetAttribute("VTRReceiveUntil", expires)
+	receiver:SetAttribute("VTRReceiveBallETA", eta)
+	receiver:SetAttribute("VTRReceiveReceiverETA", receiverEta)
+	receiver:SetAttribute("VTRReceiveOpponentETA", math.huge)
+	receiver:SetAttribute("VTRReceiveRouteConfidence", confidence or .88)
+	receiver:SetAttribute("VTRReceiveTrajectoryConfidence", airFamily and .86 or .74)
+	receiver:SetAttribute("VTRReceiveRouteSprintRequested", true)
 	receiver:SetAttribute("VTRReceiveLocomotionMode", mode)
+	receiver:SetAttribute("VTRReceiveContactKind", airFamily and "Aerial" or "FrontFoot")
+	receiver:SetAttribute("VTRFirstTouchIntent", family == "Cross" and "Finish" or "Secure")
+	receiver:SetAttribute("VTRPreparingReceive", true)
+	receiver:SetAttribute("VTRReceiveCommitted", true)
+	receiver:SetAttribute("VTRReceiveLockedAt", now)
+	receiver:SetAttribute("VTRReceiveHardLock", true)
+	receiver:SetAttribute("VTRReceiveHardLockUntil", expires)
+	receiver:SetAttribute("VTRForcedPassReceiver", true)
+	receiver:SetAttribute("VTRForcedReceiveUntil", expires)
+	receiver:SetAttribute("VTRAITargetedPass", receiver:GetAttribute("aiControlled") == true and receiver:GetAttribute("controlledByUser") ~= true)
+	receiver:SetAttribute("VTRRunTicketId", nil)
+	receiver:SetAttribute("VTRRunApproved", false)
+	receiver:SetAttribute("VTRRunKind", nil)
+	receiver:SetAttribute("VTRRunTrigger", nil)
+	receiver:SetAttribute("VTRRunTarget", nil)
+	receiver:SetAttribute("VTRRunExpiry", nil)
+	receiver:SetAttribute("VTRSupportRun", nil)
+	receiver:SetAttribute("VTRSupportKind", nil)
+	receiver:SetAttribute("currentAssignment", "ReceivePass")
+	receiver:SetAttribute("AIAssignment", "ReceivePass")
+	receiver:SetAttribute("SupportRole", "ReceivePass")
+	receiver:SetAttribute("AttackAssignment", "ReceivePass")
+	receiver:SetAttribute("TeamPhase", "PassReception")
 end
 
 local function clearSpaceAround(models:any,center:Vector3,radius:number,pitchCFrame:CFrame,width:number,length:number,exceptModel:Model?)
@@ -162,9 +196,13 @@ end
 local function face(model:Model,position:Vector3,target:Vector3)
 	local modelRoot=root(model)
 	if not modelRoot then return end
-	model:PivotTo(CFrame.lookAt(Vector3.new(position.X,modelRoot.Position.Y,position.Z),Vector3.new(target.X,modelRoot.Position.Y,target.Z)))
+	local placed = Vector3.new(position.X,modelRoot.Position.Y,position.Z)
+	model:PivotTo(CFrame.lookAt(placed,Vector3.new(target.X,modelRoot.Position.Y,target.Z)))
 	modelRoot.AssemblyLinearVelocity=Vector3.zero
 	modelRoot.AssemblyAngularVelocity=Vector3.zero
+	model:SetAttribute("VTRIntentionalRepositionUntil", os.clock() + 1.2)
+	model:SetAttribute("targetPosition", placed)
+	model:SetAttribute("MovementTarget", placed)
 	local humanoid=model:FindFirstChildOfClass("Humanoid")
 	if humanoid then humanoid:Move(Vector3.zero,false)end
 end
@@ -254,80 +292,491 @@ local function arrangePenalty(teams:any,restartTeam:string,spot:Vector3,pitchCFr
 	return spot,goalSign
 end
 
-local function arrangeFreeKick(teams:any,restartTeam:string,location:Vector3,pitchCFrame:CFrame,width:number,length:number,taker:Model,half:number?)
+local freeKickTempAttributes = {
+	"VTRFreeKickType",
+	"VTRFreeKickRole",
+	"VTRFreeKickMarker",
+	"VTRFreeKickMarkedBy",
+	"VTRFreeKickWallIndex",
+	"VTRFreeKickWallSize",
+	"VTRFreeKickRunDelay",
+	"VTRSetPieceWall",
+	"VTRWallJumpUntil",
+	"VTRPrePassId",
+	"VTRPrePassPhase",
+	"VTRPrePassPasser",
+	"VTRPrePassTarget",
+	"VTRPrePassFamily",
+	"VTRPrePassExpectedLaunchAt",
+	"VTRPrePassExpectedBallETA",
+	"VTRPrePassReceiverETA",
+	"VTRPrePassConfidence",
+	"VTRPrePassMovementMode",
+	"VTRPrePassExpiresAt",
+	"VTRPrePassFirstTouchIntent",
+	"VTRPrepareToReceive",
+	"VTRPotentialReceiveTarget",
+	"VTRPrepareReceiveUntil",
+}
+
+local function freeKickRole(model:Model):string
+	local role=tostring(model:GetAttribute("position")or"")
+	if role=="LB"or role=="RB"or role=="LWB"or role=="RWB"then return"FB"end
+	if role=="CB"then return"CB"end
+	if role=="CDM"then return"CDM"end
+	if role=="CM"or role=="CAM"then return"CM"end
+	if role=="LW"or role=="RW"or role=="W"then return"W"end
+	if role=="ST"or role=="CF"then return"ST"end
+	if role=="GK"then return"GK"end
+	return role
+end
+
+local function clearFreeKickTemp(model:Model)
+	for _,attribute in freeKickTempAttributes do
+		if model:GetAttribute(attribute)~=nil then model:SetAttribute(attribute,nil)end
+	end
+end
+
+local setPieceReceiveAttributes = {
+	"VTRReceiveTarget",
+	"VTRPreparingReceive",
+	"VTRReceiveUntil",
+	"VTRReceiveLockedAt",
+	"VTRReceiveIntercept",
+	"VTRReceiveHardLock",
+	"VTRReceiveHardLockUntil",
+	"VTRForcedPassReceiver",
+	"VTRForcedReceiveUntil",
+	"VTRAITargetedPass",
+	"VTRAIAlternatePassChaser",
+	"VTRReceiveRouteSprintRequested",
+	"VTRReceiveCommitted",
+	"VTRReceiveBallETA",
+	"VTRReceiveReceiverETA",
+	"VTRReceiveOpponentETA",
+	"VTRReceiveRouteConfidence",
+	"VTRReceiveTrajectoryConfidence",
+	"VTRReceiveLocomotionMode",
+	"VTRReceiveContactKind",
+	"VTRFirstTouchIntent",
+	"AIDebugExpectedPass",
+	"AIDebugPassTarget",
+	"AIDebugPassKind",
+}
+
+local function clearSetPieceReceiveIntent(model: Model)
+	for _, attribute in setPieceReceiveAttributes do
+		if model:GetAttribute(attribute) ~= nil then
+			model:SetAttribute(attribute, attribute == "VTRPreparingReceive" and false or nil)
+		end
+	end
+end
+
+local function aliveOutfield(team:{Model}?,exclude:Model?):{Model}
+	local result={}
+	for _,model in team or{}do
+		local humanoid=model:FindFirstChildOfClass("Humanoid")
+		if model~=exclude and not isKeeper(model) and model:GetAttribute("VTRSentOff")~=true and (not humanoid or humanoid.Health>0)then table.insert(result,model)end
+	end
+	return result
+end
+
+local function chooseRole(candidates:{Model},used:{[Model]:boolean},score:(Model)->number):Model?
+	local best:Model?=nil
+	local bestScore=-math.huge
+	for _,candidate in candidates do
+		if not used[candidate]then
+			local value=score(candidate)
+			if value>bestScore then
+				best=candidate
+				bestScore=value
+			end
+		end
+	end
+	if best then used[best]=true end
+	return best
+end
+
+local function roleBonus(model:Model,roles:{[string]:number}):number
+	return roles[freeKickRole(model)]or 0
+end
+
+local function clampPitch(localPoint:Vector3,width:number,length:number):Vector3
+	return Vector3.new(math.clamp(localPoint.X,-width*.5+8,width*.5-8),localPoint.Y,math.clamp(localPoint.Z,-length*.5+8,length*.5-8))
+end
+
+local function freeKickWorld(pitchCFrame:CFrame,width:number,length:number,x:number,z:number):Vector3
+	local point=clampPitch(Vector3.new(x,3,z),width,length)
+	return pitchCFrame:PointToWorldSpace(point)
+end
+
+local function freeKickLaneX(lane:string,width:number,ballX:number?):number
+	local side=ballX and ballX>=0 and 1 or -1
+	if lane=="LeftWing"then return -width*.36 end
+	if lane=="LeftHalf"then return -width*.18 end
+	if lane=="Center"then return 0 end
+	if lane=="RightHalf"then return width*.18 end
+	if lane=="RightWing"then return width*.36 end
+	if lane=="NearPost"then return math.clamp(side*width*.13,-28,28)end
+	if lane=="FarPost"then return math.clamp(-side*width*.18,-34,34)end
+	return 0
+end
+
+local function placeFreeKick(model:Model?,position:Vector3,target:Vector3,occupied:{Vector3},minDistance:number,roleName:string?,pitchCFrame:CFrame,width:number,length:number)
+	if not model then return end
+	local localPoint=pitchCFrame:PointToObjectSpace(position)
+	local adjusted=clampPitch(localPoint,width,length)
+	local desired=pitchCFrame:PointToWorldSpace(adjusted)
+	local right=pitchCFrame.RightVector
+	local tries=0
+	while tries<10 do
+		local ok=true
+		for _,point in occupied do
+			if Vector3.new(desired.X-point.X,0,desired.Z-point.Z).Magnitude<minDistance then ok=false break end
+		end
+		if ok then break end
+		tries+=1
+		local step=math.ceil(tries*.5)*minDistance
+		local sign=tries%2==0 and 1 or -1
+		localPoint=pitchCFrame:PointToObjectSpace(desired+right*step*sign)
+		desired=pitchCFrame:PointToWorldSpace(clampPitch(localPoint,width,length))
+	end
+	table.insert(occupied,desired)
+	face(model,desired,target)
+	if roleName then model:SetAttribute("VTRFreeKickRole",roleName)end
+	model:SetAttribute("VTRForceIdle",true)
+end
+
+local function classifyFreeKick(restartTeam:string,location:Vector3,pitchCFrame:CFrame,width:number,length:number,half:number?):(string,number,number,number,number)
 	local localBall=pitchCFrame:PointToObjectSpace(location)
 	local goalSign=setPieceGoalSign(restartTeam)
 	if (half or 1)>=2 then goalSign=-goalSign end
-	local goal=localWorld(pitchCFrame,0,3,goalSign*length*.5)
-	local approach=location-Vector3.new(goal.X-location.X,0,goal.Z-location.Z).Unit*4.2
-	face(taker,approach,goal)
-	local defending=restartTeam=="Home"and"Away"or"Home"
-	local wallCenter=location+Vector3.new(goal.X-location.X,0,goal.Z-location.Z).Unit*55
-	local right=pitchCFrame.RightVector
-	local wallCount=0
-	for _,model in teams[defending]do
-		if not isKeeper(model) and wallCount<4 then
-			wallCount+=1
-			face(model,wallCenter+right*((wallCount-2.5)*4.2),location)
-			model:SetAttribute("VTRSetPieceWall",true)
-		end
+	local goalZ=goalSign*length*.5
+	local ownZ=-goalSign*length*.5
+	local distanceToGoal=math.abs(goalZ-localBall.Z)
+	local distanceToOwn=math.abs(ownZ-localBall.Z)
+	local lateral=math.abs(localBall.X)
+	local angle=math.deg(math.atan2(lateral,math.max(distanceToGoal,1)))
+	local direct=distanceToOwn>=170 and distanceToGoal>=46 and distanceToGoal<=195 and angle<=26 and lateral<=width*.3
+	local kind=direct and"DirectShootingFreeKick"or"NormalPassingFreeKick"
+	return kind,goalSign,distanceToGoal,angle,localBall.X
+end
+
+local function wallSizeFor(kind:string,distance:number,angle:number):number
+	if kind~="DirectShootingFreeKick"then return 0 end
+	if angle>22 then return angle>30 and 1 or 2 end
+	if distance<92 and angle<16 then return 5 end
+	if distance<145 and angle<20 then return 4 end
+	if distance<190 and angle<24 then return 3 end
+	return 2
+end
+
+local function limitedFreeKickPosition(model:Model?,desired:Vector3,maxMove:number,pitchCFrame:CFrame,width:number,length:number):Vector3
+	local modelRoot=model and root(model)
+	if not modelRoot then return desired end
+	local current=modelRoot.Position
+	local offset=Vector3.new(desired.X-current.X,0,desired.Z-current.Z)
+	local moved=offset.Magnitude>maxMove and current+offset.Unit*maxMove or desired
+	local localPoint=pitchCFrame:PointToObjectSpace(moved)
+	return pitchCFrame:PointToWorldSpace(clampPitch(Vector3.new(localPoint.X,3,localPoint.Z),width,length))
+end
+
+local function arrangeNormalPassingFreeKick(teams:any,restartTeam:string,defending:string,location:Vector3,pitchCFrame:CFrame,width:number,length:number,taker:Model,goalSign:number,localBall:Vector3,goal:Vector3,attackers:{Model},defenders:{Model},attackUsed:{[Model]:boolean},defendUsed:{[Model]:boolean},occupied:{Vector3})
+	local function localOf(model:Model):Vector3?
+		local modelRoot=root(model)
+		return modelRoot and pitchCFrame:PointToObjectSpace(modelRoot.Position) or nil
 	end
-	local attackers=teams[restartTeam]
-	for index,model in attackers do
-		if model~=taker then
-			if isKeeper(model) then
-				local homeSpot=localWorld(pitchCFrame,0,3,-goalSign*(length*.5-8))
-				face(model,homeSpot,location)
-				model:SetAttribute("VTRForceIdle",true)
-			else
-				local x=((index%5)-2)*13
-				local z=goalSign*(length*.5-34-(index%3)*6)
-				if index==4 or index==5 then z=0 end
-				face(model,localWorld(pitchCFrame,x,3,z),location)
+	local function sameSideScore(model:Model):number
+		local point=localOf(model)
+		if not point then return -math.huge end
+		local distance=Vector3.new(point.X-localBall.X,0,point.Z-localBall.Z).Magnitude
+		return -math.abs(distance-28)+roleBonus(model,{CM=18,CDM=16,FB=12,W=8,ST=2})+stat(model,"PAS")*.08
+	end
+	local shortOption=chooseRole(attackers,attackUsed,sameSideScore)
+	local resetOption=chooseRole(attackers,attackUsed,function(model)
+		local point=localOf(model)
+		if not point then return -math.huge end
+		local behind=-goalSign*(point.Z-localBall.Z)
+		return math.clamp(behind,-20,70)+roleBonus(model,{CB=22,CDM=18,FB=12,CM=8})+stat(model,"PAS")*.08-math.abs(point.X-localBall.X)*.08
+	end)
+	local forwardOption=chooseRole(attackers,attackUsed,function(model)
+		local point=localOf(model)
+		if not point then return -math.huge end
+		local forward=goalSign*(point.Z-localBall.Z)
+		return math.clamp(forward,-18,82)+roleBonus(model,{CM=16,CAM=16,W=15,ST=12,FB=5})+stat(model,"BallControl","DRI")*.08-math.abs(point.X-localBall.X)*.04
+	end)
+	local side=localBall.X>=0 and -1 or 1
+	if shortOption then
+		local desired=freeKickWorld(pitchCFrame,width,length,localBall.X+side*20,localBall.Z-goalSign*7)
+		placeFreeKick(shortOption,limitedFreeKickPosition(shortOption,desired,25,pitchCFrame,width,length),location,occupied,8,"NormalShortOption",pitchCFrame,width,length)
+		primeSetPieceReceiver(taker,shortOption,root(shortOption)and(root(shortOption)::BasePart).Position or desired,"Ground",.16,.86)
+	end
+	if resetOption then
+		local point=localOf(resetOption) or localBall
+		local desired=freeKickWorld(pitchCFrame,width,length,math.clamp(point.X,-width*.42,width*.42),math.min(math.max(localBall.Z-goalSign*24,point.Z-goalSign*10),point.Z+goalSign*10))
+		placeFreeKick(resetOption,limitedFreeKickPosition(resetOption,desired,18,pitchCFrame,width,length),location,occupied,10,"NormalResetOption",pitchCFrame,width,length)
+	end
+	if forwardOption then
+		local point=localOf(forwardOption) or localBall
+		local laneX=math.clamp(point.X+side*8,-width*.42,width*.42)
+		local desired=freeKickWorld(pitchCFrame,width,length,laneX,localBall.Z+goalSign*24)
+		placeFreeKick(forwardOption,limitedFreeKickPosition(forwardOption,desired,20,pitchCFrame,width,length),location,occupied,10,"NormalForwardOption",pitchCFrame,width,length)
+	end
+	for _,model in attackers do
+		if not attackUsed[model]then
+			local role=freeKickRole(model)
+			local maxMove=role=="CB"and 15 or role=="FB"and 18 or role=="W"and 16 or role=="ST"and 18 or 20
+			local point=localOf(model)
+			if point then
+				local desired=point
+				if role=="CB"and goalSign*(point.Z-localBall.Z)>-8 then desired=Vector3.new(point.X,3,localBall.Z-goalSign*18)
+				elseif role=="FB"then desired=Vector3.new(math.clamp(point.X,-width*.44,width*.44),3,point.Z)
+				elseif role=="CDM"then desired=Vector3.new(math.clamp(point.X,-32,32),3,math.min(math.max(point.Z,localBall.Z-goalSign*34),localBall.Z+goalSign*4))
+				elseif role=="W"then desired=Vector3.new(math.clamp(point.X,-width*.44,width*.44),3,point.Z)
+				elseif role=="ST"then desired=Vector3.new(math.clamp(point.X,-width*.18,width*.18),3,point.Z)
+				end
+				placeFreeKick(model,limitedFreeKickPosition(model,pitchCFrame:PointToWorldSpace(desired),maxMove,pitchCFrame,width,length),location,occupied,8,"NormalShapeHold",pitchCFrame,width,length)
 			end
 		end
 	end
-	for index,model in teams[defending]do
-		if model:GetAttribute("VTRSetPieceWall")~=true and not isKeeper(model) then
-			local x=((index%6)-2.5)*10
-			local z=goalSign*(length*.5-23-(index%4)*7)
-			face(model,localWorld(pitchCFrame,x,3,z),location)
-		elseif isKeeper(model)then
-			face(model,localWorld(pitchCFrame,0,3,goalSign*(length*.5-2)),location)
+	local keeper=nil
+	for _,model in teams[defending]or{}do if isKeeper(model)then keeper=model break end end
+	if keeper then
+		placeFreeKick(keeper,freeKickWorld(pitchCFrame,width,length,0,goalSign*(length*.5-2.6)),location,occupied,6,"Goalkeeper",pitchCFrame,width,length)
+	end
+	local presser=chooseRole(defenders,defendUsed,function(model)
+		local modelRoot=root(model)
+		return modelRoot and -Vector3.new(modelRoot.Position.X-location.X,0,modelRoot.Position.Z-location.Z).Magnitude+roleBonus(model,{ST=16,W=12,CM=6}) or -math.huge
+	end)
+	if presser then
+		local directionToBall=root(presser) and (Vector3.new(location.X-root(presser).Position.X,0,location.Z-root(presser).Position.Z)) or Vector3.new(0,0,goalSign)
+		local desired=location-(directionToBall.Magnitude>.05 and directionToBall.Unit or pitchCFrame.LookVector*goalSign)*18
+		placeFreeKick(presser,limitedFreeKickPosition(presser,desired,18,pitchCFrame,width,length),location,occupied,9,"NormalFreeKickPresser",pitchCFrame,width,length)
+	end
+	local midfieldScreen=chooseRole(defenders,defendUsed,function(model)return roleBonus(model,{CDM=18,CM=14,W=6,FB=4})+stat(model,"DEF")*.12 end)
+	if midfieldScreen then
+		local point=localOf(midfieldScreen)
+		local desired=point and pitchCFrame:PointToWorldSpace(Vector3.new(math.clamp(point.X,-width*.32,width*.32),3,point.Z))or location
+		placeFreeKick(midfieldScreen,limitedFreeKickPosition(midfieldScreen,desired,16,pitchCFrame,width,length),location,occupied,10,"NormalCentralScreen",pitchCFrame,width,length)
+	end
+	for _,model in defenders do
+		if not defendUsed[model]then
+			local point=localOf(model)
+			if point then
+				local role=freeKickRole(model)
+				local maxMove=role=="CB"and 10 or role=="FB"and 12 or role=="W"and 12 or 14
+				local desired=point
+				if role=="CB"then desired=Vector3.new(math.clamp(point.X,-32,32),3,point.Z)
+				elseif role=="FB"then desired=Vector3.new(math.clamp(point.X,-width*.42,width*.42),3,point.Z)
+				end
+				placeFreeKick(model,limitedFreeKickPosition(model,pitchCFrame:PointToWorldSpace(desired),maxMove,pitchCFrame,width,length),location,occupied,8,"NormalDefensiveShape",pitchCFrame,width,length)
+			end
 		end
 	end
-	return localWorld(pitchCFrame,0,1.15,localBall.Z),goalSign
+	return shortOption
+end
+
+local function selectWall(defenders:{Model},used:{[Model]:boolean},location:Vector3,count:number):{Model}
+	local chosen={}
+	table.sort(defenders,function(a,b)
+		local ar=root(a)
+		local br=root(b)
+		local ad=ar and Vector3.new(ar.Position.X-location.X,0,ar.Position.Z-location.Z).Magnitude or math.huge
+		local bd=br and Vector3.new(br.Position.X-location.X,0,br.Position.Z-location.Z).Magnitude or math.huge
+		local as=ad-roleBonus(a,{CM=16,CDM=14,W=6,FB=0,ST=-4,CB=-10})
+		local bs=bd-roleBonus(b,{CM=16,CDM=14,W=6,FB=0,ST=-4,CB=-10})
+		return as<bs
+	end)
+	for _,model in defenders do
+		if #chosen>=count then break end
+		if not used[model]then
+			used[model]=true
+			table.insert(chosen,model)
+		end
+	end
+	return chosen
+end
+
+local function arrangeRoleFreeKick(teams:any,restartTeam:string,location:Vector3,pitchCFrame:CFrame,width:number,length:number,taker:Model,half:number?)
+	local kind,goalSign,distanceToGoal,angle,lateral=classifyFreeKick(restartTeam,location,pitchCFrame,width,length,half)
+	local defending=restartTeam=="Home"and"Away"or"Home"
+	local goal=localWorld(pitchCFrame,0,3,goalSign*length*.5)
+	local localBall=pitchCFrame:PointToObjectSpace(location)
+	local toGoal=Vector3.new(goal.X-location.X,0,goal.Z-location.Z)
+	local goalDirection=toGoal.Magnitude>.05 and toGoal.Unit or pitchCFrame.LookVector*goalSign
+	local attackUsed={[taker]=true}
+	local defendUsed={}
+	local occupied={}
+	for _,side in{"Home","Away"}do
+		for _,model in teams[side]or{}do clearFreeKickTemp(model)end
+	end
+	placeFreeKick(taker,location-goalDirection*4.2,goal,occupied,5,"Taker",pitchCFrame,width,length)
+	taker:SetAttribute("VTRSetPieceTaker",true)
+	taker:SetAttribute("VTRFreeKickType",kind)
+	local attackers=aliveOutfield(teams[restartTeam],taker)
+	local defenders=aliveOutfield(teams[defending],nil)
+	if kind=="NormalPassingFreeKick"then
+		arrangeNormalPassingFreeKick(teams,restartTeam,defending,location,pitchCFrame,width,length,taker,goalSign,localBall,goal,attackers,defenders,attackUsed,defendUsed,occupied)
+		for _,side in{"Home","Away"}do
+			for _,model in teams[side]or{}do
+				if model~=taker then model:SetAttribute("VTRFreeKickType",kind)end
+			end
+		end
+		return kind,goalSign,0
+	end
+	local shortOption=chooseRole(attackers,attackUsed,function(model)return stat(model,"PAS")+stat(model,"BallControl","DRI")*.35+roleBonus(model,{CM=18,CDM=14,FB=10,W=6})end)
+	local shortSide=lateral>=0 and -1 or 1
+	local shortBehind=11
+	if shortOption then
+		local short=freeKickWorld(pitchCFrame,width,length,localBall.X+shortSide*14,localBall.Z-goalSign*shortBehind)
+		placeFreeKick(shortOption,short,location,occupied,8,"ShortOption",pitchCFrame,width,length)
+	end
+	local wallCount=wallSizeFor(kind,distanceToGoal,angle)
+	local wall=selectWall(defenders,defendUsed,location,wallCount)
+	local wallDistance=math.clamp(distanceToGoal*.28,30,52)
+	local wallCenter=location+goalDirection*wallDistance
+	local wallRight=pitchCFrame.RightVector
+	for index,model in wall do
+		local offset=(index-(#wall+1)*.5)*4.6
+		placeFreeKick(model,wallCenter+wallRight*offset,location,occupied,4.2,"Wall",pitchCFrame,width,length)
+		model:SetAttribute("VTRSetPieceWall",true)
+		model:SetAttribute("VTRFreeKickWallIndex",index)
+		model:SetAttribute("VTRFreeKickWallSize",#wall)
+	end
+	local keeper=nil
+	for _,model in teams[defending]or{}do if isKeeper(model)then keeper=model break end end
+	if keeper then
+		local wallSide=#wall>0 and (lateral>=0 and 1 or -1) or 0
+		local wideAngle=angle>22
+		local keeperX=wideAngle and math.clamp(localBall.X*.28,-10,10) or math.clamp(-wallSide*8-localBall.X*.08,-13,13)
+		local keeperDepth=wideAngle and 6.8 or 2.4
+		placeFreeKick(keeper,freeKickWorld(pitchCFrame,width,length,keeperX,goalSign*(length*.5-keeperDepth)),location,occupied,6,"Goalkeeper",pitchCFrame,width,length)
+	end
+	local function pickRunner(roleName:string,roles:{[string]:number},extra:(Model)->number):Model?
+		return chooseRole(attackers,attackUsed,function(model)return roleBonus(model,roles)+extra(model)+stat(model,"Acceleration","PAC")*.15 end)
+	end
+	local nearRunner=pickRunner("NearPostRunner",{ST=12,W=10,CM=3},function(model)return stat(model,"Heading","PHY")*.35+stat(model,"Aggression","PHY")*.2 end)
+	local centralRunner=pickRunner("CentralRunner",{ST=18,CB=10,W=4},function(model)return stat(model,"Heading","PHY")*.45+stat(model,"Strength","PHY")*.35+stat(model,"Height","PHY")*.2 end)
+	local farRunner=pickRunner("FarPostRunner",{ST=12,W=10,CB=7},function(model)return stat(model,"Heading","PHY")*.45+stat(model,"AttackingPosition","SHO")*.25 end)
+	local rebound=chooseRole(attackers,attackUsed,function(model)return roleBonus(model,{ST=10,CAM=9,CM=5,W=5})+stat(model,"Reactions")*.25+stat(model,"SHO")*.2 end)
+	local edge=chooseRole(attackers,attackUsed,function(model)return roleBonus(model,{CM=14,CAM=12,CDM=8,W=6})+stat(model,"LongShots","SHO")*.3+stat(model,"PAS")*.2+stat(model,"BallControl","DRI")*.2 end)
+	local stayBackA=chooseRole(attackers,attackUsed,function(model)return roleBonus(model,{CB=20,FB=15,CDM=14,CM=5})+stat(model,"DEF")*.45 end)
+	local stayBackB=chooseRole(attackers,attackUsed,function(model)return roleBonus(model,{CB=20,FB=15,CDM=14,CM=5})+stat(model,"DEF")*.45 end)
+	local stayBackC=chooseRole(attackers,attackUsed,function(model)return roleBonus(model,{CDM=16,CM=10,FB=7,CB=7})+stat(model,"DEF")*.25+stat(model,"PAS")*.15 end)
+	local nearX=freeKickLaneX("NearPost",width,localBall.X)
+	local farX=freeKickLaneX("FarPost",width,localBall.X)
+	local edgeX=math.clamp(-nearX*.9,-30,30)
+	local reboundX=math.clamp(nearX*.35,-12,12)
+	if angle>22 then
+		nearX=math.clamp(localBall.X*.45,-34,34)
+		farX=-nearX
+		edgeX=math.clamp(-nearX*.72,-32,32)
+		reboundX=math.clamp(nearX*.45,-18,18)
+	end
+	local attackLineZ=goalSign*(length*.5-26)
+	local centralZ=goalSign*(length*.5-36)
+	local edgeZ=goalSign*(length*.5-64)
+	if nearRunner then placeFreeKick(nearRunner,freeKickWorld(pitchCFrame,width,length,nearX,attackLineZ),location,occupied,9,"NearPostRunner",pitchCFrame,width,length);nearRunner:SetAttribute("VTRFreeKickRunDelay",0)end
+	if centralRunner then placeFreeKick(centralRunner,freeKickWorld(pitchCFrame,width,length,0,centralZ),location,occupied,9,"CentralRunner",pitchCFrame,width,length);centralRunner:SetAttribute("VTRFreeKickRunDelay",.16)end
+	if farRunner then placeFreeKick(farRunner,freeKickWorld(pitchCFrame,width,length,farX,attackLineZ+goalSign*5),location,occupied,9,"FarPostRunner",pitchCFrame,width,length);farRunner:SetAttribute("VTRFreeKickRunDelay",.32)end
+	if rebound then placeFreeKick(rebound,freeKickWorld(pitchCFrame,width,length,reboundX,goalSign*(length*.5-48)),location,occupied,10,"PenaltySpotTarget",pitchCFrame,width,length)end
+	if edge then placeFreeKick(edge,freeKickWorld(pitchCFrame,width,length,edgeX,edgeZ),location,occupied,12,"EdgeSecondBall",pitchCFrame,width,length)end
+	local stayZ=math.clamp(localBall.Z-goalSign*42,-length*.5+24,length*.5-24)
+	if stayBackA then placeFreeKick(stayBackA,freeKickWorld(pitchCFrame,width,length,-24,stayZ),location,occupied,12,"CounterProtection",pitchCFrame,width,length)end
+	if stayBackB then placeFreeKick(stayBackB,freeKickWorld(pitchCFrame,width,length,24,stayZ-goalSign*5),location,occupied,12,"CounterProtection",pitchCFrame,width,length)end
+	if stayBackC then placeFreeKick(stayBackC,freeKickWorld(pitchCFrame,width,length,0,stayZ-goalSign*13),location,occupied,12,"CounterProtection",pitchCFrame,width,length)end
+	local supportLanes={"LeftWing","LeftHalf","Center","RightHalf","RightWing"}
+	local supportIndex=0
+	for _,model in attackers do
+		if not attackUsed[model]then
+			local role=freeKickRole(model)
+			supportIndex+=1
+			local laneName=supportLanes[((supportIndex-1)%#supportLanes)+1]
+			local lane=role=="W"and(model:GetAttribute("position")=="LW"and freeKickLaneX("LeftWing",width)or freeKickLaneX("RightWing",width))or freeKickLaneX(laneName,width)
+			local z=math.clamp(localBall.Z+goalSign*(role=="ST"and 58 or 34),-length*.5+30,length*.5-30)
+			placeFreeKick(model,freeKickWorld(pitchCFrame,width,length,lane,z),location,occupied,9,"ConnectedSupport",pitchCFrame,width,length)
+		end
+	end
+	local markerTargets={}
+	local markerLimit=angle>22 and 2 or 1
+	for _,model in {centralRunner,nearRunner,farRunner,rebound}do
+		if model and #markerTargets<markerLimit then table.insert(markerTargets,model)end
+	end
+	for index,targetModel in markerTargets do
+		local marker=chooseRole(defenders,defendUsed,function(model)return roleBonus(model,{CDM=14,CM=12,FB=8,CB=2,W=2})+stat(model,"DEF")*.35+stat(model,"PHY")*.15-index end)
+		local targetRoot=targetModel and root(targetModel)
+		if marker and targetRoot then
+			local targetLocal=pitchCFrame:PointToObjectSpace(targetRoot.Position)
+			placeFreeKick(marker,freeKickWorld(pitchCFrame,width,length,targetLocal.X,targetLocal.Z-goalSign*5),location,occupied,7,"Marker",pitchCFrame,width,length)
+			marker:SetAttribute("VTRFreeKickMarker",targetModel.Name)
+			targetModel:SetAttribute("VTRFreeKickMarkedBy",marker.Name)
+		end
+	end
+	local nearPostDef=chooseRole(defenders,defendUsed,function(model)return roleBonus(model,{FB=15,CB=12,CDM=6})+stat(model,"DEF")*.25 end)
+	local centerBackA=chooseRole(defenders,defendUsed,function(model)return roleBonus(model,{CB=20,CDM=8,FB=6})+stat(model,"DEF")*.35+stat(model,"PHY")*.2 end)
+	local centerBackB=chooseRole(defenders,defendUsed,function(model)return roleBonus(model,{CB=20,CDM=8,FB=6})+stat(model,"DEF")*.35+stat(model,"PHY")*.2 end)
+	local farPostDef=chooseRole(defenders,defendUsed,function(model)return roleBonus(model,{FB=15,CB=12,CDM=6})+stat(model,"DEF")*.25 end)
+	local edgeDef=chooseRole(defenders,defendUsed,function(model)return roleBonus(model,{CDM=18,CM=13,FB=6})+stat(model,"DEF")*.25+stat(model,"PAS")*.08 end)
+	local outlet=chooseRole(defenders,defendUsed,function(model)return roleBonus(model,{ST=18,W=13,CM=5})+stat(model,"PAC")*.25+stat(model,"PAS")*.08 end)
+	if angle>22 then
+		if nearPostDef then placeFreeKick(nearPostDef,freeKickWorld(pitchCFrame,width,length,nearX,goalSign*(length*.5-32)),location,occupied,8,"NearPostZone",pitchCFrame,width,length)end
+		if centerBackA then placeFreeKick(centerBackA,freeKickWorld(pitchCFrame,width,length,-10,goalSign*(length*.5-48)),location,occupied,8,"CentralBoxDefender",pitchCFrame,width,length)end
+		if centerBackB then placeFreeKick(centerBackB,freeKickWorld(pitchCFrame,width,length,10,goalSign*(length*.5-54)),location,occupied,8,"CentralBoxDefender",pitchCFrame,width,length)end
+		if farPostDef then placeFreeKick(farPostDef,freeKickWorld(pitchCFrame,width,length,farX,goalSign*(length*.5-34)),location,occupied,8,"FarPostZone",pitchCFrame,width,length)end
+	else
+		if centerBackA then placeFreeKick(centerBackA,freeKickWorld(pitchCFrame,width,length,-10,goalSign*(length*.5-54)),location,occupied,8,"CentralBoxDefender",pitchCFrame,width,length)end
+		if centerBackB then placeFreeKick(centerBackB,freeKickWorld(pitchCFrame,width,length,10,goalSign*(length*.5-58)),location,occupied,8,"CentralBoxDefender",pitchCFrame,width,length)end
+		if nearPostDef then placeFreeKick(nearPostDef,freeKickWorld(pitchCFrame,width,length,freeKickLaneX("LeftHalf",width),goalSign*(length*.5-66)),location,occupied,10,"WideFreeKickDefender",pitchCFrame,width,length)end
+		if farPostDef then placeFreeKick(farPostDef,freeKickWorld(pitchCFrame,width,length,freeKickLaneX("RightHalf",width),goalSign*(length*.5-70)),location,occupied,10,"WideFreeKickDefender",pitchCFrame,width,length)end
+	end
+	if edgeDef then placeFreeKick(edgeDef,freeKickWorld(pitchCFrame,width,length,localBall.X>=0 and -18 or 18,goalSign*(length*.5-92)),location,occupied,11,"DefensiveSecondBall",pitchCFrame,width,length)end
+	if outlet then placeFreeKick(outlet,freeKickWorld(pitchCFrame,width,length,localBall.X>=0 and-width*.28 or width*.28,math.clamp(localBall.Z-goalSign*92,-length*.5+35,length*.5-35)),location,occupied,14,"CounterOutlet",pitchCFrame,width,length)end
+	local defendLanes=localBall.X>=0 and {"LeftWing","LeftHalf","Center","RightHalf","RightWing"} or {"RightWing","RightHalf","Center","LeftHalf","LeftWing"}
+	local defendIndex=0
+	for _,model in defenders do
+		if not defendUsed[model]then
+			local role=freeKickRole(model)
+			defendIndex+=1
+			local laneName=defendLanes[((defendIndex-1)%#defendLanes)+1]
+			local x=role=="FB"and(localBall.X>=0 and freeKickLaneX("LeftWing",width)or freeKickLaneX("RightWing",width))or freeKickLaneX(laneName,width)
+			local depth=role=="ST"and 96 or (role=="CM"or role=="CDM")and 74 or 58
+			local z=math.clamp(localBall.Z-goalSign*depth,-length*.5+28,length*.5-28)
+			local freeRole=role=="ST"and"CounterOutlet"or role=="FB"and"WideFreeKickDefender"or(role=="CM"or role=="CDM")and"EdgeFreeKickScreen"or"CompactBlock"
+			placeFreeKick(model,freeKickWorld(pitchCFrame,width,length,x,z),location,occupied,12,freeRole,pitchCFrame,width,length)
+		end
+	end
+	if angle>22 and centralRunner then
+		primeSetPieceReceiver(taker,centralRunner,root(centralRunner)and(root(centralRunner)::BasePart).Position or location,"Cross",.18,.86)
+	elseif rebound then
+		primeSetPieceReceiver(taker,rebound,root(rebound)and(root(rebound)::BasePart).Position or location,"Ground",.2,.74)
+	elseif shortOption then
+		primeSetPieceReceiver(taker,shortOption,root(shortOption)and(root(shortOption)::BasePart).Position or location,"Ground",.16,.72)
+	end
+	for _,side in{"Home","Away"}do
+		for _,model in teams[side]or{}do
+			if model~=taker then model:SetAttribute("VTRFreeKickType",kind)end
+		end
+	end
+	return kind,goalSign,#wall
+end
+
+local function arrangeFreeKick(teams:any,restartTeam:string,location:Vector3,pitchCFrame:CFrame,width:number,length:number,taker:Model,half:number?)
+	local kind,goalSign=arrangeRoleFreeKick(teams,restartTeam,location,pitchCFrame,width,length,taker,half)
+	local localBall=pitchCFrame:PointToObjectSpace(location)
+	return localWorld(pitchCFrame,0,1.15,localBall.Z),goalSign,kind
 end
 
 local function arrangeSimpleFreeKick(teams:any,restartTeam:string,location:Vector3,pitchCFrame:CFrame,width:number,length:number,taker:Model,half:number?)
-	local goalSign=setPieceGoalSign(restartTeam)
-	if (half or 1)>=2 then goalSign=-goalSign end
-	local goal=localWorld(pitchCFrame,0,3,goalSign*length*.5)
-	local toGoal=Vector3.new(goal.X-location.X,0,goal.Z-location.Z)
-	local goalDirection=toGoal.Magnitude>.05 and toGoal.Unit or pitchCFrame.LookVector*goalSign
-	face(taker,location-goalDirection*4.2,goal)
-	local defending=restartTeam=="Home"and"Away"or"Home"
-	for _,side in {"Home","Away"}do
-		for index,model in teams[side]do
-			if model~=taker then
-				local modelRoot=root(model)
-				local sideSign=side==restartTeam and -goalSign or goalSign
-				local lane=((index%7)-3)*9
-				local depth=side==restartTeam and 34+(index%3)*9 or 48+(index%4)*8
-				local desired=localWorld(pitchCFrame,lane,3,math.clamp((pitchCFrame:PointToObjectSpace(location).Z)+sideSign*depth,-length*.5+18,length*.5-18))
-				if modelRoot and (Vector3.new(modelRoot.Position.X-location.X,0,modelRoot.Position.Z-location.Z)).Magnitude<58 then
-					face(model,desired,location)
-				else
-					face(model,modelRoot and modelRoot.Position or desired,location)
-				end
-				model:SetAttribute("VTRSetPieceWall",nil)
-			end
-		end
-	end
-	for _,model in teams[defending]do
-		if isKeeper(model)then face(model,localWorld(pitchCFrame,0,3,goalSign*(length*.5-2)),location)end
-	end
+	local _,goalSign=arrangeRoleFreeKick(teams,restartTeam,location,pitchCFrame,width,length,taker,half)
 	return goalSign
+end
+
+function Service.DebugArrangeFreeKick(teams:any,restartTeam:string,location:Vector3,pitchCFrame:CFrame,width:number,length:number,taker:Model,half:number?)
+	return arrangeRoleFreeKick(teams,restartTeam,location,pitchCFrame,width,length,taker,half)
+end
+
+function Service.DebugClearFreeKickTemp(model:Model)
+	clearFreeKickTemp(model)
 end
 
 function Service.new(remote: RemoteEvent, world: any, teams: any, formation: any, possession: any, teamControl: any,ballService:any,isPaused:(() -> boolean)?)
@@ -526,6 +975,7 @@ function Service:Start(player: Player, kind: string, restartTeam: string, locati
 	local taker: Model
 	local kickoffPartner: Model? = nil
 	local setPieceCutscene = false
+	local freeKickSetupType: string? = nil
 	if kind == "ThrowIn" then
 		taker = FormationPositionService.ThrowIn(self.Teams, restartTeam, location, self.World.PitchCFrame, self.World.Width, self.World.Length)
 	elseif kind == "Corner" then
@@ -546,10 +996,14 @@ function Service:Start(player: Player, kind: string, restartTeam: string, locati
 		local goalPosition=self.World.PitchCFrame:PointToWorldSpace(Vector3.new(0,3,freeGoalSign*self.World.Length*.5))
 		setPieceCutscene=(Vector3.new(goalPosition.X-location.X,0,goalPosition.Z-location.Z)).Magnitude<=200
 		if setPieceCutscene then
-			arrangeFreeKick(self.Teams,restartTeam,location,self.World.PitchCFrame,self.World.Width,self.World.Length,taker,self.Half)
+			local _,_,setupType=arrangeFreeKick(self.Teams,restartTeam,location,self.World.PitchCFrame,self.World.Width,self.World.Length,taker,self.Half)
+			freeKickSetupType=setupType
 		else
-			arrangeSimpleFreeKick(self.Teams,restartTeam,location,self.World.PitchCFrame,self.World.Width,self.World.Length,taker,self.Half)
+			local setupType
+			setupType=arrangeRoleFreeKick(self.Teams,restartTeam,location,self.World.PitchCFrame,self.World.Width,self.World.Length,taker,self.Half)
+			freeKickSetupType=setupType
 		end
+		setPieceCutscene=freeKickSetupType=="DirectShootingFreeKick"
 	else
 		taker,kickoffPartner = KickoffPositionService.Position(self.Teams, self.Formation, self.World.PitchCFrame, restartTeam or "Home", self.Half)
 		restartTeam = restartTeam or "Home"
@@ -563,7 +1017,7 @@ function Service:Start(player: Player, kind: string, restartTeam: string, locati
 	self.World.Ball.CFrame = CFrame.new(ballPosition)
 	if userControlled==true and player and player.Parent then self.TeamControl:SetActive(player, taker, kind)end
 	if kind=="FreeKick"or kind=="Penalty"or kind=="GoalKick"or kind=="ThrowIn"then
-		self.RestartMode = (kind=="GoalKick" or kind=="ThrowIn") and kind or kind=="FreeKick" and (setPieceCutscene and "DirectShotFreeKick" or "LongFreeKick") or kind
+		self.RestartMode = (kind=="GoalKick" or kind=="ThrowIn") and kind or kind=="FreeKick" and (freeKickSetupType=="DirectShootingFreeKick" and "DirectShotFreeKick" or "LongFreeKick") or kind
 		self.RestartTaker=taker
 		self.RestartTeam=restartTeam
 		if kind~="GoalKick"and kind~="ThrowIn"then clearSpaceAround(self.Teams,ballPosition,kind=="Penalty"and 22 or self.RestartMode=="LongFreeKick" and 20 or 18,self.World.PitchCFrame,self.World.Width,self.World.Length,taker)end
@@ -713,6 +1167,7 @@ function Service:Cancel()
 	self.Sequence += 1
 	if self.ActiveCorner and self.ActiveCorner.Data and self.ActiveCorner.Data.Taker then local taker=self.ActiveCorner.Data.Taker;taker:SetAttribute("VTRForceIdle",nil);local takerRoot=taker:FindFirstChild("HumanoidRootPart")::BasePart?;if takerRoot then takerRoot.Anchored=false end end
 	self.ActiveCorner=nil
+	self:ReleaseRestartTaker()
 	self.RestartMode=nil
 	self.RestartTaker=nil
 	self.RestartTeam=nil
@@ -726,6 +1181,9 @@ function Service:ReleaseRestartTaker()
 			local wasRestartSpecial=model:GetAttribute("VTRForceIdle")==true or model:GetAttribute("VTRSetPieceTaker")==true or model:GetAttribute("VTRSetPieceWall")==true
 			if model:GetAttribute("VTRForceIdle")==true then
 				model:SetAttribute("VTRForceIdle",nil)
+			end
+			if model:GetAttribute("VTRFrozen")==true then
+				model:SetAttribute("VTRFrozen",nil)
 			end
 			if model:GetAttribute("VTRFrozenIdle")==true then
 				model:SetAttribute("VTRFrozenIdle",nil)
@@ -747,15 +1205,10 @@ function Service:ReleaseRestartTaker()
 			if model:GetAttribute("VTRPenaltyMissHigh")~=nil then model:SetAttribute("VTRPenaltyMissHigh",nil)end
 			if model:GetAttribute("VTRPenaltyUserKeeper")~=nil then model:SetAttribute("VTRPenaltyUserKeeper",nil)end
 			if model:GetAttribute("VTRNoAutoPassUntil")~=nil then model:SetAttribute("VTRNoAutoPassUntil",nil)end
+			clearFreeKickTemp(model)
+			clearSetPieceReceiveIntent(model)
 			if wasRestartSpecial then
-				if model:GetAttribute("VTRReceiveTarget")~=nil then model:SetAttribute("VTRReceiveTarget",nil)end
-				if model:GetAttribute("VTRPreparingReceive")~=nil then model:SetAttribute("VTRPreparingReceive",false)end
-				if model:GetAttribute("VTRReceiveUntil")~=nil then model:SetAttribute("VTRReceiveUntil",nil)end
-				if model:GetAttribute("VTRReceiveLockedAt")~=nil then model:SetAttribute("VTRReceiveLockedAt",nil)end
-				if model:GetAttribute("VTRReceiveIntercept")~=nil then model:SetAttribute("VTRReceiveIntercept",nil)end
-				if model:GetAttribute("AIDebugExpectedPass")~=nil then model:SetAttribute("AIDebugExpectedPass",nil)end
-				if model:GetAttribute("AIDebugPassTarget")~=nil then model:SetAttribute("AIDebugPassTarget",nil)end
-				if model:GetAttribute("AIDebugPassKind")~=nil then model:SetAttribute("AIDebugPassKind",nil)end
+				model:SetAttribute("VTRPostSetPieceReleasedAt", os.clock())
 			end
 			if model:GetAttribute("VTRSetPieceWall")==true then
 				model:SetAttribute("VTRSetPieceWall",nil)
@@ -773,6 +1226,13 @@ function Service:ReleaseRestartTaker()
 				modelRoot.Anchored=false
 				modelRoot.AssemblyLinearVelocity=Vector3.zero
 				modelRoot.AssemblyAngularVelocity=Vector3.zero
+				model:SetAttribute("VTRIntentionalRepositionUntil", os.clock() + .75)
+				model:SetAttribute("targetPosition", modelRoot.Position)
+				model:SetAttribute("MovementTarget", modelRoot.Position)
+				model:SetAttribute("currentAssignment", "PostSetPieceRecover")
+				model:SetAttribute("AIAssignment", "PostSetPieceRecover")
+				model:SetAttribute("SupportRole", "PostSetPieceRecover")
+				model:SetAttribute("AttackAssignment", "PostSetPieceRecover")
 			end
 		end
 	end

@@ -217,4 +217,38 @@ function AvatarPortraitGenerator.new(parent: Instance, playerData: any, size: UD
 	return viewport
 end
 
+function AvatarPortraitGenerator.CloneModel(playerData: any): Model
+	local playerId = portraitId(playerData)
+	local ok, model = pcall(function()
+		local key = cacheKey(playerData)
+		if not modelCache[key] then
+			modelCache[key] = buildR6Model(playerData)
+			table.insert(cacheOrder, key)
+			if #cacheOrder > MAX_CACHED_MODELS then
+				local expired = table.remove(cacheOrder, 1)
+				if modelCache[expired] then modelCache[expired]:Destroy();modelCache[expired] = nil end
+			end
+		end
+		return modelCache[key]:Clone()
+	end)
+	if ok and model and model:IsA("Model") then
+		model.Name = "WalkoutPlayer_" .. playerId
+		return model
+	end
+	local fallback = Instance.new("Model")
+	fallback.Name = "WalkoutPlayerFallback_" .. playerId
+	local root = bodyPart(fallback, "HumanoidRootPart", Vector3.new(2, 2, 1), Vector3.new(0, 0, 0), Color3.new(), 1)
+	bodyPart(fallback, "Torso", Vector3.new(2, 2, 1), Vector3.new(0, 0, 0), Color3.fromHex("111111"))
+	bodyPart(fallback, "Head", Vector3.new(2, 1, 1), Vector3.new(0, 1.5, 0), Color3.fromHex("D7AA7B"))
+	bodyPart(fallback, "Left Arm", Vector3.new(1, 2, 1), Vector3.new(-1.5, 0, 0), Color3.fromHex("D7AA7B"))
+	bodyPart(fallback, "Right Arm", Vector3.new(1, 2, 1), Vector3.new(1.5, 0, 0), Color3.fromHex("D7AA7B"))
+	bodyPart(fallback, "Left Leg", Vector3.new(1, 2, 1), Vector3.new(-0.5, -2, 0), Color3.fromHex("111111"))
+	bodyPart(fallback, "Right Leg", Vector3.new(1, 2, 1), Vector3.new(0.5, -2, 0), Color3.fromHex("111111"))
+	fallback.PrimaryPart = root
+	local humanoid = Instance.new("Humanoid")
+	humanoid.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
+	humanoid.Parent = fallback
+	return fallback
+end
+
 return AvatarPortraitGenerator

@@ -126,7 +126,80 @@ local TACTIC_DEBUG_GROUPS:{[string]:string}={
 	SupportDistance="Shape",BuildUpSpeed="Shape",RecoveryRuns="Shape",ZoneDiscipline="Shape",LaneBlocking="Shape",MarkingTightness="Shape",
 	KeeperAggression="Keeper",KeeperDistributionRisk="Keeper",ShortGKDistribution="Keeper",LongGKDistribution="Keeper",
 }
-local TACTIC_LAB_SLIDERS={"BuildUpSpeed","PassTempo","PassingDirectness","RunsInBehind","PressingIntensity","DefensiveDepth","BackLineCompactness","LaneBlocking","SupportDistance","WidthDiscipline"}
+local TACTIC_FORMATIONS={"4-3-3","4-2-3-1","4-4-2","4-1-2-1-2","4-5-1","3-4-3","4-3-2-1","3-5-2","5-3-2"}
+local TACTIC_LAB_SLIDERS={}
+local TACTIC_IDENTITIES={{Id="basic_possession",Label="Slow Build Up",PresetId="balanced_control",Name="SAFE Possession"},{Id="quick_passing",Label="Tiki-Taka",PresetId="short_possession",Name="Quick Passing"}}
+local TACTIC_BEHAVIOR_CONTROLS={
+	{Key="DefensiveLineReach",Label="DEFENSIVE LINE REACH",Group="Depth",Low="Halfway cap",High="Higher step limit"},
+	{Key="FirstTimePassing",Label="FIRST TIME PASSING",Group="Passing",Low="Control first",High="One-touch"},
+	{Key="LongBalls",Label="LONG BALLS",Group="Passing",Low="Short first",High="Furthest open"},
+	{Key="Aggression",Label="AGGRESSION",Group="Press",Low="Delay tackles",High="Attempt tackles"},
+	{Key="Character",Label="CHARACTER",Group="Press",Low="Stay upright",High="More slides"},
+	{Key="ShotRate",Label="SHOT RATE",Group="Shape",Low="Work chance",High="Shoot earlier"},
+}
+local function setSimpleTacticControl(tactics:any,key:string,value:number)
+	tactics.Sliders=tactics.Sliders or{}
+	tactics.MetricsTargets=tactics.MetricsTargets or{}
+	value=math.clamp(value,0,100)
+	if key=="DefensiveLineReach"then
+		tactics.Sliders.DefensiveLineStepUp=value
+		tactics.Sliders.DefensiveDepth=math.clamp(42+value*.36,0,100)
+	elseif key=="FirstTimePassing"then
+		tactics.Sliders.OneTouchPassing=value
+		tactics.Sliders.FirstTouchDirectness=math.clamp(42+value*.58,0,100)
+		tactics.Sliders.ReceiverTrapAggression=math.clamp(70-value*.6,0,100)
+		tactics.MetricsTargets.FirstTimePassChance=value
+	elseif key=="LongBalls"then
+		tactics.Sliders.LobPassBias=value
+		tactics.Sliders.FreeKickLongPass=value
+		tactics.Sliders.LongGKDistribution=value
+		tactics.Sliders.ThroughBallFrequency=math.clamp(34+value*.5,0,100)
+		tactics.Sliders.PassingDirectness=math.clamp(28+value*.58,0,100)
+	elseif key=="Aggression"then
+		tactics.Sliders.TackleAggression=value
+		tactics.Sliders.PressTriggerDistance=math.clamp(32+value*.52,0,100)
+		tactics.Sliders.PressingIntensity=math.clamp(36+value*.48,0,100)
+	elseif key=="Character"then
+		tactics.Sliders.RiskLevel=math.clamp(28+value*.64,0,100)
+		tactics.Sliders.TackleAggression=math.max(tonumber(tactics.Sliders.TackleAggression)or 50,math.clamp(24+value*.62,0,100))
+		tactics.MetricsTargets.SlideTackleFrequency=value
+	elseif key=="ShotRate"then
+		tactics.Sliders.LongShotFrequency=value
+		tactics.Sliders.ShotPatience=math.clamp(100-value,0,100)
+		tactics.Sliders.RiskLevel=math.max(tonumber(tactics.Sliders.RiskLevel)or 50,math.clamp(30+value*.55,0,100))
+	end
+end
+local function simpleTacticValue(tactics:any,key:string):number
+	local sliders=tactics and tactics.Sliders or{}
+	local metrics=tactics and tactics.MetricsTargets or{}
+	if key=="DefensiveLineReach"then return tonumber(sliders.DefensiveLineStepUp)or 50 end
+	if key=="FirstTimePassing"then return tonumber(metrics.FirstTimePassChance)or tonumber(sliders.OneTouchPassing)or 50 end
+	if key=="LongBalls"then return tonumber(sliders.LobPassBias)or tonumber(sliders.FreeKickLongPass)or 50 end
+	if key=="Aggression"then return tonumber(sliders.TackleAggression)or 50 end
+	if key=="Character"then return tonumber(metrics.SlideTackleFrequency)or math.clamp(((tonumber(sliders.RiskLevel)or 50)-28)/.64,0,100) end
+	if key=="ShotRate"then return tonumber(sliders.LongShotFrequency)or math.clamp(100-(tonumber(sliders.ShotPatience)or 50),0,100) end
+	return 50
+end
+local function applyTacticIdentity(tactics:any,index:number)
+	local identity=TACTIC_IDENTITIES[((index-1)%#TACTIC_IDENTITIES)+1]
+	tactics.PresetId=identity.PresetId
+	tactics.PlaystyleId=identity.Id
+	tactics.PlaystyleName=identity.Name
+	tactics.MetricsTargets=tactics.MetricsTargets or{}
+	tactics.MetricsTargets.QuickPassing=identity.Id=="quick_passing"and 1 or 0
+	tactics.MetricsTargets.BoxEdgeRetreatLimit=identity.Id=="basic_possession"and 132 or nil
+	if identity.Id=="quick_passing"then
+		tactics.Sliders.BuildUpSpeed=72;tactics.Sliders.PassTempo=92;tactics.Sliders.SupportDistance=28;tactics.Sliders.PassingDirectness=44
+		setSimpleTacticControl(tactics,"FirstTimePassing",math.max(simpleTacticValue(tactics,"FirstTimePassing"),100))
+	else
+		tactics.Sliders.BuildUpSpeed=48;tactics.Sliders.PassTempo=66;tactics.Sliders.SupportDistance=34;tactics.Sliders.PassingDirectness=32
+		setSimpleTacticControl(tactics,"FirstTimePassing",math.min(simpleTacticValue(tactics,"FirstTimePassing"),28))
+	end
+end
+local function currentTacticIdentityIndex(tactics:any):number
+	local id=tostring(tactics and (tactics.PlaystyleId or tactics.PlaystyleName or tactics.PresetId)or"")
+	return(id=="quick_passing"or id=="Quick Passing"or id=="short_possession")and 2 or 1
+end
 local function keyCodeFromSetting(value:any,fallback:Enum.KeyCode):Enum.KeyCode
 	if type(value)~="string"then return fallback end
 	local numberMap={[ "0" ]=Enum.KeyCode.Zero,[ "1" ]=Enum.KeyCode.One,[ "2" ]=Enum.KeyCode.Two,[ "3" ]=Enum.KeyCode.Three,[ "4" ]=Enum.KeyCode.Four,[ "5" ]=Enum.KeyCode.Five,[ "6" ]=Enum.KeyCode.Six,[ "7" ]=Enum.KeyCode.Seven,[ "8" ]=Enum.KeyCode.Eight,[ "9" ]=Enum.KeyCode.Nine}
@@ -143,8 +216,15 @@ local function planBand(value:any,low:string,mid:string,high:string):string
 	return mid
 end
 local function gameplanSummary(tactics:any):string
-	local sliders=tactics and tactics.Sliders or{}
-	return "GAMEPLAN: "..planBand(sliders.BuildUpSpeed,"patient build-up","balanced build-up","fast build-up").." / "..planBand(sliders.PassingDirectness,"short circulation","mixed passing","direct progression").." / "..planBand(sliders.RunsInBehind,"come-short support","selective runs","runs behind").."\nDEFENSE: "..planBand(sliders.PressingIntensity,"hold shape","situational press","aggressive press").." / "..planBand(sliders.DefensiveDepth,"deep block","mid block","high line").." / "..planBand(sliders.BackLineCompactness,"spread line","balanced line","compact line").."\nPOSITIONING: "..planBand(sliders.SupportDistance,"tight triangles","balanced support","stretched support").." / "..planBand(sliders.WidthDiscipline,"free rotations","balanced lanes","strict lane shape")
+	local identity=TACTIC_IDENTITIES[currentTacticIdentityIndex(tactics)]
+	local reach=math.floor(simpleTacticValue(tactics,"DefensiveLineReach")*.32+4+.5)
+	return "FORMATION: "..tostring(tactics and tactics.Formation or"4-3-3").."  /  AI IDENTITY: "..identity.Label.." ("..identity.Name..")\nDEFENSIVE LINE REACH: +"..tostring(reach).." studs past halfway  /  FIRST TIME: "..tostring(math.floor(simpleTacticValue(tactics,"FirstTimePassing")+.5)).."%  /  LONG BALLS: "..tostring(math.floor(simpleTacticValue(tactics,"LongBalls")+.5)).."%\nAGGRESSION: "..tostring(math.floor(simpleTacticValue(tactics,"Aggression")+.5)).."%  /  CHARACTER: "..tostring(math.floor(simpleTacticValue(tactics,"Character")+.5)).."% slides  /  SHOT RATE: "..tostring(math.floor(simpleTacticValue(tactics,"ShotRate")+.5)).."%"
+end
+local function compactActionName(value:any):string
+	local text=tostring(value or"")
+	if text==""then return"Observe"end
+	text=text:gsub("(%l)(%u)","%1 %2"):gsub("_"," ")
+	return text
 end
 function Controller.new()return setmetatable({Active=false,Stamina=Config.Stamina.Maximum,Endurance=Config.Stamina.Maximum,TacticalMode=false,TacticalPanelOpen=true,TacticalSide="Home",TacticalDebugOptions=defaultTacticalDebugOptions(),RuntimeTactics={Home=LiteConfig.DefaultTactics(),Away=LiteConfig.DefaultTactics()}},Controller)end
 function Controller:Start()local action,state=Remotes.Wait();self.Action=action;self.State=state;if self.StateConnection then self.StateConnection:Disconnect()end;self.StateConnection=state.OnClientEvent:Connect(function(payload)self:_state(payload)end)end
@@ -411,6 +491,13 @@ function Controller:_bindFootballer(model:Model,name:string?,position:string?)
 			if self.Active then self:_state(queued)end
 		end)
 	end
+end
+
+function Controller:_refreshActiveStamina()
+	local model=self.ActiveModel
+	if not model then return end
+	self.Stamina=tonumber(model:GetAttribute("VTRSprintEnergy"))or tonumber(model:GetAttribute("VTRSprintStamina"))or tonumber(model:GetAttribute("VTRStamina"))or self.Stamina or Config.Stamina.Maximum
+	self.Endurance=tonumber(model:GetAttribute("VTREndurance"))or tonumber(model:GetAttribute("VTRSprintStamina"))or Config.Stamina.Maximum
 end
 
 function Controller:_showFreshAttackDirection(half: number)
@@ -1097,14 +1184,137 @@ end
 function Controller:_formatRuntimeTactics():string
 	local function sideBlock(side:string):string
 		local tactics=self.RuntimeTactics[side];local parts={}
-		for _,name in TACTIC_LAB_SLIDERS do table.insert(parts,name.."="..tostring(math.floor(tonumber(tactics.Sliders[name])or 50)))end
-		return side.."={Identity=\""..tostring(tactics.Identity or"Balanced").."\",Sliders={"..table.concat(parts,",").."}}"
+		for _,spec in TACTIC_BEHAVIOR_CONTROLS do table.insert(parts,spec.Key.."="..tostring(math.floor(simpleTacticValue(tactics,spec.Key)+.5)))end
+		return side.."={Formation=\""..tostring(tactics.Formation or"4-3-3").."\",Playstyle=\""..TACTIC_IDENTITIES[currentTacticIdentityIndex(tactics)].Label.."\",Settings={"..table.concat(parts,",").."}}"
 	end
 	return"RuntimeAITactics={"..sideBlock("Home")..","..sideBlock("Away").."}"
 end
 function Controller:_sendRuntimeTactics(side:string)
 	if not self.TacticalDebugOptions or next(self.TacticalDebugOptions)==nil then self.TacticalDebugOptions=defaultTacticalDebugOptions()end
 	if self.Action then self.Action:FireServer({Type="AITacticsDebug",Side=side,Tactics=self.RuntimeTactics[side],Debug=self.TacticalDebugOptions})end
+end
+function Controller:_findTeamModelByName(side:string,name:string):Model?
+	if name==""or not self.TeamModels then return nil end
+	for _,model in self.TeamModels[side]or{}do
+		if model.Name==name or tostring(model:GetAttribute("DisplayName")or"")==name then return model end
+	end
+	for _,team in self.TeamModels do
+		for _,model in team do
+			if (model.Name==name or tostring(model:GetAttribute("DisplayName")or"")==name)and tostring(model:GetAttribute("VTRTeam")or"")==side then return model end
+		end
+	end
+	return nil
+end
+function Controller:_teamModelsForSide(side:string):{Model}
+	return self.TeamModels and self.TeamModels[side]or{}
+end
+function Controller:_teamDefensiveGameplanText(side:string):string
+	local ownerSide=self.Ball and tostring(self.Ball:GetAttribute("VTRPossessionTeam")or"")or""
+	local intent,phase,lineState="", "", ""
+	local pressers,restDefense=0,0
+	local layers={}
+	for _,model in self:_teamModelsForSide(side)do
+		intent=intent~=""and intent or tostring(model:GetAttribute("TeamDefensiveIntent")or"")
+		phase=phase~=""and phase or tostring(model:GetAttribute("AIPressPhase")or model:GetAttribute("AIHighPressPhase")or"")
+		lineState=lineState~=""and lineState or tostring(model:GetAttribute("AIDefensiveLineState")or"")
+		pressers=math.max(pressers,tonumber(model:GetAttribute("AIPressersActive"))or 0)
+		if model:GetAttribute("AIRestDefense")==true then restDefense+=1 end
+		local layer=tostring(model:GetAttribute("AIPressLayer")or"")
+		if layer~=""then layers[layer]=true end
+	end
+	local layerText={}
+	for layer in pairs(layers)do table.insert(layerText,compactActionName(layer))end
+	table.sort(layerText)
+	if ownerSide==side then
+		local rest=restDefense>0 and tostring(restDefense).." rest defenders"or"rest defense ready"
+		return side.." Defense: Rest Shape, "..rest.." protecting counters while attack builds"
+	end
+	if intent==""then intent="Hold Shape"end
+	if phase==""then phase="Observe"end
+	if lineState==""then lineState="Compact Lines"end
+	local laneText=#layerText>0 and table.concat(layerText,"/")or"carrier plus outlet lanes"
+	return side.." Defense: "..compactActionName(intent)..", "..compactActionName(phase)..", "..tostring(pressers).." pressers covering "..laneText.." / "..compactActionName(lineState)
+end
+function Controller:_teamActionText(side:string):string
+	local ownerName=self.Ball and tostring(self.Ball:GetAttribute("OwnerModel")or"")or""
+	local ownerSide=self.Ball and tostring(self.Ball:GetAttribute("VTRPossessionTeam")or"")or""
+	local owner=self:_findTeamModelByName(side,ownerName)
+	if ownerSide==""and owner then ownerSide=tostring(owner:GetAttribute("VTRTeam")or"")end
+	if owner then
+		local action=compactActionName(owner:GetAttribute("AITeamAction")or owner:GetAttribute("currentAssignment")or owner:GetAttribute("AIAssignment"))
+		local assignment=compactActionName(owner:GetAttribute("currentAssignment")or owner:GetAttribute("AIAssignment")or owner:GetAttribute("SupportRole")or owner:GetAttribute("AITacticalSlot")or owner:GetAttribute("AITeamContractPlanStep"))
+		local reason=tostring(owner:GetAttribute("AITeamActionReason")or"")
+		if reason==""then
+			if owner:GetAttribute("AIForcePassPressure10")==true then reason="Close pressure inside 10 studs"
+			elseif owner:GetAttribute("AIForwardSpace")==true then reason="Forward space is open"
+			elseif owner:GetAttribute("AIForcedSafe")==true then reason="Safe option preferred by pressure/risk"
+			elseif owner:GetAttribute("AIShotGood")==true then reason="Shot quality is available"
+			else reason="Carrier is following current team assignment"end
+		end
+		return side..": "..action..", "..reason.."  /  Assignment: "..assignment
+	end
+	if ownerName~=""and ownerSide==side then
+		return side..": In Possession, "..ownerName.." has the ball  /  Assignment: Tracking Carrier"
+	elseif ownerName~=""and ownerSide~=""then
+		return side..": Defending, opponent ball carrier has possession"
+	end
+	local motionKind=self.Ball and tostring(self.Ball:GetAttribute("VTRMotionKind")or"")or""
+	local passReceiver=tostring(self.Ball and self.Ball:GetAttribute("VTRPassReceiver")or"")
+	local passTeam=tostring(self.Ball and self.Ball:GetAttribute("VTRPassTeam")or"")
+	local passTarget=self.Ball and self.Ball:GetAttribute("VTRPassTarget")or nil
+	if motionKind=="Pass"and(passReceiver~=""or typeof(passTarget)=="Vector3")then
+		if passTeam==side or passTeam==""then
+			local targetName=passReceiver~=""and passReceiver or"nearest receiver"
+			local receiver=self:_findTeamModelByName(side,passReceiver)
+			local assignment=receiver and compactActionName(receiver:GetAttribute("currentAssignment")or receiver:GetAttribute("AIAssignment")or receiver:GetAttribute("SupportRole")or"ReceivePass")or"ReceivePass"
+			return side..": Pass In Flight, Target "..targetName.." is adjusting to receive  /  Assignment: "..assignment
+		end
+		return side..": Defending Pass, opponent target "..(passReceiver~=""and passReceiver or"receiver").." is being pressed"
+	end
+	if ownerName==""then
+		return side..": Loose Ball, nearest eligible players are reacting"
+	end
+	return side..": Tracking Possession, "..ownerName.." has the ball"
+end
+function Controller:_updateTacticalActionLabels(force:boolean?)
+	if not self.TacticalActionLabels and not self.DefaultActionLabels then return end
+	local now=os.clock()
+	if force~=true and now-(tonumber(self.TacticalActionLabelAt)or 0)<.12 then return end
+	self.TacticalActionLabelAt=now
+	for _,side in{"Home","Away"}do
+		local text=self:_teamActionText(side)
+		local tacticalLabel=self.TacticalActionLabels and self.TacticalActionLabels[side]
+		if tacticalLabel and tacticalLabel.Parent then
+			tacticalLabel.Text=text
+		end
+		local defaultLabel=self.DefaultActionLabels and self.DefaultActionLabels[side]
+		if defaultLabel and defaultLabel.Parent then
+			defaultLabel.Text=text
+		end
+		local defenseText=self:_teamDefensiveGameplanText(side)
+		local tacticalDefenseLabel=self.TacticalDefenseLabels and self.TacticalDefenseLabels[side]
+		if tacticalDefenseLabel and tacticalDefenseLabel.Parent then
+			tacticalDefenseLabel.Text=defenseText
+		end
+		local defaultDefenseLabel=self.DefaultDefenseLabels and self.DefaultDefenseLabels[side]
+		if defaultDefenseLabel and defaultDefenseLabel.Parent then
+			defaultDefenseLabel.Text=defenseText
+		end
+	end
+end
+function Controller:_createDefaultActionReadout()
+	if not self.HUD or not self.HUD.Gui then return end
+	local old=self.HUD.Gui:FindFirstChild("AIDefaultActionReadout");if old then old:Destroy()end
+	local box=Instance.new("Frame");box.Name="AIDefaultActionReadout";box.AnchorPoint=Vector2.new(.5,0);box.BackgroundColor3=Color3.fromHex("050805");box.BackgroundTransparency=.1;box.BorderSizePixel=0;box.Position=UDim2.new(.5,0,0,106);box.Size=UDim2.fromOffset(1060,120);box.ZIndex=170;box.Parent=self.HUD.Gui;self:_trackTemporary(box)
+	local stroke=Instance.new("UIStroke");stroke.Color=Color3.fromHex("B7FF1A");stroke.Thickness=1;stroke.Transparency=.35;stroke.Parent=box
+	local title=Instance.new("TextLabel");title.BackgroundTransparency=1;title.Position=UDim2.fromOffset(14,6);title.Size=UDim2.new(1,-28,0,18);title.Text="TEAM ACTION";title.TextColor3=Color3.fromHex("B7FF1A");title.TextSize=12;title.Font=Enum.Font.GothamBlack;title.TextXAlignment=Enum.TextXAlignment.Left;title.ZIndex=171;title.Parent=box
+	self.DefaultActionLabels={}
+	self.DefaultDefenseLabels={}
+	for index,side in{"Home","Away"}do
+		local actionRow=Instance.new("TextLabel");actionRow.BackgroundTransparency=1;actionRow.Position=UDim2.fromOffset(14,25+(index-1)*45);actionRow.Size=UDim2.new(1,-28,0,20);actionRow.Text=side..": Observe, waiting for match state";actionRow.TextColor3=side=="Home"and Color3.fromHex("64A7FF")or Color3.fromHex("FF594D");actionRow.TextSize=13;actionRow.Font=Enum.Font.Code;actionRow.TextXAlignment=Enum.TextXAlignment.Left;actionRow.TextTruncate=Enum.TextTruncate.AtEnd;actionRow.ZIndex=171;actionRow.Parent=box;self.DefaultActionLabels[side]=actionRow
+		local defenseRow=Instance.new("TextLabel");defenseRow.BackgroundTransparency=1;defenseRow.Position=UDim2.fromOffset(14,45+(index-1)*45);defenseRow.Size=UDim2.new(1,-28,0,20);defenseRow.Text=side.." Defense: Observe";defenseRow.TextColor3=Color3.fromHex("CFE8C0");defenseRow.TextSize=12;defenseRow.Font=Enum.Font.Code;defenseRow.TextXAlignment=Enum.TextXAlignment.Left;defenseRow.TextTruncate=Enum.TextTruncate.AtEnd;defenseRow.ZIndex=171;defenseRow.Parent=box;self.DefaultDefenseLabels[side]=defenseRow
+	end
+	self:_updateTacticalActionLabels(true)
 end
 function Controller:_toggleTacticalMode()
 	if not self.MatchData or self.MatchData.DeveloperAccess~=true then return end
@@ -1119,10 +1329,10 @@ end
 function Controller:_createTacticalPanel()
 	if not self.HUD or not self.HUD.Gui then return end
 	local old=self.HUD.Gui:FindFirstChild("AITacticalTuner");if old then old:Destroy()end
-	local overlay=Instance.new("Frame");overlay.Name="AITacticalTuner";overlay.BackgroundTransparency=1;overlay.Size=UDim2.fromScale(1,1);overlay.Visible=false;overlay.ZIndex=180;overlay.Parent=self.HUD.Gui;self:_trackTemporary(overlay);self.TacticalOverlay=overlay
-	local hint=Instance.new("TextLabel");hint.BackgroundColor3=Color3.fromHex("0A0D08");hint.BackgroundTransparency=.12;hint.BorderSizePixel=0;hint.Position=UDim2.fromOffset(18,72);hint.Size=UDim2.fromOffset(540,34);hint.Text="AI BEHAVIOR LAB  /  8 TOGGLE  /  WASD PAN  /  R-F ZOOM";hint.TextColor3=Color3.fromHex("B7FF1A");hint.TextSize=13;hint.Font=Enum.Font.GothamBlack;hint.TextXAlignment=Enum.TextXAlignment.Left;hint.ZIndex=181;hint.Parent=overlay;local pad=Instance.new("UIPadding");pad.PaddingLeft=UDim.new(0,14);pad.Parent=hint
-	local toggle=Instance.new("TextButton");toggle.AnchorPoint=Vector2.new(1,0);toggle.BackgroundColor3=Color3.fromHex("FFFFFF");toggle.BorderSizePixel=0;toggle.Position=UDim2.new(1,-18,0,72);toggle.Size=UDim2.fromOffset(118,34);toggle.Text="HIDE";toggle.TextColor3=Color3.fromHex("111111");toggle.TextSize=13;toggle.Font=Enum.Font.GothamBlack;toggle.ZIndex=184;toggle.Parent=overlay
-	local panel=Instance.new("Frame");panel.AnchorPoint=Vector2.new(1,.5);panel.BackgroundColor3=Color3.fromHex("070A06");panel.BackgroundTransparency=.06;panel.BorderSizePixel=0;panel.Position=UDim2.new(1,-18,.5,20);panel.Size=UDim2.new(.44,0,.84,0);panel.ZIndex=182;panel.Parent=overlay;self.TacticalPanel=panel;local stroke=Instance.new("UIStroke");stroke.Color=Color3.fromHex("FFFFFF");stroke.Thickness=1;stroke.Transparency=.25;stroke.Parent=panel
+	local overlay=Instance.new("Frame");overlay.Name="AITacticalTuner";overlay.BackgroundTransparency=1;overlay.Size=UDim2.fromScale(1,1);overlay.Visible=self.TacticalMode==true;overlay.ZIndex=180;overlay.Parent=self.HUD.Gui;self:_trackTemporary(overlay);self.TacticalOverlay=overlay
+	local hint=Instance.new("TextLabel");hint.BackgroundColor3=Color3.fromHex("0A0D08");hint.BackgroundTransparency=.12;hint.BorderSizePixel=0;hint.Position=UDim2.fromOffset(18,72);hint.Size=UDim2.fromOffset(620,34);hint.Text="AI BEHAVIOR LAB  /  8 TOGGLE  /  WASD PAN  /  R-F ZOOM";hint.TextColor3=Color3.fromHex("B7FF1A");hint.TextSize=13;hint.Font=Enum.Font.GothamBlack;hint.TextXAlignment=Enum.TextXAlignment.Left;hint.ZIndex=181;hint.Parent=overlay;local pad=Instance.new("UIPadding");pad.PaddingLeft=UDim.new(0,14);pad.Parent=hint
+	local toggle=Instance.new("TextButton");toggle.AnchorPoint=Vector2.new(1,0);toggle.BackgroundColor3=Color3.fromHex("FFFFFF");toggle.BorderSizePixel=0;toggle.Position=UDim2.new(1,-18,0,72);toggle.Size=UDim2.fromOffset(118,34);toggle.Text=self.TacticalPanelOpen and"HIDE"or"SHOW";toggle.TextColor3=Color3.fromHex("111111");toggle.TextSize=13;toggle.Font=Enum.Font.GothamBlack;toggle.ZIndex=184;toggle.Parent=overlay
+	local panel=Instance.new("Frame");panel.AnchorPoint=Vector2.new(1,.5);panel.BackgroundColor3=Color3.fromHex("070A06");panel.BackgroundTransparency=.06;panel.BorderSizePixel=0;panel.Position=UDim2.new(1,-18,.5,20);panel.Size=UDim2.new(.54,0,.9,0);panel.Visible=self.TacticalPanelOpen==true;panel.ZIndex=182;panel.Parent=overlay;self.TacticalPanel=panel;local stroke=Instance.new("UIStroke");stroke.Color=Color3.fromHex("FFFFFF");stroke.Thickness=1;stroke.Transparency=.25;stroke.Parent=panel
 	self:_trackConnection(toggle.Activated:Connect(function()self.TacticalPanelOpen=not self.TacticalPanelOpen;panel.Visible=self.TacticalPanelOpen;toggle.Text=self.TacticalPanelOpen and"HIDE"or"SHOW"end),"Input")
 	self:_renderTacticalPanel()
 end
@@ -1135,7 +1345,64 @@ function Controller:_renderTacticalPanel()
 	local output=Instance.new("TextButton");output.BackgroundColor3=Color3.fromHex("2A351F");output.BorderSizePixel=0;output.Position=UDim2.new(1,-132,0,78);output.Size=UDim2.fromOffset(110,34);output.Text="OUTPUT";output.TextColor3=Color3.fromHex("FFFFFF");output.TextSize=13;output.Font=Enum.Font.GothamBlack;output.ZIndex=184;output.Parent=panel
 	local box=Instance.new("TextBox");box.BackgroundColor3=Color3.fromHex("10140E");box.BackgroundTransparency=.1;box.BorderSizePixel=0;box.ClearTextOnFocus=false;box.MultiLine=true;box.Position=UDim2.fromOffset(22,124);box.Size=UDim2.new(1,-44,0,58);box.Text=gameplanSummary(self.RuntimeTactics[self.TacticalSide]);box.TextColor3=Color3.fromHex("D9D9D9");box.TextSize=10;box.Font=Enum.Font.Code;box.TextXAlignment=Enum.TextXAlignment.Left;box.TextYAlignment=Enum.TextYAlignment.Top;box.ZIndex=184;box.Parent=panel;self.TacticalOutput=box
 	self:_trackConnection(output.Activated:Connect(function()local text=self:_formatRuntimeTactics();print("[VTR AI TUNER] "..text);box.Text=text;status.Text="OUTPUT PRINTED BELOW"end),"Input")
-	local list=Instance.new("ScrollingFrame");list.BackgroundTransparency=1;list.BorderSizePixel=0;list.Position=UDim2.fromOffset(22,196);list.Size=UDim2.new(1,-44,1,-214);list.CanvasSize=UDim2.new();list.AutomaticCanvasSize=Enum.AutomaticSize.Y;list.ScrollBarThickness=8;list.ScrollBarImageColor3=Color3.fromHex("B7FF1A");list.ZIndex=183;list.Parent=panel
+	local actionBox=Instance.new("Frame");actionBox.BackgroundColor3=Color3.fromHex("10140E");actionBox.BackgroundTransparency=.08;actionBox.BorderSizePixel=0;actionBox.Position=UDim2.fromOffset(22,194);actionBox.Size=UDim2.new(1,-44,0,104);actionBox.ZIndex=184;actionBox.Parent=panel
+	local actionStroke=Instance.new("UIStroke");actionStroke.Color=Color3.fromHex("B7FF1A");actionStroke.Thickness=1;actionStroke.Transparency=.55;actionStroke.Parent=actionBox
+	self.TacticalActionLabels={}
+	self.TacticalDefenseLabels={}
+	for index,side in{"Home","Away"}do
+		local row=Instance.new("TextLabel");row.BackgroundTransparency=1;row.Position=UDim2.fromOffset(12,6+(index-1)*48);row.Size=UDim2.new(1,-24,0,21);row.Text=side..": Observe, waiting for match state";row.TextColor3=side=="Home"and Color3.fromHex("64A7FF")or Color3.fromHex("FF594D");row.TextSize=11;row.Font=Enum.Font.Code;row.TextXAlignment=Enum.TextXAlignment.Left;row.TextTruncate=Enum.TextTruncate.AtEnd;row.ZIndex=185;row.Parent=actionBox;self.TacticalActionLabels[side]=row
+		local defense=Instance.new("TextLabel");defense.BackgroundTransparency=1;defense.Position=UDim2.fromOffset(12,27+(index-1)*48);defense.Size=UDim2.new(1,-24,0,21);defense.Text=side.." Defense: Observe";defense.TextColor3=Color3.fromHex("CFE8C0");defense.TextSize=10;defense.Font=Enum.Font.Code;defense.TextXAlignment=Enum.TextXAlignment.Left;defense.TextTruncate=Enum.TextTruncate.AtEnd;defense.ZIndex=185;defense.Parent=actionBox;self.TacticalDefenseLabels[side]=defense
+	end
+	self:_updateTacticalActionLabels(true)
+	local list=Instance.new("ScrollingFrame");list.BackgroundTransparency=1;list.BorderSizePixel=0;list.Position=UDim2.fromOffset(22,312);list.Size=UDim2.new(1,-44,1,-330);list.CanvasSize=UDim2.new();list.AutomaticCanvasSize=Enum.AutomaticSize.Y;list.ScrollBarThickness=8;list.ScrollBarImageColor3=Color3.fromHex("B7FF1A");list.ZIndex=183;list.Parent=panel
+	do
+		local y=0
+		local function header(title:string)
+			local item=Instance.new("TextLabel");item.BackgroundTransparency=1;item.Position=UDim2.fromOffset(0,y);item.Size=UDim2.new(1,-10,0,22);item.Text=title;item.TextColor3=Color3.fromHex("B7FF1A");item.TextSize=11;item.Font=Enum.Font.GothamBlack;item.TextXAlignment=Enum.TextXAlignment.Left;item.ZIndex=185;item.Parent=list;y+=26
+		end
+		local function cycleRow(labelText:string,valueText:string,onPrev:()->(),onNext:()->())
+			local row=Instance.new("Frame");row.BackgroundTransparency=1;row.Position=UDim2.fromOffset(0,y);row.Size=UDim2.new(1,-10,0,50);row.ZIndex=184;row.Parent=list
+			local label=Instance.new("TextLabel");label.BackgroundTransparency=1;label.Position=UDim2.fromOffset(0,4);label.Size=UDim2.new(.36,0,0,20);label.Text=labelText;label.TextColor3=Color3.fromHex("E8E8E8");label.TextSize=12;label.Font=Enum.Font.GothamBold;label.TextXAlignment=Enum.TextXAlignment.Left;label.ZIndex=185;label.Parent=row
+			local value=Instance.new("TextLabel");value.BackgroundColor3=Color3.fromHex("10140E");value.BackgroundTransparency=.05;value.BorderSizePixel=0;value.Position=UDim2.new(.36,8,0,4);value.Size=UDim2.new(1,-174,0,34);value.Text=valueText;value.TextColor3=Color3.fromHex("FFFFFF");value.TextSize=13;value.Font=Enum.Font.GothamBlack;value.TextXAlignment=Enum.TextXAlignment.Center;value.ZIndex=185;value.Parent=row
+			local prev=Instance.new("TextButton");prev.BackgroundColor3=Color3.fromHex("1B2118");prev.BorderSizePixel=0;prev.Position=UDim2.new(1,-104,0,6);prev.Size=UDim2.fromOffset(42,30);prev.Text="<";prev.TextColor3=Color3.new(1,1,1);prev.TextSize=18;prev.Font=Enum.Font.GothamBlack;prev.ZIndex=186;prev.Parent=row;self:_trackConnection(prev.Activated:Connect(onPrev),"Input")
+			local next=Instance.new("TextButton");next.BackgroundColor3=Color3.fromHex("1B2118");next.BorderSizePixel=0;next.Position=UDim2.new(1,-50,0,6);next.Size=UDim2.fromOffset(42,30);next.Text=">";next.TextColor3=Color3.new(1,1,1);next.TextSize=18;next.Font=Enum.Font.GothamBlack;next.ZIndex=186;next.Parent=row;self:_trackConnection(next.Activated:Connect(onNext),"Input")
+			y+=54
+		end
+		local tactics=self.RuntimeTactics[self.TacticalSide];tactics.Sliders=tactics.Sliders or{};tactics.MetricsTargets=tactics.MetricsTargets or{}
+		header("TACTICS")
+		local formationIndex=table.find(TACTIC_FORMATIONS,tostring(tactics.Formation or""))or 1
+		cycleRow("FORMATION",TACTIC_FORMATIONS[formationIndex],function()tactics.Formation=TACTIC_FORMATIONS[((formationIndex-2)%#TACTIC_FORMATIONS)+1];self:_sendRuntimeTactics(self.TacticalSide);self:_renderTacticalPanel()end,function()tactics.Formation=TACTIC_FORMATIONS[(formationIndex%#TACTIC_FORMATIONS)+1];self:_sendRuntimeTactics(self.TacticalSide);self:_renderTacticalPanel()end)
+		local identityIndex=currentTacticIdentityIndex(tactics)
+		local identity=TACTIC_IDENTITIES[identityIndex]
+		cycleRow("AI IDENTITY",identity.Label.." ("..identity.Name..")",function()applyTacticIdentity(tactics,identityIndex-1);self:_sendRuntimeTactics(self.TacticalSide);self:_renderTacticalPanel()end,function()applyTacticIdentity(tactics,identityIndex+1);self:_sendRuntimeTactics(self.TacticalSide);self:_renderTacticalPanel()end)
+		header("BEHAVIOUR SETTINGS")
+		for _,spec in TACTIC_BEHAVIOR_CONTROLS do
+			local value=math.floor(simpleTacticValue(tactics,spec.Key)+.5)
+			local row=Instance.new("Frame");row.BackgroundTransparency=1;row.Position=UDim2.fromOffset(0,y);row.Size=UDim2.new(1,-10,0,spec.Key=="DefensiveLineReach"and 68 or 52);row.ZIndex=184;row.Parent=list
+			local group=spec.Group or"Shape"
+			local check=Instance.new("TextButton");check.BackgroundColor3=self.TacticalDebugOptions[group]and Color3.fromHex("B7FF1A")or Color3.fromHex("171D14");check.BorderSizePixel=0;check.Position=UDim2.fromOffset(0,11);check.Size=UDim2.fromOffset(44,30);check.Text=self.TacticalDebugOptions[group]and"ON"or"";check.TextColor3=Color3.fromHex("111111");check.TextSize=12;check.Font=Enum.Font.GothamBlack;check.ZIndex=186;check.Parent=row
+			local label=Instance.new("TextLabel");label.BackgroundTransparency=1;label.Position=UDim2.fromOffset(56,3);label.Size=UDim2.new(1,-238,0,20);label.Text=spec.Label;label.TextColor3=Color3.fromHex("E8E8E8");label.TextSize=12;label.Font=Enum.Font.GothamBold;label.TextXAlignment=Enum.TextXAlignment.Left;label.ZIndex=185;label.Parent=row
+			local sub=Instance.new("TextLabel");sub.BackgroundTransparency=1;sub.Position=UDim2.fromOffset(56,25);sub.Size=UDim2.fromOffset(172,16);sub.Text=spec.Low.." / "..spec.High;sub.TextColor3=Color3.fromHex("7F8D73");sub.TextSize=9;sub.Font=Enum.Font.GothamBold;sub.TextXAlignment=Enum.TextXAlignment.Left;sub.ZIndex=185;sub.Parent=row
+			local bar=Instance.new("Frame");bar.BackgroundColor3=Color3.fromHex("20251C");bar.BorderSizePixel=0;bar.Position=UDim2.fromOffset(226,31);bar.Size=UDim2.new(1,-416,0,8);bar.ZIndex=185;bar.Parent=row;local fill=Instance.new("Frame");fill.BackgroundColor3=Color3.fromHex("B7FF1A");fill.BorderSizePixel=0;fill.Size=UDim2.fromScale(value/100,1);fill.ZIndex=186;fill.Parent=bar
+			if spec.Key=="DefensiveLineReach"then local reach=math.floor(value*.32+4+.5);local line=Instance.new("Frame");line.BackgroundColor3=Color3.fromHex("2A351F");line.BorderSizePixel=0;line.Position=UDim2.fromOffset(226,48);line.Size=UDim2.new(1,-416,0,8);line.ZIndex=185;line.Parent=row;local half=Instance.new("Frame");half.BackgroundColor3=Color3.fromHex("FFFFFF");half.BorderSizePixel=0;half.Position=UDim2.fromScale(.5,0);half.Size=UDim2.fromOffset(2,8);half.ZIndex=186;half.Parent=line;local reachFill=Instance.new("Frame");reachFill.BackgroundColor3=Color3.fromHex("64A7FF");reachFill.BorderSizePixel=0;reachFill.Position=UDim2.fromScale(.5,0);reachFill.Size=UDim2.fromScale(math.clamp(reach/36,.02,.5),1);reachFill.ZIndex=186;reachFill.Parent=line;sub.Text="Halfway +"..tostring(reach).." studs max line reach"end
+			local number=Instance.new("TextLabel");number.BackgroundTransparency=1;number.Position=UDim2.new(1,-154,0,11);number.Size=UDim2.fromOffset(44,30);number.Text=tostring(value);number.TextColor3=Color3.fromHex("FFFFFF");number.TextSize=14;number.Font=Enum.Font.GothamBlack;number.ZIndex=186;number.Parent=row
+			local function bump(amount:number)
+				if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift)or UserInputService:IsKeyDown(Enum.KeyCode.RightShift)then amount*=2 end
+				local nextValue=math.clamp(simpleTacticValue(tactics,spec.Key)+amount,0,100)
+				setSimpleTacticControl(tactics,spec.Key,nextValue)
+				number.Text=tostring(math.floor(nextValue+.5));fill.Size=UDim2.fromScale(nextValue/100,1)
+				if self.TacticalOutput then self.TacticalOutput.Text=gameplanSummary(tactics)end
+				self:_sendRuntimeTactics(self.TacticalSide)
+				if self.TacticalStatus then self.TacticalStatus.Text=spec.Label.." = "..tostring(math.floor(nextValue+.5))end
+				if spec.Key=="DefensiveLineReach"then self:_renderTacticalPanel()end
+			end
+			local minus=Instance.new("TextButton");minus.BackgroundColor3=Color3.fromHex("1B2118");minus.BorderSizePixel=0;minus.Position=UDim2.new(1,-104,0,11);minus.Size=UDim2.fromOffset(42,30);minus.Text="-";minus.TextColor3=Color3.new(1,1,1);minus.TextSize=18;minus.Font=Enum.Font.GothamBlack;minus.ZIndex=186;minus.Parent=row;self:_trackConnection(minus.Activated:Connect(function()bump(-5)end),"Input")
+			local plus=Instance.new("TextButton");plus.BackgroundColor3=Color3.fromHex("1B2118");plus.BorderSizePixel=0;plus.Position=UDim2.new(1,-50,0,11);plus.Size=UDim2.fromOffset(42,30);plus.Text="+";plus.TextColor3=Color3.new(1,1,1);plus.TextSize=18;plus.Font=Enum.Font.GothamBlack;plus.ZIndex=186;plus.Parent=row;self:_trackConnection(plus.Activated:Connect(function()bump(5)end),"Input")
+			self:_trackConnection(check.Activated:Connect(function()self.TacticalDebugOptions[group]=true;self:_sendRuntimeTactics(self.TacticalSide);self:_renderTacticalPanel()end),"Input")
+			y+=spec.Key=="DefensiveLineReach"and 72 or 56
+		end
+		return
+	end
 	local y=0
 	local sectionFor={BuildUpSpeed="ATTACK",PassTempo="ATTACK",PassingDirectness="ATTACK",RunsInBehind="ATTACK",PressingIntensity="DEFENSE",DefensiveDepth="DEFENSE",BackLineCompactness="DEFENSE",LaneBlocking="DEFENSE",SupportDistance="POSITIONING",WidthDiscipline="POSITIONING"}
 	local lastSection=""
@@ -1231,7 +1498,7 @@ function Controller:_activate(data:any)
 		end
 		if not isCancelled() and bootCover.Parent then bootCover:Destroy() end
 	end)
-	self.Active=true;self.MatchStartKey=activationKey;self.MatchData=data;self.PresentationStarted=false;self.PresentationReadySent=false;self.ActivatingMatchKey=nil;self.MatchActivationRunningKey=nil;self.Ball=ball;self.TeamModels=data.TeamModels;self.ControlledSide=data.ControlledSide or"Home";self.WatchMode=data.WatchMode==true;self.PracticeMode=data.PracticeMode==true;local noPrematch=data.NoPrematch==true;self.Paused=false;self.Ranked=data.Ranked==true;self.MatchInPlay=self.PracticeMode or noPrematch;self.PrematchActive=not self.PracticeMode and not noPrematch;self.PrematchSkipRequested=noPrematch;self.PrematchSkipUnlockAt=os.clock()+math.max(0,tonumber(data.PrematchSkipDelay)or 0);self.TacticalMode=false;self.TacticalPanelOpen=false;self.PlayabilityPerformanceStartedAt=os.clock();self.PlayabilityFrameCount=0;self.PlayabilityMaxBallDivergence=0;self.PlayabilityPerformanceSent=false;GuiService.SelectedObject=nil;local playerModule=require(player.PlayerScripts:WaitForChild("PlayerModule", 15));self.Controls=playerModule:GetControls();self.Controls:Disable();self.HUD=MatchHUDController.new(data);local completedMatches=math.max(0,math.floor(tonumber(data.Setup and data.Setup.PlayabilityCompletedMatches)or 0));self.FirstSession=self.WatchMode~=true and data.Setup and data.Setup.PlayabilityLegacyAccess~=true and(data.PresentationProfile=="Acquisition"or completedMatches<3);self.LastAttackDirectionHalf=nil;if self.HUD and self.HUD.SetSecondHalfResetCallback then self.HUD:SetSecondHalfResetCallback(function()if self.Action then self.Action:FireServer({Type="SecondHalfWatchdogReset"})end;if self.Camera and self.Camera.ReturnToLive then self.Camera:ReturnToLive()elseif self.Camera and self.Camera.EndCutscene then self.Camera:EndCutscene()end;if self.HUD then self.HUD:Flash("RESETTING SECOND HALF",1.0)end end)end;self.Commentary=nil;self.Celebrations=CelebrationPoseController.new();self.CrowdAmbience=CrowdAmbienceController.new();self.CrowdAmbience:Start();self.MatchSounds=MatchSoundController.new(ball,data.TeamModels);self.MatchSounds:Start();self.Camera=BroadcastCameraController.new(data.PitchCFrame,data.PitchWidth,data.PitchLength,ball,active);self.Camera.ForcedMode=data.ForceCameraMode;self.MouseAim=MouseAimController.new(workspace.CurrentCamera,data.PitchCFrame,data.PitchWidth,data.PitchLength);self.Input=InputController.new(self.Action,function(kind,charge)return self:_aimPayload(kind,charge)end);self.Input:SetMatchContext(data.PitchCFrame);self.InputLock=MatchInputLockController.new(self.Action);self.TeamControl=TeamControlController.new(self.Action,self.Camera,self.HUD,active);self.BallRoll=BallRollVisualController.new(ball)
+	self.Active=true;self.MatchStartKey=activationKey;self.MatchData=data;self.PresentationStarted=false;self.PresentationReadySent=false;self.ActivatingMatchKey=nil;self.MatchActivationRunningKey=nil;self.Ball=ball;self.TeamModels=data.TeamModels;self.ControlledSide=data.ControlledSide or"Home";self.WatchMode=data.WatchMode==true;self.PracticeMode=data.PracticeMode==true;local noPrematch=data.NoPrematch==true;self.Paused=false;self.Ranked=data.Ranked==true;self.MatchInPlay=self.PracticeMode or noPrematch;self.PrematchActive=not self.PracticeMode and not noPrematch;self.PrematchSkipRequested=noPrematch;self.PrematchSkipUnlockAt=os.clock()+math.max(0,tonumber(data.PrematchSkipDelay)or 0);self.TacticalMode=false;self.TacticalPanelOpen=true;self.PlayabilityPerformanceStartedAt=os.clock();self.PlayabilityFrameCount=0;self.PlayabilityMaxBallDivergence=0;self.PlayabilityPerformanceSent=false;GuiService.SelectedObject=nil;local playerModule=require(player.PlayerScripts:WaitForChild("PlayerModule", 15));self.Controls=playerModule:GetControls();self.Controls:Disable();self.HUD=MatchHUDController.new(data);local completedMatches=math.max(0,math.floor(tonumber(data.Setup and data.Setup.PlayabilityCompletedMatches)or 0));self.FirstSession=self.WatchMode~=true and data.Setup and data.Setup.PlayabilityLegacyAccess~=true and(data.PresentationProfile=="Acquisition"or completedMatches<3);self.LastAttackDirectionHalf=nil;if self.HUD and self.HUD.SetSecondHalfResetCallback then self.HUD:SetSecondHalfResetCallback(function()if self.Action then self.Action:FireServer({Type="SecondHalfWatchdogReset"})end;if self.Camera and self.Camera.ReturnToLive then self.Camera:ReturnToLive()elseif self.Camera and self.Camera.EndCutscene then self.Camera:EndCutscene()end;if self.HUD then self.HUD:Flash("RESETTING SECOND HALF",1.0)end end)end;self.Commentary=nil;self.Celebrations=CelebrationPoseController.new();self.CrowdAmbience=CrowdAmbienceController.new();self.CrowdAmbience:Start();self.MatchSounds=MatchSoundController.new(ball,data.TeamModels);self.MatchSounds:Start();self.Camera=BroadcastCameraController.new(data.PitchCFrame,data.PitchWidth,data.PitchLength,ball,active);self.Camera.ForcedMode=data.ForceCameraMode;self.MouseAim=MouseAimController.new(workspace.CurrentCamera,data.PitchCFrame,data.PitchWidth,data.PitchLength);self.Input=InputController.new(self.Action,function(kind,charge)return self:_aimPayload(kind,charge)end);self.Input:SetMatchContext(data.PitchCFrame);self.InputLock=MatchInputLockController.new(self.Action);self.TeamControl=TeamControlController.new(self.Action,self.Camera,self.HUD,active);self.BallRoll=BallRollVisualController.new(ball)
 	self.Input:SetCancellationCallback(function()self.LockedPassTarget=nil;self.GamepadShotAimPoint=nil;if self.GoalTarget then self.GoalTarget:Unlock()end end)
 	self.WorldCupOnboardingTrainer=data.Setup and data.Setup.WorldCupOnboarding==true or false
 	self.HUD:SetPauseButtonCallback(function()self:_setPaused(true)end)
@@ -1271,7 +1538,7 @@ function Controller:_activate(data:any)
 	if self.HUD and self.HUD.TouchFirstSession and self.Minimap then self.Minimap:SetMode("Off")end
 	self.AnimationCache={};for _,side in data.TeamModels do for _,footballer in side do self.AnimationCache[footballer]=AnimationController.new(footballer)end end
 	if self.ReplayController then self.ReplayController:Destroy()end;self.ReplayController=ReplayController.new(data,ball)
-	if data.DeveloperAccess==true then self:_createTacticalPanel();self:_sendRuntimeTactics("Home");self:_sendRuntimeTactics("Away")end
+	if data.DeveloperAccess==true then self.RuntimeTactics={Home=LiteConfig.DefaultTactics(),Away=LiteConfig.DefaultTactics()};self.RuntimeTactics.Home.Formation=data.HomeFormation or"4-3-3";self.RuntimeTactics.Away.Formation=data.AwayFormation or"4-3-3";applyTacticIdentity(self.RuntimeTactics.Home,1);applyTacticIdentity(self.RuntimeTactics.Away,1);self:_createDefaultActionReadout();self:_createTacticalPanel();self:_sendRuntimeTactics("Home");self:_sendRuntimeTactics("Away")end
 	self.HUD:SetResumeCallback(function()self:_setPaused(false)end)
 	self.Lifecycle:BindActionAtPriority(PAUSE_ACTION,function(_,state)if state==Enum.UserInputState.Begin and self.Active then self:_setPaused(not self.Paused)end;return Enum.ContextActionResult.Sink end,false,Enum.ContextActionPriority.High.Value+200,Enum.KeyCode.ButtonSelect,Enum.KeyCode.ButtonStart)
 	self.PauseConnection=self:_trackConnection(UserInputService.InputBegan:Connect(function(input,processed)
@@ -1505,7 +1772,7 @@ function Controller:_update(dt:number)
 		local forcedGoalSign=nil
 		if self.SetPieceMode=="Penalty"or self.SetPieceMode=="PenaltyDefense"then
 			forcedGoalSign=tonumber(self.Ball:GetAttribute("VTRPenaltyGoalSign"))or self.SetPieceGoalSign
-		elseif self.SetPieceMode=="DirectShotFreeKick"or self.SetPieceMode=="LongFreeKick"then
+		elseif self.SetPieceMode=="DirectShotFreeKick"then
 			forcedGoalSign=self.SetPieceGoalSign
 		elseif self.TutorialShootingMode==true then
 			forcedGoalSign=tonumber(self.TutorialGoalSign)
@@ -1594,6 +1861,7 @@ function Controller:_update(dt:number)
 		self.Trainer:Update()
 	end
 	self.Minimap:Update(dt)
+	self:_updateTacticalActionLabels(false)
 	if self.Paused then return end
 	if not self.MatchInPlay and self.ActiveModel:GetAttribute("VTRForceIdle")==true then
 		self.Animation:Play(self.ActiveModel:GetAttribute("position")=="GK"and"GoalkeeperIdle"or"Idle")
@@ -1604,7 +1872,7 @@ function Controller:_update(dt:number)
 		self.HUD:SetCharge(charge,chargeKind)
 		return
 	end
-	local input=self.WatchMode and Vector2.zero or self.Input:Move();if not self.WatchMode then self.TeamControl:Update(dt,input)end;local movement=self.Camera:Movement(input);local sprinting=self.ActiveModel:GetAttribute("VTRSprinting")==true;self.Visual:Update(dt,movement,sprinting);self.BallRoll:Update(dt,hasBall);if self.FlightMarker then self.FlightMarker:Update(dt)end;if not(self.ActiveModel:GetAttribute("VTRCelebrating")==true or self.ActiveModel:GetAttribute("VTRCelebratingLocal")==true)then if root and Vector3.new(root.AssemblyLinearVelocity.X,0,root.AssemblyLinearVelocity.Z).Magnitude>.6 then self.Animation:Play(hasBall and"Dribble"or(sprinting and"Sprint"or"Jog"))else self.Animation:Play("Idle")end end;self:_updateTeamAnimations();self.HUD:SetStamina(self.Stamina/Config.Stamina.Maximum);self.HUD:SetCharge(charge,chargeKind);local owner=self.Ball:GetAttribute("OwnerModel");self.HUD:SetState(self.WatchMode and"WATCHING AI VS AI"or(owner==self.ActiveModel.Name and(sprinting and"Sprinting"or"Dribbling")or owner==""and"Loose Ball"or"Defending"))
+	local input=self.WatchMode and Vector2.zero or self.Input:Move();if not self.WatchMode then self.TeamControl:Update(dt,input)end;local movement=self.Camera:Movement(input);local sprinting=self.ActiveModel:GetAttribute("VTRSprinting")==true;self.Visual:Update(dt,movement,sprinting);self.BallRoll:Update(dt,hasBall);if self.FlightMarker then self.FlightMarker:Update(dt)end;if not(self.ActiveModel:GetAttribute("VTRCelebrating")==true or self.ActiveModel:GetAttribute("VTRCelebratingLocal")==true)then if root and Vector3.new(root.AssemblyLinearVelocity.X,0,root.AssemblyLinearVelocity.Z).Magnitude>.6 then self.Animation:Play(hasBall and"Dribble"or(sprinting and"Sprint"or"Jog"))else self.Animation:Play("Idle")end end;self:_updateTeamAnimations();self:_refreshActiveStamina();self.HUD:SetStamina(self.Stamina/Config.Stamina.Maximum);self.HUD:SetCharge(charge,chargeKind);local owner=self.Ball:GetAttribute("OwnerModel");local motionKind=tostring(self.Ball:GetAttribute("VTRMotionKind")or"");local passReceiver=tostring(self.Ball:GetAttribute("VTRPassReceiver")or"");local passTarget=self.Ball:GetAttribute("VTRPassTarget");local passInFlight=motionKind=="Pass"and(passReceiver~=""or typeof(passTarget)=="Vector3");self.HUD:SetState(self.WatchMode and"WATCHING AI VS AI"or(owner==self.ActiveModel.Name and(sprinting and"Sprinting"or"Dribbling")or owner==""and(passInFlight and"Pass In Flight"or"Loose Ball")or"Defending"))
 end
 function Controller:_flushReplayPayloads()
 	local pending=self.ReplayQueuedPayloads or{}
@@ -1822,7 +2090,7 @@ function Controller:_state(payload:any)
 	elseif payload.Type=="SwitchTarget"then self.TeamControl:SetSwitchTarget(payload.Model);self.Indicators:SetNextSwitch(payload.Model)
 	elseif payload.Type=="Possession"then if self.HUD then self.HUD:SetPossession(payload.Owner or"",payload.OwnerUserId==Players.LocalPlayer.UserId)end;if self.Indicators then self.Indicators:SetBallCarrier(payload.Model)end;if self.Minimap then self.Minimap:SetBallCarrier(payload.Model)end;if payload.Model then if self.Visual and self.Ball and tostring(self.Ball:GetAttribute("VTRMotionKind")or"")~="Pass"then self.Visual:StopShotTrail()end;if self.GoalTarget then if (self.PracticeMode or self.TutorialShootingMode==true) and payload.Model==self.ActiveModel then local target=self:_practiceGoalPoint(0);if target then self.GoalTarget:Lock(target)end else self.GoalTarget:Unlock()end end end
 	elseif payload.Type=="PassTarget"then self.Indicators:SetPassTarget(payload.Model)
-	elseif payload.Type=="SetPiece"then if self.ReplayController then self.ReplayController:MarkSetPieceStarted(payload.ActualKind or payload.Kind)end;local userRestart=payload.UserControlled==true and payload.WatchOnly~=true;if not userRestart then self:_ensureControlledSideActive()end;if self.Input and payload.Kind~="Corner" then self.Input:SetSuppressed(self.WatchMode==true or not userRestart)end;if self.Input and self.Input.SetDirectFreeKick then self.Input:SetDirectFreeKick(userRestart and payload.Mode=="DirectShotFreeKick")elseif self.Input and self.Input.ResetFreeKickModifiers and payload.Mode=="DirectShotFreeKick"then self.Input:ResetFreeKickModifiers()end;local actualKind=payload.ActualKind or payload.Kind;if userRestart and self.Input and self.Input.LockActions and (actualKind=="FreeKick"or actualKind=="Penalty"or actualKind=="ThrowIn"or actualKind=="GoalKick")then self.Input:LockActions(2)end;self.SetPieceGoalSign=userRestart and payload.GoalSign or nil;if userRestart and payload.Mode=="LongFreeKick"and self.Camera and self.Camera.SetShootingFocus then self.Camera:SetShootingFocus(true);self.SetPieceForcedShootingFocus=true end;self.PenaltyAimSlot=userRestart and actualKind=="Penalty"and"MIDDLE"or self.PenaltyAimSlot;self.PenaltyAimPoint=userRestart and actualKind=="Penalty"and nil or self.PenaltyAimPoint;self.GamepadShotAimPoint=nil;self.FreeKickAimVector=userRestart and payload.Mode=="DirectShotFreeKick"and Vector2.new(0,.22)or self.FreeKickAimVector;local mobileRestart=(actualKind=="FreeKick"or actualKind=="ThrowIn"or actualKind=="Penalty"or actualKind=="GoalKick")and userRestart;if self.Input and self.Input.MobileControls and self.Input.MobileControls.SetVisible then self.Input.MobileControls:SetVisible(mobileRestart and self.WatchMode~=true)end;self.MatchInPlay=false;self.SetPieceMode=userRestart and payload.Mode or nil;self.SetPieceKind=userRestart and actualKind or nil;if payload.Kind=="Offside"and self.HUD then self.HUD:Flash("OFFSIDE",1.05)end;if userRestart and payload.Taker and payload.Taker:IsA("Model")then self:_bindFootballer(payload.Taker,payload.Taker:GetAttribute("DisplayName"),payload.Taker:GetAttribute("position"))end;if self.Visual then self.Visual:ClearLock();self.Visual:StopShotTrail()end;if self.GoalTarget then self.GoalTarget:Unlock()end;if self.Trainer then self.Trainer:SetMatchActive(false)end;if self.Minimap then self.Minimap:SetMatchActive(true)end;local aimingRestart=mobileRestart and self.WatchMode~=true;if self.AimLine then self.AimLine:SetMatchActive(aimingRestart)end;if self.GoalTarget then self.GoalTarget:SetMatchActive(aimingRestart)end;if actualKind=="Kickoff"then self.PendingKickoffSound=true;self.PendingFoulRestartWhistle=false;if self.Camera and self.Camera.ReturnToLive then self.Camera:ReturnToLive()end else self.PendingKickoffSound=false end;if self.FoulRestartWhistlePending and (actualKind=="FreeKick"or actualKind=="Penalty")then self.PendingFoulRestartWhistle=true;self.FoulRestartWhistlePending=false elseif actualKind~="FreeKick"and actualKind~="Penalty"then self.FoulRestartWhistlePending=false end;if payload.Kind=="Kickoff"and self.HUD then self.HUD:PlayMatchHudIntro();self.HUD:ShowKickoffScorer()end;if self.Cutscenes then self.Cutscenes:Play(payload)end
+	elseif payload.Type=="SetPiece"then if self.ReplayController then self.ReplayController:MarkSetPieceStarted(payload.ActualKind or payload.Kind)end;local userRestart=payload.UserControlled==true and payload.WatchOnly~=true;if not userRestart then self:_ensureControlledSideActive()end;if self.Input and payload.Kind~="Corner" then self.Input:SetSuppressed(self.WatchMode==true or not userRestart)end;if self.Input and self.Input.SetDirectFreeKick then self.Input:SetDirectFreeKick(userRestart and payload.Mode=="DirectShotFreeKick")elseif self.Input and self.Input.ResetFreeKickModifiers and payload.Mode=="DirectShotFreeKick"then self.Input:ResetFreeKickModifiers()end;local actualKind=payload.ActualKind or payload.Kind;if userRestart and self.Input and self.Input.LockActions and (actualKind=="FreeKick"or actualKind=="Penalty"or actualKind=="ThrowIn"or actualKind=="GoalKick")then self.Input:LockActions(2)end;self.SetPieceGoalSign=userRestart and payload.GoalSign or nil;if userRestart and payload.Mode=="LongFreeKick"and self.Camera and self.Camera.ReturnToLive then self.Camera:ReturnToLive();self.SetPieceForcedShootingFocus=nil end;self.PenaltyAimSlot=userRestart and actualKind=="Penalty"and"MIDDLE"or self.PenaltyAimSlot;self.PenaltyAimPoint=userRestart and actualKind=="Penalty"and nil or self.PenaltyAimPoint;self.GamepadShotAimPoint=nil;self.FreeKickAimVector=userRestart and payload.Mode=="DirectShotFreeKick"and Vector2.new(0,.22)or self.FreeKickAimVector;local mobileRestart=(actualKind=="FreeKick"or actualKind=="ThrowIn"or actualKind=="Penalty"or actualKind=="GoalKick")and userRestart;if self.Input and self.Input.MobileControls and self.Input.MobileControls.SetVisible then self.Input.MobileControls:SetVisible(mobileRestart and self.WatchMode~=true)end;self.MatchInPlay=false;self.SetPieceMode=userRestart and payload.Mode or nil;self.SetPieceKind=userRestart and actualKind or nil;if payload.Kind=="Offside"and self.HUD then self.HUD:Flash("OFFSIDE",1.05)end;if userRestart and payload.Taker and payload.Taker:IsA("Model")then self:_bindFootballer(payload.Taker,payload.Taker:GetAttribute("DisplayName"),payload.Taker:GetAttribute("position"))end;if self.Visual then self.Visual:ClearLock();self.Visual:StopShotTrail()end;if self.GoalTarget then self.GoalTarget:Unlock()end;if self.Trainer then self.Trainer:SetMatchActive(false)end;if self.Minimap then self.Minimap:SetMatchActive(true)end;local aimingRestart=mobileRestart and self.WatchMode~=true;if self.AimLine then self.AimLine:SetMatchActive(aimingRestart)end;if self.GoalTarget then self.GoalTarget:SetMatchActive(aimingRestart)end;if actualKind=="Kickoff"then self.PendingKickoffSound=true;self.PendingFoulRestartWhistle=false;if self.Camera and self.Camera.ReturnToLive then self.Camera:ReturnToLive()end else self.PendingKickoffSound=false end;if self.FoulRestartWhistlePending and (actualKind=="FreeKick"or actualKind=="Penalty")then self.PendingFoulRestartWhistle=true;self.FoulRestartWhistlePending=false elseif actualKind~="FreeKick"and actualKind~="Penalty"then self.FoulRestartWhistlePending=false end;if payload.Kind=="Kickoff"and self.HUD then self.HUD:PlayMatchHudIntro();self.HUD:ShowKickoffScorer()end;if self.Cutscenes then self.Cutscenes:Play(payload)end
 	elseif payload.Type=="CornerMode"then if self.ReplayController then self.ReplayController:MarkSetPieceStarted("Corner")end;self.Input:SetSuppressed(true);local takerAnimation=self.AnimationCache and self.AnimationCache[payload.Taker];if takerAnimation then takerAnimation:Play("Idle")end;if self.CornerAim then self.CornerAim:Destroy()end;if self.CornerCamera then self.CornerCamera:Destroy()end;self.CornerCamera=CornerCameraController.new(payload);self.CornerAim=CornerAimController.new(payload,self.Action,self.HUD);self.HUD:SetPhase("CORNER KICK")
 	elseif payload.Type=="CornerReleased"then self.Input:SetSuppressed(false);if self.CornerAim then self.CornerAim:Destroy();self.CornerAim=nil end;if self.CornerCamera then self.CornerCamera:Destroy();self.CornerCamera=nil end;self.HUD:Flash(string.upper(payload.Delivery or"CROSS"),.7)
 	elseif payload.Type=="Phase"then self.PrematchActive=false;if self.Input then if self.Input.SetShootingOnly then self.Input:SetShootingOnly(payload.Phase=="SHOOTING PRACTICE")end;self.Input:SetSuppressed(self.WatchMode==true);if self.Input.SetDirectFreeKick then self.Input:SetDirectFreeKick(false)end end;if kickoffDebugEnabled()then print("[VTR KICKOFF][Client] Phase",payload.Phase or"nil","active",self.ActiveModel and self.ActiveModel.Name or"nil","inputSuppressed",self.Input and self.Input.Suppressed)end;if self.Camera and payload.HoldCutscene~=true then if payload.Phase=="IN PLAY"and self.Camera.ReturnToLive then self.Camera:ReturnToLive()elseif self.Camera.EndCutscene then self.Camera:EndCutscene()end end;if self.SetPieceForcedShootingFocus and payload.Phase~="SHOOTING PRACTICE"and self.Camera and self.Camera.SetShootingFocus then self.Camera:SetShootingFocus(false);self.SetPieceForcedShootingFocus=nil end;if self.Visual then self.Visual:ClearLock()end;self.SetPieceMode=nil;self.SetPieceKind=nil;self.SetPieceGoalSign=nil;self.PenaltyAimSlot=nil;self.PenaltyAimPoint=nil;self.GamepadShotAimPoint=nil;self.MatchInPlay=payload.Phase=="IN PLAY"or payload.Phase=="SHOOTING PRACTICE";if payload.Phase=="SHOOTING PRACTICE"then self.PracticeMode=true;self:_createPracticeTuningPanel();if self.Camera and self.Camera.SetShootingFocus then self.Camera:SetShootingFocus(true)end end;if self.Input and self.Input.MobileControls and self.Input.MobileControls.SetVisible then self.Input.MobileControls:SetVisible(self.MatchInPlay and self.WatchMode~=true)end;if self.CrowdAmbience then self.CrowdAmbience:SetMatchActive(self.MatchInPlay)end;if self.MatchSounds then self.MatchSounds:SetMatchActive(self.MatchInPlay)end;if self.Trainer then self.Trainer:SetMatchActive((self.WorldCupOnboardingTrainer or not UserInputService.TouchEnabled)and self.MatchInPlay and self.WatchMode~=true)end;if self.Minimap then self.Minimap:SetMatchActive(self.MatchInPlay)end;if self.AimLine then self.AimLine:SetMatchActive(self.MatchInPlay and self.WatchMode~=true)end;if self.GoalTarget then self.GoalTarget:SetMode("Shot");self.GoalTarget:SetDefenseSource(nil);self.GoalTarget:SetMatchActive(self.MatchInPlay and self.WatchMode~=true);if self.PracticeMode and self.MatchInPlay then local target=self:_practiceGoalPoint(0);if target then self.GoalTarget:Lock(target)end end end;if self.HUD then self.HUD:SetPhase(payload.Phase or"IN PLAY")end;if self.MatchInPlay then self:_showFreshAttackDirection(tonumber(workspace:GetAttribute("VTRMatchHalf"))or 1)end
@@ -1831,7 +2099,7 @@ function Controller:_state(payload:any)
 	elseif payload.Type=="HalfTimeResumeVote"then if self.HUD and payload.Ready~=true then self.HUD:Flash(tostring(payload.PlayerName or"PLAYER").." READY FOR SECOND HALF",1.0)end
 	elseif payload.Type=="HalfTimeResume"then self.HalfTimePauseActive=false;self.Paused=false;self:_startSecondHalfWatchdog();if self.Camera and self.Camera.ReturnToLive then self.Camera:ReturnToLive()elseif self.Camera and self.Camera.EndCutscene then self.Camera:EndCutscene()end;if self.HUD then self.HUD:ClearPause();if self.HUD.SetSecondHalfResetVisible then self.HUD:SetSecondHalfResetVisible(true)end end;self:_showFreshAttackDirection(2)
 	elseif payload.Type=="Pass"then if self.MatchSounds then if self.PendingKickoffSound then self.PendingKickoffSound=false;self.PendingFoulRestartWhistle=false;self.MatchSounds:PlayKickoff()else self.PendingFoulRestartWhistle=false;self.MatchSounds:PlayKick()end end;if self.HUD then self.HUD:HideKickoffScorer()end;local trailMode=tostring(self.PlayabilitySettings and self.PlayabilitySettings.PassTrailVisibility or"UserOnly");local showTrail=trailMode=="All"or trailMode=="UserOnly"and(tonumber(payload.ActorUserId)==Players.LocalPlayer.UserId or payload.Actor==self.ActiveModel);if self.Visual then self.Visual:ClearLock();self.Visual:SnapTo(self.Ball.Position,self.Ball.AssemblyLinearVelocity);if showTrail then self.Visual:PlayFlightTrail()else self.Visual:StopShotTrail()end end;local controller=self.AnimationCache and self.AnimationCache[payload.Actor];if controller then controller:Play("Pass")end;if payload.Actor==self.ActiveModel and self.Trainer and(self.WorldCupOnboardingTrainer or not UserInputService.TouchEnabled)then self.Trainer:NotifyAction("Pass")end
-	elseif payload.Type=="CornerKick"then local controller=self.AnimationCache and self.AnimationCache[payload.Actor];if controller then controller:Play("Pass")end;local trailMode=tostring(self.PlayabilitySettings and self.PlayabilitySettings.PassTrailVisibility or"UserOnly");if self.Visual and(trailMode=="All"or trailMode=="UserOnly"and(payload.Actor==self.ActiveModel or payload.Taker==self.ActiveModel))then self.Visual:PlayFlightTrail()end
+	elseif payload.Type=="CornerKick"then local controller=self.AnimationCache and self.AnimationCache[payload.Actor];if controller then controller:Play("Pass")end;if self.Visual then self.Visual:StopShotTrail()end
 	elseif payload.Type=="Shot"then self.PendingKickoffSound=false;if self.MatchSounds then self.PendingFoulRestartWhistle=false;self.MatchSounds:PlayKick()end;if (self.SetPieceKind=="FreeKick"or self.SetPieceKind=="Penalty") and self.Camera and self.Camera.EndCutscene then self:_delayMatchTask(self.SetPieceKind=="Penalty"and 1.15 or .35,function()if self.Camera then self.Camera:EndCutscene()end end)end;if self.CrowdAmbience then self.CrowdAmbience:Boost(0.9)end;if self.ReplayController then self.ReplayController:MarkShot(payload.Actor)end;local controller=self.AnimationCache and self.AnimationCache[payload.Actor];if controller then controller:Play("Shoot")end;if self.Visual then self.Visual:PlayShotTrail()end;if self.HUD then self.HUD:ShowShotChance({XG=payload.ShotQuality or payload.ShotXG or payload.ScoringChance or payload.ScoringChancePercent},payload.Actor)end;if payload.Actor==self.ActiveModel and self.Trainer and(self.WorldCupOnboardingTrainer or not UserInputService.TouchEnabled)then self.Trainer:NotifyAction("Shoot")end
 	elseif payload.Type=="ReceiveBall"and payload.Model==self.ActiveModel then self.Animation:Play("Receive")
 	elseif payload.Type=="Tackle"then local controller=self.AnimationCache and self.AnimationCache[payload.Actor];if controller then controller:Play("Tackle")end;if payload.Actor==self.ActiveModel and self.Trainer and(self.WorldCupOnboardingTrainer or not UserInputService.TouchEnabled)then self.Trainer:NotifyAction("Tackle")end

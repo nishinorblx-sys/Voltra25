@@ -37,6 +37,8 @@ local deck: {{Id: string, Name: string}} = {}
 local activeSound: Sound? = nil
 local lastTrack: {Id: string, Name: string}? = nil
 local trackHistory: {{Id: string, Name: string}} = {}
+local duckTokens: {[string]: {Volume: number}} = {}
+local duckSequence = 0
 local paused = false
 local logoGeneration = 0
 local widgetMinimized = false
@@ -129,6 +131,14 @@ local function tweenVolume(sound: Sound, volume: number, duration: number)
 	TweenService:Create(sound, TweenInfo.new(duration, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Volume = volume }):Play()
 end
 
+local function duckedVolume(): number
+	local volume = BASE_VOLUME * masterVolume()
+	for _, token in duckTokens do
+		volume = math.min(volume, BASE_VOLUME * masterVolume() * math.clamp(token.Volume, 0, 1))
+	end
+	return volume
+end
+
 local function getLogoGui(): Instance?
 	local playerGui = Players.LocalPlayer and Players.LocalPlayer:FindFirstChildOfClass("PlayerGui")
 	if not playerGui then return nil end
@@ -218,7 +228,7 @@ local function setPaused(value: boolean)
 			sound:Pause()
 		else
 			sound:Resume()
-			tweenVolume(sound, BASE_VOLUME * masterVolume(), 0.18)
+				tweenVolume(sound, duckedVolume(), 0.18)
 		end
 	end
 	renderWidget(lastTrack)
@@ -428,7 +438,7 @@ playNext = function(myGeneration: number, forcedTrack: {Id: string, Name: string
 	activeSound = sound
 	sound:Play()
 	playWidgetAnimation(track)
-	tweenVolume(sound, BASE_VOLUME * masterVolume(), FADE_TIME)
+	tweenVolume(sound, duckedVolume(), FADE_TIME)
 	if previous and previous.Parent then
 		destroyAfterFade(previous)
 	end
@@ -453,7 +463,7 @@ playNext = function(myGeneration: number, forcedTrack: {Id: string, Name: string
 	task.spawn(function()
 		while myGeneration == generation and sound.Parent and sound.IsPlaying do
 			if menuEnabled() then
-				tweenVolume(sound, BASE_VOLUME * masterVolume(), 0.35)
+				tweenVolume(sound, duckedVolume(), 0.35)
 			else
 				tweenVolume(sound, 0, 0.35)
 			end
@@ -497,6 +507,24 @@ function Service.Stop()
 		destroyAfterFade(activeSound)
 	end
 	activeSound = nil
+end
+
+function Service.PushDuck(reason: string?, volumeMultiplier: number?, fadeTime: number?): string
+	duckSequence += 1
+	local token = tostring(reason or "Duck") .. "_" .. tostring(duckSequence)
+	duckTokens[token] = { Volume = math.clamp(tonumber(volumeMultiplier) or 0.12, 0, 1) }
+	if activeSound and activeSound.Parent then
+		tweenVolume(activeSound, duckedVolume(), tonumber(fadeTime) or 0.25)
+	end
+	return token
+end
+
+function Service.PopDuck(token: string?, fadeTime: number?)
+	if not token then return end
+	duckTokens[token] = nil
+	if activeSound and activeSound.Parent then
+		tweenVolume(activeSound, paused and 0 or duckedVolume(), tonumber(fadeTime) or 0.65)
+	end
 end
 
 return Service

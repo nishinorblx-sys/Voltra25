@@ -43,7 +43,7 @@ function Resolver.ResolvePlaystyle(ref: any, repository: any?): any
 		if repository and type(repository.Drafts) == "table" and repository.Drafts[id] then return AIPlaystyleConfig.Normalize(repository.Drafts[id]) end
 	end
 	local builtIn = AIPlaystyleConfig.ResolveBuiltIn(id)
-	return builtIn or AIPlaystyleConfig.ResolveBuiltIn("balanced_control")
+	return builtIn or AIPlaystyleConfig.ResolveBuiltIn(AIPlaystyleConfig.BasicPlaystyleId)
 end
 
 function Resolver.ResolveTactics(ref: any, repository: any?, context: any?): any
@@ -76,12 +76,12 @@ end
 
 function Resolver.Assignments(repository: any?): any
 	local assignments = repository and repository.Assignments
-	return type(assignments) == "table" and clone(assignments) or {Home = {PlaystyleId = "balanced_control", Version = 1}, Away = {PlaystyleId = "balanced_control", Version = 1}}
+	return type(assignments) == "table" and clone(assignments) or {Home = {PlaystyleId = AIPlaystyleConfig.BasicPlaystyleId, Version = 1}, Away = {PlaystyleId = AIPlaystyleConfig.BasicPlaystyleId, Version = 1}}
 end
 
 function Resolver.ResolveSide(side: string, repository: any?, fallback: any?): any
 	local assignments = Resolver.Assignments(repository)
-	local ref = assignments[side == "Away" and "Away" or "Home"] or fallback or {PlaystyleId = "balanced_control", Version = 1}
+	local ref = assignments[side == "Away" and "Away" or "Home"] or fallback or {PlaystyleId = AIPlaystyleConfig.BasicPlaystyleId, Version = 1}
 	return Resolver.ResolveTactics(ref, repository)
 end
 

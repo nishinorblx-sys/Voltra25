@@ -125,6 +125,11 @@ local function slot(raw: any): any
 	})
 end
 
+local function buildupBackZ(ball: Vector3, offset: number, role: string?): number
+	local floor = PitchConfig.Zones.OwnBox.ZMax + ((role == "Fullback" or role == "Wingback") and 10 or 4)
+	return math.max(floor, ball.Z - offset)
+end
+
 local function transform(base: {any}, context: any, side: string, style: any, plan: any): {any}
 	local teamBrain = context.TeamBrain and context.TeamBrain[side]
 	local identity = tostring(teamBrain and teamBrain.AttackingIdentity or "")
@@ -164,11 +169,26 @@ local function transform(base: {any}, context: any, side: string, style: any, pl
 			z += zPush * .45 + supportPull
 		elseif item.RestDefense then
 			z = math.min(z + zPush * .12, ball.Z - 54)
+			if item.RoleFamily == "CB" and (item.Id == "left-first-line" or item.Id == "right-first-line" or item.Id == "rest-defense") then
+				z = math.max(z, ball.Z - 82)
+			end
 		end
 		local copy = table.clone(item)
 		copy.TargetPitch = Vector3.new(x, 3, z)
+		if identity == "WideOverload" and (copy.Id == "left-width" or copy.Id == "right-width" or copy.Id == "left-midfield-width" or copy.Id == "right-midfield-width") then
+			local left = copy.TargetPitch.X < PitchConfig.HALF_WIDTH
+			copy.Priority = (copy.Priority or 50) + 14
+			copy.SprintAllowed = true
+			copy.TargetPitch = PitchConfig.ClampInsidePitch(Vector3.new(left and 28 or 396, 3, math.min(normalOnsideCap - 5, math.max(copy.TargetPitch.Z, ball.Z + 108))))
+		end
 		if rules and tonumber(rules.Depth) then
 			copy.TargetPitch = Vector3.new(copy.TargetPitch.X, 3, copy.TargetPitch.Z + (tonumber(rules.Depth) or 0) * 80)
+		end
+		if copy.RestDefense == true and copy.RoleFamily == "CB" and (copy.Id == "left-first-line" or copy.Id == "right-first-line" or copy.Id == "rest-defense") then
+			copy.TargetPitch = Vector3.new(copy.TargetPitch.X, 3, math.max(copy.TargetPitch.Z, ball.Z - 82))
+		end
+		if copy.RestDefense == true and typeof(copy.TargetPitch) == "Vector3" then
+			copy.TargetPitch = Vector3.new(copy.TargetPitch.X, 3, math.max(copy.TargetPitch.Z, buildupBackZ(ball, 160, tostring(copy.RoleFamily or ""))))
 		end
 		copy.SprintAllowed = copy.SprintAllowed or item.Line == "Forward" and identity ~= "PositionalControl"
 		if plan and plan.PlanStep then
@@ -229,7 +249,7 @@ local function formationBase(formation: string, count: number, context: any, sid
 	if count <= 6 then
 		return {
 			{Id = "goalkeeper-outlet", Function = "Goalkeeper outlet", RoleFamily = "GK", TargetPitch = Vector3.new(PitchConfig.HALF_WIDTH, 3, keeper), Priority = 100, Line = "Goalkeeper", AllowedActions = {"Receive", "Pass", "Clear"}},
-			{Id = "rest-defense", Function = "Central rest defender", RoleFamily = "CB", TargetPitch = Vector3.new(PitchConfig.HALF_WIDTH, 3, math.max(82, ball.Z - 96)), Priority = 96, RestDefense = true, Line = "Back", AllowedActions = {"Receive", "Pass", "Clear", "Tackle", "Cover"}, ForbiddenActions = {"Shoot", "Dribble", "RiskDribble", "BoxRun", "CarryForward"}},
+			{Id = "rest-defense", Function = "Central rest defender", RoleFamily = "CB", TargetPitch = Vector3.new(PitchConfig.HALF_WIDTH, 3, buildupBackZ(ball, 96, "CB")), Priority = 96, RestDefense = true, Line = "Back", AllowedActions = {"Receive", "Pass", "Clear", "Tackle", "Cover"}, ForbiddenActions = {"Shoot", "Dribble", "RiskDribble", "BoxRun", "CarryForward"}},
 			{Id = "left-support", Function = "Left support midfielder", RoleFamily = "CM", TargetPitch = Vector3.new(142, 3, math.max(130, ball.Z + 18)), Priority = 88, Line = "Midfield"},
 			{Id = "right-support", Function = "Right support midfielder", RoleFamily = "CM", TargetPitch = Vector3.new(282, 3, math.max(130, ball.Z + 18)), Priority = 87, Line = "Midfield"},
 			{Id = "left-width", Function = "Left forward depth", RoleFamily = "ST", TargetPitch = Vector3.new(120, 3, math.min(690, ball.Z + 116)), Priority = 82, Line = "Forward", SprintAllowed = true},
@@ -241,10 +261,10 @@ local function formationBase(formation: string, count: number, context: any, sid
 	}
 	local byFormation: {[string]: {any}} = {
 		["4-3-3"] = {
-			{Id = "left-build-up-defender", Function = "Left build-up defender", RoleFamily = "Fullback", TargetPitch = Vector3.new(76, 3, math.max(95, ball.Z - 72)), Priority = 91, RestDefense = true, Line = "Back"},
-			{Id = "left-first-line", Function = "Left center-back rest defender", RoleFamily = "CB", TargetPitch = Vector3.new(152, 3, math.max(80, ball.Z - 96)), Priority = 95, RestDefense = true, Line = "Back"},
-			{Id = "right-first-line", Function = "Right center-back rest defender", RoleFamily = "CB", TargetPitch = Vector3.new(272, 3, math.max(80, ball.Z - 96)), Priority = 94, RestDefense = true, Line = "Back"},
-			{Id = "right-build-up-defender", Function = "Right build-up defender", RoleFamily = "Fullback", TargetPitch = Vector3.new(348, 3, math.max(95, ball.Z - 72)), Priority = 90, RestDefense = true, Line = "Back"},
+			{Id = "left-build-up-defender", Function = "Left build-up defender", RoleFamily = "Fullback", TargetPitch = Vector3.new(76, 3, buildupBackZ(ball, 72, "Fullback")), Priority = 91, RestDefense = true, Line = "Back"},
+			{Id = "left-first-line", Function = "Left center-back rest defender", RoleFamily = "CB", TargetPitch = Vector3.new(152, 3, buildupBackZ(ball, 96, "CB")), Priority = 95, RestDefense = true, Line = "Back"},
+			{Id = "right-first-line", Function = "Right center-back rest defender", RoleFamily = "CB", TargetPitch = Vector3.new(272, 3, buildupBackZ(ball, 96, "CB")), Priority = 94, RestDefense = true, Line = "Back"},
+			{Id = "right-build-up-defender", Function = "Right build-up defender", RoleFamily = "Fullback", TargetPitch = Vector3.new(348, 3, buildupBackZ(ball, 72, "Fullback")), Priority = 90, RestDefense = true, Line = "Back"},
 			{Id = "ball-side-pivot", Function = "Ball-side pivot", RoleFamily = "CDM", TargetPitch = Vector3.new(ball.X < PitchConfig.HALF_WIDTH and 170 or 254, 3, ball.Z + 24), Priority = 86, Line = "Midfield"},
 			{Id = "second-ball-midfielder", Function = "Second-ball midfielder", RoleFamily = "CM", TargetPitch = Vector3.new(PitchConfig.HALF_WIDTH, 3, ball.Z + 58), Priority = 84, Line = "Midfield"},
 			{Id = "between-lines-receiver", Function = "Between-lines receiver", RoleFamily = "CAM", TargetPitch = Vector3.new(PitchConfig.HALF_WIDTH, 3, ball.Z + 94), Priority = 83, Line = "Midfield"},
@@ -253,10 +273,10 @@ local function formationBase(formation: string, count: number, context: any, sid
 			{Id = "central-forward", Function = "Depth striker", RoleFamily = "ST", TargetPitch = Vector3.new(PitchConfig.HALF_WIDTH, 3, ball.Z + 142), Priority = 82, Line = "Forward", SprintAllowed = true},
 		},
 		["4-2-3-1"] = {
-			{Id = "left-build-up-defender", Function = "Left build-up defender", RoleFamily = "Fullback", TargetPitch = Vector3.new(78, 3, ball.Z - 66), Priority = 90, RestDefense = true, Line = "Back"},
-			{Id = "left-first-line", Function = "Left center-back rest defender", RoleFamily = "CB", TargetPitch = Vector3.new(152, 3, ball.Z - 96), Priority = 95, RestDefense = true, Line = "Back"},
-			{Id = "right-first-line", Function = "Right center-back rest defender", RoleFamily = "CB", TargetPitch = Vector3.new(272, 3, ball.Z - 96), Priority = 94, RestDefense = true, Line = "Back"},
-			{Id = "right-build-up-defender", Function = "Right build-up defender", RoleFamily = "Fullback", TargetPitch = Vector3.new(346, 3, ball.Z - 66), Priority = 89, RestDefense = true, Line = "Back"},
+			{Id = "left-build-up-defender", Function = "Left build-up defender", RoleFamily = "Fullback", TargetPitch = Vector3.new(78, 3, buildupBackZ(ball, 66, "Fullback")), Priority = 90, RestDefense = true, Line = "Back"},
+			{Id = "left-first-line", Function = "Left center-back rest defender", RoleFamily = "CB", TargetPitch = Vector3.new(152, 3, buildupBackZ(ball, 96, "CB")), Priority = 95, RestDefense = true, Line = "Back"},
+			{Id = "right-first-line", Function = "Right center-back rest defender", RoleFamily = "CB", TargetPitch = Vector3.new(272, 3, buildupBackZ(ball, 96, "CB")), Priority = 94, RestDefense = true, Line = "Back"},
+			{Id = "right-build-up-defender", Function = "Right build-up defender", RoleFamily = "Fullback", TargetPitch = Vector3.new(346, 3, buildupBackZ(ball, 66, "Fullback")), Priority = 89, RestDefense = true, Line = "Back"},
 			{Id = "ball-side-pivot", Function = "Ball-side pivot", RoleFamily = "CDM", TargetPitch = Vector3.new(172, 3, ball.Z + 18), Priority = 88, Line = "Midfield"},
 			{Id = "far-side-pivot", Function = "Far-side pivot", RoleFamily = "CDM", TargetPitch = Vector3.new(252, 3, ball.Z + 18), Priority = 87, Line = "Midfield"},
 			{Id = "left-width", Function = "Ball-side width", RoleFamily = "Winger", TargetPitch = Vector3.new(54, 3, ball.Z + 102), Priority = 80, Line = "Forward", SprintAllowed = true},
@@ -265,10 +285,10 @@ local function formationBase(formation: string, count: number, context: any, sid
 			{Id = "central-forward", Function = "Checking striker", RoleFamily = "ST", TargetPitch = Vector3.new(PitchConfig.HALF_WIDTH, 3, ball.Z + 134), Priority = 82, Line = "Forward", SprintAllowed = true},
 		},
 		["4-4-2"] = {
-			{Id = "left-build-up-defender", Function = "Left build-up defender", RoleFamily = "Fullback", TargetPitch = Vector3.new(78, 3, ball.Z - 72), Priority = 90, RestDefense = true, Line = "Back"},
-			{Id = "left-first-line", Function = "Left center-back rest defender", RoleFamily = "CB", TargetPitch = Vector3.new(152, 3, ball.Z - 96), Priority = 95, RestDefense = true, Line = "Back"},
-			{Id = "right-first-line", Function = "Right center-back rest defender", RoleFamily = "CB", TargetPitch = Vector3.new(272, 3, ball.Z - 96), Priority = 94, RestDefense = true, Line = "Back"},
-			{Id = "right-build-up-defender", Function = "Right build-up defender", RoleFamily = "Fullback", TargetPitch = Vector3.new(346, 3, ball.Z - 72), Priority = 89, RestDefense = true, Line = "Back"},
+			{Id = "left-build-up-defender", Function = "Left build-up defender", RoleFamily = "Fullback", TargetPitch = Vector3.new(78, 3, buildupBackZ(ball, 72, "Fullback")), Priority = 90, RestDefense = true, Line = "Back"},
+			{Id = "left-first-line", Function = "Left center-back rest defender", RoleFamily = "CB", TargetPitch = Vector3.new(152, 3, buildupBackZ(ball, 96, "CB")), Priority = 95, RestDefense = true, Line = "Back"},
+			{Id = "right-first-line", Function = "Right center-back rest defender", RoleFamily = "CB", TargetPitch = Vector3.new(272, 3, buildupBackZ(ball, 96, "CB")), Priority = 94, RestDefense = true, Line = "Back"},
+			{Id = "right-build-up-defender", Function = "Right build-up defender", RoleFamily = "Fullback", TargetPitch = Vector3.new(346, 3, buildupBackZ(ball, 72, "Fullback")), Priority = 89, RestDefense = true, Line = "Back"},
 			{Id = "left-midfield-width", Function = "Ball-side width", RoleFamily = "Winger", TargetPitch = Vector3.new(58, 3, ball.Z + 38), Priority = 84, Line = "Midfield"},
 			{Id = "ball-side-pivot", Function = "Ball-side pivot", RoleFamily = "CM", TargetPitch = Vector3.new(176, 3, ball.Z + 30), Priority = 86, Line = "Midfield"},
 			{Id = "far-side-pivot", Function = "Far-side pivot", RoleFamily = "CM", TargetPitch = Vector3.new(248, 3, ball.Z + 30), Priority = 85, Line = "Midfield"},
@@ -277,9 +297,9 @@ local function formationBase(formation: string, count: number, context: any, sid
 			{Id = "central-forward", Function = "Depth striker", RoleFamily = "ST", TargetPitch = Vector3.new(244, 3, ball.Z + 138), Priority = 81, Line = "Forward", SprintAllowed = true},
 		},
 		["3-5-2"] = {
-			{Id = "left-first-line", Function = "Left build-up defender", RoleFamily = "CB", TargetPitch = Vector3.new(122, 3, ball.Z - 92), Priority = 96, RestDefense = true, Line = "Back"},
-			{Id = "rest-defense", Function = "Central rest defender", RoleFamily = "CB", TargetPitch = Vector3.new(PitchConfig.HALF_WIDTH, 3, ball.Z - 104), Priority = 98, RestDefense = true, Line = "Back"},
-			{Id = "right-first-line", Function = "Right build-up defender", RoleFamily = "CB", TargetPitch = Vector3.new(302, 3, ball.Z - 92), Priority = 95, RestDefense = true, Line = "Back"},
+			{Id = "left-first-line", Function = "Left build-up defender", RoleFamily = "CB", TargetPitch = Vector3.new(122, 3, buildupBackZ(ball, 92, "CB")), Priority = 96, RestDefense = true, Line = "Back"},
+			{Id = "rest-defense", Function = "Central rest defender", RoleFamily = "CB", TargetPitch = Vector3.new(PitchConfig.HALF_WIDTH, 3, buildupBackZ(ball, 104, "CB")), Priority = 98, RestDefense = true, Line = "Back"},
+			{Id = "right-first-line", Function = "Right build-up defender", RoleFamily = "CB", TargetPitch = Vector3.new(302, 3, buildupBackZ(ball, 92, "CB")), Priority = 95, RestDefense = true, Line = "Back"},
 			{Id = "left-width", Function = "Ball-side width", RoleFamily = "Wingback", TargetPitch = Vector3.new(42, 3, ball.Z + 46), Priority = 86, Line = "Midfield", SprintAllowed = true},
 			{Id = "ball-side-pivot", Function = "Ball-side pivot", RoleFamily = "CDM", TargetPitch = Vector3.new(174, 3, ball.Z + 24), Priority = 88, Line = "Midfield"},
 			{Id = "second-ball-midfielder", Function = "Second-ball midfielder", RoleFamily = "CM", TargetPitch = Vector3.new(PitchConfig.HALF_WIDTH, 3, ball.Z + 58), Priority = 87, Line = "Midfield"},
@@ -289,11 +309,11 @@ local function formationBase(formation: string, count: number, context: any, sid
 			{Id = "central-forward", Function = "Depth striker", RoleFamily = "ST", TargetPitch = Vector3.new(244, 3, ball.Z + 142), Priority = 81, Line = "Forward", SprintAllowed = true},
 		},
 		["5-3-2"] = {
-			{Id = "left-wingback", Function = "Ball-side width", RoleFamily = "Wingback", TargetPitch = Vector3.new(44, 3, ball.Z - 18), Priority = 85, RestDefense = true, Line = "Back"},
-			{Id = "left-first-line", Function = "Left build-up defender", RoleFamily = "CB", TargetPitch = Vector3.new(122, 3, ball.Z - 92), Priority = 96, RestDefense = true, Line = "Back"},
-			{Id = "rest-defense", Function = "Central rest defender", RoleFamily = "CB", TargetPitch = Vector3.new(PitchConfig.HALF_WIDTH, 3, ball.Z - 104), Priority = 98, RestDefense = true, Line = "Back"},
-			{Id = "right-first-line", Function = "Right build-up defender", RoleFamily = "CB", TargetPitch = Vector3.new(302, 3, ball.Z - 92), Priority = 95, RestDefense = true, Line = "Back"},
-			{Id = "right-wingback", Function = "Far-side width", RoleFamily = "Wingback", TargetPitch = Vector3.new(380, 3, ball.Z - 18), Priority = 84, RestDefense = true, Line = "Back"},
+			{Id = "left-wingback", Function = "Ball-side width", RoleFamily = "Wingback", TargetPitch = Vector3.new(44, 3, buildupBackZ(ball, 18, "Wingback")), Priority = 85, RestDefense = true, Line = "Back"},
+			{Id = "left-first-line", Function = "Left build-up defender", RoleFamily = "CB", TargetPitch = Vector3.new(122, 3, buildupBackZ(ball, 92, "CB")), Priority = 96, RestDefense = true, Line = "Back"},
+			{Id = "rest-defense", Function = "Central rest defender", RoleFamily = "CB", TargetPitch = Vector3.new(PitchConfig.HALF_WIDTH, 3, buildupBackZ(ball, 104, "CB")), Priority = 98, RestDefense = true, Line = "Back"},
+			{Id = "right-first-line", Function = "Right build-up defender", RoleFamily = "CB", TargetPitch = Vector3.new(302, 3, buildupBackZ(ball, 92, "CB")), Priority = 95, RestDefense = true, Line = "Back"},
+			{Id = "right-wingback", Function = "Far-side width", RoleFamily = "Wingback", TargetPitch = Vector3.new(380, 3, buildupBackZ(ball, 18, "Wingback")), Priority = 84, RestDefense = true, Line = "Back"},
 			{Id = "ball-side-pivot", Function = "Ball-side pivot", RoleFamily = "CDM", TargetPitch = Vector3.new(166, 3, ball.Z + 32), Priority = 88, Line = "Midfield"},
 			{Id = "second-ball-midfielder", Function = "Second-ball midfielder", RoleFamily = "CM", TargetPitch = Vector3.new(PitchConfig.HALF_WIDTH, 3, ball.Z + 66), Priority = 87, Line = "Midfield"},
 			{Id = "far-side-pivot", Function = "Far-side pivot", RoleFamily = "CM", TargetPitch = Vector3.new(258, 3, ball.Z + 32), Priority = 86, Line = "Midfield"},

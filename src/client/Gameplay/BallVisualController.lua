@@ -337,10 +337,10 @@ function Controller:Update(dt: number, move: Vector3, sprinting: boolean)
 	end
 	local glidingMotion=motionKind=="Dribble"
 	if self.ShotTrail and self.ShotTrail.Enabled and not self.TrailHeld then
-		if (motionKind=="Shot"or motionKind=="Corner")and authoritativeVelocity.Magnitude<3 then self:StopShotTrail()end
+		if motionKind~="Shot"and motionKind~="Pass"then self:StopShotTrail()end
+		if motionKind=="Shot"and authoritativeVelocity.Magnitude<3 then self:StopShotTrail()end
 		local passTrailActive=(tonumber(self.PassTrailUntil)or 0)>os.clock()
-		if (motionKind=="Pass"or motionKind=="Clearance"or passTrailActive)and authoritativeVelocity.Magnitude<2.4 then self:StopShotTrail()end
-		if passTrailActive and motionKind~="Pass"and motionKind~="Clearance"and authoritativeVelocity.Magnitude>=2.4 then self.ShotTrail.Enabled=true end
+		if (motionKind=="Pass"or passTrailActive)and authoritativeVelocity.Magnitude<2.4 then self:StopShotTrail()end
 	end
 	local predictedPosition:Vector3=self.PredictedPosition or authoritativePosition
 	local predictedVelocity:Vector3=self.PredictedVelocity or authoritativeVelocity

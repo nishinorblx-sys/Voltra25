@@ -52,9 +52,14 @@ local function looseBallAssignments(context: any, side: string): any
 	local assignments = {}
 	local best = nil
 	local bestDistance = math.huge
+	local ballPitch = context.BallTeam and context.BallTeam[side] or PitchConfig.WorldToTeamPitchPosition(context.BallWorld, side, context.Options)
+	local velocity = context.BallVelocity or Vector3.zero
+	local horizontalVelocity = Vector3.new(velocity.X, 0, velocity.Z)
+	local projected = context.BallWorld + horizontalVelocity * math.clamp(horizontalVelocity.Magnitude / 85, 0.18, 0.48)
+	local dangerZoneLooseBall = ballPitch.Z <= PitchConfig.Zones.OwnBox.ZMax + 72
 	for _, info in ipairs(context.Teams[side].List) do
 		if info.Root and not info.IsUserControlled then
-			local distance = PitchConfig.GetDistanceStuds(info.World, context.BallWorld)
+			local distance = math.min(PitchConfig.GetDistanceStuds(info.World, context.BallWorld), PitchConfig.GetDistanceStuds(info.World, projected))
 			if distance < bestDistance then
 				best = info
 				bestDistance = distance
@@ -64,12 +69,40 @@ local function looseBallAssignments(context: any, side: string): any
 	for _, info in ipairs(context.Teams[side].List) do
 		if info.Root and not info.IsUserControlled then
 			local assignment = baseAssignment(context, info)
-			if info == best then
-				assignment.PrimaryAssignment = "AttackLooseBall"
-				assignment.TargetWorld = context.BallWorld
-				assignment.MovementTarget = context.BallWorld
+			if dangerZoneLooseBall then
+				local target = projected
+				if info.IsGoalkeeper then
+					assignment.PrimaryAssignment = "ShotGoalkeeperClaim"
+					info.Model:SetAttribute("AIGoalkeeperLooseClaim", true)
+					info.Model:SetAttribute("VTRGoalkeeperState", "SweepLooseBall")
+					info.Model:SetAttribute("VTRGoalkeeperActionLockUntil", (context.Now or os.clock()) + 0.55)
+				else
+					assignment.PrimaryAssignment = "DangerZoneLooseBallRecovery"
+					info.Model:SetAttribute("AIDangerZoneLooseBallRecovery", true)
+				end
+				assignment.TargetWorld = target
+				assignment.MovementTarget = target
+				assignment.TargetPitch = PitchConfig.WorldToTeamPitchPosition(target, side, context.Options)
 				assignment.MovementUrgency = 1
 				assignment.SprintAllowed = true
+				assignment.SprintConservation = 0
+				assignment.Phase = "DangerZoneLooseBall"
+				assignment.FaceWorld = context.BallWorld
+			elseif info == best then
+				assignment.PrimaryAssignment = info.IsGoalkeeper and "ShotGoalkeeperClaim" or "AttackLooseBall"
+				assignment.TargetWorld = context.BallWorld
+				assignment.MovementTarget = context.BallWorld
+				assignment.TargetPitch = ballPitch
+				assignment.MovementUrgency = 1
+				assignment.SprintAllowed = true
+				assignment.SprintConservation = 0
+				if info.IsGoalkeeper then
+					info.Model:SetAttribute("AIGoalkeeperLooseClaim", true)
+					info.Model:SetAttribute("VTRGoalkeeperState", "SweepLooseBall")
+					info.Model:SetAttribute("VTRGoalkeeperActionLockUntil", (context.Now or os.clock()) + 0.55)
+				end
+			else
+				info.Model:SetAttribute("AIDangerZoneLooseBallRecovery", false)
 			end
 			assignments[info.Model] = assignment
 		end
@@ -114,7 +147,7 @@ function Engine.new(teams: any, formations: any, pitchCFrame: CFrame, width: num
 		ManualTackleSides = {},
 		FirstMatchAssistance = nil,
 		WasLive = false,
-		Accum = {Spatial = .25, Intent = .24, Structure = .24, Press = .08, Carrier = .1, Movement = .04, Debug = .5},
+		Accum = {Spatial = .25, Intent = .24, Structure = .24, Press = .08, Carrier = .05, Movement = .04, Debug = .5},
 		LastPassStateKey = "",
 		LastPressStateKey = "",
 		ReceiverRouteSequence = 0,
@@ -155,6 +188,9 @@ function Engine:_attackSigns(): {[string]: number}
 end
 
 function Engine:_isLive(): boolean
+	if self.Ball and (self.Ball:GetAttribute("VTRSetPieceReady") ~= nil or self.Ball:GetAttribute("VTRSetPieceLocked") == true) then
+		return false
+	end
 	return self.ExternalPhase == nil or self.ExternalPhase == "Live" or self.ExternalPhase == "IN PLAY"
 end
 
@@ -187,7 +223,8 @@ function Engine:_routeReceiverBeforePass(model: Model, target: Vector3, passKind
 	if not root or not humanoid or humanoid.Health <= 0 then return end
 	local side = tostring(model:GetAttribute("VTRTeam") or "")
 	local mode = tostring(execution and execution.SelectedLocomotionMode or model:GetAttribute("VTRReceiveLocomotionMode") or "Run")
-	local sprint = mode == "SprintBurst"
+	local forcedUntil = (self.LastContext and self.LastContext.Now or os.clock()) + math.clamp((tonumber(execution and execution.BallETA) or .9) + 1.2, 1.35, 4.8)
+	local sprint = mode == "SprintBurst" or (target - root.Position).Magnitude > 4
 	local assignment = {
 		PrimaryAssignment = "ReceivePass",
 		TargetWorld = target,
@@ -197,6 +234,7 @@ function Engine:_routeReceiverBeforePass(model: Model, target: Vector3, passKind
 		SprintAllowed = sprint,
 		Phase = "PassReception",
 		SprintConservation = 0,
+		ForcedReceiver = true,
 	}
 	if self.CurrentAssignments[side] then
 		self.CurrentAssignments[side][model] = assignment
@@ -211,29 +249,48 @@ function Engine:_routeReceiverBeforePass(model: Model, target: Vector3, passKind
 		SprintAllowed = sprint,
 		SprintRequired = sprint,
 		Essential = true,
-		BurstMaximumSeconds = 3,
-		RecoveryMinimumSeconds = .8,
-		MinimumEnergy = 15,
+		BurstMaximumSeconds = 3.4,
+		RecoveryMinimumSeconds = .45,
+		MinimumEnergy = 5,
 		AssignmentId = ticket,
 		RunTicketId = ticket,
 		FaceTarget = self.Ball and self.Ball.Position or target,
 	})
 	model:SetAttribute("currentAssignment", "ReceivePass")
+	model:SetAttribute("AIAssignment", "ReceivePass")
 	model:SetAttribute("targetPosition", target)
 	model:SetAttribute("MovementTarget", target)
 	model:SetAttribute("SupportRole", "ReceivePass")
 	model:SetAttribute("AttackAssignment", "ReceivePass")
 	model:SetAttribute("TeamPhase", "PassReception")
 	model:SetAttribute("MovementMode", sprint and "SprintBurst" or mode == "Jog" and "Jog" or "Run")
+	model:SetAttribute("VTRReceiveTarget", target)
+	model:SetAttribute("VTRReceiveIntercept", target)
+	model:SetAttribute("VTRPreparingReceive", true)
+	model:SetAttribute("VTRReceiveCommitted", true)
 	model:SetAttribute("VTRReceiveHardLock", true)
-	model:SetAttribute("VTRReceiveHardLockUntil", (self.LastContext and self.LastContext.Now or os.clock()) + math.max(.65, tonumber(execution and execution.BallETA) or .9))
+	model:SetAttribute("VTRReceiveHardLockUntil", forcedUntil)
+	model:SetAttribute("VTRForcedPassReceiver", true)
+	model:SetAttribute("VTRForcedReceiveUntil", forcedUntil)
+	model:SetAttribute("VTRAITargetedPass", true)
+	model:SetAttribute("VTRAIAlternatePassChaser", false)
 	model:SetAttribute("VTRReceiveLocomotionMode", mode)
+	model:SetAttribute("VTRRunTicketId", nil)
+	model:SetAttribute("VTRRunApproved", false)
+	model:SetAttribute("VTRRunKind", nil)
+	model:SetAttribute("VTRRunTrigger", nil)
+	model:SetAttribute("VTRRunTarget", nil)
+	model:SetAttribute("VTRRunExpiry", nil)
+	model:SetAttribute("VTRSupportRun", nil)
+	model:SetAttribute("VTRSupportKind", nil)
+	model:SetAttribute("AIDefensiveDuty", nil)
+	model:SetAttribute("AIIncomingPassDuty", nil)
 	model:SetAttribute("VTRReceiveDesiredArrivalVelocity", execution and execution.DesiredArrivalVelocity or model:GetAttribute("VTRReceiveDesiredArrivalVelocity"))
 	model:SetAttribute("VTRReceiveBrakingDistance", execution and execution.BrakingDistance or model:GetAttribute("VTRReceiveBrakingDistance"))
 	model:SetAttribute("VTRReceiveContactKind", execution and execution.ContactKind or model:GetAttribute("VTRReceiveContactKind"))
 	model:SetAttribute("VTRReceivePreferredFoot", execution and execution.PreferredFoot or model:GetAttribute("VTRReceivePreferredFoot"))
 	model:SetAttribute("VTRAIMovementIntensity", 1)
-	model:SetAttribute("VTRAIIntentionUntil", (self.LastContext and self.LastContext.Now or os.clock()) + math.max(.45, tonumber(execution and execution.BallETA) or .8))
+	model:SetAttribute("VTRAIIntentionUntil", forcedUntil)
 end
 
 function Engine:_publishTeamContext(context: any)
@@ -390,7 +447,7 @@ function Engine:ResetFootballer(model: Model)
 		self.CurrentAssignments[side][model] = nil
 	end
 	self.TeamBrain:ResetFootballer(model)
-	for _, attribute in ipairs({"VTRAISprintRequested", "VTRReceiveTarget", "VTRPreparingReceive", "VTRReceiveUntil", "VTRReceiveRouteSprintRequested", "VTRAIAlternatePassChaser", "VTRPrepareToReceive", "VTRPotentialReceiveTarget", "VTRPrepareReceiveUntil", "AIMiddlePassMistakeMemory", "AITacticalSlot", "AIRestDefense", "TeamPlan", "TeamDefensiveIntent", "AIDefensiveDutyId", "AIDefensiveDuty", "AIIncomingPassDuty"}) do
+	for _, attribute in ipairs({"VTRAISprintRequested", "VTRReceiveTarget", "VTRReceiveIntercept", "VTRPreparingReceive", "VTRReceiveUntil", "VTRReceiveHardLock", "VTRReceiveHardLockUntil", "VTRForcedPassReceiver", "VTRForcedReceiveUntil", "VTRAITargetedPass", "VTRReceiveRouteSprintRequested", "VTRAIAlternatePassChaser", "VTRPrepareToReceive", "VTRPotentialReceiveTarget", "VTRPrepareReceiveUntil", "AIMiddlePassMistakeMemory", "AITacticalSlot", "AIRestDefense", "TeamPlan", "TeamDefensiveIntent", "AIDefensiveDutyId", "AIDefensiveDuty", "AIIncomingPassDuty"}) do
 		model:SetAttribute(attribute, nil)
 	end
 end
@@ -414,6 +471,28 @@ function Engine:Step(dt: number)
 	end
 	self.WasLive = true
 	local context = self:_context()
+	for _, side in ipairs({"Home", "Away"}) do
+		for _, model in ipairs(self.Teams[side] or {}) do
+			if model:GetAttribute("VTRSentOff") ~= true and model:GetAttribute("VTRRedCard") ~= true then
+				if model:GetAttribute("VTRForceIdle") == true then model:SetAttribute("VTRForceIdle", nil) end
+				if model:GetAttribute("VTRFrozenIdle") == true then model:SetAttribute("VTRFrozenIdle", nil) end
+				if model:GetAttribute("VTRSetPieceWall") == true then model:SetAttribute("VTRSetPieceWall", nil) end
+				if model:GetAttribute("VTRPresentationState") ~= nil then model:SetAttribute("VTRPresentationState", nil) end
+				local humanoid = model:FindFirstChildOfClass("Humanoid")
+				local modelRoot = model:FindFirstChild("HumanoidRootPart") :: BasePart?
+				if humanoid then
+					humanoid.PlatformStand = false
+					humanoid.Sit = false
+					humanoid.AutoRotate = true
+				end
+				if modelRoot and modelRoot.Anchored then
+					modelRoot.Anchored = false
+					modelRoot.AssemblyLinearVelocity = Vector3.zero
+					modelRoot.AssemblyAngularVelocity = Vector3.zero
+				end
+			end
+		end
+	end
 	local possessionChanged = self.Memory:ObservePossession(context.OwnerSide, context.Owner, context.Now or os.clock())
 	context.TeamStageResetUntil = self.Memory.StageResetUntil
 	if possessionChanged and context.OwnerSide then
@@ -469,7 +548,7 @@ function Engine:Step(dt: number)
 		self:_publishTeamContext(context)
 	end
 	self.Accum.Carrier += dt
-	if self.Accum.Carrier >= .09 then
+	if self.Accum.Carrier >= .045 then
 		local start = os.clock()
 		self.Accum.Carrier = 0
 		self.TeamBrain:Step(context, self.CurrentAssignments)

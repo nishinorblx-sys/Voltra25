@@ -120,20 +120,24 @@ function FlowController:_packResults(title:string,reveals:any,complete:()->())
 	local continue=Button.new({Text="CONTINUE",Variant="Primary",Size=UDim2.fromOffset(160,40),OnActivated=function() overlay:Destroy();complete() end});continue.Position=UDim2.new(1,-184,1,-54);continue.ZIndex=108;continue.Parent=panel
 end
 
-function FlowController:PackOpening(title:string,complete:()->(),reveals:any?)
+function FlowController:PackOpening(title:string,complete:()->(),reveals:any?,metadata:any?)
 	if not reveals or #reveals==0 then self:Error("PACK OPENING FAILED","The server returned no player cards.");return end
 	if self.PackOpeningActive==true then return end
 	self.PackOpeningActive=true
+	local localPlayer=Players.LocalPlayer
+	if localPlayer then localPlayer:SetAttribute("VTRHoldPackRewardFlyin",true)end
 	clearPackOverlays(self.Root)
 	local released=false
 	local function release()
 		if released then return end
 		released=true
 		self.PackOpeningActive=false
+		if localPlayer then localPlayer:SetAttribute("VTRHoldPackRewardFlyin",false)end
 	end
 	local packOpenClickedAt=self.LastPackOpenClickedAt
 	self.LastPackOpenClickedAt=nil
-	local ok,overlay=pcall(function()return PackOpeningSequence.play(self.Root,{Title=title,Reveals=reveals,PackOpenClickedAt=packOpenClickedAt,OnComplete=function()release();complete()end,OnViewPlayer=function(cardInstanceId:string) if self.PlayerDetailsHandler then self.PlayerDetailsHandler(cardInstanceId) end end,Toast=function(message:string,kind:string) self.Toast({Title="PACK CONTENTS",Message=message,Kind=kind}) end})end)
+	local packDefinition=metadata and metadata.PackDefinition or metadata and metadata.PackId and Catalog.Packs[metadata.PackId] or nil
+	local ok,overlay=pcall(function()return PackOpeningSequence.play(self.Root,{Title=title,Reveals=reveals,PackOpenClickedAt=packOpenClickedAt,PackId=metadata and metadata.PackId or nil,PackDefinition=packDefinition,PackSource=metadata and(metadata.PackSource or metadata.Source)or nil,PackCount=metadata and metadata.PackCount or nil,OpenAll=metadata and metadata.OpenAll==true or nil,ReducedMotion=metadata and metadata.ReducedMotion==true or nil,OnComplete=function()release();complete()end,OnViewPlayer=function(cardInstanceId:string) if self.PlayerDetailsHandler then self.PlayerDetailsHandler(cardInstanceId) end end,Toast=function(message:string,kind:string) self.Toast({Title="PACK CONTENTS",Message=message,Kind=kind}) end})end)
 	if not ok or not overlay then
 		release()
 		self:Error("PACK OPENING FAILED","The pack was opened, but the reveal screen could not start. Re-open Inventory to see the new players.")
@@ -158,7 +162,7 @@ function FlowController:OfferPackDelivery(delivered:any,onComplete:(()->())?,bef
 		self.LastPackOpenClickedAt=os.clock()
 		dropFlyin()
 		local opened=PackService:Open(delivered.packInstanceId);if not opened.Success then self:Error("PACK OPENING FAILED",opened.Message or "The pack could not be opened.");return end;if beforeOpen then beforeOpen()end
-		self:PackOpening(delivered.name,onComplete or function()self.Toast({Title="PACK CONTENTS",Message="Pack contents secured in your Club.",Kind="Reward"})end,opened.Data)
+		self:PackOpening(delivered.name,onComplete or function()self.Toast({Title="PACK CONTENTS",Message="Pack contents secured in your Club.",Kind="Reward"})end,opened.Data,{PackId=delivered.packId or delivered.PackId,PackDefinition=delivered,PackSource="Delivery",PackCount=quantity})
 	end})
 end
 

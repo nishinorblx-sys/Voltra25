@@ -56,16 +56,16 @@ end
 
 local function defaultActions(actionProfile: string, restDefense: boolean): {string}
 	if restDefense then
-		return {"Receive", "Pass", "Clear", "Tackle", "Cover"}
+		return {"Receive", "Pass", "Tackle", "Cover"}
 	end
 	if actionProfile == "Goalkeeper" then
 		return {"Receive", "Pass", "Clear"}
 	end
 	if actionProfile == "RestDefender" then
-		return {"Receive", "Pass", "Clear", "Tackle", "Cover"}
+		return {"Receive", "Pass", "Tackle", "Cover"}
 	end
 	if actionProfile == "BuildUpDefender" then
-		return {"Receive", "Pass", "Carry", "Dribble", "Clear", "Cover"}
+		return {"Receive", "Pass", "Carry", "Dribble", "Cover"}
 	end
 	if actionProfile == "Pivot" then
 		return {"Receive", "Pass", "Carry", "Dribble", "Press", "Tackle", "Cover"}

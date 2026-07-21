@@ -167,7 +167,7 @@ local function sanitizeRuntimeTactics(payload:any):any
 	end
 	local normalized=AITacticConfig.Normalize(payload)
 	if type(payload)=="table"then
-		for _,key in ipairs({"PlaystyleId","PlaystyleVersion","PlaystyleName","PlaystyleStatus","PassRules","PositioningRules","PressRules","RoleInstructions","SequenceRules","MetricsTargets"})do
+		for _,key in ipairs({"Formation","PlaystyleId","PlaystyleVersion","PlaystyleName","PlaystyleStatus","PassRules","PositioningRules","PressRules","RoleInstructions","SequenceRules","MetricsTargets"})do
 			if payload[key]~=nil then normalized[key]=payload[key]end
 		end
 	end
@@ -1484,7 +1484,7 @@ local function reviveMatchBallForKickoff(session:any,reason:string?)
 	ball.CFrame=CFrame.new(session.World.PitchCFrame.Position+Vector3.new(0,Config.Ball.Radius+.2,0))
 	setServerNetworkOwner(ball)
 
-	for _,attribute in{"OwnerModel","OwnerUserId","VTRWorldPaused","VTRPauseSavedVelocity","VTRPauseSavedAngularVelocity","VTRPostGoalPhysicsUntil","VTRPostGoalVelocity","VTRPostGoalAngularVelocity","VTRGoalCalledAt","VTRGoalEntryVelocity","VTRGoalEntryAngularVelocity","VTRGoalEntryPosition","VTRGoalEntryNormal","VTRPenaltyShotActive","VTRGoalkeeperHeld","VTRGoalkeeperTracking","VTRGoalkeeperReleaseCameraUntil","VTRPassTarget","VTRPassStartedAt","VTRPassTeam","VTRPassReceiver","VTRLobTarget","VTRLobPassActive","VTRSetPieceReady","VTRSetPieceKind","VTRSetPieceTeam","VTRSetPieceTaker","VTRSetPieceLocked","VTRCornerTarget","VTRLastCornerTeam","VTRCornerTakenAt","VTRMotionKind","VTRRestartDisplayKind"}do
+	for _,attribute in{"OwnerModel","OwnerUserId","VTRPossessionTeam","VTRWorldPaused","VTRPauseSavedVelocity","VTRPauseSavedAngularVelocity","VTRPostGoalPhysicsUntil","VTRPostGoalVelocity","VTRPostGoalAngularVelocity","VTRGoalCalledAt","VTRGoalEntryVelocity","VTRGoalEntryAngularVelocity","VTRGoalEntryPosition","VTRGoalEntryNormal","VTRPenaltyShotActive","VTRGoalkeeperHeld","VTRGoalkeeperTracking","VTRGoalkeeperReleaseCameraUntil","VTRPassTarget","VTRPassStartedAt","VTRPassTeam","VTRPassReceiver","VTRLobTarget","VTRLobPassActive","VTRSetPieceReady","VTRSetPieceKind","VTRSetPieceTeam","VTRSetPieceTaker","VTRSetPieceLocked","VTRCornerTarget","VTRLastCornerTeam","VTRCornerTakenAt","VTRMotionKind","VTRRestartDisplayKind"}do
 		ball:SetAttribute(attribute,nil)
 	end
 
@@ -1551,7 +1551,7 @@ function Service:_resetForSecondHalfKickoff(session:any)
 		ball.AssemblyLinearVelocity=Vector3.zero
 		ball.AssemblyAngularVelocity=Vector3.zero
 		setServerNetworkOwner(ball)
-		for _,attribute in{"VTRWorldPaused","VTRPauseSavedVelocity","VTRPauseSavedAngularVelocity","VTRPostGoalPhysicsUntil","VTRPostGoalVelocity","VTRPostGoalAngularVelocity","VTRGoalCalledAt","VTRGoalEntryVelocity","VTRGoalEntryAngularVelocity","VTRGoalEntryPosition","VTRGoalEntryNormal","VTRPenaltyShotActive","VTRGoalkeeperHeld","VTRGoalkeeperTracking","VTRPassTarget","VTRPassStartedAt","VTRPassTeam","VTRPassReceiver","VTRLobTarget","VTRLobPassActive","VTRSetPieceReady","VTRSetPieceKind","VTRSetPieceTeam","VTRCornerTarget"}do
+		for _,attribute in{"VTRPossessionTeam","VTRWorldPaused","VTRPauseSavedVelocity","VTRPauseSavedAngularVelocity","VTRPostGoalPhysicsUntil","VTRPostGoalVelocity","VTRPostGoalAngularVelocity","VTRGoalCalledAt","VTRGoalEntryVelocity","VTRGoalEntryAngularVelocity","VTRGoalEntryPosition","VTRGoalEntryNormal","VTRPenaltyShotActive","VTRGoalkeeperHeld","VTRGoalkeeperTracking","VTRPassTarget","VTRPassStartedAt","VTRPassTeam","VTRPassReceiver","VTRLobTarget","VTRLobPassActive","VTRSetPieceReady","VTRSetPieceKind","VTRSetPieceTeam","VTRCornerTarget"}do
 			ball:SetAttribute(attribute,nil)
 		end
 	end
@@ -1668,7 +1668,7 @@ function Service:_resetShootingPractice(session:any,reason:string?)
 	if session.BallService then session.BallService:ReleaseGoalkeeperHold(keeper);session.BallService.MotionKind="Loose";session.BallService.MotionStarted=os.clock();session.BallService.ShotPlan=nil;session.BallService.PassPlan=nil;session.BallService.PassTargetPoint=nil;session.BallService.ExpectedReceiver=nil;session.BallService.OffsideCandidate=nil;session.BallService.OffsideCandidates=nil;session.BallService.OffsidePasser=nil;session.BallService.OffsidePassStartedAt=nil;session.BallService.LastPassTeam=nil;session.BallService.LastPasser=nil;if session.BallService.Curve then session.BallService.Curve:Stop()end end
 	GoalShotPassThroughService.Clear(ball);BallCollisionService.ApplyBall(ball)
 	ball.Anchored=false;ball.CanCollide=true;ball.CanTouch=true;ball.Massless=false;setServerNetworkOwner(ball);ball.CFrame=CFrame.new(layout.Ball);ball.AssemblyLinearVelocity=Vector3.zero;ball.AssemblyAngularVelocity=Vector3.zero
-	for _,attribute in{"VTRPostGoalPhysicsUntil","VTRPostGoalVelocity","VTRPostGoalAngularVelocity","VTRGoalCalledAt","VTRGoalEntryVelocity","VTRGoalEntryAngularVelocity","VTRGoalEntryPosition","VTRGoalEntryNormal","VTRPenaltyShotActive","VTRGoalkeeperHeld","VTRGoalkeeperTracking","VTRPassTarget","VTRPassStartedAt","VTRPassTeam","VTRPassReceiver","VTRLobTarget","VTRLobPassActive"}do ball:SetAttribute(attribute,nil)end
+	for _,attribute in{"VTRPossessionTeam","VTRPostGoalPhysicsUntil","VTRPostGoalVelocity","VTRPostGoalAngularVelocity","VTRGoalCalledAt","VTRGoalEntryVelocity","VTRGoalEntryAngularVelocity","VTRGoalEntryPosition","VTRGoalEntryNormal","VTRPenaltyShotActive","VTRGoalkeeperHeld","VTRGoalkeeperTracking","VTRPassTarget","VTRPassStartedAt","VTRPassTeam","VTRPassReceiver","VTRLobTarget","VTRLobPassActive"}do ball:SetAttribute(attribute,nil)end
 	ball:SetAttribute("VTRMotionKind","Loose")
 	if session.Possession then session.Possession:Reset();session.Possession:ForcePickup(shooter)end
 	if session.TeamControl then if session.TeamControl.CancelReception then session.TeamControl:CancelReception("MatchInterrupted")end;session.TeamControl:SetActive(session.Player,shooter,"ShootingPractice")end
@@ -1994,7 +1994,7 @@ function Service:_startSetPiece(session:any,kind:string,restartTeam:string,locat
 	if kind=="Penalty"then
 		session.PenaltyActionLockedUntil=os.clock()+2
 	end
-	if kind=="Penalty"and session.SidePlayers then
+	if kind=="Penalty"and session.SidePlayers and not watchMode then
 		local defendingSide=restartTeam=="Home"and"Away"or"Home"
 		local defender=session.SidePlayers[defendingSide]
 		local keeper=getGoalkeeper(session.Teams[defendingSide])
@@ -2006,10 +2006,19 @@ function Service:_startSetPiece(session:any,kind:string,restartTeam:string,locat
 			self.State:FireClient(defender,{Type="ActivePlayer",Model=keeper,Name=keeper:GetAttribute("DisplayName"),Position=keeper:GetAttribute("position"),Reason="PenaltyDefense",PenaltyLocation=session.World.Ball.Position,GoalPosition=goalPosition,GoalSign=goalSign})
 		end
 	end
+	if kind=="Penalty"and watchMode then
+		local defendingSide=restartTeam=="Home"and"Away"or"Home"
+		local keeper=getGoalkeeper(session.Teams[defendingSide])
+		if keeper then
+			keeper:SetAttribute("VTRPenaltyUserKeeper", nil)
+			keeper:SetAttribute("VTRPenaltyGuessSlot", nil)
+			keeper:SetAttribute("VTRPenaltyGuessPoint", nil)
+		end
+	end
 	
 	if kind~="Kickoff"and not(session.PenaltyShootoutStarted==true and session.PenaltyShootoutResolved~=true and kind=="Penalty")then
 		local configuredDelay=tonumber(session.Format and(session.Format.SetPieceDecisionSeconds or session.Format.SetPieceSeconds))or 4
-		local autoDelay=math.clamp(tonumber(workspace:GetAttribute("VTRSetPieceAutoDecisionDelay"))or configuredDelay,3,5)
+		local autoDelay=kind=="ThrowIn" and 0.05 or math.clamp(tonumber(workspace:GetAttribute("VTRSetPieceAutoDecisionDelay"))or configuredDelay,3,5)
 		delayUnpaused(session,autoDelay,function()
 			if session.Ended or session.Running or session.SetPieceAutoSeq~=setPieceAutoSeq or session.Phase~=kind then return end
 			self:_autoReleaseSetPiece(session,controller)
@@ -2024,7 +2033,7 @@ function Service:_startSetPiece(session:any,kind:string,restartTeam:string,locat
 		elseif kind=="GoalKick"then
 			delayUnpaused(session,1.2,function()if not session.Ended and not session.Running and session.Phase=="GoalKick"then self:_releaseGoalKickClearance(session,controller)end end)
 		elseif kind=="ThrowIn"then
-			delayUnpaused(session,1.0,function()if not session.Ended and not session.Running and session.Phase=="ThrowIn"then self:_releaseAIThrowIn(session)end end)
+			delayUnpaused(session,0.05,function()if not session.Ended and not session.Running and session.Phase=="ThrowIn"then self:_releaseAIThrowIn(session)end end)
 		end
 	end
 	self:_setPlayersFrozen(session,kind~="ThrowIn" and kind~="GoalKick")
@@ -3500,7 +3509,7 @@ function Service:_resetForExtraTimeKickoff(session:any)
 		ball.AssemblyLinearVelocity=Vector3.zero
 		ball.AssemblyAngularVelocity=Vector3.zero
 		setServerNetworkOwner(ball)
-		for _,attribute in{"VTRWorldPaused","VTRPauseSavedVelocity","VTRPauseSavedAngularVelocity","VTRPostGoalPhysicsUntil","VTRPostGoalVelocity","VTRPostGoalAngularVelocity","VTRGoalCalledAt","VTRGoalEntryVelocity","VTRGoalEntryAngularVelocity","VTRGoalEntryPosition","VTRGoalEntryNormal","VTRPenaltyShotActive","VTRGoalkeeperHeld","VTRGoalkeeperTracking","VTRPassTarget","VTRPassStartedAt","VTRPassTeam","VTRPassReceiver","VTRLobTarget","VTRLobPassActive","VTRSetPieceReady","VTRSetPieceKind","VTRSetPieceTeam","VTRCornerTarget"}do
+		for _,attribute in{"VTRPossessionTeam","VTRWorldPaused","VTRPauseSavedVelocity","VTRPauseSavedAngularVelocity","VTRPostGoalPhysicsUntil","VTRPostGoalVelocity","VTRPostGoalAngularVelocity","VTRGoalCalledAt","VTRGoalEntryVelocity","VTRGoalEntryAngularVelocity","VTRGoalEntryPosition","VTRGoalEntryNormal","VTRPenaltyShotActive","VTRGoalkeeperHeld","VTRGoalkeeperTracking","VTRPassTarget","VTRPassStartedAt","VTRPassTeam","VTRPassReceiver","VTRLobTarget","VTRLobPassActive","VTRSetPieceReady","VTRSetPieceKind","VTRSetPieceTeam","VTRCornerTarget"}do
 			ball:SetAttribute(attribute,nil)
 		end
 	end
@@ -3835,10 +3844,14 @@ end
 function Service:_setPenaltyKeeperGuess(session:any,defendingSide:string,slot:string?)
 	local keeper=getGoalkeeper(session.Teams[defendingSide])
 	if not keeper then return end
+	local aiOnlyPenalty = session.Setup and session.Setup.WatchMode == true
+	if aiOnlyPenalty then
+		keeper:SetAttribute("VTRPenaltyUserKeeper", nil)
+	end
 	local goalSign=tonumber(session.SetPieces and session.SetPieces.RestartGoalSign)or(defendingSide=="Home"and-1 or 1)
 	local guess=PenaltyConfig.NormalizeSlot(slot)
 	if not guess then
-		guess=keeper:GetAttribute("VTRPenaltyUserKeeper")==true and "MIDDLE" or PenaltyConfig.RandomSlot(Random.new())
+		guess=not aiOnlyPenalty and keeper:GetAttribute("VTRPenaltyUserKeeper")==true and "MIDDLE" or PenaltyConfig.RandomSlot(Random.new())
 	end
 	keeper:SetAttribute("VTRPenaltyGuessSlot",guess)
 	keeper:SetAttribute("VTRPenaltyGuessPoint",PenaltyConfig.PointForSlot(session.World.PitchCFrame,session.World.Length,goalSign,guess,session.World.Width))
@@ -4149,7 +4162,7 @@ function Service:_releaseAIThrowIn(session:any)
 	session.World.Ball.Anchored=false
 	setServerNetworkOwner(session.World and session.World.Ball)
 	session.Possession:ForcePickup(taker)
-	session.BallService:Kick(taker,"Pass",target-takerRoot.Position,.34,nil,"Manual",(target-takerRoot.Position).Magnitude,target)
+	session.BallService:Kick(taker,"Pass",target-takerRoot.Position,.34,bestTarget,"Ground",(target-takerRoot.Position).Magnitude,target)
 	if setPieces and setPieces.ReleaseRestartTaker then setPieces:ReleaseRestartTaker()end
 	session.OutOfBounds:Reset();session.Goals:Unlock();session.Phase="IN PLAY";session.AI:SetExternalPhase(nil);self:_setPlayersFrozen(session,session.Paused==true);if not session.Paused then self:_releasePlayersForLive(session);self:_stabilizePlayers(session)end;session.Running=true;self:_syncPositions(session);broadcast(self.State,session,{Type="Phase",Phase="IN PLAY"})
 	return true
@@ -4295,6 +4308,14 @@ function Service:_action(player:Player,payload:any)
 	if payload.Type=="AITacticsDebug"then
 		local side=payload.Side=="Away"and"Away"or"Home"
 		local tactics=sanitizeRuntimeTactics(payload.Tactics)
+		local formation=tostring(tactics.Formation or"")
+		if formation~=""and FormationConfig.Formations[formation]and #(FormationConfig.GetOrder(formation)or{})>=11 then
+			session.Formation[side]=FormationService.Build(formation,session.World.Width,session.World.Length)
+			if session.AI then
+				session.AI.Formations[side]=formation
+				if session.AI.Controller and session.AI.Controller.Formations then session.AI.Controller.Formations[side]=formation end
+			end
+		end
 		if session.AI and session.AI.UpdateTactics then session.AI:UpdateTactics(side,tactics)end
 		if session.AI and session.AI.ClearTransientPlans then session.AI:ClearTransientPlans(side)end
 		for name,value in pairs(tactics.Sliders or{})do
@@ -4434,7 +4455,7 @@ function Service:_action(player:Player,payload:any)
 			end
 		elseif action=="Formation"then
 			local formation=tostring(payload.Value or"")
-			if table.find({"4-3-3","4-2-3-1","4-4-2","3-5-2","5-3-2"},formation)and manager.CurrentFormation~=formation then
+			if FormationConfig.Formations[formation]and #(FormationConfig.GetOrder(formation)or{})>=11 and manager.CurrentFormation~=formation then
 				session.Formation.Home=FormationService.Build(formation,session.World.Width,session.World.Length)
 				if session.AI then
 					session.AI.Formations.Home=formation
@@ -4709,6 +4730,15 @@ function Service:_action(player:Player,payload:any)
 			local before=session.BallService.MotionStarted
 			local restartMode=session.SetPieces and session.SetPieces.RestartMode or nil
 			local restartActive=session.TeamControl:GetActive(player)
+			if session.Phase=="FreeKick" and restartMode=="DirectShotFreeKick" then
+				restartMode="DirectShotFreeKick"
+				payload.Type="Shot"
+				payload.GoalTarget=true
+				if typeof(payload.AimPosition)~="Vector3" and restartActive and restartActive:FindFirstChild("HumanoidRootPart") then
+					local goalSign=tonumber(session.SetPieces and session.SetPieces.RestartGoalSign)or(tostring(restartActive:GetAttribute("VTRTeam"))=="Home"and-1 or 1)
+					payload.AimPosition=session.World.PitchCFrame:PointToWorldSpace(Vector3.new(0,3.5,goalSign*session.World.Length*.5))
+				end
+			end
 			if session.Phase=="GoalKick"and payload.Type~="Pass"then
 				self:_releaseGoalKickClearance(session,player)
 				return
@@ -4969,7 +4999,25 @@ function Service:_step(dt:number)
 			else local ramp=target>current and resolved.AccelerationRate or resolved.DecelerationRate;current+=math.clamp(target-current,-ramp*dt,ramp*dt)end;session.MovementSpeeds[active]=current
 			active:SetAttribute(MovementTuning.DebugAttributes.CurrentSpeed,current);active:SetAttribute(MovementTuning.DebugAttributes.TargetSpeed,target);active:SetAttribute(MovementTuning.DebugAttributes.Stamina,playerState.Stamina);active:SetAttribute(MovementTuning.DebugAttributes.SprintMultiplier,resolved.SprintMultiplier);active:SetAttribute(MovementTuning.DebugAttributes.BallControlModifier,resolved.BallControlModifier);if humanoid then humanoid.WalkSpeed=math.max(.1,current)end
 		end
-		for _,model in session.Models do local modelRoot=model:FindFirstChild("HumanoidRootPart")::BasePart?;if modelRoot then local last=session.LastPositions[model];local limit=math.max(8,(model:GetAttribute("VTRUserId")and 40 or 48)*math.min(dt+.12,.28));if last and(modelRoot.Position-last).Magnitude>limit then local facing=Vector3.new(modelRoot.CFrame.LookVector.X,0,modelRoot.CFrame.LookVector.Z);model:PivotTo(CFrame.lookAt(last,last+(facing.Magnitude>.01 and facing.Unit or Vector3.zAxis)))else session.LastPositions[model]=modelRoot.Position end end end
+		for _,model in session.Models do
+			local modelRoot=model:FindFirstChild("HumanoidRootPart")::BasePart?
+			if modelRoot then
+				local now=os.clock()
+				if (tonumber(model:GetAttribute("VTRIntentionalRepositionUntil"))or 0)>now then
+					session.LastPositions[model]=modelRoot.Position
+				else
+					if model:GetAttribute("VTRIntentionalRepositionUntil")~=nil then model:SetAttribute("VTRIntentionalRepositionUntil",nil)end
+					local last=session.LastPositions[model]
+					local limit=math.max(8,(model:GetAttribute("VTRUserId")and 40 or 48)*math.min(dt+.12,.28))
+					if last and(modelRoot.Position-last).Magnitude>limit then
+						local facing=Vector3.new(modelRoot.CFrame.LookVector.X,0,modelRoot.CFrame.LookVector.Z)
+						model:PivotTo(CFrame.lookAt(last,last+(facing.Magnitude>.01 and facing.Unit or Vector3.zAxis)))
+					else
+						session.LastPositions[model]=modelRoot.Position
+					end
+				end
+			end
+		end
 		local currentHalf=session.Clock and session.Clock:Payload().Half or 1;if session.AI and session.AI.SetHalf then session.AI:SetHalf(currentHalf)end;if session.Offside and session.Offside.SetHalf and session.OffsideDisabled~=true then session.Offside:SetHalf(currentHalf)end;if session.Goalkeepers and session.Goalkeepers.SetHalf then session.Goalkeepers:SetHalf(currentHalf)end;if session.Stats and session.Stats.RecordPositions then session.Stats:RecordPositions(session.Models,dt)end;session.BallService:Step(dt);session.TeamControl:Step(dt);session.Animations:Step(session.Possession:GetOwner());session.Grounding:Step();local tutorialAI=session.WorldCupTutorial and session.TutorialAllowAI==true and session.TutorialStage~=1;if not session.ShootingPractice and (not session.WorldCupTutorial or tutorialAI) then session.AI:Step(dt)end;self:_stepWorldCupTutorial(session,dt);session.Goalkeepers:Step(dt);session.Goals:Step();if session.Running and not session.ShootingPractice and not session.WorldCupTutorial then session.OutOfBounds:Step()end;if not session.ShootingPractice and not session.WorldCupTutorial then RefereeService.Enforce(session.Models,session.World.PitchCFrame,session.World.Width,session.World.Length)end;if session.LinkDebug then session.LinkDebug:Step(session,dt)end
 		if session.WorldCupTutorial and session.GuidedTutorialFlow~=true then
 			local owner=session.Possession and session.Possession:GetOwner()or nil

@@ -10,8 +10,8 @@ Service.__index = Service
 local DIVE_LEAD_TIME = 0.08
 local EMERGENCY_SAVE_TIME = 0.025
 local CATCH_RADIUS = 2.35
-local DEFAULT_DIVE_SPEED = 21
-local MAX_RATED_DIVE_SPEED_MULTIPLIER = 1.27
+local DEFAULT_DIVE_SPEED = 27
+local MAX_RATED_DIVE_SPEED_MULTIPLIER = 1.42
 local DIVE_JUMP_HEIGHT = 0.72
 local DIVE_FALL_THROUGH = 1.08
 local DIVE_STRETCH_COMPLETE = 0.52
@@ -25,6 +25,9 @@ local AI_KEEPER_DISTRIBUTION_WINDOW = 3.8
 local AI_KEEPER_HOLD_FAILSAFE = 5.2
 local KEEPER_AGGRESSIVE_POSITION_DISTANCE = 160
 local KEEPER_LATERAL_REACT_DISTANCE = 160
+local DANGER_FRAME_LATERAL_PADDING = 14
+local DANGER_FRAME_TOP_PADDING = 9
+local DANGER_FRAME_BOTTOM_PADDING = 1.5
 
 
 
@@ -66,14 +69,39 @@ local function userControlledKeeper(keeper: Model): boolean
 	return keeper:GetAttribute("controlledByUser") == true or keeper:GetAttribute("VTRUserControlled") == true
 end
 
-local function insideGoal(rectangle: any, point: Vector3, radius: number): boolean
+local function goalFrameStatus(rectangle: any, point: Vector3, radius: number): any
 	local offset = point - rectangle.PlanePoint
 	local horizontal = offset:Dot(rectangle.Right)
 	local vertical = offset:Dot(rectangle.Up)
-	return horizontal >= rectangle.Left + radius * 0.35
-		and horizontal <= rectangle.RightBound - radius * 0.35
-		and vertical >= rectangle.Bottom + radius * 0.2
-		and vertical <= rectangle.Top - radius * 0.35
+	local onTarget = horizontal >= rectangle.Left + radius * 0.1
+		and horizontal <= rectangle.RightBound - radius * 0.1
+		and vertical >= rectangle.Bottom + radius * 0.05
+		and vertical <= rectangle.Top - radius * 0.15
+	local dangerous = horizontal >= rectangle.Left - DANGER_FRAME_LATERAL_PADDING
+		and horizontal <= rectangle.RightBound + DANGER_FRAME_LATERAL_PADDING
+		and vertical >= rectangle.Bottom - DANGER_FRAME_BOTTOM_PADDING
+		and vertical <= rectangle.Top + DANGER_FRAME_TOP_PADDING
+	local missReason = nil
+	if not onTarget then
+		if horizontal < rectangle.Left then
+			missReason = "WideLeft"
+		elseif horizontal > rectangle.RightBound then
+			missReason = "WideRight"
+		elseif vertical > rectangle.Top then
+			missReason = "High"
+		elseif vertical < rectangle.Bottom then
+			missReason = "Low"
+		else
+			missReason = "FrameEdge"
+		end
+	end
+	return {
+		OnTarget = onTarget,
+		Dangerous = dangerous,
+		Horizontal = horizontal,
+		Vertical = vertical,
+		MissReason = missReason,
+	}
 end
 
 local function saveLineOffset(rectangle:any,ballRadius:number):number
@@ -112,7 +140,7 @@ end
 
 local function reflexDiveSpeed(reflexes:number):number
 	local alpha = math.clamp((reflexes - 27) / (99 - 27), 0, 1)
-	return 16 + (DEFAULT_DIVE_SPEED * MAX_RATED_DIVE_SPEED_MULTIPLIER - 16) * alpha
+	return 20 + (DEFAULT_DIVE_SPEED * MAX_RATED_DIVE_SPEED_MULTIPLIER - 20) * alpha
 end
 
 local function smoothStep(alpha:number):number
@@ -218,6 +246,19 @@ local function classifyDivePose(rectangle: any, target: Vector3): (string, numbe
 		return "HighDive", xNorm, yNorm
 	end
 	return "MidDive", xNorm, yNorm
+end
+
+local function saveVolumeTypeForDive(poseKind: string): string
+	if poseKind == "CenterLow" then
+		return "BodyLow"
+	elseif poseKind == "CenterBlock" then
+		return "BodyBlock"
+	elseif poseKind == "LowDive" then
+		return "LowHandsLegs"
+	elseif poseKind == "TopCorner" or poseKind == "HighDive" then
+		return "ExtendedHands"
+	end
+	return "SideHandsBody"
 end
 
 local function makeDivePosePlan(rectangle: any, target: Vector3, startPosition: Vector3?, lateralAxis: Vector3): any
@@ -749,15 +790,12 @@ function Service:_keeperSafety(defendingSide: string)
 			self:_beginAIGoalkeeperDistribution(keeper, defendingSide, AI_KEEPER_DISTRIBUTION_WINDOW)
 		end
 		if heldFor >= AI_KEEPER_HOLD_FAILSAFE then
-			local forward = fieldDirection(rectangle, self.PitchCFrame)
-			self.BallService:ReleaseGoalkeeperHold(keeper)
 			keeper:SetAttribute("VTRGoalkeeperSaving", false)
-			keeper:SetAttribute("VTRGoalkeeperState", "Distributed")
+			keeper:SetAttribute("VTRGoalkeeperState", "HoldBall")
 			keeper:SetAttribute("AIAssignment", "GoalkeeperDistribution")
 			keeper:SetAttribute("VTRNoAutoPassUntil", nil)
-			keeperRoot.AssemblyLinearVelocity = Vector3.zero
-			keeperRoot.AssemblyAngularVelocity = Vector3.zero
-			self.BallService:Clearance(keeper, forward)
+			keeper:SetAttribute("VTRKeeperMustDistributeUntil", now + AI_KEEPER_DISTRIBUTION_WINDOW)
+			keeper:SetAttribute("GKState", "DistributeBall")
 		end
 	end
 end
@@ -913,7 +951,11 @@ local predictedX = tonumber(keeper:GetAttribute("VTRLongShotTargetX"))
 	local reachScale = math.clamp(tonumber(keeper:GetAttribute("VTRPracticeKeeperReach")) or 1, 0.05, 2.2)
 	local handlingScale = math.clamp(tonumber(keeper:GetAttribute("VTRPracticeKeeperHandling")) or 1, 0.05, 2.2)
 	local saveBias = math.clamp(tonumber(keeper:GetAttribute("VTRPracticeKeeperSaveBias")) or 1, 0.05, 2.2)
-	local reaction = math.clamp(0.11 / reactionQuickness, 0.02, 0.9)
+	local ratingAlpha = math.clamp((math.max(rating, reflexes) - 40) / 59, 0, 1)
+	local shotDistance = (keeperRoot.Position - service.Ball.Position).Magnitude
+	local speedPressure = math.clamp((shotSpeed - 95) / 95, 0, 1)
+	local closePressure = math.clamp((58 - shotDistance) / 58, 0, 1)
+	local reaction = math.clamp((0.29 - ratingAlpha * 0.17) / reactionQuickness + speedPressure * 0.025 + closePressure * 0.035, 0.08, 0.34)
 	local lateralDelta = delta:Dot(rectangle.Right)
 	local lateralVelocity = keeperRoot.AssemblyLinearVelocity:Dot(rectangle.Right)
 	local wrongFooted = math.abs(lateralDelta) > 2.5 and lateralVelocity * lateralDelta < -4
@@ -923,11 +965,12 @@ local predictedX = tonumber(keeper:GetAttribute("VTRLongShotTargetX"))
 	local available = math.max(0, timeToGoal - reaction - DIVE_LEAD_TIME)
 	local diveSpeed = reflexDiveSpeed(math.max(diving, reflexes)) * diveScale
 	local ballRadius = service.Ball.Size.X * 0.5
-	local keeperReach = math.clamp((5.7 + (handling - 60) * 0.018) * handlingScale * reachScale * math.clamp(saveBias, 0.65, 1.35), 3, 14)
+	local keeperReach = math.clamp((7.4 + (handling - 60) * 0.026) * handlingScale * reachScale * math.clamp(saveBias, 0.65, 1.35), 4.5, 17.5)
 	local distanceToCover = Vector2.new(lateral, rise).Magnitude
 	local canReach = distanceToCover <= keeperReach + ballRadius and distanceToCover <= diveSpeed * available + ballRadius
 	local required = distanceToCover / math.max(1, diveSpeed)
 	local saveMargin = math.min(keeperReach + ballRadius - distanceToCover, diveSpeed * available + ballRadius - distanceToCover)
+	local poseKind = classifyDivePose(rectangle, target)
 	return {
 		WillSave = canReach,
 		SavePercent = math.clamp(50 + saveMargin * 12, 0, 100),
@@ -940,6 +983,10 @@ local predictedX = tonumber(keeper:GetAttribute("VTRLongShotTargetX"))
 		DiveSpeed = diveSpeed,
 		ReachHitbox = keeperReach,
 		ContactRadius = ballRadius + 1.2,
+		DiveType = poseKind,
+		SaveVolumeType = saveVolumeTypeForDive(poseKind),
+		Reachable = canReach,
+		DistanceToCover = distanceToCover,
 	}
 end
 
@@ -1124,11 +1171,20 @@ function Service:_prediction(attackingSide: string,gravityOverride:number?): (an
 	local gravity=typeof(gravityOverride)=="number"and gravityOverride or planGravity or workspace.Gravity
 	local target=position+velocity*time-self.PitchCFrame.UpVector*(.5*gravity*time*time)
 	local goalPlaneTarget=target-forward*lineOffset
-	if not insideGoal(rectangle,goalPlaneTarget,self.Ball.Size.X*.5)then return nil,nil,nil end
+	local frameStatus = goalFrameStatus(rectangle, goalPlaneTarget, self.Ball.Size.X * .5)
+	if not frameStatus.Dangerous then
+		self.Ball:SetAttribute("VTRPredictedGoalDanger", nil)
+		return nil,nil,nil
+	end
 	local clamped=GoalModelResolver.ClampPoint(rectangle,goalPlaneTarget)+forward*lineOffset
-	self.Ball:SetAttribute("VTRPredictedGoalImpact",clamped)
+	local predicted = frameStatus.OnTarget and clamped or goalPlaneTarget + forward * lineOffset
+	self.Ball:SetAttribute("VTRPredictedGoalImpact",predicted)
+	self.Ball:SetAttribute("VTRPredictedGoalImpactClamped",clamped)
+	self.Ball:SetAttribute("VTRPredictedGoalOnTarget",frameStatus.OnTarget)
+	self.Ball:SetAttribute("VTRPredictedGoalDanger",frameStatus.Dangerous)
+	self.Ball:SetAttribute("VTRPredictedGoalMissReason",frameStatus.MissReason)
 	self.Ball:SetAttribute("VTRPredictedGoalImpactTime",time)
-	return rectangle,clamped,time
+	return rectangle,predicted,time
 end
 
 function Service:_begin(attackingSide: string, shotId: number)
@@ -1136,19 +1192,20 @@ function Service:_begin(attackingSide: string, shotId: number)
 	local keeper = goalkeeper(self.Teams[defendingSide])
 	local rectangle, target, time = self:_prediction(attackingSide)
 	if not keeper or not rectangle or not target or not time then return end
+	local frameStatus = goalFrameStatus(rectangle, target - fieldDirection(rectangle, self.PitchCFrame) * saveLineOffset(rectangle, self.Ball.Size.X * .5), self.Ball.Size.X * .5)
 	local shotPlan=self.BallService and self.BallService.ShotPlan
 	local penaltySlot=shotPlan and shotPlan.PenaltySlot
 	local keeperGuess=keeper:GetAttribute("VTRPenaltyGuessSlot")
 	local penaltyDuel=type(penaltySlot)=="string"and penaltySlot~=""and type(keeperGuess)=="string"and keeperGuess~=""
 	local evaluation=physicalSaveDecision(self,keeper,rectangle,target,time,shotPlan)
-	local willSave=evaluation.WillSave==true
+	local willSave=evaluation.WillSave==true and frameStatus.OnTarget == true
 	if penaltyDuel then
 		willSave=keeperGuess==penaltySlot
 		keeper:SetAttribute("VTRLastSaveChance",willSave and 100 or 0)
 	else
 		keeper:SetAttribute("VTRLastSaveChance",math.floor((evaluation.SavePercent or 0)+.5))
 	end
-	if willSave == false and not penaltyDuel then
+	if willSave == false and not penaltyDuel and frameStatus.OnTarget == true then
 		VTRGoalPassThrough.Force(self.Ball, 2.75)
 	end
 	keeper:SetAttribute("VTRGoalkeeperSaving", true)
@@ -1156,6 +1213,18 @@ function Service:_begin(attackingSide: string, shotId: number)
 	keeper:SetAttribute("VTRGoalkeeperState", "Tracking")
 	keeper:SetAttribute("VTRShotWillScore", not willSave)
 	keeper:SetAttribute("VTRShotOutcomeSource", penaltyDuel and "PenaltyRead" or evaluation.Source or "PhysicalReach")
+	keeper:SetAttribute("GKShotDetected", true)
+	keeper:SetAttribute("GKPredictedGoalPoint", target)
+	keeper:SetAttribute("GKPredictedArrivalTime", time)
+	keeper:SetAttribute("GKReactionDelay", tonumber(evaluation.Reaction) or 0)
+	keeper:SetAttribute("GKDiveType", evaluation.DiveType or "Unknown")
+	keeper:SetAttribute("GKDiveTarget", evaluation.RootTarget or target)
+	keeper:SetAttribute("GKDiveReachable", willSave)
+	keeper:SetAttribute("GKContactWindow", math.max(0, time - (tonumber(evaluation.Reaction) or 0)))
+	keeper:SetAttribute("GKSaveVolumeType", evaluation.SaveVolumeType or "Unknown")
+	keeper:SetAttribute("GKContactQuality", 0)
+	keeper:SetAttribute("GKSaveResult", "Tracking")
+	keeper:SetAttribute("GKMissReason", frameStatus.OnTarget and nil or frameStatus.MissReason)
 	self.Ball:SetAttribute("VTRGoalkeeperTracking", keeper.Name)
 	local keeperRoot = root(keeper)
 	local humanoid = keeper:FindFirstChildOfClass("Humanoid")
@@ -1182,6 +1251,9 @@ function Service:_begin(attackingSide: string, shotId: number)
 		PenaltyDuel = penaltyDuel,
 		PenaltyShotSlot = penaltySlot,
 		WillSave = willSave,
+		ShotOnTarget = frameStatus.OnTarget,
+		VisualOnly = frameStatus.OnTarget ~= true,
+		MissReason = frameStatus.MissReason,
 		DivePlayed = false,
 		StartY = keeperRoot and keeperRoot.Position.Y or self.PitchCFrame.Position.Y + 3,
 		Launched = false,
@@ -1200,6 +1272,8 @@ function Service:_begin(attackingSide: string, shotId: number)
 		DiveSpeed=tonumber(evaluation.DiveSpeed)or DEFAULT_DIVE_SPEED,
 		ReachHitbox=tonumber(evaluation.ReachHitbox)or 5.7,
 		ContactRadius=tonumber(evaluation.ContactRadius)or (self.Ball.Size.X*.5+1.2),
+		DiveType=evaluation.DiveType or "Unknown",
+		SaveVolumeType=evaluation.SaveVolumeType or "Unknown",
 	}
 	if penaltyDuel then
 		local guessPoint=keeper:GetAttribute("VTRPenaltyGuessPoint")
@@ -1228,6 +1302,8 @@ function Service:_miss(save:any)
 		keeper:SetAttribute("VTRShotWillScore",nil)
 		keeper:SetAttribute("VTRShotOutcomeSource",nil)
 		keeper:SetAttribute("VTRNoAutoPassUntil",os.clock()+1.2)
+		keeper:SetAttribute("GKSaveResult","Miss")
+		keeper:SetAttribute("GKMissReason",save.MissReason or "Beaten")
 		self.Ball:SetAttribute("VTRGoalkeeperTracking",nil)
 		self.Remote:FireAllClients({Type="GoalkeeperMiss",Model=keeper,Name=keeper:GetAttribute("DisplayName")})
 		self:_continueDiveAftermath(save,"Miss",false)
@@ -1259,6 +1335,8 @@ function Service:_miss(save:any)
 	keeper:SetAttribute("VTRShotWillScore",nil)
 	keeper:SetAttribute("VTRShotOutcomeSource",nil)
 	keeper:SetAttribute("VTRNoAutoPassUntil",os.clock()+1.2)
+	keeper:SetAttribute("GKSaveResult","Miss")
+	keeper:SetAttribute("GKMissReason",save.MissReason or "Beaten")
 	self.Ball:SetAttribute("VTRGoalkeeperTracking",nil)
 	self.Animations:StopAction(keeper,.12)
 	self.Remote:FireAllClients({Type="GoalkeeperMiss",Model=keeper,Name=keeper:GetAttribute("DisplayName")})
@@ -1293,6 +1371,8 @@ function Service:_finish(save: any)
 	keeper:SetAttribute("VTRGoalkeeperState", "Saved")
 	keeper:SetAttribute("VTRShotWillScore",nil)
 	keeper:SetAttribute("VTRShotOutcomeSource",nil)
+	keeper:SetAttribute("GKSaveResult",parriedSave and "Parried" or "Held")
+	keeper:SetAttribute("GKMissReason",nil)
 	self.Ball:SetAttribute("VTRGoalkeeperTracking", nil)
 	keeper:SetAttribute("VTRNoAutoPassUntil", os.clock() + (userControlledKeeper(keeper) and 999 or 1))
 	self.Remote:FireAllClients({Type = "GoalkeeperSave", Model = keeper, Name = keeper:GetAttribute("DisplayName")})
@@ -1357,6 +1437,8 @@ end
 
 function Service:_positionOnLine(defendingSide:string)
 	local keeper=goalkeeper(self.Teams[defendingSide]);if not keeper or keeper:GetAttribute("VTRGoalkeeperSaving")==true or keeper:GetAttribute("controlledByUser")==true or self.BallService.Possession:GetOwner()==keeper then return end
+	local assignment = tostring(keeper:GetAttribute("AIAssignment")or"")
+	if keeper:GetAttribute("AIGoalkeeperLooseClaim")==true or assignment=="ShotGoalkeeperClaim" or assignment=="ChaseLooseBall" or assignment=="AttackLooseBall" then return end
 	local keeperRoot=root(keeper)
 	if not keeperRoot then return end
 
@@ -1417,6 +1499,78 @@ function Service:_positionOnLine(defendingSide:string)
 	end
 end
 
+function Service:_rushLooseBall(defendingSide: string): boolean
+	local keeper = goalkeeper(self.Teams[defendingSide])
+	local keeperRoot = keeper and root(keeper)
+	if not keeper or not keeperRoot then return false end
+	local owner = self.BallService.Possession:GetOwner()
+	if userControlledKeeper(keeper) or keeper:GetAttribute("VTRGoalkeeperSaving") == true or keeper:GetAttribute("VTRGoalkeeperHolding") == true or owner == keeper then
+		keeper:SetAttribute("AIGoalkeeperLooseClaim", false)
+		keeper:SetAttribute("VTRGoalkeeperLooseBallTarget", nil)
+		return false
+	end
+	if owner ~= nil then
+		keeper:SetAttribute("AIGoalkeeperLooseClaim", false)
+		keeper:SetAttribute("VTRGoalkeeperLooseBallTarget", nil)
+		return false
+	end
+	local options = {PitchCFrame = self.PitchCFrame, Width = self.Width, Length = self.Length}
+	local ballPitch = PitchConfig.WorldToTeamPitchPosition(self.Ball.Position, defendingSide, options)
+	local velocity = self.Ball.AssemblyLinearVelocity
+	local horizontalVelocity = Vector3.new(velocity.X, 0, velocity.Z)
+	local projected = self.Ball.Position + horizontalVelocity * math.clamp(horizontalVelocity.Magnitude / 90, 0.18, 0.55)
+	local projectedPitch = PitchConfig.WorldToTeamPitchPosition(projected, defendingSide, options)
+	local nearBox = ballPitch.Z <= PitchConfig.Zones.OwnBox.ZMax + 76 or projectedPitch.Z <= PitchConfig.Zones.OwnBox.ZMax + 76
+	if not nearBox then
+		keeper:SetAttribute("AIGoalkeeperLooseClaim", false)
+		keeper:SetAttribute("VTRGoalkeeperLooseBallTarget", nil)
+		return false
+	end
+	local keeperDistance = math.min((keeperRoot.Position - self.Ball.Position).Magnitude, (keeperRoot.Position - projected).Magnitude)
+	if keeperDistance > 118 and keeper:GetAttribute("AIGoalkeeperLooseClaim") ~= true then return false end
+	local nearestDefenderDistance = math.huge
+	for _, teammate in self.Teams[defendingSide] or {} do
+		if teammate ~= keeper then
+			local teammateRoot = root(teammate)
+			if teammateRoot then
+				nearestDefenderDistance = math.min(nearestDefenderDistance, (teammateRoot.Position - projected).Magnitude)
+			end
+		end
+	end
+	local nearestAttackerDistance = math.huge
+	local opponentSide = defendingSide == "Home" and "Away" or "Home"
+	for _, attacker in self.Teams[opponentSide] or {} do
+		local attackerRoot = root(attacker)
+		if attackerRoot then
+			nearestAttackerDistance = math.min(nearestAttackerDistance, (attackerRoot.Position - projected).Magnitude)
+		end
+	end
+	local assignment = tostring(keeper:GetAttribute("AIAssignment") or "")
+	local claimByAI = keeper:GetAttribute("AIGoalkeeperLooseClaim") == true or assignment == "ShotGoalkeeperClaim" or assignment == "ChaseLooseBall" or assignment == "AttackLooseBall"
+	local onlyCloseDefender = keeperDistance <= nearestDefenderDistance + 14
+	local raceDanger = nearestAttackerDistance <= keeperDistance + 30
+	if not claimByAI and not (onlyCloseDefender and (raceDanger or ballPitch.Z <= PitchConfig.Zones.OwnBox.ZMax + 42)) then
+		keeper:SetAttribute("AIGoalkeeperLooseClaim", false)
+		keeper:SetAttribute("VTRGoalkeeperLooseBallTarget", nil)
+		return false
+	end
+	local attackingSide = self:_scoringSideForDefendedGoal(defendingSide)
+	local rectangle = GoalModelResolver.ResolveSide(attackingSide, self.PitchCFrame, self.Width, self.Length)
+	local humanoid = keeper:FindFirstChildOfClass("Humanoid")
+	if not humanoid then return false end
+	self:_faceBall(keeper, rectangle)
+	humanoid.AutoRotate = false
+	humanoid.WalkSpeed = math.max(humanoid.WalkSpeed, 19)
+	local target = Vector3.new(projected.X, keeperRoot.Position.Y, projected.Z)
+	humanoid:MoveTo(target)
+	keeper:SetAttribute("AIGoalkeeperLooseClaim", true)
+	keeper:SetAttribute("AIAssignment", "ShotGoalkeeperClaim")
+	keeper:SetAttribute("VTRGoalkeeperState", "SweepLooseBall")
+	keeper:SetAttribute("VTRGoalkeeperActionLockUntil", os.clock() + 0.45)
+	keeper:SetAttribute("VTRGoalkeeperLooseBallTarget", target)
+	return true
+end
+
 function Service:_rushCloseCarrier(defendingSide:string): boolean
 	local keeper=goalkeeper(self.Teams[defendingSide])
 	local keeperRoot=keeper and root(keeper)
@@ -1428,8 +1582,8 @@ function Service:_rushCloseCarrier(defendingSide:string): boolean
 	local rectangle=GoalModelResolver.ResolveSide(attackingSide,self.PitchCFrame,self.Width,self.Length)
 	local goalCenter=GoalModelResolver.Point(rectangle,(rectangle.Left+rectangle.RightBound)*.5,rectangle.Bottom+2.6)
 	local carrierGoalDistance=Vector3.new(carrierRoot.Position.X-goalCenter.X,0,carrierRoot.Position.Z-goalCenter.Z).Magnitude
-	if keeperDistance>KEEPER_LATERAL_REACT_DISTANCE or carrierGoalDistance>50 then return false end
 	local keeperDistance=(keeperRoot.Position-carrierRoot.Position).Magnitude
+	if keeperDistance>KEEPER_LATERAL_REACT_DISTANCE or carrierGoalDistance>50 then return false end
 	local humanoid=keeper:FindFirstChildOfClass("Humanoid")
 	if humanoid then
 		self:_faceBall(keeper,rectangle)
@@ -1883,6 +2037,25 @@ local function distanceToPart(point:Vector3,part:BasePart):number
 	return(point-part.CFrame:PointToWorldSpace(closest)).Magnitude
 end
 
+local function liveSavePaddingForPart(save:any, part:BasePart, progress:number):number
+	local name = string.lower(part.Name)
+	local volumeType = tostring(save and save.SaveVolumeType or "")
+	local base = 0.58 + math.clamp(progress, 0, 1) * 0.24
+	if string.find(name, "hand") or string.find(name, "arm") then
+		base += volumeType == "ExtendedHands" and 1.32 or 1.02
+	elseif string.find(name, "leg") or string.find(name, "foot") then
+		base += volumeType == "LowHandsLegs" and 1.08 or 0.38
+	elseif string.find(name, "torso") or string.find(name, "upper") or string.find(name, "lower") then
+		base += (volumeType == "BodyBlock" or volumeType == "BodyLow") and 1.0 or 0.62
+	else
+		base += 0.46
+	end
+	if save and (save.LowDive == true or save.NoJump == true) then
+		base += 0.22
+	end
+	return math.clamp(base, 0.6, 2.35)
+end
+
 local function liveReachHitboxTouched(service:any,save:any,_target:Vector3):boolean
 	local keeper=save and save.Keeper
 	if not keeper or not keeper.Parent or save.Launched~=true then return false end
@@ -1890,21 +2063,30 @@ local function liveReachHitboxTouched(service:any,save:any,_target:Vector3):bool
 	local previous=typeof(save.LastBallPosition)=="Vector3"and save.LastBallPosition or current
 	save.LastBallPosition=current
 	local ballRadius=math.max(service.Ball.Size.X*.5,0.1)
-	local contactPadding=.32
+	local contactPadding=.42
 	local samples=math.clamp(math.ceil((current-previous).Magnitude/math.max(ballRadius*.55,.3)),4,24)
 	local nearest=math.huge
+	local nearestThreshold=ballRadius+contactPadding
 	local contactPoint=nil
+	local contactQuality=0
+	local progress=tonumber(save.Progress)or 0
 	for _,part in keeper:GetDescendants()do
 		if not part:IsA("BasePart")or part.Name=="HumanoidRootPart"or part:FindFirstAncestorOfClass("Accessory")then continue end
+		local threshold=ballRadius+liveSavePaddingForPart(save,part,progress)
 		for sample=0,samples do
 			local point=previous:Lerp(current,sample/samples)
 			local distance=distanceToPart(point,part)
 			if distance<nearest then nearest=distance;contactPoint=point end
+			if distance<=threshold then
+				nearestThreshold=threshold
+				contactQuality=math.max(contactQuality,1-distance/math.max(threshold,.1))
+			end
 		end
 	end
-	save.Keeper:SetAttribute("VTRLiveSaveHitboxRadius",ballRadius+contactPadding)
+	save.Keeper:SetAttribute("VTRLiveSaveHitboxRadius",nearestThreshold)
 	save.Keeper:SetAttribute("VTRLiveSaveHitboxDistance",math.floor(nearest*100)/100)
-	if nearest<=ballRadius+contactPadding then
+	save.Keeper:SetAttribute("GKContactQuality",math.floor(contactQuality*100)/100)
+	if nearest<=nearestThreshold then
 		save.ContactPoint=contactPoint or current
 		save.WillSave=true
 		return true
@@ -1982,8 +2164,12 @@ function Service:Step(dt:number?)
 		local awayKeeper=self.Teams and self.Teams.Away and goalkeeper(self.Teams.Away)or nil
 		if not(homeKeeper and homeKeeper:GetAttribute("VTRTutorialFrozen")==true)then self:_keeperSafety("Home")end
 		if not(awayKeeper and awayKeeper:GetAttribute("VTRTutorialFrozen")==true)then self:_keeperSafety("Away")end
-		if not(homeKeeper and homeKeeper:GetAttribute("VTRTutorialFrozen")==true)then self:_positionOnLine("Home")end
-		if not(awayKeeper and awayKeeper:GetAttribute("VTRTutorialFrozen")==true)then self:_positionOnLine("Away")end
+		local homeRushing = false
+		local awayRushing = false
+		if not(homeKeeper and homeKeeper:GetAttribute("VTRTutorialFrozen")==true)then homeRushing = self:_rushLooseBall("Home") end
+		if not(awayKeeper and awayKeeper:GetAttribute("VTRTutorialFrozen")==true)then awayRushing = self:_rushLooseBall("Away") end
+		if not homeRushing and not(homeKeeper and homeKeeper:GetAttribute("VTRTutorialFrozen")==true)then self:_positionOnLine("Home")end
+		if not awayRushing and not(awayKeeper and awayKeeper:GetAttribute("VTRTutorialFrozen")==true)then self:_positionOnLine("Away")end
 		return
 	end
 	if save.DiveState=="Falling" or save.DiveState=="Landed" or save.DiveState=="Recovering" or save.DiveState=="ReturnHome" then
@@ -2097,6 +2283,7 @@ function Service:Step(dt:number?)
 		save.Launched=true
 		save.DivePlayed=true
 		save.Keeper:SetAttribute("VTRGoalkeeperState","Diving")
+		save.Keeper:SetAttribute("GKSaveResult","Diving")
 		humanoid:Move(Vector3.zero,false)
 		humanoid.PlatformStand=true
 		local flightTime=math.max(.12,requiredTime)
@@ -2151,6 +2338,9 @@ function Service:Step(dt:number?)
 		save.Keeper:SetAttribute("VTRDiveAim",diveAim)
 		save.Keeper:SetAttribute("VTRDiveLaunchTime",time)
 		save.Keeper:SetAttribute("VTRDiveAxis",lateralAxis)
+		save.Keeper:SetAttribute("GKDiveType",save.DiveType or (save.DivePosePlan and save.DivePosePlan.PoseKind) or "Unknown")
+		save.Keeper:SetAttribute("GKDiveTarget",rootTarget)
+		save.Keeper:SetAttribute("GKSaveVolumeType",save.SaveVolumeType or "Unknown")
 		save.Ball=self.Ball
 		save.Keeper:SetAttribute("VTRSavePredictedHeight",(target-rectangle.PlanePoint):Dot(upAxis))
 	end
@@ -2173,6 +2363,7 @@ function Service:Step(dt:number?)
 		end
 		local desiredFrame=keeperDiveRootFrame(position,forward,upAxis,lateralAxis,roll)
 		save.Keeper:SetAttribute("VTRSidewaysDive",not save.CenteredDive)
+		save.Keeper:SetAttribute("GKDiveProgress",math.floor(progress*100)/100)
 		save.Keeper:SetAttribute("VTRDiveBodyAngle",math.floor(math.deg(math.acos(math.clamp(desiredFrame.UpVector:Dot(upAxis),-1,1)))+.5))
 		save.Keeper:PivotTo(desiredFrame)
 		local posePlan=save.DivePosePlan or makeDivePosePlan(rectangle,diveAim,save.StartPosition,lateralAxis)
@@ -2212,5 +2403,9 @@ function Service:Reset()
 	self.Ball:SetAttribute("VTRGoalkeeperTracking", nil)
 	self.ActiveSave = nil
 end
+
+Service._DebugGoalFrameStatus = goalFrameStatus
+Service._DebugClassifyDivePose = classifyDivePose
+Service._DebugSaveVolumeTypeForDive = saveVolumeTypeForDive
 
 return Service

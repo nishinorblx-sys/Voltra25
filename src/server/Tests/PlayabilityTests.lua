@@ -16,11 +16,13 @@ local DefensiveSwitch = require(Shared.DefensiveSwitchConfig)
 local DeviceGameplay = require(Shared.DeviceGameplayConfig)
 local Difficulty = require(Shared.DifficultyConfig)
 local DribbleTarget = require(Shared.DribbleTargetResolver)
+local FormationConfig = require(Shared.FormationConfig)
 local Gameplay = require(Shared.GameplayConfig)
 local MatchExperience = require(Shared.MatchExperienceConfig)
 local MatchFormat = require(Shared.MatchFormatConfig)
 local MobileControlLayout = require(Shared.MobileControlLayout)
 local Movement = require(Shared.MovementTuningConfig)
+local PackOpening = require(Shared.PackOpeningConfig)
 local PlayabilitySettings = require(Shared.PlayabilitySettingsConfig)
 local PlayabilityUnlocks = require(Shared.PlayabilityUnlockConfig)
 local PassError = require(Shared.PassErrorResolver)
@@ -34,6 +36,9 @@ local Tackle = require(Shared.TackleResolver)
 local DebugPolicy = require(script.Parent.Parent.Gameplay.GameplayDebugPolicy)
 local AIDifficulty = require(script.Parent.Parent.Gameplay.AIDifficultyService)
 local AIMovementExecutor = require(script.Parent.Parent.Gameplay.AIMovementExecutor)
+local AILooseBallService = require(script.Parent.Parent.Gameplay.AILooseBallService)
+local GameplayBallService = require(script.Parent.Parent.Gameplay.BallService)
+local AIAssignmentService = require(script.Parent.Parent.Gameplay.AIAssignmentService)
 local PitchConfig = require(script.Parent.Parent.Gameplay.PitchConfig)
 local AISpatialControlMap = require(script.Parent.Parent.Gameplay.TeamAI.AISpatialControlMap)
 local AITacticalIntentDirector = require(script.Parent.Parent.Gameplay.TeamAI.AITacticalIntentDirector)
@@ -49,6 +54,7 @@ local AIShapeTemplateService = require(script.Parent.Parent.Gameplay.TeamAI.AISh
 local AITeamBrain = require(script.Parent.Parent.Gameplay.TeamAI.AITeamBrain)
 local AIMovementService = require(script.Parent.Parent.Gameplay.AIMovementService)
 local AIPlayerBrain = require(script.Parent.Parent.Gameplay.AIPlayerBrain)
+local AITacklingDecisionService = require(script.Parent.Parent.Gameplay.AITacklingDecisionService)
 local AIStyleProfileService = require(script.Parent.Parent.Gameplay.TeamAI.AIStyleProfileService)
 local AIOpponentObservationService = require(script.Parent.Parent.Gameplay.TeamAI.AIOpponentObservationService)
 local AITacticalReactionService = require(script.Parent.Parent.Gameplay.TeamAI.AITacticalReactionService)
@@ -57,11 +63,16 @@ local AITeamMetrics = require(script.Parent.Parent.Gameplay.TeamAI.AITeamMetrics
 local AITacticalStyleService = require(script.Parent.Parent.Gameplay.AITacticalStyleService)
 local AIPassExecutionPlanner = require(script.Parent.Parent.Gameplay.AIPassExecutionPlanner)
 local PassArrivalPlanner = require(script.Parent.Parent.Gameplay.PassArrivalPlanner)
+local AIGoalkeeperService = require(script.Parent.Parent.Gameplay.AIGoalkeeperService)
 local MatchClock = require(script.Parent.Parent.Gameplay.MatchClockService)
+local KickoffPositionService = require(script.Parent.Parent.Gameplay.KickoffPositionService)
+local SetPieceService = require(script.Parent.Parent.Gameplay.SetPieceService)
 local PassReceptionRuntime = require(script.Parent.Parent.Gameplay.PassReceptionService)
+local GameplayPossessionService = require(script.Parent.Parent.Gameplay.PossessionService)
 local ReplayRestartGate = require(script.Parent.Parent.Gameplay.ReplayRestartGate)
 local StaminaService = require(script.Parent.Parent.Gameplay.StaminaService)
 local PenaltyBoxService = require(script.Parent.Parent.Gameplay.PenaltyBoxService)
+local GoalkeeperService = require(script.Parent.Parent.Gameplay.GoalkeeperService)
 local DefaultProfile = require(script.Parent.Parent.Data.DefaultProfile)
 local ProfileService = require(script.Parent.Parent.Services.ProfileService)
 
@@ -105,6 +116,102 @@ function Tests.Run(): any
 		expect(MatchExperience.Get("Acquisition").Duration ~= 66, "Legacy 66-second path remains")
 	end)
 
+	test("pack walkout tier selection from rarity", function()
+		expectEqual(PackOpening.TierForCard({Name="A",Rarity="Silver",Rating=72}), "QuickReveal", "Silver should stay quick reveal")
+		expectEqual(PackOpening.TierForCard({Name="B",Rarity="Rare",Rating=79}), "Spotlight", "Rare should become spotlight")
+		expectEqual(PackOpening.TierForCard({Name="C",Rarity="Legendary",Rating=85}), "Walkout", "Legendary should become walkout")
+		expectEqual(PackOpening.TierForCard({Name="D",Rarity="Icon",Rating=88}), "SuperWalkout", "Icon should become super walkout")
+	end)
+
+	test("pack walkout tier selection from rating", function()
+		expectEqual(PackOpening.TierForCard({Name="A",Rarity="Gold",Rating=86}), "Walkout", "86 OVR should raise to walkout")
+		expectEqual(PackOpening.TierForCard({Name="B",Rarity="Gold",Rating=90}), "SuperWalkout", "90 OVR should raise to super walkout")
+	end)
+
+	test("pack walkout card type raises tier", function()
+		expectEqual(PackOpening.TierForCard({Name="A",Rarity="Gold",Rating=82,CardType="Champion"}), "Walkout", "Champion card type should raise to walkout")
+		expectEqual(PackOpening.TierForCard({Name="B",Rarity="Rare",Rating=84,CardType="Limited"}), "SuperWalkout", "Limited card type should raise to super walkout")
+	end)
+
+	test("pack walkout quick reveal does not create full walkout", function()
+		local selection = PackOpening.SelectPresentation({{Name="Bronze Player",Rarity="Bronze",Rating=61}}, {ReducedMotion=false})
+		expectEqual(selection.Tier, "QuickReveal", "Bronze reveal should be quick")
+		expect(selection.Profile.Walkout ~= true and selection.Profile.AvatarPhase ~= true, "Quick reveal should not use avatar walkout phase")
+	end)
+
+	test("pack walkout creates avatar phase for walkout", function()
+		local selection = PackOpening.SelectPresentation({{Name="Elite Player",Rarity="Elite",Rating=87}}, {ReducedMotion=false})
+		expectEqual(selection.Tier, "Walkout", "Elite 87 should be walkout")
+		expect(selection.Profile.AvatarPhase == true, "Walkout should include avatar phase")
+	end)
+
+	test("pack walkout super profile has highest intensity", function()
+		local selection = PackOpening.SelectPresentation({{Name="Mythic Player",Rarity="Mythic",Rating=91}}, {})
+		expectEqual(selection.Tier, "SuperWalkout", "Mythic should be super walkout")
+		expectEqual(selection.Profile.Intensity, 1, "Super walkout should use highest intensity")
+	end)
+
+	test("pack walkout overall is hidden before rating reveal", function()
+		local selection = PackOpening.SelectPresentation({{Name="Elite Player",Rarity="Elite",Rating=88}}, {})
+		expectEqual(selection.ExposeOverallAtPhase, "RatingReveal", "OVR should only expose at rating reveal")
+		local timeline = PackOpening.PhaseTimeline(selection)
+		local seenRating = false
+		for _, phase in timeline do
+			if phase.Name == "RatingReveal" then seenRating = true end
+			if not seenRating then expect(phase.Name ~= "NameReveal", "Name reveal cannot happen before rating reveal") end
+		end
+	end)
+
+	test("pack walkout final overall equals server value", function()
+		local card = {Name="Exact Rating",Rarity="Gold",Rating=89}
+		local selection = PackOpening.SelectPresentation({card}, {})
+		expectEqual(selection.BestCard.Rating, 89, "Selection mutated server rating")
+	end)
+
+	test("pack walkout best card selection is deterministic", function()
+		local cards = {{Name="Z",Rarity="Gold",Rating=82},{Name="A",Rarity="Gold",Rating=82},{Name="M",Rarity="Rare",Rating=81}}
+		local first = PackOpening.SelectPresentation(cards, {}).BestCard
+		local second = PackOpening.SelectPresentation(cards, {}).BestCard
+		expectEqual(first.Name, second.Name, "Best card selection is not deterministic")
+		expectEqual(first.Name, "A", "Tie break should be deterministic by name after rating and rarity")
+	end)
+
+	test("pack walkout open all uses one hero cinematic", function()
+		local selection = PackOpening.SelectPresentation({{Name="A",Rarity="Elite",Rating=87},{Name="B",Rarity="Rare",Rating=80}}, {OpenAll=true,PackCount=8})
+		expect(selection.OpenAll == true and selection.OneHeroCinematic == true, "Open All should use one hero cinematic")
+	end)
+
+	test("pack walkout remaining cards are preserved", function()
+		local cards = {{Name="A",Rarity="Gold",Rating=82},{Name="B",Rarity="Bronze",Rating=55},{Name="C",Rarity="Silver",Rating=66}}
+		local selection = PackOpening.SelectPresentation(cards, {})
+		expectEqual(#selection.Reveals, 3, "Selection dropped remaining cards")
+	end)
+
+	test("pack walkout reduced motion bypasses walk and shake phases", function()
+		local selection = PackOpening.SelectPresentation({{Name="A",Rarity="Mythic",Rating=94}}, {ReducedMotion=true})
+		local timeline = PackOpening.PhaseTimeline(selection)
+		expect(selection.ReducedMotion == true, "Reduced motion flag was not respected")
+		for _, phase in timeline do
+			expect(phase.Name ~= "Walkout" and phase.Name ~= "Silhouette", "Reduced motion should bypass walkout travel phases")
+		end
+		expect(selection.Duration <= 2, "Reduced motion duration escaped target budget")
+	end)
+
+	test("pack walkout sound slots allow missing ids", function()
+		local missing = 0
+		for _, spec in PackOpening.Audio do
+			if tostring(spec.Id or "") == "" then missing += 1 end
+		end
+		expect(missing > 0, "Audio config should tolerate production ids that are not assigned yet")
+	end)
+
+	test("pack walkout temporary cleanup budgets are bounded", function()
+		expect(PackOpening.EffectBudget.Max3DParts <= 60, "3D part budget escaped")
+		expect(PackOpening.EffectBudget.MaxLightBars <= 12, "Light bar budget escaped")
+		expect(PackOpening.EffectBudget.MaxSparkNodes <= 36, "Spark budget escaped")
+		expect(PackOpening.EffectBudget.MaxRenderSteppedConnections <= 1, "Render connection budget escaped")
+	end)
+
 	test("AI LAB playstyle schema normalizes high-impact controls", function()
 		local draft = AIPlaystyleConfig.DraftFromTactics("Aggressive Stage Test", {PresetId = "high_press", Sliders = {PressingIntensity = 93, DefensiveDepth = 82, LooseBallAggression = 88}}, 123)
 		expectEqual(draft.Status, "Draft", "Draft status changed")
@@ -112,6 +219,22 @@ function Tests.Run(): any
 		expectEqual(draft.Tactics.Sliders.PressingIntensity, 93, "Pressing value did not normalize")
 		local metadata = AIPlaystyleConfig.ClientMetadata()
 		expectEqual(#metadata.HighImpactSettings, 10, "AI LAB does not expose exactly 10 high-impact settings")
+		expect(table.find(metadata.Roles, "LM") ~= nil and table.find(metadata.Roles, "RM") ~= nil, "AI LAB roles do not expose wide midfielders")
+		expectEqual(#AIPlaystyleConfig.BuiltInOrder, 2, "AI LAB should expose SAFE Possession and Quick Passing")
+		expectEqual(AIPlaystyleConfig.BuiltInOrder[1], "basic_possession", "AI LAB first built-in is not SAFE Possession")
+		expectEqual(AIPlaystyleConfig.BuiltInOrder[2], "quick_passing", "AI LAB second built-in is not Quick Passing")
+		local basic = AIPlaystyleConfig.ResolveBuiltIn("balanced_control")
+		expectEqual(basic.PlaystyleId, "basic_possession", "Legacy balanced playstyle did not migrate to SAFE Possession")
+		expectEqual(basic.Name, "SAFE Possession", "Current scripted possession style was not renamed to SAFE Possession")
+		expectEqual(basic.Tactics.PresetId, "balanced_control", "SAFE Possession stopped using current scripted movement preset")
+		expect(#basic.PassRules >= 3 and #basic.PressRules >= 2 and #basic.PositioningRules >= 3, "SAFE Possession does not describe its on/off-ball rules")
+		local quick = AIPlaystyleConfig.ResolveBuiltIn("Quick Passing")
+		expectEqual(quick.PlaystyleId, "quick_passing", "Quick Passing built-in did not resolve")
+		expect(quick.Tactics.Sliders.OneTouchPassing >= 90 and quick.Tactics.Sliders.PassTempo >= 90, "Quick Passing is not tuned for one-touch tempo")
+		expect(quick.Tactics.Sliders.ReceiverTrapAggression <= 20, "Quick Passing should avoid trapping when a clean pass exists")
+		expect((quick.MetricsTargets.FirstTimePassChance or 0) == 100, "Quick Passing should force first-time pass triggers")
+		expect(#quick.PassRules >= 3 and #quick.SequenceRules >= 2, "Quick Passing does not define first-time pass-and-move rules")
+		expectEqual(AIPlaystyleConfig.ResolveBuiltIn("Wing Play"), nil, "Wing Play should not be exposed as a built-in playstyle")
 	end)
 
 	test("AI LAB published versions resolve immutably by side", function()
@@ -124,6 +247,288 @@ function Tests.Run(): any
 		expectEqual(home.PresetId, "short_possession", "Home resolved wrong version tactic")
 		expectEqual(away.PlaystyleVersion, 2, "Away did not resolve assigned immutable version")
 		expectEqual(away.PresetId, "vertical_combination", "Away resolved wrong version tactic")
+	end)
+
+	test("kickoff restart positions use broad own-half shape", function()
+		local function character(name: string, slot: string): Model
+			local model = Instance.new("Model")
+			model.Name = name
+			model:SetAttribute("position", slot)
+			local root = Instance.new("Part")
+			root.Name = "HumanoidRootPart"
+			root.Size = Vector3.one
+			root.Anchored = true
+			root.Parent = model
+			model.PrimaryPart = root
+			return model
+		end
+		local order = FormationConfig.GetOrder("4-3-3")
+		local teams = {Home = {}, Away = {}}
+		for index, slot in ipairs(order) do
+			teams.Home[index] = character("Home" .. tostring(index), slot)
+			teams.Away[index] = character("Away" .. tostring(index), slot)
+		end
+		local formation = {
+			Home = FormationConfig.BuildSpawn("4-3-3", FormationConfig.PitchWidth, FormationConfig.PitchLength),
+			Away = FormationConfig.BuildSpawn("4-3-3", FormationConfig.PitchWidth, FormationConfig.PitchLength),
+		}
+		local pitchCFrame = CFrame.new()
+		local taker, partner = KickoffPositionService.Position(teams, formation, pitchCFrame, "Home", 1)
+		local function localZ(model: Model): number
+			local root = model:FindFirstChild("HumanoidRootPart") :: BasePart
+			return pitchCFrame:PointToObjectSpace(root.Position).Z
+		end
+		local function localX(model: Model): number
+			local root = model:FindFirstChild("HumanoidRootPart") :: BasePart
+			return pitchCFrame:PointToObjectSpace(root.Position).X
+		end
+		expect(taker == teams.Home[10], "Kickoff taker was not the striker slot")
+		expect(partner == teams.Home[7], "Kickoff partner was not the nearest midfield return option")
+		expect(math.abs(localZ(taker)) <= 4, "Kickoff taker was not on the center spot")
+		expect(math.abs(localX(partner)) <= 2 and localZ(partner) >= 24 and localZ(partner) <= 32, "Kickoff partner was not vertically behind the taker")
+		for index, model in ipairs(teams.Home) do
+			if model ~= taker and model ~= partner then
+				expect(localZ(model) >= 60, "Home non-kickoff player crossed out of own half at restart index " .. tostring(index))
+			end
+		end
+		for index, model in ipairs(teams.Away) do
+			expect(localZ(model) <= -60, "Away player crossed out of own half at restart index " .. tostring(index))
+		end
+		expect(localZ(teams.Home[1]) > localZ(teams.Home[2]) and localZ(teams.Home[2]) > localZ(teams.Home[6]) and localZ(teams.Home[6]) > localZ(teams.Home[9]), "Home kickoff line depths did not separate GK defenders midfield and forwards")
+		expect(localZ(teams.Away[1]) < localZ(teams.Away[2]) and localZ(teams.Away[2]) < localZ(teams.Away[6]) and localZ(teams.Away[6]) < localZ(teams.Away[9]), "Away kickoff line depths did not mirror correctly")
+		expect(localX(teams.Home[5]) - localX(teams.Home[2]) >= 250, "Home kickoff shape did not keep full pitch width")
+		for _, side in {"Home", "Away"} do
+			for _, model in ipairs(teams[side]) do model:Destroy() end
+		end
+	end)
+
+	test("free kick positioning uses direct shooting and normal passing shapes", function()
+		local pitchCFrame = CFrame.new()
+		local width = 320
+		local length = 742
+		local roles = {"GK","LB","CB","CB","RB","CDM","CM","CAM","LW","ST","RW"}
+		local function character(side: string, index: number, slot: string): Model
+			local model = Instance.new("Model")
+			model.Name = side .. slot .. tostring(index)
+			model:SetAttribute("position", slot)
+			model:SetAttribute("VTRTeam", side)
+			model:SetAttribute("overall", 70 + index)
+			model:SetAttribute("PAS", 58 + index)
+			model:SetAttribute("SHO", 55 + index)
+			model:SetAttribute("DEF", slot == "CB" and 88 or slot == "CDM" and 82 or slot == "LB" and 78 or slot == "RB" and 78 or 52)
+			model:SetAttribute("PHY", slot == "CB" and 86 or slot == "ST" and 84 or 68)
+			model:SetAttribute("PAC", slot == "LW" and 86 or slot == "RW" and 84 or 70)
+			model:SetAttribute("Acceleration", slot == "LW" and 88 or slot == "RW" and 86 or 72)
+			model:SetAttribute("Heading", slot == "ST" and 88 or slot == "CB" and 84 or 64)
+			model:SetAttribute("Strength", slot == "ST" and 86 or slot == "CB" and 88 or 66)
+			model:SetAttribute("LongShots", slot == "CAM" and 86 or slot == "CM" and 78 or 58)
+			model:SetAttribute("BallControl", slot == "CAM" and 86 or slot == "CM" and 80 or 65)
+			model:SetAttribute("FkAccuracy", slot == "CAM" and 92 or 55 + index)
+			local root = Instance.new("Part")
+			root.Name = "HumanoidRootPart"
+			root.Size = Vector3.one
+			root.Anchored = true
+			root.Position = pitchCFrame:PointToWorldSpace(Vector3.new((index - 6) * 5, 3, side == "Home" and 60 or -60))
+			root.Parent = model
+			model.PrimaryPart = root
+			return model
+		end
+		local function buildTeams()
+			local teams = {Home = {}, Away = {}}
+			for index, slot in ipairs(roles) do
+				teams.Home[index] = character("Home", index, slot)
+				teams.Away[index] = character("Away", index, slot)
+			end
+			return teams
+		end
+		local function localPoint(model: Model): Vector3
+			local root = model:FindFirstChild("HumanoidRootPart") :: BasePart
+			return pitchCFrame:PointToObjectSpace(root.Position)
+		end
+		local function setLocal(model: Model, x: number, z: number)
+			local root = model:FindFirstChild("HumanoidRootPart") :: BasePart
+			root.CFrame = CFrame.new(pitchCFrame:PointToWorldSpace(Vector3.new(x, 3, z)))
+		end
+		local function countRole(team: {Model}, role: string): number
+			local total = 0
+			for _, model in ipairs(team) do if model:GetAttribute("VTRFreeKickRole") == role then total += 1 end end
+			return total
+		end
+		local function wallCount(team: {Model}): number
+			local total = 0
+			for _, model in ipairs(team) do if model:GetAttribute("VTRSetPieceWall") == true then total += 1 end end
+			return total
+		end
+		local function roleModel(team: {Model}, role: string): Model?
+			for _, model in ipairs(team) do if model:GetAttribute("VTRFreeKickRole") == role then return model end end
+			return nil
+		end
+		local function minSeparation(teams: any): number
+			local points = {}
+			for _, side in {"Home", "Away"} do
+				for _, model in ipairs(teams[side]) do table.insert(points, localPoint(model)) end
+			end
+			local best = math.huge
+			for i = 1, #points do
+				for j = i + 1, #points do
+					best = math.min(best, Vector3.new(points[i].X - points[j].X, 0, points[i].Z - points[j].Z).Magnitude)
+				end
+			end
+			return best
+		end
+		local centralTeams = buildTeams()
+		local centralLocation = pitchCFrame:PointToWorldSpace(Vector3.new(0, 3, -250))
+		local centralKind, _, centralWall = SetPieceService.DebugArrangeFreeKick(centralTeams, "Home", centralLocation, pitchCFrame, width, length, centralTeams.Home[8], 1)
+		expectEqual(centralKind, "DirectShootingFreeKick", "Central free kick type")
+		expect(centralWall >= 3 and centralWall <= 4 and wallCount(centralTeams.Away) == centralWall, "Direct shooting free kick did not create a realistic wall")
+		expect(countRole(centralTeams.Away, "CentralBoxDefender") >= 2, "Two center-backs did not protect central area")
+		expect(countRole(centralTeams.Home, "NearPostRunner") == 1 and countRole(centralTeams.Home, "CentralRunner") == 1 and countRole(centralTeams.Home, "FarPostRunner") == 1, "Attacking runner roles were not separated")
+		local nearRunner = roleModel(centralTeams.Home, "NearPostRunner")
+		local centralRunner = roleModel(centralTeams.Home, "CentralRunner")
+		local farRunner = roleModel(centralTeams.Home, "FarPostRunner")
+		expect(nearRunner ~= nil and centralRunner ~= nil and farRunner ~= nil, "Central free kick did not assign all three runner lanes")
+		local nearPoint = nearRunner and localPoint(nearRunner) or Vector3.zero
+		local centralPoint = centralRunner and localPoint(centralRunner) or Vector3.zero
+		local farPoint = farRunner and localPoint(farRunner) or Vector3.zero
+		expect(math.abs(nearPoint.X - centralPoint.X) >= 14 and math.abs(farPoint.X - centralPoint.X) >= 20, "Near center and far runners collapsed into the same lane")
+		expect(nearPoint.Z ~= centralPoint.Z and farPoint.Z ~= centralPoint.Z, "Free-kick runners were all placed on one horizontal line")
+		expect(countRole(centralTeams.Home, "PenaltySpotTarget") == 1, "No penalty-spot central target")
+		expect(countRole(centralTeams.Home, "EdgeSecondBall") >= 1, "No attacking edge-of-box player")
+		local penaltyTarget = roleModel(centralTeams.Home, "PenaltySpotTarget")
+		local edgePlayer = roleModel(centralTeams.Home, "EdgeSecondBall")
+		expect(penaltyTarget ~= nil and edgePlayer ~= nil and math.abs(localPoint(edgePlayer).Z - localPoint(penaltyTarget).Z) >= 12, "Edge-of-box player was not clearly outside the main target crowd")
+		local directBoxAttackers = 0
+		for _, model in ipairs(centralTeams.Home) do
+			local role = tostring(model:GetAttribute("VTRFreeKickRole") or "")
+			local point = localPoint(model)
+			if (role == "NearPostRunner" or role == "CentralRunner" or role == "FarPostRunner" or role == "PenaltySpotTarget") and point.Z <= -length * .5 + 76 then directBoxAttackers += 1 end
+		end
+		expect(directBoxAttackers >= 3 and directBoxAttackers <= 4, "Direct shooting free kick sent too many attackers into the main box area")
+		expect(countRole(centralTeams.Away, "WideFreeKickDefender") >= 1, "Defensive free-kick shape did not keep a wide defender lane")
+		expect(countRole(centralTeams.Away, "WideFreeKickDefender") >= 2, "Defensive free-kick shape did not keep both wide defender lanes")
+		expect(countRole(centralTeams.Away, "DefensiveSecondBall") >= 1, "Defensive free-kick shape did not keep an edge second-ball midfielder")
+		expect(countRole(centralTeams.Away, "CounterOutlet") >= 1, "Defensive free-kick shape dropped every player into the box with no outlet")
+		local defendingBoxCrowd = 0
+		local wideXs = {}
+		for _, model in ipairs(centralTeams.Away) do
+			local role = tostring(model:GetAttribute("VTRFreeKickRole") or "")
+			local point = localPoint(model)
+			if role ~= "Goalkeeper" and point.Z <= -length * .5 + 62 then defendingBoxCrowd += 1 end
+			if role == "WideFreeKickDefender" then table.insert(wideXs, point.X) end
+			if role == "DefensiveSecondBall" then expect(point.Z > -length * .5 + 74, "Second-ball midfielder was placed inside the box crowd") end
+			if role == "CounterOutlet" then expect(point.Z > centralLocation.Z + 45, "Counter outlet was not clearly higher than the free-kick crowd") end
+		end
+		table.sort(wideXs)
+		expect(defendingBoxCrowd <= 5, "Too many defending free-kick players dropped into the box")
+		expect(#wideXs >= 2 and wideXs[#wideXs] - wideXs[1] >= 70, "Wide free-kick defenders were not spread across the width")
+		local stayBack = 0
+		for _, model in ipairs(centralTeams.Home) do
+			local point = localPoint(model)
+			if model:GetAttribute("VTRFreeKickRole") == "CounterProtection" and point.Z > -250 then stayBack += 1 end
+		end
+		expect(stayBack >= 2, "At least two attackers did not remain behind the ball")
+		local markers = {}
+		local markerTargets = {}
+		for _, model in ipairs(centralTeams.Away) do
+			local target = tostring(model:GetAttribute("VTRFreeKickMarker") or "")
+			if target ~= "" then
+				expect(markerTargets[target] ~= true, "Two defenders marked the same target")
+				markerTargets[target] = true
+				markers[model.Name] = true
+			end
+		end
+		expect(next(markers) ~= nil, "Defenders did not receive unique marking targets")
+		local short = roleModel(centralTeams.Home, "ShortOption")
+		expect(short ~= nil, "Short-pass option missing")
+		local shortPoint = short and localPoint(short) or Vector3.zero
+		expect(short ~= nil and math.abs(shortPoint.X) >= 8 and shortPoint.Z > -270, "Short option did not hold a clear passing angle")
+		expect(minSeparation(centralTeams) >= 3.8, "Central free kick generated overlapping positions")
+		local committed = false
+		for _, model in ipairs(centralTeams.Home) do
+			if model:GetAttribute("VTRPrePassPhase") == "Committed" and model:GetAttribute("VTRReceiveHardLock") == true then committed = true end
+		end
+		expect(committed, "Intended receiver did not receive a committed pre-pass route")
+		local keeperCentral = localPoint(centralTeams.Away[1])
+		local wideTeams = buildTeams()
+		local wideLocation = pitchCFrame:PointToWorldSpace(Vector3.new(106, 3, -245))
+		local wideKind, _, wideWall = SetPieceService.DebugArrangeFreeKick(wideTeams, "Home", wideLocation, pitchCFrame, width, length, wideTeams.Home[8], 1)
+		expectEqual(wideKind, "NormalPassingFreeKick", "Very wide free kick type")
+		expect(wideWall == 0 and wallCount(wideTeams.Away) == 0, "Very wide normal passing free kick created a wall")
+		local keeperWide = localPoint(wideTeams.Away[1])
+		expect(math.abs(keeperWide.X - keeperCentral.X) <= 14, "Normal passing free kick pulled the goalkeeper into an extreme angle setup")
+		local normalTeams = buildTeams()
+		setLocal(normalTeams.Home[2], -112, 72)
+		setLocal(normalTeams.Home[3], -34, 82)
+		setLocal(normalTeams.Home[4], 36, 82)
+		setLocal(normalTeams.Home[5], 112, 72)
+		setLocal(normalTeams.Home[6], 0, 30)
+		setLocal(normalTeams.Home[7], -42, -2)
+		setLocal(normalTeams.Home[8], 18, -28)
+		setLocal(normalTeams.Home[9], -128, -34)
+		setLocal(normalTeams.Home[10], 8, -86)
+		setLocal(normalTeams.Home[11], 128, -34)
+		setLocal(normalTeams.Away[2], -112, -86)
+		setLocal(normalTeams.Away[3], -36, -112)
+		setLocal(normalTeams.Away[4], 36, -112)
+		setLocal(normalTeams.Away[5], 112, -86)
+		setLocal(normalTeams.Away[6], 0, -42)
+		setLocal(normalTeams.Away[7], -44, -24)
+		setLocal(normalTeams.Away[8], 34, -8)
+		setLocal(normalTeams.Away[9], -128, 16)
+		setLocal(normalTeams.Away[10], 0, 34)
+		setLocal(normalTeams.Away[11], 128, 16)
+		local before = {}
+		for _, side in {"Home", "Away"} do
+			for _, model in ipairs(normalTeams[side]) do before[model] = localPoint(model) end
+		end
+		local normalLocation = pitchCFrame:PointToWorldSpace(Vector3.new(8, 3, -75))
+		local normalKind, _, normalWall = SetPieceService.DebugArrangeFreeKick(normalTeams, "Home", normalLocation, pitchCFrame, width, length, normalTeams.Home[8], 1)
+		expectEqual(normalKind, "NormalPassingFreeKick", "Distant free kick type")
+		expect(normalWall == 0 and wallCount(normalTeams.Away) == 0, "Normal passing free kick created an unnecessary wall")
+		expect(countRole(normalTeams.Home, "NormalShortOption") == 1, "Normal passing free kick did not create a short option")
+		expect(countRole(normalTeams.Home, "NormalResetOption") == 1, "Normal passing free kick did not create a reset option")
+		expect(countRole(normalTeams.Home, "NormalForwardOption") == 1, "Normal passing free kick did not create a forward diagonal option")
+		local drasticMoves = 0
+		for _, side in {"Home", "Away"} do
+			for _, model in ipairs(normalTeams[side]) do
+				if model ~= normalTeams.Home[8] then
+					local delta = Vector3.new(localPoint(model).X - before[model].X, 0, localPoint(model).Z - before[model].Z).Magnitude
+					if delta > 26 then drasticMoves += 1 end
+				end
+			end
+		end
+		expect(drasticMoves == 0, "Normal passing free kick made drastic off-ball movement")
+		for _, model in {normalTeams.Home[3], normalTeams.Home[4]} do
+			expect(localPoint(model).Z > -75, "Center-back moved ahead of the ball on a normal passing free kick")
+		end
+		expect(math.abs(localPoint(normalTeams.Home[2]).X) >= math.abs(localPoint(normalTeams.Home[3]).X) and math.abs(localPoint(normalTeams.Home[5]).X) >= math.abs(localPoint(normalTeams.Home[4]).X), "Fullbacks did not remain wider than center-backs")
+		expect(math.abs(localPoint(normalTeams.Home[9]).X) >= 110 and math.abs(localPoint(normalTeams.Home[11]).X) >= 110, "Wingers crossed into central lanes on a normal passing free kick")
+		expect(math.abs(localPoint(normalTeams.Home[10]).X) <= 35 and localPoint(normalTeams.Home[10]).Z < localPoint(normalTeams.Home[8]).Z, "Striker did not remain a sensible forward option")
+		local defendingBoxCrowdNormal = 0
+		for _, model in ipairs(normalTeams.Away) do
+			local point = localPoint(model)
+			if tostring(model:GetAttribute("VTRFreeKickRole") or "") ~= "Goalkeeper" and point.Z <= -length * .5 + 84 then defendingBoxCrowdNormal += 1 end
+		end
+		expect(defendingBoxCrowdNormal <= 2, "Normal passing free kick collapsed the defending team into the box")
+		local normalCommitted = 0
+		for _, model in ipairs(normalTeams.Home) do
+			if model:GetAttribute("VTRPrePassPhase") == "Committed" and model:GetAttribute("VTRReceiveHardLock") == true then normalCommitted += 1 end
+		end
+		expect(normalCommitted == 1, "Normal passing free kick did not create exactly one committed pre-pass receiver")
+		local fakeBall = Instance.new("Part")
+		local fake = {Teams = centralTeams, World = {Ball = fakeBall}, RestartMode = "DirectShotFreeKick", RestartTaker = centralTeams.Home[8], RestartTeam = "Home"}
+		SetPieceService.ReleaseRestartTaker(fake)
+		for _, side in {"Home", "Away"} do
+			for _, model in ipairs(centralTeams[side]) do
+				expect(model:GetAttribute("VTRFreeKickRole") == nil and model:GetAttribute("VTRSetPieceWall") == nil and model:GetAttribute("VTRPrePassPhase") == nil, "Temporary free-kick attributes leaked after restart")
+			end
+		end
+		fakeBall:Destroy()
+		for _, teams in {centralTeams, wideTeams, normalTeams} do
+			for _, side in {"Home", "Away"} do
+				for _, model in ipairs(teams[side]) do model:Destroy() end
+			end
+		end
 	end)
 
 	test("movement ranges", function()
@@ -530,6 +935,31 @@ function Tests.Run(): any
 		model:Destroy()
 	end)
 
+	test("AI ball carriers and ball chasers request sprint above half stamina", function()
+		local commands = {}
+		local movement = AIMovementService.new({SetCommand = function(_, targetModel: Model, command: any) commands[targetModel] = command end, Step = function() end, Clear = function() end})
+		local function makeInfo(name: string, hasBall: boolean): any
+			local model = Instance.new("Model")
+			model.Name = name
+			model:SetAttribute("VTRHasBall", hasBall)
+			model:SetAttribute("VTRSprintEnergy", 68)
+			local root = Instance.new("Part")
+			root.Name = "HumanoidRootPart"
+			root.Position = Vector3.new(0, 3, 0)
+			root.Parent = model
+			return {Model = model, Root = root, Side = "Home", Role = "CM", World = root.Position, Pitch = root.Position, Stats = {pace = 72, movementIQ = 70}, Stamina = 68, HasBall = hasBall}
+		end
+		local context = {Now = 12, BallWorld = Vector3.new(0, 3, 0), PitchCFrame = CFrame.new(), BallVelocity = Vector3.zero, OwnerSide = "Home"}
+		local carrier = makeInfo("Carrier", true)
+		movement:Apply(carrier, {PrimaryAssignment = "BallCarrierDecision", TargetWorld = Vector3.new(18, 3, 0), MovementUrgency = .9, SprintAllowed = false}, context, .05)
+		expect(commands[carrier.Model] and commands[carrier.Model].SprintRequired == true and commands[carrier.Model].MinimumEnergy <= 50, "Ball carrier above 50 stamina did not request a sprint burst")
+		local chaser = makeInfo("Chaser", false)
+		movement:Apply(chaser, {PrimaryAssignment = "ChaseLooseBall", TargetWorld = Vector3.new(4, 3, 0), MovementUrgency = 1, SprintAllowed = true, SprintConservation = 0}, context, .05)
+		expect(commands[chaser.Model] and commands[chaser.Model].SprintRequired == true, "Close loose-ball chaser did not keep sprint priority")
+		carrier.Model:Destroy()
+		chaser.Model:Destroy()
+	end)
+
 	test("team brain AfterGain is always a string", function()
 		local style = {Ratio = function(_, key: string) if key == "PassingDirectness" then return 1 elseif key == "PassTempo" then return 1 elseif key == "RunsInBehind" then return 1 elseif key == "CounterAttackFrequency" then return 1 end return .2 end}
 		local brain = AITeamBrain.new(nil, {Home = style, Away = style}, {})
@@ -793,6 +1223,9 @@ function Tests.Run(): any
 		expect(width(wideSlots) > width(centralSlots), "WideOverload 3-5-2 was not wider than CentralDomination 4-2-3-1")
 		expect(rest(leadSlots) >= rest(trailSlots), "Protect Lead did not preserve more rest defence than All-Out Attack")
 		expect(width(pcSlots) ~= width(centralSlots), "CollectiveHunt and CentralLock scenarios did not create structural width difference")
+		for _, slot in ipairs(wideSlots) do
+			expect(slot.Function ~= "Overlapping fullback" and slot.Function ~= "Winger inside for overlap", "Removed Wing Play overlap rotation leaked into WideOverload shape")
+		end
 		local director = AIPossessionDirector.new()
 		local counterPlan = director:Update(counter.Context, "Home", {Intent = "CounterAttack"}, nil, nil)
 		local lowPlan = director:Update(low.Context, "Home", {Intent = "BuildOut"}, nil, nil)
@@ -967,9 +1400,25 @@ function Tests.Run(): any
 		end}
 		local style = {Ratio = function() return .5 end, Get = function() return .5 end, Directness = function() return .5 end, Risk = function() return .5 end}
 		local brain = AIPlayerBrain.new(ballService, style, {PassRisk = .2})
+		local routed = nil
+		brain:SetImmediateReceiverRoute(function(model: Model, target: Vector3)
+			routed = {Model = model, Target = target}
+		end)
 		local context = {Now = 60, BallWorld = passer.World, BallVelocity = Vector3.zero, PitchCFrame = CFrame.new(), AttackSigns = {Home = 1}, Teams = {Home = {List = {passer, receiver, alternateA, alternateB, protected}}, Away = {List = {}}}, Players = {[passer.Model] = passer, [receiver.Model] = receiver, [alternateA.Model] = alternateA, [alternateB.Model] = alternateB, [protected.Model] = protected}}
-		local kicked = brain:_kickPass(context, passer, {Receiver = receiver, Target = receiver.World, PassKind = "Ground", Distance = 42, LaneClear = true, Safe = true, Score = 100})
+		receiver.Model:SetAttribute("VTRRunTicketId", "old-run")
+		receiver.Model:SetAttribute("VTRRunApproved", true)
+		receiver.Model:SetAttribute("VTRRunKind", "DepthRun")
+		receiver.Model:SetAttribute("VTRSupportRun", "Overlap")
+		receiver.Model:SetAttribute("VTRSupportKind", "BetweenLines")
+		receiver.Model:SetAttribute("AIDefensiveDuty", "BackLine")
+		local kicked = brain:_kickPass(context, passer, {Target = receiver.World, PassKind = "Ground", Distance = 42, LaneClear = true, Safe = true, Score = 100})
 		expect(kicked and kickedPayload ~= nil, "Test pass did not execute")
+		expect(kickedPayload.Target == receiver.Model, "AI pass without explicit receiver did not select the nearest receiver")
+		expect(routed and routed.Model == receiver.Model, "Immediate receiver route was not issued")
+		expectEqual(receiver.Model:GetAttribute("currentAssignment"), "ReceivePass", "Receiver did not interrupt into ReceivePass")
+		expectEqual(receiver.Model:GetAttribute("AIAssignment"), "ReceivePass", "Receiver tactical assignment was not forced to ReceivePass")
+		expect(receiver.Model:GetAttribute("VTRForcedPassReceiver") == true and receiver.Model:GetAttribute("VTRReceiveHardLock") == true, "Receiver was not hard-locked as the pass target")
+		expect(receiver.Model:GetAttribute("VTRRunTicketId") == nil and receiver.Model:GetAttribute("VTRRunApproved") == false and receiver.Model:GetAttribute("VTRRunKind") == nil and receiver.Model:GetAttribute("VTRSupportRun") == nil and receiver.Model:GetAttribute("VTRSupportKind") == nil, "Receiver run state was not cleared by pass")
 		expectEqual(receiver.Model:GetAttribute("AIPassAlternateChasers"), 1, "More than one alternate pass chaser was approved")
 		expect(protected.Model:GetAttribute("VTRAIAlternatePassChaser") ~= true, "Protected rest defender became alternate chaser")
 		for _, info in {passer, receiver, alternateA, alternateB, protected} do info.Model:Destroy() end
@@ -1007,6 +1456,7 @@ function Tests.Run(): any
 		expect(counts.TrackIncomingReceiver == 1, "Incoming pass did not create one receiver tracker")
 		expect(counts.BlockReturnPass == 1, "Incoming pass did not create one return blocker")
 		expect(counts.PreserveDeepestCover == 1, "Incoming pass did not preserve deepest cover")
+		expect(assignments[dutyModels.PreserveDeepestCover].TargetPitch and assignments[dutyModels.PreserveDeepestCover].TargetPitch.Z > 80, "PreserveDeepestCover dropped into a separate deep line")
 		expect(dutyModels.AttackPassTrajectory ~= dutyModels.TrackIncomingReceiver and dutyModels.AttackPassTrajectory ~= dutyModels.BlockReturnPass and dutyModels.AttackPassTrajectory ~= dutyModels.PreserveDeepestCover, "Trajectory defender reused another incoming-pass duty")
 		expect(dutyModels.TrackIncomingReceiver ~= dutyModels.BlockReturnPass and dutyModels.TrackIncomingReceiver ~= dutyModels.PreserveDeepestCover and dutyModels.BlockReturnPass ~= dutyModels.PreserveDeepestCover, "Incoming-pass duties reused a defender")
 		receiver.Model:Destroy()
@@ -1533,6 +1983,50 @@ function Tests.Run(): any
 		expect(defenderFirst and defenderFirst.Candidate.Key == "Defender", "Defender contact did not remain authoritative")
 	end)
 
+	test("targeted AI lob receiver has a forgiving bounce control window", function()
+		local bouncingLob = {Position = Vector3.new(6, 5.8, 0), Velocity = Vector3.new(9, -8, 16), Radius = 1.15}
+		local normal = BallContact.Evaluate({Key = "Normal", RootPosition = Vector3.new(0, 2.2, 0), RootVelocity = Vector3.zero, MoveDirection = Vector3.xAxis, Facing = Vector3.xAxis, ContactPoints = {Vector3.new(0, 1, 0)}, ContactReach = 2.4, ControlHeight = 5.8, ExpectedReceiver = false, TargetedAIReceiver = false, Control = 76, Balance = 76, Agility = 76, Strength = 72, Valid = true}, bouncingLob)
+		local targeted = BallContact.Evaluate({Key = "TargetedLob", RootPosition = Vector3.new(0, 2.2, 0), RootVelocity = Vector3.zero, MoveDirection = Vector3.xAxis, Facing = Vector3.xAxis, ContactPoints = {Vector3.new(0, 1, 0)}, ContactReach = 7.2, ControlHeight = 7.4, ExpectedReceiver = true, TargetedAIReceiver = true, Control = 76, Balance = 76, Agility = 76, Strength = 72, Valid = true}, bouncingLob)
+		expect(not normal.Valid, "Normal player vacuumed a bouncing lob from too far away")
+		expect(targeted.Valid and targeted.Outcome ~= "Deflected", "Targeted AI lob receiver did not get a forgiving control window")
+	end)
+
+	test("targeted AI lob reception pickup bypasses normal loose pickup range", function()
+		local receiver = Instance.new("Model")
+		receiver.Name = "LobReceiver"
+		receiver:SetAttribute("VTRTeam", "Home")
+		receiver:SetAttribute("aiControlled", true)
+		receiver:SetAttribute("VTRAITargetedPass", true)
+		receiver:SetAttribute("VTRReceivePassFamily", "Lob")
+		local humanoid = Instance.new("Humanoid")
+		humanoid.Parent = receiver
+		local root = Instance.new("Part")
+		root.Name = "HumanoidRootPart"
+		root.Position = Vector3.zero
+		root.Parent = receiver
+		local ball = Instance.new("Part")
+		ball.Name = "Ball"
+		ball.Size = Vector3.new(2.3, 2.3, 2.3)
+		ball.Position = Vector3.new(8.8, 1, 0)
+		ball:SetAttribute("VTRLobPassActive", true)
+		ball:SetAttribute("VTRLobLanded", true)
+		local remote = {FireAllClients = function() end}
+		local stats = {
+			RecordPassCompleted = function() end,
+			RecordPassFailed = function() end,
+			Add = function() end,
+			Event = function() end,
+		}
+		local possession = GameplayPossessionService.new(ball, remote :: any)
+		local service = GameplayBallService.new(ball, possession, remote :: any, stats, {receiver})
+		service.LastPassTeam = "Home"
+		expect(not possession:CanPickup(receiver), "Baseline pickup range unexpectedly allowed distant lob receiver")
+		expect(service:ResolveReceptionPickup(receiver, Vector3.zero, "IntendedReceiverControlled") == true, "Targeted lob reception pickup was rejected by normal range")
+		expect(possession:GetOwner() == receiver, "Targeted lob receiver did not take possession")
+		receiver:Destroy()
+		ball:Destroy()
+	end)
+
 	test("tackle geometry separates misses clean wins and slide paths", function()
 		local miss = Tackle.Resolve({Slide = false, StartPosition = Vector3.zero, EndPosition = Vector3.zero, BallPosition = Vector3.new(0, 0, 16), OwnerPosition = Vector3.new(0, 0, 16), Facing = Vector3.zAxis, OwnerFacing = -Vector3.zAxis, Tackle = 99, Dribbling = 1, Strength = 99, OwnerBalance = 1, Stamina = 100, Exposure = 1})
 		expectEqual(miss.Outcome, "TackleMiss", "Standing miss became a successful outcome")
@@ -1542,6 +2036,469 @@ function Tests.Run(): any
 		expect(slide.Outcome ~= "TackleMiss", "Slide path ignored contact between start and end")
 		local crossing = Tackle.Resolve({Slide = false, StartPosition = Vector3.new(-5, 0, 0), EndPosition = Vector3.new(5, 0, 0), BallStartPosition = Vector3.new(0, 0, -5), BallPosition = Vector3.new(0, 0, 5), OwnerStartPosition = Vector3.new(0, 0, -4), OwnerPosition = Vector3.new(0, 0, 6), Facing = Vector3.xAxis, OwnerFacing = Vector3.zAxis, Tackle = 90, Dribbling = 20, Strength = 90, OwnerBalance = 30, Stamina = 100, Exposure = 1})
 		expect(crossing.Outcome ~= "TackleMiss", "Synchronized standing-tackle sweep missed a crossing carrier")
+	end)
+
+	test("AI tackling decision waits for real engagement distance", function()
+		local options = {PitchCFrame = CFrame.new(), Width = PitchConfig.PITCH_WIDTH, Length = PitchConfig.PITCH_LENGTH, AttackSigns = {Home = 1, Away = -1}}
+		local function info(side: string, role: string, pitch: Vector3, name: string, facing: Vector3): any
+			local model = Instance.new("Model")
+			model.Name = name
+			model:SetAttribute("VTRTeam", side)
+			model:SetAttribute("currentAssignment", "PressBallCarrier")
+			local root = Instance.new("Part")
+			root.Name = "HumanoidRootPart"
+			root.CFrame = CFrame.lookAt(pitch, pitch + facing)
+			root.Parent = model
+			return {Model = model, Root = root, Side = side, OpponentSide = side == "Home" and "Away" or "Home", Role = role, Pitch = pitch, World = pitch, Stats = {defending = 72, tackleSkill = 72, standingTackle = 72}, Stamina = 82}
+		end
+		local defender = info("Home", "CM", Vector3.new(210, 3, 210), "PressCM", Vector3.new(0, 0, 1))
+		local carrier = info("Away", "CM", Vector3.new(210, 3, 222), "Carrier", Vector3.new(0, 0, 1))
+		local cover = info("Home", "CB", Vector3.new(210, 3, 190), "CoverCB", Vector3.new(0, 0, 1))
+		local style = {Ratio = function(_, key: string) if key == "TackleAggression" then return .5 end return .5 end, Risk = function() return .5 end}
+		local context = {Now = 20, BallWorld = carrier.World, Teams = {Home = {List = {defender, cover}}, Away = {List = {carrier}}}, Options = options}
+		local mediumCanTackle = AITacklingDecisionService.CanTackle(context, defender, carrier, style)
+		expect(mediumCanTackle == false, "Medium-distance AI press still attempted a tackle")
+		carrier.World = Vector3.new(210, 3, 217)
+		carrier.Root.CFrame = CFrame.lookAt(carrier.World, carrier.World + Vector3.new(0, 0, 1))
+		context.BallWorld = carrier.World
+		local closeCanTackle, closeSlide = AITacklingDecisionService.CanTackle(context, defender, carrier, style)
+		expect(closeCanTackle == true and closeSlide == false, "Close standing tackle was blocked by reduced frequency tuning")
+		for _, item in ipairs({defender, carrier, cover}) do item.Model:Destroy() end
+	end)
+
+	test("goalkeepers claim nearby loose balls and resist tackles for first three seconds", function()
+		local options = {PitchCFrame = CFrame.new(), Width = PitchConfig.PITCH_WIDTH, Length = PitchConfig.PITCH_LENGTH, AttackSigns = {Home = 1, Away = -1}}
+		local function info(side: string, role: string, pitch: Vector3, name: string): any
+			local model = Instance.new("Model")
+			model.Name = name
+			model:SetAttribute("VTRTeam", side)
+			model:SetAttribute("position", role == "GK" and "GK" or role)
+			local root = Instance.new("Part")
+			root.Name = "HumanoidRootPart"
+			root.CFrame = CFrame.new(PitchConfig.TeamPitchPositionToWorld(pitch, side, options))
+			root.Parent = model
+			local world = root.Position
+			return {Model = model, Root = root, Side = side, OpponentSide = side == "Home" and "Away" or "Home", Role = role, Pitch = pitch, World = world, Stats = {pace = 70, overall = 75, defending = 70, tackleSkill = 70, standingTackle = 70}, Stamina = 82, IsGoalkeeper = role == "GK"}
+		end
+		local keeper = info("Home", "GK", Vector3.new(212, 3, 102), "HGK")
+		local cb = info("Home", "CB", Vector3.new(260, 3, 160), "HCB")
+		local attacker = info("Away", "ST", Vector3.new(212, 3, 114), "AST")
+		local ballWorld = PitchConfig.TeamPitchPositionToWorld(Vector3.new(214, 3, 116), "Home", options)
+		local context = {Now = 20, BallWorld = ballWorld, BallVelocity = Vector3.new(2, 0, 0), BallTeam = {Home = Vector3.new(214, 3, 116), Away = PitchConfig.WorldToTeamPitchPosition(ballWorld, "Away", options)}, Teams = {Home = {List = {keeper, cb}}, Away = {List = {attacker}}}, Players = {[keeper.Model] = keeper, [cb.Model] = cb, [attacker.Model] = attacker}, Options = options, PassInFlight = false}
+		local chaser = AILooseBallService.ChooseChasers(context, "Home")
+		expect(chaser == keeper, "Goalkeeper was not selected to claim a nearby loose ball")
+		local fakeRemote = {FireAllClients = function() end}
+		local ball = Instance.new("Part")
+		ball.Position = keeper.World
+		local possession = GameplayPossessionService.new(ball, fakeRemote :: any)
+		expect(possession:ForcePickup(keeper.Model) == true, "Goalkeeper possession setup failed")
+		expect((tonumber(keeper.Model:GetAttribute("VTRGoalkeeperTackleImmuneUntil")) or 0) > os.clock() + 2.8, "Goalkeeper did not receive three-second tackle immunity")
+		local canTackle = AITacklingDecisionService.CanTackle({Now = os.clock(), BallWorld = keeper.World, Teams = {Away = {List = {attacker}}, Home = {List = {keeper}}}, Options = options}, attacker, keeper, {Ratio = function() return .8 end, Risk = function() return .8 end})
+		expect(canTackle == false, "AI could tackle goalkeeper during the first three seconds of possession")
+		ball:Destroy()
+		for _, item in ipairs({keeper, cb, attacker}) do item.Model:Destroy() end
+	end)
+
+	test("goalkeeper distribution prefers free long winger and locks receiver route", function()
+		local options = {PitchCFrame = CFrame.new(), Width = PitchConfig.PITCH_WIDTH, Length = PitchConfig.PITCH_LENGTH, AttackSigns = {Home = 1, Away = -1}}
+		local function info(side: string, role: string, pitch: Vector3, name: string): any
+			local model = Instance.new("Model")
+			model.Name = name
+			model:SetAttribute("VTRTeam", side)
+			model:SetAttribute("position", role == "GK" and "GK" or role)
+			local root = Instance.new("Part")
+			root.Name = "HumanoidRootPart"
+			root.CFrame = CFrame.new(PitchConfig.TeamPitchPositionToWorld(pitch, side, options))
+			root.Parent = model
+			return {Model = model, Root = root, Side = side, OpponentSide = side == "Home" and "Away" or "Home", Role = role, Pitch = pitch, World = root.Position, Stats = {pace = 78, overall = 78, passing = 76, reception = 76}, Stamina = 88, IsGoalkeeper = role == "GK"}
+		end
+		local keeper = info("Home", "GK", Vector3.new(212, 3, 42), "HGK")
+		local cb = info("Home", "CB", Vector3.new(176, 3, 92), "HCB")
+		local winger = info("Home", "Winger", Vector3.new(74, 3, 170), "HLW")
+		local cdm = info("Home", "CDM", Vector3.new(212, 3, 126), "HCDM")
+		local opponent = info("Away", "ST", Vector3.new(330, 3, 575), "AST")
+		local ballWorld = keeper.World
+		local context = {Now = 44, BallWorld = ballWorld, BallVelocity = Vector3.zero, BallTeam = {Home = keeper.Pitch, Away = PitchConfig.WorldToTeamPitchPosition(ballWorld, "Away", options)}, Teams = {Home = {List = {keeper, cb, winger, cdm}}, Away = {List = {opponent}}}, Players = {[keeper.Model] = keeper, [cb.Model] = cb, [winger.Model] = winger, [cdm.Model] = cdm, [opponent.Model] = opponent}, Options = options, PitchCFrame = CFrame.new(), Width = PitchConfig.PITCH_WIDTH, Length = PitchConfig.PITCH_LENGTH, Owner = keeper.Model, OwnerSide = "Home", PassInFlight = false}
+		local pass = AIGoalkeeperService.ChooseDistribution(context, keeper)
+		expect(pass ~= nil and pass.Receiver == winger and pass.PassKind == "Lofted", "Keeper did not prefer the free long winger")
+		expect(keeper.Model:GetAttribute("GKDistributionType") == "LongWing" and keeper.Model:GetAttribute("GKLongWingAvailable") == true, "Long-wing goalkeeper debug was not set")
+		expect(winger.Model:GetAttribute("VTRForcedPassReceiver") == true and winger.Model:GetAttribute("AIAssignment") == "ReceivePass", "Keeper distribution did not hard-lock the receiver before kick")
+		for _, item in ipairs({keeper, cb, winger, cdm, opponent}) do item.Model:Destroy() end
+	end)
+
+	test("goalkeeper distribution falls back to short buildout when winger is marked", function()
+		local options = {PitchCFrame = CFrame.new(), Width = PitchConfig.PITCH_WIDTH, Length = PitchConfig.PITCH_LENGTH, AttackSigns = {Home = 1, Away = -1}}
+		local function info(side: string, role: string, pitch: Vector3, name: string): any
+			local model = Instance.new("Model")
+			model.Name = name
+			model:SetAttribute("VTRTeam", side)
+			model:SetAttribute("position", role == "GK" and "GK" or role)
+			local root = Instance.new("Part")
+			root.Name = "HumanoidRootPart"
+			root.CFrame = CFrame.new(PitchConfig.TeamPitchPositionToWorld(pitch, side, options))
+			root.Parent = model
+			return {Model = model, Root = root, Side = side, OpponentSide = side == "Home" and "Away" or "Home", Role = role, Pitch = pitch, World = root.Position, Stats = {pace = 74, overall = 76, passing = 74, reception = 74}, Stamina = 86, IsGoalkeeper = role == "GK"}
+		end
+		local keeper = info("Home", "GK", Vector3.new(212, 3, 42), "HGK2")
+		local cb = info("Home", "CB", Vector3.new(176, 3, 94), "HCB2")
+		local winger = info("Home", "Winger", Vector3.new(74, 3, 170), "HLW2")
+		local wingerMarker = info("Away", "Fullback", Vector3.new(64, 3, 554), "ARB2")
+		local laneBlocker = info("Away", "ST", Vector3.new(108, 3, 620), "AST2")
+		local context = {Now = 47, BallWorld = keeper.World, BallVelocity = Vector3.zero, BallTeam = {Home = keeper.Pitch, Away = PitchConfig.WorldToTeamPitchPosition(keeper.World, "Away", options)}, Teams = {Home = {List = {keeper, cb, winger}}, Away = {List = {wingerMarker, laneBlocker}}}, Players = {}, Options = options, PitchCFrame = CFrame.new(), Width = PitchConfig.PITCH_WIDTH, Length = PitchConfig.PITCH_LENGTH, Owner = keeper.Model, OwnerSide = "Home", PassInFlight = false}
+		for _, item in ipairs({keeper, cb, winger, wingerMarker, laneBlocker}) do context.Players[item.Model] = item end
+		local pass = AIGoalkeeperService.ChooseDistribution(context, keeper)
+		expect(pass ~= nil and pass.Receiver == cb and pass.PassKind == "Ground", "Keeper did not fall back to a short buildout option")
+		expect(keeper.Model:GetAttribute("GKDistributionType") == "ShortBuildout" and keeper.Model:GetAttribute("GKShortOptionAvailable") == true, "Short goalkeeper distribution debug was not set")
+		expect(cb.Model:GetAttribute("VTRForcedPassReceiver") == true and cb.Model:GetAttribute("AIAssignment") == "ReceivePass", "Short goalkeeper receiver was not prepared")
+		for _, item in ipairs({keeper, cb, winger, wingerMarker, laneBlocker}) do item.Model:Destroy() end
+	end)
+
+	test("goalkeeper support position advances with safe possession and shifts laterally", function()
+		local options = {PitchCFrame = CFrame.new(), Width = PitchConfig.PITCH_WIDTH, Length = PitchConfig.PITCH_LENGTH, AttackSigns = {Home = 1, Away = -1}}
+		local keeperModel = Instance.new("Model")
+		keeperModel.Name = "SupportGK"
+		keeperModel:SetAttribute("VTRTeam", "Home")
+		keeperModel:SetAttribute("position", "GK")
+		local root = Instance.new("Part")
+		root.Name = "HumanoidRootPart"
+		root.CFrame = CFrame.new(PitchConfig.TeamPitchPositionToWorld(Vector3.new(212, 3, 42), "Home", options))
+		root.Parent = keeperModel
+		local owner = Instance.new("Model")
+		owner.Name = "OwnerCB"
+		owner:SetAttribute("VTRTeam", "Home")
+		local keeper = {Model = keeperModel, Root = root, Side = "Home", OpponentSide = "Away", Role = "GK", Pitch = Vector3.new(212, 3, 42), World = root.Position, Stats = {pace = 76, overall = 78}, Stamina = 90, IsGoalkeeper = true}
+		local ballPitch = Vector3.new(330, 3, 560)
+		local ballWorld = PitchConfig.TeamPitchPositionToWorld(ballPitch, "Home", options)
+		local context = {Now = 50, BallWorld = ballWorld, BallVelocity = Vector3.zero, BallTeam = {Home = ballPitch, Away = PitchConfig.WorldToTeamPitchPosition(ballWorld, "Away", options)}, Teams = {Home = {List = {keeper}}, Away = {List = {}}}, Players = {[keeperModel] = keeper}, Options = options, PitchCFrame = CFrame.new(), Width = PitchConfig.PITCH_WIDTH, Length = PitchConfig.PITCH_LENGTH, Owner = owner, OwnerSide = "Home", PassInFlight = false}
+		local target = AIGoalkeeperService.PositionTarget(context, keeper)
+		local targetPitch = PitchConfig.WorldToTeamPitchPosition(target, "Home", options)
+		expect(targetPitch.Z > PitchConfig.Zones.OwnBox.ZMax, "Keeper did not advance beyond the box edge in safe possession")
+		expect(targetPitch.X > PitchConfig.HALF_WIDTH + 25, "Keeper did not shift toward the ball side")
+		expect(keeperModel:GetAttribute("GKState") == "SupportPossession" and keeperModel:GetAttribute("GKCanUseHands") == false, "Keeper support debug state was not set")
+		keeperModel:Destroy()
+		owner:Destroy()
+	end)
+
+	test("shot emergency sends keeper and defenders toward shot target", function()
+		local options = {PitchCFrame = CFrame.new(), Width = PitchConfig.PITCH_WIDTH, Length = PitchConfig.PITCH_LENGTH, AttackSigns = {Home = 1, Away = -1}}
+		local function info(side: string, role: string, pitch: Vector3, name: string): any
+			local model = Instance.new("Model")
+			model.Name = name
+			model:SetAttribute("VTRTeam", side)
+			model:SetAttribute("position", role == "GK" and "GK" or role)
+			local root = Instance.new("Part")
+			root.Name = "HumanoidRootPart"
+			root.CFrame = CFrame.new(PitchConfig.TeamPitchPositionToWorld(pitch, side, options))
+			root.Parent = model
+			local world = root.Position
+			return {Model = model, Root = root, Side = side, OpponentSide = side == "Home" and "Away" or "Home", Role = role, BasePitch = pitch, Pitch = pitch, World = world, Stats = {pace = 74, defending = 74}, Stamina = 86, IsGoalkeeper = role == "GK"}
+		end
+		local home = {
+			info("Home", "GK", Vector3.new(212, 3, 58), "HGK"),
+			info("Home", "CB", Vector3.new(176, 3, 148), "HCB1"),
+			info("Home", "CB", Vector3.new(248, 3, 148), "HCB2"),
+			info("Home", "Fullback", Vector3.new(82, 3, 170), "HLB"),
+			info("Home", "Fullback", Vector3.new(342, 3, 170), "HRB"),
+			info("Home", "CDM", Vector3.new(212, 3, 230), "HCDM"),
+		}
+		local awayShooter = info("Away", "ST", Vector3.new(212, 3, 610), "AST")
+		local ballWorld = PitchConfig.TeamPitchPositionToWorld(Vector3.new(220, 3, 118), "Home", options)
+		local shotTargetWorld = PitchConfig.TeamPitchPositionToWorld(Vector3.new(240, 4, 38), "Home", options)
+		local context = {
+			Now = 30,
+			BallWorld = ballWorld,
+			BallVelocity = Vector3.new(0, 0, -65),
+			BallTeam = {Home = PitchConfig.WorldToTeamPitchPosition(ballWorld, "Home", options), Away = PitchConfig.WorldToTeamPitchPosition(ballWorld, "Away", options)},
+			ShotTargetWorld = shotTargetWorld,
+			ShotTargetTeam = {Home = PitchConfig.WorldToTeamPitchPosition(shotTargetWorld, "Home", options), Away = PitchConfig.WorldToTeamPitchPosition(shotTargetWorld, "Away", options)},
+			Teams = {Home = {List = home}, Away = {List = {awayShooter}}},
+			Players = {},
+			Options = options,
+			PassInFlight = false,
+			MotionKind = "Shot",
+			LastTouchTeam = "Away",
+		}
+		for _, item in ipairs(home) do context.Players[item.Model] = item end
+		context.Players[awayShooter.Model] = awayShooter
+		local service = AIAssignmentService.new({Ratio = function() return .55 end, Get = function(_, key: string) if key == "SprintConservation" then return 0 end return .5 end})
+		local assignments = {}
+		service:_assignLoose(context, "Home", "LooseBall", assignments)
+		expect(assignments[home[1].Model] and assignments[home[1].Model].PrimaryAssignment == "ShotGoalkeeperClaim", "Keeper did not hard-claim shot danger")
+		expect(assignments[home[1].Model].SprintAllowed == true and assignments[home[1].Model].SprintConservation == 0, "Keeper shot claim did not request full sprint")
+		for index = 2, 5 do
+			local assignment = assignments[home[index].Model]
+			expect(assignment ~= nil and tostring(assignment.PrimaryAssignment):find("ShotEmergency") ~= nil, "Defender did not enter shot emergency recovery")
+			expect(assignment.SprintAllowed == true and assignment.SprintConservation == 0, "Shot emergency defender did not sprint")
+			expect(assignment.TargetPitch.Z <= PitchConfig.Zones.OwnBox.ZMax + 8, "Defender did not recover toward shot target/box")
+			expect(home[index].Model:GetAttribute("AIShotEmergencyTarget") == shotTargetWorld, "Shot target debug was not applied to defender")
+		end
+		for _, item in ipairs(home) do item.Model:Destroy() end
+		awayShooter.Model:Destroy()
+	end)
+
+	test("defensive contracts do not allow defender clear or shoot", function()
+		local restSlot = AITacticalContract.Slot({Id = "rest-defense", Function = "RestDefense", RoleFamily = "CB", TargetPitch = Vector3.new(212, 3, 120), RestDefense = true})
+		local fullbackSlot = AITacticalContract.Slot({Id = "right-back", Function = "Fullback", RoleFamily = "Fullback", TargetPitch = Vector3.new(340, 3, 180)})
+		local cdmSlot = AITacticalContract.Slot({Id = "pivot", Function = "Pivot", RoleFamily = "CDM", TargetPitch = Vector3.new(212, 3, 280)})
+		local rest = AITacticalContract.Player({AllowedActions = restSlot.AllowedActions, ForbiddenActions = restSlot.ForbiddenActions})
+		local fullback = AITacticalContract.Player({AllowedActions = fullbackSlot.AllowedActions, ForbiddenActions = fullbackSlot.ForbiddenActions})
+		local cdm = AITacticalContract.Player({AllowedActions = cdmSlot.AllowedActions, ForbiddenActions = cdmSlot.ForbiddenActions})
+		expect(not AITacticalContract.ActionAllowed(rest, "Clear") and not AITacticalContract.ActionAllowed(rest, "Shoot"), "Rest defender can still clear or shoot")
+		expect(not AITacticalContract.ActionAllowed(fullback, "Clear") and not AITacticalContract.ActionAllowed(fullback, "Shoot"), "Fullback can still clear or shoot")
+		expect(not AITacticalContract.ActionAllowed(cdm, "Clear") and not AITacticalContract.ActionAllowed(cdm, "Shoot"), "Defensive midfielder can still clear or shoot")
+	end)
+
+	test("ball-side fullback presses opponent winger while covering goal path", function()
+		local options = {PitchCFrame = CFrame.new(), Width = PitchConfig.PITCH_WIDTH, Length = PitchConfig.PITCH_LENGTH, AttackSigns = {Home = 1, Away = -1}}
+		local function info(side: string, role: string, homePitch: Vector3, name: string): any
+			local model = Instance.new("Model")
+			model.Name = name
+			model:SetAttribute("VTRTeam", side)
+			model:SetAttribute("position", role == "GK" and "GK" or role)
+			local root = Instance.new("Part")
+			root.Name = "HumanoidRootPart"
+			root.CFrame = CFrame.new(PitchConfig.TeamPitchPositionToWorld(homePitch, "Home", options))
+			root.Parent = model
+			local world = root.Position
+			local pitch = PitchConfig.WorldToTeamPitchPosition(world, side, options)
+			local basePitch = side == "Home" and homePitch or pitch
+			return {Model = model, Root = root, Side = side, OpponentSide = side == "Home" and "Away" or "Home", Role = role, SpecificRole = role, BasePitch = basePitch, Pitch = pitch, World = world, Stats = {pace = 76, defending = 74}, Stamina = 88, MovementProfile = "Balanced", IsGoalkeeper = role == "GK"}
+		end
+		local carrierHomePitch = Vector3.new(70, 3, 255)
+		local home = {
+			info("Home", "GK", Vector3.new(212, 3, 38), "HGK"),
+			info("Home", "CB", Vector3.new(164, 3, 132), "HCB1"),
+			info("Home", "CB", Vector3.new(260, 3, 132), "HCB2"),
+			info("Home", "Fullback", Vector3.new(72, 3, 150), "HLB"),
+			info("Home", "Fullback", Vector3.new(352, 3, 150), "HRB"),
+			info("Home", "CDM", Vector3.new(212, 3, 210), "HCDM"),
+			info("Home", "CM", Vector3.new(164, 3, 250), "HCM1"),
+			info("Home", "CM", Vector3.new(260, 3, 250), "HCM2"),
+		}
+		local awayWinger = info("Away", "Winger", carrierHomePitch, "AwayLW")
+		local context = {
+			Now = 60,
+			Owner = awayWinger.Model,
+			OwnerSide = "Away",
+			BallWorld = awayWinger.World,
+			BallVelocity = Vector3.zero,
+			BallTeam = {Home = carrierHomePitch, Away = PitchConfig.WorldToTeamPitchPosition(awayWinger.World, "Away", options)},
+			Teams = {Home = {List = home}, Away = {List = {awayWinger}}},
+			Players = {},
+			Options = options,
+			PitchCFrame = CFrame.new(),
+			Width = PitchConfig.PITCH_WIDTH,
+			Length = PitchConfig.PITCH_LENGTH,
+			PassInFlight = false,
+		}
+		for _, item in ipairs(home) do context.Players[item.Model] = item end
+		context.Players[awayWinger.Model] = awayWinger
+		local service = AIAssignmentService.new({Tactics = {PlaystyleId = "basic_possession"}, Ratio = function() return .5 end, Get = function() return .5 end})
+		local assignments = service:BuildSide(context, "Home", "Defense")
+		local leftBack = home[4]
+		local rightBack = home[5]
+		local assignment = assignments[leftBack.Model]
+		expect(assignment and assignment.PrimaryAssignment == "FullbackPressWingerCarrier", "Ball-side fullback did not become the winger carrier presser")
+		expect(assignment.SprintAllowed == true and assignment.MovementUrgency == 1, "Fullback winger press was not urgent sprint pressure")
+		expect(assignment.TargetPitch.X > carrierHomePitch.X and assignment.TargetPitch.Z < carrierHomePitch.Z, "Fullback press target did not cover the inside path to goal")
+		expect(assignment.MarkTarget == awayWinger.Model and leftBack.Model:GetAttribute("AIFullbackWingerPress") == true, "Fullback winger press debug/mark target was not set")
+		expect(assignments[rightBack.Model].PrimaryAssignment ~= "FullbackPressWingerCarrier", "Far-side fullback also chased the winger")
+		for _, item in ipairs(home) do item.Model:Destroy() end
+		awayWinger.Model:Destroy()
+	end)
+
+	test("first-line center-backs do not create deep offside line", function()
+		local options = {PitchCFrame = CFrame.new(), Width = PitchConfig.PITCH_WIDTH, Length = PitchConfig.PITCH_LENGTH, AttackSigns = {Home = 1, Away = -1}}
+		local players = {}
+		for index = 1, 11 do
+			local model = Instance.new("Model")
+			model.Name = "ShapePlayer" .. tostring(index)
+			local root = Instance.new("Part")
+			root.Name = "HumanoidRootPart"
+			root.Position = Vector3.new(212, 3, 300)
+			root.Parent = model
+			table.insert(players, {Model = model, Root = root, Side = "Home", Role = index == 1 and "GK" or index <= 5 and "CB" or "CM", Pitch = Vector3.new(212, 3, 300), World = root.Position, Stats = {pace = 70}, Stamina = 80, IsGoalkeeper = index == 1})
+		end
+		local ball = Vector3.new(212, 3, 330)
+		local context = {OwnerSide = "Home", BallTeam = {Home = ball}, Teams = {Home = {List = players}, Away = {List = {}}}, TeamBrain = {Home = {AttackingIdentity = "PositionalControl"}}, Options = options, Formations = {Home = "4-3-3"}}
+		local slots = AIShapeTemplateService.Build(context, "Home", {Ratio = function() return .5 end}, {Intent = "BuildOut"}, nil, nil)
+		local firstLineZ = {}
+		for _, slot in ipairs(slots) do
+			if slot.Id == "left-first-line" or slot.Id == "right-first-line" then
+				table.insert(firstLineZ, slot.TargetPitch.Z)
+			end
+		end
+		expect(#firstLineZ == 2, "First-line CB slots missing")
+		table.sort(firstLineZ)
+		expect(firstLineZ[1] >= ball.Z - 82, "First-line CB sat too deep behind the ball")
+		expect(firstLineZ[2] - firstLineZ[1] <= 4, "First-line CBs were not level with each other")
+		for _, item in ipairs(players) do item.Model:Destroy() end
+	end)
+
+	test("center-back presses striker carrying in defensive third", function()
+		local options = {PitchCFrame = CFrame.new(), Width = PitchConfig.PITCH_WIDTH, Length = PitchConfig.PITCH_LENGTH, AttackSigns = {Home = 1, Away = -1}}
+		local function info(side: string, role: string, pitch: Vector3, name: string): any
+			local model = Instance.new("Model")
+			model.Name = name
+			model:SetAttribute("VTRTeam", side)
+			local root = Instance.new("Part")
+			root.Name = "HumanoidRootPart"
+			root.Position = PitchConfig.TeamPitchPositionToWorld(pitch, side, options)
+			root.Parent = model
+			return {Model = model, Root = root, Side = side, OpponentSide = side == "Home" and "Away" or "Home", Role = role, Pitch = pitch, World = root.Position, Stats = {pace = 72, defending = 76}, Stamina = 84, IsGoalkeeper = role == "GK"}
+		end
+		local cb1 = info("Home", "CB", Vector3.new(176, 3, 145), "HCB1")
+		local cb2 = info("Home", "CB", Vector3.new(248, 3, 145), "HCB2")
+		local fb = info("Home", "Fullback", Vector3.new(82, 3, 150), "HLB")
+		local cdm = info("Home", "CDM", Vector3.new(212, 3, 210), "HCDM")
+		local striker = info("Away", "ST", Vector3.new(212, 3, 565), "AST")
+		local carrierPitch = PitchConfig.WorldToTeamPitchPosition(striker.World, "Home", options)
+		local context = {Now = 40, Owner = striker.Model, OwnerSide = "Away", BallWorld = striker.World, BallTeam = {Home = carrierPitch, Away = striker.Pitch}, Teams = {Home = {List = {cb1, cb2, fb, cdm}}, Away = {List = {striker}}}, Players = {}, Options = options}
+		for _, item in ipairs({cb1, cb2, fb, cdm, striker}) do context.Players[item.Model] = item end
+		local assignments = {
+			[cb1.Model] = {TacticalSlot = AITacticalContract.Slot({Id = "left-center-back", RoleFamily = "CB", TargetPitch = cb1.Pitch, RestDefense = true}), TargetPitch = cb1.Pitch, TargetWorld = cb1.World, MovementUrgency = .7},
+			[cb2.Model] = {TacticalSlot = AITacticalContract.Slot({Id = "right-center-back", RoleFamily = "CB", TargetPitch = cb2.Pitch, RestDefense = true}), TargetPitch = cb2.Pitch, TargetWorld = cb2.World, MovementUrgency = .7},
+			[fb.Model] = {TacticalSlot = AITacticalContract.Slot({Id = "left-fullback-zone", RoleFamily = "Fullback", TargetPitch = fb.Pitch, RestDefense = true}), TargetPitch = fb.Pitch, TargetWorld = fb.World, MovementUrgency = .7},
+			[cdm.Model] = {TacticalSlot = AITacticalContract.Slot({Id = "normal-central-midfield-screen", RoleFamily = "CDM", TargetPitch = cdm.Pitch}), TargetPitch = cdm.Pitch, TargetWorld = cdm.World, MovementUrgency = .7},
+		}
+		AIDefensivePlan.Apply(context, "Home", assignments, {Intent = "MidBlock"}, {BoxEdgeAnchorZ = PitchConfig.Zones.OwnBox.ZMax, BackLineZ = 145, MidfieldLineZ = 220, ForwardLineZ = 290, NormalShape = false}, {})
+		local cbPressers = 0
+		for _, item in ipairs({cb1, cb2}) do
+			local assignment = assignments[item.Model]
+			if assignment.PrimaryAssignment == "CBPressStrikerDefensiveThird" then
+				cbPressers += 1
+				expect(assignment.SprintAllowed == true and assignment.MovementUrgency == 1, "CB striker press was not urgent")
+				expect(PitchConfig.GetDistanceStuds(assignment.TargetPitch, carrierPitch) <= 16, "CB striker press target was not near the striker")
+			end
+		end
+		expect(cbPressers == 1, "Exactly one center-back did not step to press striker in defensive third")
+		for _, item in ipairs({cb1, cb2, fb, cdm, striker}) do item.Model:Destroy() end
+	end)
+
+	test("final defensive plan pulls isolated defender back onto shared line", function()
+		local options = {PitchCFrame = CFrame.new(), Width = PitchConfig.PITCH_WIDTH, Length = PitchConfig.PITCH_LENGTH, AttackSigns = {Home = 1, Away = -1}}
+		local function info(role: string, pitch: Vector3, name: string): any
+			local model = Instance.new("Model")
+			model.Name = name
+			model:SetAttribute("VTRTeam", "Home")
+			local root = Instance.new("Part")
+			root.Name = "HumanoidRootPart"
+			root.Position = PitchConfig.TeamPitchPositionToWorld(pitch, "Home", options)
+			root.Parent = model
+			return {Model = model, Root = root, Side = "Home", OpponentSide = "Away", Role = role, Pitch = pitch, World = root.Position, Stats = {pace = 72, defending = 76}, Stamina = 84, IsGoalkeeper = false}
+		end
+		local cb1 = info("CB", Vector3.new(176, 3, 145), "ClampCB1")
+		local cb2 = info("CB", Vector3.new(248, 3, 145), "ClampCB2")
+		local fb = info("Fullback", Vector3.new(82, 3, 145), "ClampFB")
+		local context = {Now = 50, BallWorld = Vector3.new(212, 3, 260), BallTeam = {Home = Vector3.new(212, 3, 260)}, Teams = {Home = {List = {cb1, cb2, fb}}, Away = {List = {}}}, Players = {}, Options = options, PassInFlight = false}
+		for _, item in ipairs({cb1, cb2, fb}) do context.Players[item.Model] = item end
+		local assignments = {
+			[cb1.Model] = {TacticalSlot = AITacticalContract.Slot({Id = "left-center-back", RoleFamily = "CB", TargetPitch = cb1.Pitch, RestDefense = true}), PrimaryAssignment = "HoldBackLineZone", TargetPitch = Vector3.new(176, 3, 145), TargetWorld = PitchConfig.TeamPitchPositionToWorld(Vector3.new(176, 3, 145), "Home", options), MovementUrgency = .7},
+			[cb2.Model] = {TacticalSlot = AITacticalContract.Slot({Id = "right-center-back", RoleFamily = "CB", TargetPitch = cb2.Pitch, RestDefense = true}), PrimaryAssignment = "DeepCover", TargetPitch = Vector3.new(248, 3, 88), TargetWorld = PitchConfig.TeamPitchPositionToWorld(Vector3.new(248, 3, 88), "Home", options), MovementUrgency = .7},
+			[fb.Model] = {TacticalSlot = AITacticalContract.Slot({Id = "left-fullback-zone", RoleFamily = "Fullback", TargetPitch = fb.Pitch, RestDefense = true}), PrimaryAssignment = "HoldBackLineZone", TargetPitch = Vector3.new(82, 3, 145), TargetWorld = PitchConfig.TeamPitchPositionToWorld(Vector3.new(82, 3, 145), "Home", options), MovementUrgency = .7},
+		}
+		AIDefensivePlan.Apply(context, "Home", assignments, {Intent = "MidBlock"}, {BackLineZ = 145, MidfieldLineZ = 230, ForwardLineZ = 320, NormalShape = true, NormalBackLineMaxDelta = 3, DefensiveLineState = "HoldEdge", BoxEdgeAnchorZ = PitchConfig.Zones.OwnBox.ZMax}, {})
+		expect(assignments[cb2.Model].PrimaryAssignment == "RecoverBackLineLevel", "Final clamp did not override isolated deep defender")
+		expect(math.abs(assignments[cb2.Model].TargetPitch.Z - 145) <= 0.1, "Isolated defender was not pulled onto shared line")
+		expect(assignments[cb2.Model].SprintAllowed == true and assignments[cb2.Model].MovementUrgency >= .96, "Line recovery was not urgent")
+		expect(cb2.Model:GetAttribute("AIBackLineFinalClamp") == true, "Final clamp debug attribute missing")
+		for _, item in ipairs({cb1, cb2, fb}) do item.Model:Destroy() end
+	end)
+
+	test("normal defensive block keeps lanes lines and fullback width", function()
+		local options = {PitchCFrame = CFrame.new(), Width = PitchConfig.PITCH_WIDTH, Length = PitchConfig.PITCH_LENGTH, AttackSigns = {Home = 1, Away = -1}}
+		local function info(side: string, role: string, pitch: Vector3, name: string, look: Vector3?): any
+			local model = Instance.new("Model")
+			model.Name = name
+			model:SetAttribute("VTRTeam", side)
+			local root = Instance.new("Part")
+			root.Name = "HumanoidRootPart"
+			root.CFrame = CFrame.lookAt(PitchConfig.TeamPitchPositionToWorld(pitch, side, options), PitchConfig.TeamPitchPositionToWorld(look or pitch + Vector3.new(0, 0, 1), side, options))
+			root.Parent = model
+			local ownPitch = PitchConfig.WorldToTeamPitchPosition(root.Position, side, options)
+			return {Model = model, Root = root, Side = side, OpponentSide = side == "Home" and "Away" or "Home", Role = role, Pitch = ownPitch, World = root.Position, Stats = {pace = 72, defending = 74}, Stamina = 88, IsGoalkeeper = role == "GK"}
+		end
+		local home = {
+			info("Home", "GK", Vector3.new(212, 3, 36), "HGK"),
+			info("Home", "Fullback", Vector3.new(72, 3, 185), "HLB"),
+			info("Home", "CB", Vector3.new(174, 3, 176), "HCB1"),
+			info("Home", "CB", Vector3.new(250, 3, 176), "HCB2"),
+			info("Home", "Fullback", Vector3.new(352, 3, 185), "HRB"),
+			info("Home", "CDM", Vector3.new(212, 3, 245), "HCDM"),
+			info("Home", "CM", Vector3.new(148, 3, 270), "HCM1"),
+			info("Home", "CM", Vector3.new(276, 3, 270), "HCM2"),
+			info("Home", "Winger", Vector3.new(104, 3, 335), "HLW"),
+			info("Home", "ST", Vector3.new(212, 3, 360), "HST"),
+			info("Home", "Winger", Vector3.new(320, 3, 335), "HRW"),
+		}
+		local carrier = info("Away", "Winger", Vector3.new(92, 3, 352), "AWideCarrier", Vector3.new(120, 3, 392))
+		local outlet = info("Away", "CM", Vector3.new(185, 3, 342), "ACM")
+		local context = {Now = 80, Owner = carrier.Model, OwnerSide = "Away", BallWorld = carrier.World, BallTeam = {Home = PitchConfig.WorldToTeamPitchPosition(carrier.World, "Home", options), Away = carrier.Pitch}, Teams = {Home = {List = home}, Away = {List = {carrier, outlet}}}, Players = {}, Options = options, PassInFlight = false, PassTargetTeam = {Home = nil, Away = nil}}
+		for _, item in ipairs(home) do context.Players[item.Model] = item end
+		for _, item in ipairs({carrier, outlet}) do context.Players[item.Model] = item end
+		local style = {Ratio = function(_, key: string)
+			if key == "DefensiveWidth" then return .58 end
+			if key == "DefensiveDepth" then return .52 end
+			if key == "BackLineCompactness" then return .64 end
+			if key == "ZoneDiscipline" then return .72 end
+			if key == "PressingIntensity" then return .46 end
+			return .55
+		end}
+		local planner = AIDefensiveBlockPlanner.new()
+		local block = planner:Build(context, "Home", style, {Intent = "MidBlock"})
+		expectEqual(block.DefensiveLineState, "HoldEdge", "Normal wide carrier did not use normal hold-edge block")
+		expect(block.ForwardLineZ > block.MidfieldLineZ and block.MidfieldLineZ > block.BackLineZ, "Normal block did not keep three clear lines")
+		expect(block.ForwardMidGap >= 40 and block.MidBackGap >= 36, "Normal block lines collapsed vertically")
+		local byId = {}
+		for _, slot in ipairs(block.Slots) do byId[slot.Id] = slot end
+		expect(byId["left-center-back"] and byId["right-center-back"] and byId["left-fullback-zone"] and byId["right-fullback-zone"], "Normal block missing back-four jobs")
+		expect(byId["left-center-back"].TargetPitch.X < PitchConfig.HALF_WIDTH and byId["right-center-back"].TargetPitch.X > PitchConfig.HALF_WIDTH, "Center-backs were not central on both sides")
+		expect(byId["left-fullback-zone"].TargetPitch.X < byId["left-center-back"].TargetPitch.X - 20, "Left fullback was inside the left center-back")
+		expect(byId["right-fullback-zone"].TargetPitch.X > byId["right-center-back"].TargetPitch.X + 20, "Right fullback was inside the right center-back")
+		local backLineSlotZ = {byId["left-center-back"].TargetPitch.Z, byId["right-center-back"].TargetPitch.Z, byId["left-fullback-zone"].TargetPitch.Z, byId["right-fullback-zone"].TargetPitch.Z}
+		table.sort(backLineSlotZ)
+		expect(backLineSlotZ[#backLineSlotZ] - backLineSlotZ[1] <= 3, "Normal planner created an uneven back-four line")
+		expect(byId["normal-left-midfield-lane"] and byId["normal-central-midfield-screen"] and byId["normal-right-midfield-lane"], "Normal block missing midfield lane jobs")
+		expect(byId["normal-left-midfield-lane"].TargetPitch.X < PitchConfig.HALF_WIDTH - 30 and byId["normal-right-midfield-lane"].TargetPitch.X > PitchConfig.HALF_WIDTH + 30, "Midfield lanes collapsed into the center")
+		expect(byId["normal-far-switch-guard"] and byId["normal-far-switch-guard"].TargetPitch.X > PitchConfig.HALF_WIDTH + 30, "Far side was abandoned against a left-side ball")
+		local assignments = AITacticalSlotAssignment.Assign(context, "Home", block.Slots)
+		local dutyState = {}
+		for model, assignment in pairs(assignments) do
+			local slot = assignment.TacticalSlot
+			if slot and slot.Id == "left-fullback-zone" then
+				dutyState[model] = {DutyId = "stale-wide-zone", DutyType = "WideZone", StartedAt = 79, MinimumHoldUntil = 82, ExpiresAt = 83, Target = PitchConfig.TeamPitchPositionToWorld(Vector3.new(assignment.TargetPitch.X, 3, block.BackLineZ - 38), "Home", options)}
+			end
+		end
+		AIDefensivePlan.Apply(context, "Home", assignments, {Intent = "MidBlock"}, block, dutyState)
+		local directPressers = 0
+		local targets = {}
+		local appliedBackLineZ = {}
+		for model, assignment in pairs(assignments) do
+			local primary = tostring(assignment.PrimaryAssignment or "")
+			if primary == "PressBallCarrier" or primary == "PressOutletLane" or primary == "PressCentralOutlet" or primary == "MidfieldPressSupport" or primary == "CentralMidfieldSqueeze" or primary == "BlockFarReturn" or primary == "NoPressureAdvance" or primary == "EdgeCarrierPress" or primary == "StepToCarrier" then directPressers += 1 end
+			local target = assignment.TargetPitch
+			if target then table.insert(targets, target) end
+			local slot = assignment.TacticalSlot
+			if slot and (slot.Id == "left-center-back" or slot.Id == "right-center-back" or slot.Id == "left-fullback-zone" or slot.Id == "right-fullback-zone") then
+				table.insert(appliedBackLineZ, assignment.TargetPitch.Z)
+				expect(math.abs(assignment.TargetPitch.Z - block.BackLineZ) <= 3, "Normal defensive assignment allowed one defender to sink off the line")
+				expect(assignment.PrimaryAssignment ~= "DeepCover", "Normal defensive assignment turned a back-line defender into deep cover")
+				if model:GetAttribute("AINormalBackLineRawDelta") and tonumber(model:GetAttribute("AINormalBackLineRawDelta")) and tonumber(model:GetAttribute("AINormalBackLineRawDelta")) > 10 then
+					expect((assignment.MovementUrgency or 0) >= .94, "Large normal back-line sink did not trigger immediate recovery urgency")
+				end
+			end
+			expect(model:GetAttribute("AIPressersActive") <= 2, "Normal block exposed more than two active pressers")
+		end
+		expect(directPressers <= 2, "Normal block assigned too many direct pressers")
+		table.sort(appliedBackLineZ)
+		expect(#appliedBackLineZ == 4 and appliedBackLineZ[#appliedBackLineZ] - appliedBackLineZ[1] <= 3, "Normal defensive application did not keep the back four connected")
+		for i = 1, #targets do
+			for j = i + 1, #targets do
+				expect(Vector3.new(targets[i].X - targets[j].X, 0, targets[i].Z - targets[j].Z).Magnitude >= 12, "Normal block generated crowded duplicate targets")
+			end
+		end
+		for _, item in ipairs(home) do item.Model:Destroy() end
+		for _, item in ipairs({carrier, outlet}) do item.Model:Destroy() end
 	end)
 
 	test("shared dribble target remains inside its legal envelope", function()
@@ -1603,6 +2560,47 @@ function Tests.Run(): any
 		expectEqual(ShotPower.ApplyToVelocity(Vector3.zero, .95), Vector3.zero, "Accidental lift at accurate maximum")
 		local overhitTarget=ShotPower.ApplyToTarget(Vector3.zero,Vector3.new(0,5,-100),1)
 		expect(overhitTarget.Y>=30 and overhitTarget.Z < -150,"Maximum-power shot no longer clears the goal")
+	end)
+
+	test("goalkeeper danger frame reacts to near misses without marking them on target", function()
+		local rectangle = {
+			PlanePoint = Vector3.zero,
+			Right = Vector3.xAxis,
+			Up = Vector3.yAxis,
+			Left = -18,
+			RightBound = 18,
+			Bottom = 0,
+			Top = 12,
+		}
+		local onTarget = GoalkeeperService._DebugGoalFrameStatus(rectangle, Vector3.new(8, 6, 0), 1)
+		local justWide = GoalkeeperService._DebugGoalFrameStatus(rectangle, Vector3.new(28, 6, 0), 1)
+		local justHigh = GoalkeeperService._DebugGoalFrameStatus(rectangle, Vector3.new(4, 18, 0), 1)
+		local nowhere = GoalkeeperService._DebugGoalFrameStatus(rectangle, Vector3.new(45, 26, 0), 1)
+		expect(onTarget.OnTarget and onTarget.Dangerous, "On-target shot was not recognized")
+		expect(not justWide.OnTarget and justWide.Dangerous and justWide.MissReason == "WideRight", "Near-wide shot did not trigger visual danger")
+		expect(not justHigh.OnTarget and justHigh.Dangerous and justHigh.MissReason == "High", "Near-high shot did not trigger visual danger")
+		expect(not nowhere.OnTarget and not nowhere.Dangerous, "Clearly missed shot still triggered keeper danger")
+	end)
+
+	test("goalkeeper save type selects distinct contact volumes", function()
+		local rectangle = {
+			PlanePoint = Vector3.zero,
+			Right = Vector3.xAxis,
+			Up = Vector3.yAxis,
+			Left = -18,
+			RightBound = 18,
+			Bottom = 0,
+			Top = 12,
+		}
+		local lowKind = GoalkeeperService._DebugClassifyDivePose(rectangle, Vector3.new(-13, 2, 0))
+		local highKind = GoalkeeperService._DebugClassifyDivePose(rectangle, Vector3.new(15, 10.5, 0))
+		local bodyKind = GoalkeeperService._DebugClassifyDivePose(rectangle, Vector3.new(0, 7, 0))
+		expectEqual(lowKind, "LowDive", "Low side shot did not select low dive")
+		expectEqual(highKind, "TopCorner", "High wide shot did not select top-corner dive")
+		expectEqual(bodyKind, "CenterBlock", "Central body shot did not select block save")
+		expectEqual(GoalkeeperService._DebugSaveVolumeTypeForDive(lowKind), "LowHandsLegs", "Low dive volume is not leg/hand weighted")
+		expectEqual(GoalkeeperService._DebugSaveVolumeTypeForDive(highKind), "ExtendedHands", "High dive volume is not hand weighted")
+		expectEqual(GoalkeeperService._DebugSaveVolumeTypeForDive(bodyKind), "BodyBlock", "Central block volume is not body weighted")
 	end)
 
 	test("lofted pass does not gain free accuracy", function()
@@ -1925,6 +2923,7 @@ function Tests.Run(): any
 			return .58
 		end}, {Intent = "HighPressBuildUp"})
 		expect(block.ForwardLineZ > block.MidfieldLineZ and block.MidfieldLineZ > block.BackLineZ, "High-press line ordering invalid")
+		expect(block.BackLineZ <= block.BackLineCeilingZ, "High-press back line advanced beyond the configured reach")
 		expect(block.HighPressBlockDepth >= 70 and block.HighPressBlockDepth <= 130, "High-press block depth escaped collective range")
 		local slots = {}
 		for _, slot in ipairs(block.Slots) do slots[slot.Id] = slot end
@@ -2059,7 +3058,8 @@ function Tests.Run(): any
 			return .58
 		end}
 		local block = AIDefensiveBlockPlanner.new():Build(context, "Home", style, {Intent = "HighPressCompression"})
-		expect(block.BackLineZ > 405, "Compressed back line did not move significantly upward")
+		expect(block.BackLineZ >= PitchConfig.HALF_LENGTH - 24, "Compressed back line did not move close enough to halfway")
+		expect(block.BackLineZ <= block.BackLineCeilingZ, "Compressed back line advanced beyond the configured reach")
 		expect(block.MidBackGap <= 58 and block.ForwardMidGap <= 48, "Compressed line gaps exceeded maximum")
 		expect(block.TeamBlockDepth <= 145, "Compressed team block depth exceeded maximum")
 		local assignments = AITacticalSlotAssignment.Assign(context, "Home", block.Slots)
@@ -2137,9 +3137,10 @@ function Tests.Run(): any
 		}
 		local carrier = info("Away", "CAM", Vector3.new(212, 3, edge + 62), "ACarrier")
 		local outlet = info("Away", "ST", Vector3.new(244, 3, edge + 36), "AOutlet")
-		local context = {Now = 10, Owner = carrier.Model, OwnerSide = "Away", BallWorld = carrier.World, BallTeam = {Home = Vector3.new(212, 3, edge + 62), Away = PitchConfig.WorldToTeamPitchPosition(carrier.World, "Away", options)}, Teams = {Home = {List = home}, Away = {List = {carrier, outlet}}}, Players = {}, Options = options, PassInFlight = false, PassTargetTeam = {Home = nil, Away = nil}}
+		local boxRunner = info("Away", "ST", Vector3.new(244, 3, edge - 8), "ABoxRunner")
+		local context = {Now = 10, Owner = carrier.Model, OwnerSide = "Away", BallWorld = carrier.World, BallTeam = {Home = Vector3.new(212, 3, edge + 62), Away = PitchConfig.WorldToTeamPitchPosition(carrier.World, "Away", options)}, Teams = {Home = {List = home}, Away = {List = {carrier, outlet, boxRunner}}}, Players = {}, Options = options, PassInFlight = false, PassTargetTeam = {Home = nil, Away = nil}}
 		for _, item in ipairs(home) do context.Players[item.Model] = item end
-		for _, item in ipairs({carrier, outlet}) do context.Players[item.Model] = item end
+		for _, item in ipairs({carrier, outlet, boxRunner}) do context.Players[item.Model] = item end
 		local style = {Ratio = function(_, key: string)
 			if key == "DefensiveDepth" then return .48 end
 			if key == "BackLineCompactness" then return .74 end
@@ -2149,7 +3150,7 @@ function Tests.Run(): any
 		end}
 		local planner = AIDefensiveBlockPlanner.new()
 		local hold = planner:Build(context, "Home", style, {Intent = "ProtectBox"})
-		expectEqual(hold.DefensiveLineState, "StepToCarrier", "Central carrier outside box did not trigger step state")
+		expect(hold.DefensiveLineState == "StepToCarrier" or hold.DefensiveLineState == "ContainAtEdge", "Central carrier outside box did not trigger step or contain state")
 		expect(hold.BackLineZ >= edge + 8, "Back line retreated below edge anchor against carrier")
 		expect(hold.BackLineMinimumZ >= edge + 4, "Minimum line height did not protect box edge")
 		local assignments = AITacticalSlotAssignment.Assign(context, "Home", hold.Slots)
@@ -2175,7 +3176,7 @@ function Tests.Run(): any
 		expect(insideCount >= 1, "No inside cover defender assigned")
 		expect(farCount >= 1, "No far-side cover defender assigned")
 		expect(deepCount <= 1, "More than one defender became deep cover")
-		expect(deepest >= edge - 18, "Deepest cover collapsed too close to the six-yard area")
+		expect(deepest >= edge, "Deepest cover collapsed inside the box while carrier was outside")
 		expect(cdmScreen, "CDM did not protect space in front of the back line")
 		context.PassInFlight = true
 		context.PassTargetTeam = {Home = Vector3.new(212, 3, edge - 24), Away = PitchConfig.WorldToTeamPitchPosition(PitchConfig.TeamPitchPositionToWorld(Vector3.new(212, 3, edge - 24), "Home", options), "Away", options)}
@@ -2201,9 +3202,106 @@ function Tests.Run(): any
 		local low = planner:Build(context, "Home", style, {Intent = "LowBlock"})
 		expectEqual(low.DefensiveLineState, "LowBlock", "Low-block tactic did not set low-block line state")
 		expect(low.BackLineZ < recovered.BackLineZ, "Low block was not deeper than recovered medium block")
-		expect(low.BackLineZ >= edge - 16, "Low block collapsed unnecessarily toward six-yard box")
+		expect(low.BackLineZ >= edge + 2, "Low block collapsed inside the box while ball was outside")
 		for _, item in ipairs(home) do item.Model:Destroy() end
-		for _, item in ipairs({carrier, outlet}) do item.Model:Destroy() end
+		for _, item in ipairs({carrier, outlet, boxRunner}) do item.Model:Destroy() end
+	end)
+
+	test("no-pressure carrier advance and backward recycle recover defensive line forward", function()
+		local options = {PitchCFrame = CFrame.new(), Width = PitchConfig.PITCH_WIDTH, Length = PitchConfig.PITCH_LENGTH, AttackSigns = {Home = 1, Away = -1}}
+		local box = PenaltyBoxService.DefensiveBoxMetrics("Home", options)
+		local edge = box.BoxEdgeZ
+		local function info(side: string, role: string, homeFramePitch: Vector3, name: string, lookAt: Vector3?): any
+			local model = Instance.new("Model")
+			model.Name = name
+			model:SetAttribute("VTRTeam", side)
+			local root = Instance.new("Part")
+			root.Name = "HumanoidRootPart"
+			local world = PitchConfig.TeamPitchPositionToWorld(homeFramePitch, "Home", options)
+			root.CFrame = lookAt and CFrame.lookAt(world, PitchConfig.TeamPitchPositionToWorld(lookAt, "Home", options)) or CFrame.new(world)
+			root.Parent = model
+			local ownPitch = PitchConfig.WorldToTeamPitchPosition(root.Position, side, options)
+			return {Model = model, Root = root, Side = side, OpponentSide = side == "Home" and "Away" or "Home", Role = role, Pitch = ownPitch, World = root.Position, Stats = {pace = 74, defending = 72}, Stamina = 86, IsGoalkeeper = role == "GK"}
+		end
+		local home = {
+			info("Home", "GK", Vector3.new(212, 3, 28), "HGK"),
+			info("Home", "CB", Vector3.new(154, 3, edge + 14), "HCB1"),
+			info("Home", "CB", Vector3.new(270, 3, edge + 14), "HCB2"),
+			info("Home", "Fullback", Vector3.new(74, 3, edge + 18), "HLB"),
+			info("Home", "Fullback", Vector3.new(350, 3, edge + 18), "HRB"),
+			info("Home", "CDM", Vector3.new(212, 3, edge + 136), "HCDM"),
+			info("Home", "CM", Vector3.new(172, 3, edge + 158), "HCM1"),
+			info("Home", "CM", Vector3.new(252, 3, edge + 158), "HCM2"),
+			info("Home", "Winger", Vector3.new(80, 3, edge + 186), "HLW"),
+			info("Home", "Winger", Vector3.new(344, 3, edge + 186), "HRW"),
+			info("Home", "ST", Vector3.new(212, 3, edge + 212), "HST"),
+		}
+		local carrier = info("Away", "CAM", Vector3.new(212, 3, edge + 74), "ACarrier", Vector3.new(212, 3, 0))
+		local runner = info("Away", "ST", Vector3.new(260, 3, edge + 50), "ARunner")
+		local context = {Now = 40, Owner = carrier.Model, OwnerSide = "Away", BallWorld = carrier.World, BallTeam = {Home = Vector3.new(212, 3, edge + 74), Away = carrier.Pitch}, Teams = {Home = {List = home}, Away = {List = {carrier, runner}}}, Players = {}, Options = options, PassInFlight = false, PassTargetTeam = {Home = nil, Away = nil}}
+		for _, item in ipairs(home) do context.Players[item.Model] = item end
+		for _, item in ipairs({carrier, runner}) do context.Players[item.Model] = item end
+		local style = {Ratio = function(_, key: string)
+			if key == "DefensiveDepth" then return .5 end
+			if key == "BackLineCompactness" then return .72 end
+			if key == "BoxProtection" then return .62 end
+			if key == "PressingIntensity" then return .52 end
+			return .55
+		end}
+		local planner = AIDefensiveBlockPlanner.new()
+		local block = planner:Build(context, "Home", style, {Intent = "ProtectBox"})
+		expect(block.NoPressureAdvance == true, "NoPressureAdvance did not activate with free central carrier")
+		expect(block.BackLineZ >= edge + 4 and block.BackLineZ <= edge + 42, "Back line escaped box-edge retreat cap")
+		local assignments = AITacticalSlotAssignment.Assign(context, "Home", block.Slots)
+		AIDefensivePlan.Apply(context, "Home", assignments, {Intent = "ProtectBox"}, block, {})
+		local advance = 0
+		local advancingLine = 0
+		local cover = 0
+		for model, assignment in pairs(assignments) do
+			local role = context.Players[model] and context.Players[model].Role
+			if assignment.PrimaryAssignment == "NoPressureAdvance" or assignment.PrimaryAssignment == "EdgeCarrierPress" then
+				advance += 1
+				expect(assignment.TargetPitch.Z > block.BackLineZ, "No-pressure presser did not advance beyond the line")
+			end
+			if assignment.PrimaryAssignment == "AdvanceBackLine" then advancingLine += 1 end
+			if role == "CB" or role == "Fullback" then
+				expect(assignment.TargetPitch.Z >= edge, "Defender collapsed inside the box without emergency")
+			end
+			if assignment.PrimaryAssignment == "InsideCover" or assignment.PrimaryAssignment == "FarSideCover" or assignment.PrimaryAssignment == "DeepCover" then cover += 1 end
+		end
+		expectEqual(advance, 1, "Exactly one player did not advance to pressure no-pressure carrier")
+		expect(advancingLine >= 2, "Back line did not advance behind no-pressure carrier step")
+		expect(cover >= 2, "Step-and-cover roles were not preserved")
+		carrier.World = PitchConfig.TeamPitchPositionToWorld(Vector3.new(212, 3, edge + 248), "Home", options)
+		carrier.Root.CFrame = CFrame.lookAt(carrier.World, PitchConfig.TeamPitchPositionToWorld(Vector3.new(212, 3, 0), "Home", options))
+		carrier.Pitch = PitchConfig.WorldToTeamPitchPosition(carrier.World, "Away", options)
+		context.BallWorld = carrier.World
+		context.BallTeam = {Home = Vector3.new(212, 3, edge + 248), Away = carrier.Pitch}
+		local higher = planner:Build(context, "Home", style, {Intent = "ProtectBox"})
+		expect(higher.BackLineZ >= block.BackLineZ + 60, "Back line did not rise as the ball moved farther away from goal")
+		context.PassInFlight = true
+		context.PassTargetTeam = {Home = Vector3.new(250, 3, edge + 128), Away = PitchConfig.WorldToTeamPitchPosition(PitchConfig.TeamPitchPositionToWorld(Vector3.new(250, 3, edge + 128), "Home", options), "Away", options)}
+		local recovered = planner:Build(context, "Home", style, {Intent = "ProtectBox"})
+		expectEqual(recovered.DefensiveLineState, "RecoverForward", "Backward or sideways recycle did not trigger RecoverForward")
+		expect(recovered.AdvanceLineTrigger == true, "AdvanceLine trigger was not exposed")
+		expect(recovered.BackLineZ >= block.BackLineZ, "RecoverForward did not move the line forward or hold the cap")
+		expect(recovered.MidfieldLineZ - recovered.BackLineZ <= 58, "Midfield did not reconnect to recovering line")
+		context.PassInFlight = false
+		context.PassTargetTeam = {Home = nil, Away = nil}
+		carrier.World = PitchConfig.TeamPitchPositionToWorld(Vector3.new(212, 3, edge + 74), "Home", options)
+		carrier.Root.CFrame = CFrame.lookAt(carrier.World, PitchConfig.TeamPitchPositionToWorld(Vector3.new(212, 3, 0), "Home", options))
+		carrier.Pitch = PitchConfig.WorldToTeamPitchPosition(carrier.World, "Away", options)
+		context.BallWorld = carrier.World
+		context.BallTeam = {Home = Vector3.new(212, 3, edge + 74), Away = carrier.Pitch}
+		local closePresser = home[7]
+		closePresser.World = PitchConfig.TeamPitchPositionToWorld(Vector3.new(212, 3, edge + 66), "Home", options)
+		closePresser.Root.CFrame = CFrame.new(closePresser.World)
+		closePresser.Pitch = PitchConfig.WorldToTeamPitchPosition(closePresser.World, "Home", options)
+		local pressured = planner:Build(context, "Home", style, {Intent = "ProtectBox"})
+		expect(pressured.ClosestPresserDistance <= 10, "Close pressure was not measured inside the 10-stud gate")
+		expect(pressured.NoPressureAdvance ~= true, "No-pressure advance stayed active with a defender inside 10 studs")
+		for _, item in ipairs(home) do item.Model:Destroy() end
+		for _, item in ipairs({carrier, runner}) do item.Model:Destroy() end
 	end)
 
 	test("opponent reset press raises whole block before receiver control", function()
@@ -2259,6 +3357,7 @@ function Tests.Run(): any
 		local block = planner:Build(context, "Home", style, intents.Home)
 		expect(block.OpponentResetPress == true, "Defensive block did not receive reset press")
 		expect(block.BackLineZ >= PitchConfig.HALF_LENGTH - 24, "Reset press back line did not rise toward halfway")
+		expect(block.BackLineZ <= block.BackLineCeilingZ, "Reset press back line advanced beyond the configured reach")
 		expect(block.MidBackGap >= 38 and block.MidBackGap <= 58, "Reset press midfield-back gap escaped range")
 		expect(block.ForwardMidGap >= 34 and block.ForwardMidGap <= 52, "Reset press forward-mid gap escaped range")
 		expect(block.TeamBlockDepth <= 145, "Reset press block stayed too stretched")
@@ -2305,6 +3404,7 @@ function Tests.Run(): any
 		expectEqual(sidewaysIntent.Home.Intent, "OpponentResetPress", "Sideways center-back pass incorrectly released reset press")
 		local sideways = planner:Build(context, "Home", style, sidewaysIntent.Home)
 		expect(sideways.BackLineZ >= PitchConfig.HALF_LENGTH - 24, "Line retreated after sideways center-back recycle")
+		expect(sideways.BackLineZ <= sideways.BackLineCeilingZ, "Sideways reset press line advanced beyond the configured reach")
 		expect(math.abs(sideways.BlockCenter.X - block.BlockCenter.X) > 4, "Block did not shift sideways with reset circulation")
 		context.Now = 31.4
 		context.Owner = awayCB2.Model

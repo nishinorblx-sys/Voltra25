@@ -26,6 +26,7 @@ function Service.Build(teams: any, formations: any, pitchCFrame: CFrame, width: 
 	local lastTouchTeam = tostring(ball:GetAttribute("LastTouchTeam") or "")
 	local passStartedAt = tonumber(ball:GetAttribute("VTRPassStartedAt")) or 0
 	local passTarget = ball:GetAttribute("VTRPassTarget")
+	local shotTarget = ball:GetAttribute("VTRShotTarget")
 	local passReceiver = tostring(ball:GetAttribute("VTRPassReceiver") or "")
 	local passAge = os.clock() - passStartedAt
 	local kinematicFlight = ball:GetAttribute("VTRKinematicFlight") == true
@@ -33,7 +34,9 @@ function Service.Build(teams: any, formations: any, pitchCFrame: CFrame, width: 
 	local receiveLocked = false
 	for _, side in ipairs({"Home", "Away"}) do
 		for _, model in ipairs(teams[side] or {}) do
-			if model:GetAttribute("VTRPreparingReceive") == true and (tonumber(model:GetAttribute("VTRReceiveUntil")) or 0) > os.clock() then
+			local now = os.clock()
+			local receiveUntil = math.max(tonumber(model:GetAttribute("VTRReceiveUntil")) or 0, tonumber(model:GetAttribute("VTRForcedReceiveUntil")) or 0, tonumber(model:GetAttribute("VTRReceiveHardLockUntil")) or 0)
+			if (model:GetAttribute("VTRPreparingReceive") == true or model:GetAttribute("VTRForcedPassReceiver") == true or model:GetAttribute("VTRAITargetedPass") == true) and receiveUntil > now then
 				receiveLocked = true
 				break
 			end
@@ -72,12 +75,18 @@ function Service.Build(teams: any, formations: any, pitchCFrame: CFrame, width: 
 		Possession = possession,
 		Owner = owner,
 		OwnerSide = ownerSide,
+		LastTouchTeam = lastTouchTeam,
 		LooseBall = loose,
 		PassInFlight = passInFlight,
 		PassTargetWorld = typeof(passTarget) == "Vector3" and passTarget or nil,
+		ShotTargetWorld = typeof(shotTarget) == "Vector3" and shotTarget or nil,
 		PassTargetTeam = {
 			Home = typeof(passTarget) == "Vector3" and PitchConfig.WorldToTeamPitchPosition(passTarget, "Home", options) or nil,
 			Away = typeof(passTarget) == "Vector3" and PitchConfig.WorldToTeamPitchPosition(passTarget, "Away", options) or nil,
+		},
+		ShotTargetTeam = {
+			Home = typeof(shotTarget) == "Vector3" and PitchConfig.WorldToTeamPitchPosition(shotTarget, "Home", options) or nil,
+			Away = typeof(shotTarget) == "Vector3" and PitchConfig.WorldToTeamPitchPosition(shotTarget, "Away", options) or nil,
 		},
 		PassReceiverName = passReceiver,
 		WorldCupFirstPassPending = ball:GetAttribute("VTRWorldCupFirstPassPending")==true,

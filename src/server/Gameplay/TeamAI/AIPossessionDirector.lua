@@ -28,8 +28,8 @@ local ROUTES: {[string]: {any}} = {
 		{Id = "finish", PreferredReceiver = "central-forward", Required = {"central-forward"}, Next = "early-forward-release", Fallback = "second-ball-structure", PassBias = "Finish"},
 	},
 	WideOverload = {
-		{Id = "wide-triangle", PreferredReceiver = "ball-side-width", Required = {"ball-side-width", "ball-side-pivot", "left-support"}, Next = "overlap-underlap", Fallback = "far-side-switch", PassBias = "WideTriangle"},
-		{Id = "overlap-underlap", PreferredReceiver = "ball-side-width", Required = {"ball-side-width"}, Next = "entry", Fallback = "far-side-switch", PassBias = "WideCombination", Runs = {"overlap", "underlap"}},
+		{Id = "wide-triangle", PreferredReceiver = "ball-side-width", Required = {"ball-side-width", "ball-side-pivot"}, Next = "overlap-underlap", Fallback = "far-side-switch", PassBias = "WideTriangle"},
+		{Id = "overlap-underlap", PreferredReceiver = "ball-side-width", Required = {"ball-side-width"}, Next = "entry", Fallback = "far-side-switch", PassBias = "WideCombination"},
 		{Id = "entry", PreferredReceiver = "ball-side-width", Required = {"ball-side-width", "box-edge-protection"}, Next = "cutback", Fallback = "far-side-switch", PassBias = "BylineOrHalfSpace", Runs = {"cutback-arrival"}},
 		{Id = "cutback", PreferredReceiver = "second-ball-midfielder", Required = {"second-ball-midfielder"}, Next = "wide-triangle", Fallback = "far-side-switch", PassBias = "Cutback", Runs = {"near-post", "far-post"}},
 		{Id = "far-side-switch", PreferredReceiver = "far-side-width", Required = {"far-side-width", "rest-defense"}, Next = "wide-triangle", Fallback = "wide-triangle", PassBias = "FarSideSwitch"},

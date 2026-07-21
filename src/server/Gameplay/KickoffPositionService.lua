@@ -47,6 +47,19 @@ local function choosePartner(team: {Model}?, taker: Model?): Model?
 	return nil
 end
 
+local function kickoffDepth(index: number, teamSize: number): number
+	if teamSize <= 6 then
+		if index == 1 then return 318 end
+		if index == 2 then return 178 end
+		if index == 3 or index == 4 then return 92 end
+		return 64
+	end
+	if index == 1 then return 318 end
+	if index >= 2 and index <= 5 then return 222 end
+	if index >= 6 and index <= 8 then return 118 end
+	return 66
+end
+
 local function move(model: Model, position: Vector3, facing: Vector3)
 	model:PivotTo(CFrame.lookAt(position, Vector3.new(facing.X, position.Y, facing.Z)))
 	local humanoid = model:FindFirstChildOfClass("Humanoid")
@@ -68,29 +81,30 @@ end
 
 function Service.Position(teams: any, formation: any, pitchCFrame: CFrame, restartTeam: string, half: number?): (Model, Model?)
 	local center = pitchCFrame.Position
+	local taker = chooseTaker(teams[restartTeam]) or teams[restartTeam][1]
+	local partner = choosePartner(teams[restartTeam], taker)
 	for _, side in {"Home", "Away"} do
 		local baseSign = side == "Home" and 1 or -1
 		local ownSign = (half or 1) >= 2 and -baseSign or baseSign
 		local sideFormation = formation[side] or formation
+		local teamSize = #(teams[side] or {})
 		for index, model in teams[side] do
 			local point = sideFormation[index] or Vector2.zero
-			local z = point.Y * ownSign
-			-- Everyone starts in their own half; the non-kickoff team is also
-			-- outside the larger VTR kickoff circle.
-			local minDistance = side == restartTeam and 12 or 62
-			z = ownSign * math.max(math.abs(z), minDistance)
+			local depth = kickoffDepth(index, teamSize)
+			if side == restartTeam and (model == taker or model == partner) then
+				depth = 74
+			end
+			local z = ownSign * depth
 			local position = pitchCFrame:PointToWorldSpace(Vector3.new(point.X, 3, z))
 			move(model, position, center)
 		end
 	end
-	local taker = chooseTaker(teams[restartTeam]) or teams[restartTeam][1]
 	local baseSign = restartTeam == "Home" and 1 or -1
 	local ownSign = (half or 1) >= 2 and -baseSign or baseSign
 	local takerPosition = pitchCFrame:PointToWorldSpace(Vector3.new(0, 3, ownSign * 1.8))
 	move(taker, takerPosition, pitchCFrame:PointToWorldSpace(Vector3.new(0, 3, -ownSign * 12)))
-	local partner = choosePartner(teams[restartTeam], taker)
 	if partner and partner ~= taker then
-		move(partner, pitchCFrame:PointToWorldSpace(Vector3.new(8, 3, ownSign * 7.5)), center)
+		move(partner, pitchCFrame:PointToWorldSpace(Vector3.new(0, 3, ownSign * 28)), center)
 	end
 	return taker, partner
 end

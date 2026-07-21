@@ -62,7 +62,7 @@ local function ensureAIProfileStorage(profile:any):any
 	playstyles.SchemaVersion=AIPlaystyleConfig.SchemaVersion
 	playstyles.Drafts=type(playstyles.Drafts)=="table"and playstyles.Drafts or{}
 	playstyles.Published=type(playstyles.Published)=="table"and playstyles.Published or{}
-	playstyles.Assignments=type(playstyles.Assignments)=="table"and playstyles.Assignments or{Home={PlaystyleId="balanced_control",Version=1},Away={PlaystyleId="balanced_control",Version=1}}
+	playstyles.Assignments=type(playstyles.Assignments)=="table"and playstyles.Assignments or{Home={PlaystyleId=AIPlaystyleConfig.BasicPlaystyleId,Version=1},Away={PlaystyleId=AIPlaystyleConfig.BasicPlaystyleId,Version=1}}
 	playstyles.Revision=tonumber(playstyles.Revision)or 0
 	return profile.CustomTactics
 end
