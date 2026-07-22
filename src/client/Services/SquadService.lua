@@ -4,7 +4,7 @@ local NetworkConfig=require(ReplicatedStorage.VTR.Shared.NetworkConfig)
 local RemoteResolver=require(script.Parent.RemoteResolver)
 local remote=RemoteResolver.WaitForFunction(NetworkConfig.SquadFunction)
 local SquadService={}
-local function request(action:string,payload:any?):any local ok,response=pcall(function() return remote:InvokeServer(action,payload or {}) end);if not ok or type(response)~="table" then return {Success=false,Message="Squad service unavailable."} end;return response end
+local function request(action:string,payload:any?):any local ok,response=pcall(function() return remote:InvokeServer(action,payload or {}) end);if not ok or type(response)~="table" then return {Success=false,Message="Squad unavailable right now."} end;return response end
 function SquadService:GetSquad():any return request("GetSquad") end
 function SquadService:SetSquadSlot(slot:string,cardId:string):any return request("SetSquadSlot",{Slot=slot,CardId=cardId}) end
 function SquadService:RemoveSquadSlot(slot:string):any return request("RemoveSquadSlot",{Slot=slot}) end

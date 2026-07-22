@@ -83,7 +83,7 @@ local function rankedRunSummary(run: any): (string, number)
 	return tostring(games) .. "/7  " .. tostring(wins) .. "W - " .. tostring(draws) .. "D - " .. tostring(losses) .. "L", games / 7
 end
 
-local function firstSessionHome(context: any, progression: any): CanvasGroup
+local function firstSessionHome(context: any, progression: any): Frame
 	local progress = type(progression.PlayabilityProgress) == "table" and progression.PlayabilityProgress or {}
 	local worldCup = type(progression.WorldCupSummary) == "table" and progression.WorldCupSummary or {}
 	local completed = math.max(0, math.floor(tonumber(progress.CompletedMatches) or 0))
@@ -148,7 +148,7 @@ local function firstSessionHome(context: any, progression: any): CanvasGroup
 	return group
 end
 
-function HomePage.new(context: any): CanvasGroup
+function HomePage.new(context: any): Frame
 	local profile = context.Data.Profile
 	local progression = context.Data.Progression
 	local playability = type(progression.PlayabilityProgress) == "table" and progression.PlayabilityProgress or {}

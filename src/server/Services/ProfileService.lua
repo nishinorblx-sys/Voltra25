@@ -9,6 +9,7 @@ local ClubIdentityConfig=require(ReplicatedStorage.VTR.Shared.ClubIdentityConfig
 local PlayBuilderConfig=require(ReplicatedStorage.VTR.Shared.PlayBuilderConfig)
 local PlayabilitySettingsConfig=require(ReplicatedStorage.VTR.Shared.PlayabilitySettingsConfig)
 local MatchFormatConfig=require(ReplicatedStorage.VTR.Shared.MatchFormatConfig)
+local PlayerCareerConfig=require(ReplicatedStorage.VTR.Shared.PlayerCareerConfig)
 local ObjectiveDefinitions=require(script.Parent.Parent.Data.Objectives)
 local CardInstanceFactory=require(script.Parent.Parent.Data.CardInstanceFactory)
 local PackInstanceFactory=require(script.Parent.Parent.Data.PackInstanceFactory)
@@ -158,6 +159,10 @@ local migrations={
 		progress.FirstRewardPlayerName=tostring(progress.FirstRewardPlayerName or"")
 		progress.FirstWorldCupRunCompleted=true
 		p.Version=15;p.SchemaVersion=15;return 15
+	end,
+	[15]=function(p:any)
+		p.CareerSaveSlots=PlayerCareerConfig.NormalizeSlots(p.CareerSaveSlots)
+		p.Version=16;p.SchemaVersion=16;return 16
 	end,
 }
 
@@ -317,6 +322,7 @@ function ProfileService:_migrate(profile:any):any
 	profile.ClubMembership.KitStyle=ClubIdentityConfig.ResolveStyle(profile.ClubMembership.KitStyle);profile.Onboarding.KitStyle=ClubIdentityConfig.ResolveStyle(profile.Onboarding.KitStyle)
 	profile.UIState=profile.UIState or copy(DefaultProfile.UIState);profile.UIState.Settings=profile.UIState.Settings or {};profile.Settings=profile.Settings or{};profile.Settings,profile.UIState.Settings=PlayabilitySettingsConfig.Synchronize(profile.Settings,profile.UIState.Settings);for key,value in DefaultProfile.Settings do if profile.Settings[key]==nil and profile.UIState.Settings[key]==nil then profile.Settings[key]=copy(value);profile.UIState.Settings[key]=copy(value)end end;profile.Settings,profile.UIState.Settings=PlayabilitySettingsConfig.Synchronize(profile.Settings,profile.UIState.Settings);for _,key in{"Commentary","CommentaryLanguage","CommentaryVolume"}do profile.UIState.Settings[key]=nil;profile.Settings[key]=nil end;ensureMonetizationFields(profile)
 	profile.MatchSetup=type(profile.MatchSetup)=="table"and profile.MatchSetup or copy(DefaultProfile.MatchSetup);profile.MatchSetup.MatchFormat=MatchFormatConfig.Normalize(profile.MatchSetup.MatchFormat or profile.MatchSetup.MatchLength)
+	profile.CareerSaveSlots=PlayerCareerConfig.NormalizeSlots(profile.CareerSaveSlots)
 	profile.PlayabilityProgress=type(profile.PlayabilityProgress)=="table"and profile.PlayabilityProgress or copy(DefaultProfile.PlayabilityProgress);local playability=profile.PlayabilityProgress;local recordedMatches=math.max(0,math.floor(tonumber(profile.MatchStats and profile.MatchStats.Overall and profile.MatchStats.Overall.Played)or 0));local legacyAccess=playability.LegacyAccessGranted==true;playability.Version=2;playability.LegacyAccessGranted=legacyAccess;playability.CompletedMatches=math.max(legacyAccess and 3 or 0,recordedMatches,math.max(0,math.floor(tonumber(playability.CompletedMatches)or 0)));playability.FirstMatchCompleted=playability.FirstMatchCompleted==true or playability.CompletedMatches>=1;playability.SecondMatchCompleted=playability.SecondMatchCompleted==true or playability.CompletedMatches>=2;playability.FirstRewardGranted=playability.FirstRewardGranted==true or legacyAccess;playability.FirstRewardCardInstanceId=tostring(playability.FirstRewardCardInstanceId or"");playability.FirstRewardPlayerName=tostring(playability.FirstRewardPlayerName or"");playability.FirstWorldCupRunCompleted=playability.FirstWorldCupRunCompleted==true or legacyAccess or(type(profile.WorldCupHistory)=="table"and#profile.WorldCupHistory>0)
 	if profile.Settings.TutorialComplete ~= nil then profile.UIState.Settings.TutorialComplete = profile.Settings.TutorialComplete == true end
 	if tonumber(profile.Settings.TutorialStep) then profile.UIState.Settings.TutorialStep = math.clamp(math.floor(tonumber(profile.Settings.TutorialStep) or 1), 1, 20) end

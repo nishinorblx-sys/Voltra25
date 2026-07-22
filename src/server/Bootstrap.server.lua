@@ -1,4 +1,5 @@
 local Players = game:GetService("Players")
+require(script.Parent.Services.VTRRemoteBootstrapService)
 local ServerApp = require(script.Parent.ServerApp)
 
 ServerApp.Start()

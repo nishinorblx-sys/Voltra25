@@ -37,9 +37,70 @@ local function isBasicPossession(style: any): boolean
 end
 
 local function isQuickPassing(style: any): boolean
-	return tostring(style and style.Tactics and style.Tactics.PlaystyleId or "") == "quick_passing"
-		or tostring(style and style.Tactics and style.Tactics.PlaystyleName or "") == "Quick Passing"
+	local id = tostring(style and style.Tactics and style.Tactics.PlaystyleId or "")
+	local name = tostring(style and style.Tactics and style.Tactics.PlaystyleName or "")
+	return id == "quick_passing"
+		or id == "vertical_tiki_taka"
+		or id == "counter_attack"
+		or name == "Quick Passing"
+		or name == "Tiki-Taka"
 		or (tonumber(style and style.MetricsTargets and style.MetricsTargets.QuickPassing) or 0) >= 1
+		or (tonumber(style and style.MetricsTargets and style.MetricsTargets.FirstTimePassChance) or 0) >= 60
+end
+
+local function isTikiTaka(style: any): boolean
+	local id = tostring(style and style.Tactics and style.Tactics.PlaystyleId or "")
+	local name = tostring(style and style.Tactics and style.Tactics.PlaystyleName or "")
+	return id == "quick_passing" or name == "Tiki-Taka" or name == "Quick Passing"
+end
+
+local function isVerticalTikiTaka(style: any): boolean
+	local id = tostring(style and style.Tactics and style.Tactics.PlaystyleId or "")
+	local name = tostring(style and style.Tactics and style.Tactics.PlaystyleName or "")
+	return id == "vertical_tiki_taka" or name == "Vertical Tiki-Taka" or name == "Vertical Tiki Taka"
+end
+
+local function isSidePressureEscape(style: any): boolean
+	local id = tostring(style and style.Tactics and style.Tactics.PlaystyleId or "")
+	local name = tostring(style and style.Tactics and style.Tactics.PlaystyleName or "")
+	return id == "wing_play"
+		or id == "wing_overload"
+		or name == "Wing Play"
+		or (tonumber(style and style.MetricsTargets and style.MetricsTargets.SidePressureEscape) or 0) >= 1
+end
+
+local function isWingPlay(style: any): boolean
+	local id = tostring(style and style.Tactics and style.Tactics.PlaystyleId or "")
+	local name = tostring(style and style.Tactics and style.Tactics.PlaystyleName or "")
+	return id == "wing_play"
+		or id == "wing_overload"
+		or name == "Wing Play"
+		or (tonumber(style and style.MetricsTargets and style.MetricsTargets.WingReleaseAfterMidfieldAdvance) or 0) >= 1
+end
+
+local function wingSidelineX(info: any, style: any): number
+	local offset = math.clamp(tonumber(style and style.MetricsTargets and style.MetricsTargets.WingSidelineOffset) or 10, 6, 24)
+	return info.Pitch.X < PitchConfig.HALF_WIDTH and offset or PitchConfig.PITCH_WIDTH - offset
+end
+
+local function wingEndlineZ(style: any): number
+	local offset = math.clamp(tonumber(style and style.MetricsTargets and style.MetricsTargets.WingEndlineTargetOffset) or 10, 6, 28)
+	return PitchConfig.PITCH_LENGTH - offset
+end
+
+local function midfieldEstablishedInOpponentHalf(context: any, side: string): boolean
+	local team = context.Teams and context.Teams[side]
+	if not team then return false end
+	local total, advanced = 0, 0
+	for _, teammate in ipairs(team.List) do
+		if teammate.Root and (teammate.Role == "CDM" or teammate.Role == "CM" or teammate.Role == "CAM") then
+			total += 1
+			if teammate.Pitch.Z >= PitchConfig.HALF_LENGTH + 6 then
+				advanced += 1
+			end
+		end
+	end
+	return total > 0 and advanced >= math.max(2, total)
 end
 
 function Service.GetMiddleMistakeMemory(passer: any): number
@@ -191,6 +252,8 @@ local function nearestOpponentDistance(context: any, side: string, point: Vector
 	return best
 end
 
+local receiverOffside: (any, any, any) -> boolean
+
 local function forwardSpaceThroughPoint(context: any, passer: any, receiver: any): (Vector3?, number)
 	if not receiver or not receiver.Root or receiver.IsGoalkeeper then return nil, 0 end
 	local gain = receiver.Pitch.Z - passer.Pitch.Z
@@ -280,6 +343,30 @@ local function isStriker(info: any): boolean
 	return info.Role == "ST"
 end
 
+local function isDefender(info: any): boolean
+	return info.Role == "CB" or info.Role == "Fullback"
+end
+
+local function facingForward(context: any, info: any): boolean
+	if not info or not info.Root then
+		return false
+	end
+	local lookProgress = PitchConfig.GetForwardProgress(info.World, info.World + info.Root.CFrame.LookVector * 8, info.Side, context.Options)
+	local velocity = Vector3.new(info.Root.AssemblyLinearVelocity.X, 0, info.Root.AssemblyLinearVelocity.Z)
+	local velocityProgress = velocity.Magnitude > 0.5 and PitchConfig.GetForwardProgress(info.World, info.World + velocity.Unit * 8, info.Side, context.Options) or 0
+	return lookProgress > 1.2 or velocityProgress > 1.2
+end
+
+local function nearbyTeammates(context: any, passer: any, radius: number): number
+	local count = 0
+	for _, teammate in ipairs(context.Teams[passer.Side].List) do
+		if teammate.Model ~= passer.Model and teammate.Root and not teammate.IsGoalkeeper and PitchConfig.GetDistanceStuds(passer.World, teammate.World) <= radius then
+			count += 1
+		end
+	end
+	return count
+end
+
 local function isDefensiveRole(info: any): boolean
 	return info.Role == "CB" or info.Role == "Fullback" or info.Role == "CDM"
 end
@@ -288,7 +375,7 @@ local function sameWideLane(a: any, b: any): boolean
 	return (a.Pitch.X < PitchConfig.HALF_WIDTH and b.Pitch.X < PitchConfig.HALF_WIDTH) or (a.Pitch.X > PitchConfig.HALF_WIDTH and b.Pitch.X > PitchConfig.HALF_WIDTH)
 end
 
-local function receiverOffside(context: any, passer: any, receiver: any): boolean
+receiverOffside = function(context: any, passer: any, receiver: any): boolean
 	local ballPitch = context.BallTeam and context.BallTeam[passer.Side]
 	if typeof(receiver.Pitch) ~= "Vector3" or typeof(ballPitch) ~= "Vector3" then return false end
 	return OffsidePositionUtil.IsReceiverOffside(context, passer.Side, receiver.Pitch, ballPitch, .75)
@@ -940,6 +1027,195 @@ function Service.ChooseBasicPossession(context: any, passer: any, style: any, di
 	return safeForward or side or back or bestSafe
 end
 
+function Service.ChooseTikiTaka(context: any, passer: any, style: any, difficulty: any, forcedSafe: boolean?): any?
+	local nearby = nearbyTeammates(context, passer, 58)
+	local maxDistance = forcedSafe and 42 or 34
+	local preferredMax = 25
+	local bestTriangle, bestSide, bestReset, bestForward = nil, nil, nil, nil
+	local recent = context.TeamMemory and context.TeamMemory.RecentPasses and context.TeamMemory.RecentPasses[passer.Side]
+	local lastPass = recent and recent[1] or nil
+	for _, receiver in ipairs(context.Teams[passer.Side].List) do
+		if receiver.Model ~= passer.Model and receiver.Root and not receiver.IsGoalkeeper then
+			local scored = Service.ScoreReceiver(context, passer, receiver, style, difficulty)
+			if scored and scored.LaneClear then
+				local distance = tonumber(scored.Distance) or PitchConfig.GetDistanceStuds(passer.World, receiver.World)
+				if distance <= maxDistance then
+					local candidate = table.clone(scored)
+					candidate.PassKind = "Ground"
+					candidate.TikiTakaPass = true
+					candidate.FirstTimePass = nearby >= 3
+					candidate.Score += 78 - math.abs(distance - preferredMax) * 0.9
+					candidate.Score += candidate.Kind == "Side" and 34 or candidate.Kind == "Forward" and math.clamp(candidate.ForwardGain or 0, 0, 24) * 0.9 or 14
+					if distance > 28 then
+						candidate.Score -= (distance - 28) * 2.4
+					end
+					if lastPass and lastPass.Receiver == passer.Model and lastPass.Passer == receiver.Model then
+						candidate.Score -= 44
+						candidate.ImmediateReturnPenalty = true
+					end
+					if receiver.Role == "CM" or receiver.Role == "CAM" or receiver.Role == "CDM" or receiver.Role == "ST" then
+						candidate.Score += 18
+					end
+					if nearby >= 3 and distance <= 30 and (not bestTriangle or candidate.Score > bestTriangle.Score) then
+						bestTriangle = candidate
+					elseif candidate.Kind == "Forward" and (candidate.ForwardGain or 0) >= 6 and (not bestForward or candidate.Score > bestForward.Score) then
+						bestForward = candidate
+					elseif candidate.Kind == "Side" and (not bestSide or candidate.Score > bestSide.Score) then
+						bestSide = candidate
+					elseif candidate.Kind == "Back" and (not bestReset or candidate.Score > bestReset.Score) then
+						bestReset = candidate
+					end
+				end
+			end
+		end
+	end
+	return bestTriangle or bestForward or bestSide or bestReset
+end
+
+function Service.ChooseVerticalTikiTaka(context: any, passer: any, style: any, difficulty: any, forcedSafe: boolean?): any?
+	if not (isMidfielder(passer) or isDefender(passer)) then
+		return nil
+	end
+	local pressure = AIContextBuilder.Pressure(context, passer)
+	if pressure.Heavy or pressure.Closest <= 12 or not facingForward(context, passer) then
+		return nil
+	end
+	local bestLineBreak, bestLayoff, bestRecycle = nil, nil, nil
+	for _, receiver in ipairs(context.Teams[passer.Side].List) do
+		if receiver.Model ~= passer.Model and receiver.Root and not receiver.IsGoalkeeper then
+			local scored = Service.ScoreReceiver(context, passer, receiver, style, difficulty)
+			if scored and scored.LaneClear then
+				local candidate = table.clone(scored)
+				local gain = tonumber(candidate.ForwardGain) or receiver.Pitch.Z - passer.Pitch.Z
+				local distance = tonumber(candidate.Distance) or PitchConfig.GetDistanceStuds(passer.World, receiver.World)
+				if gain >= 16 and distance <= 96 and (receiver.Role == "ST" or receiver.Role == "CAM" or receiver.Role == "CM" or isWingRole(receiver)) then
+					candidate.VerticalTikiTaka = true
+					candidate.PassKind = gain >= 30 and "Through" or "Ground"
+					candidate.Score += 112 + math.clamp(gain, 0, 76) * 0.7 - math.max(0, distance - 72) * 0.45
+					if receiver.Role == "ST" then
+						receiver.Model:SetAttribute("AIVerticalTikiTakaDropUntil", (context.Now or os.clock()) + 2.2)
+					elseif isWingRole(receiver) then
+						receiver.Model:SetAttribute("AIVerticalTikiTakaHalfSpaceRunUntil", (context.Now or os.clock()) + 2.6)
+						receiver.Model:SetAttribute("VTRReceiveRouteSprintRequested", true)
+					end
+					if not bestLineBreak or candidate.Score > bestLineBreak.Score then
+						bestLineBreak = candidate
+					end
+				elseif forcedSafe and candidate.Kind ~= "Forward" and distance <= 44 then
+					candidate.PassKind = "Ground"
+					candidate.Score += candidate.Kind == "Side" and 36 or 18
+					if not bestRecycle or candidate.Score > bestRecycle.Score then
+						bestRecycle = candidate
+					end
+				elseif receiver.Role == "ST" and distance <= 52 and gain >= -6 then
+					candidate.PassKind = "Ground"
+					candidate.VerticalLayoff = true
+					candidate.Score += 58
+					if not bestLayoff or candidate.Score > bestLayoff.Score then
+						bestLayoff = candidate
+					end
+				end
+			end
+		end
+	end
+	return bestLineBreak or bestLayoff or bestRecycle
+end
+
+function Service.ChooseSidePressureEscape(context: any, passer: any, style: any, difficulty: any): any?
+	local bestSide, bestSwitch, bestFullbackReset, bestSafe = nil, nil, nil, nil
+	local recent = context.TeamMemory and context.TeamMemory.RecentPasses and context.TeamMemory.RecentPasses[passer.Side]
+	local lastPass = recent and recent[1] or nil
+	for _, receiver in ipairs(context.Teams[passer.Side].List) do
+		if receiver.Model ~= passer.Model and receiver.Root and not receiver.IsGoalkeeper then
+			local scored = Service.ScoreReceiver(context, passer, receiver, style, difficulty)
+			if scored and scored.LaneClear then
+				local laneRisk = tonumber(scored.LaneRisk) or 1
+				local distance = tonumber(scored.Distance) or PitchConfig.GetDistanceStuds(passer.World, receiver.World)
+				local clean = laneRisk <= 0.42 and (scored.Safe or distance <= 92 and scored.Score > -24)
+				if clean then
+					local candidate = table.clone(scored)
+					candidate.SidePressureEscape = true
+					if lastPass and lastPass.Receiver == passer.Model and lastPass.Passer == receiver.Model then
+						candidate.Score -= 42
+						candidate.ImmediateReturnPenalty = true
+					end
+					if candidate.Kind == "Side" then
+						candidate.Score += 88 - math.abs(distance - 44) * 0.18
+						candidate.PassKind = candidate.PassKind == "Lofted" and "Ground" or candidate.PassKind
+						if not bestSide or candidate.Score > bestSide.Score then bestSide = candidate end
+					elseif candidate.Kind == "Forward" and math.abs(receiver.Pitch.X - passer.Pitch.X) > 105 then
+						candidate.Score += 42
+						candidate.PassKind = "Lofted"
+						if not bestSwitch or candidate.Score > bestSwitch.Score then bestSwitch = candidate end
+					elseif candidate.Kind == "Back" and receiver.Role == "Fullback" and sameSide(passer, receiver) and distance <= 92 then
+						candidate.Score += 58 - math.abs(distance - 40) * 0.2
+						candidate.PassKind = "Ground"
+						candidate.FullbackRestart = true
+						if not bestFullbackReset or candidate.Score > bestFullbackReset.Score then bestFullbackReset = candidate end
+					elseif candidate.Kind ~= "Back" and (not bestSafe or candidate.Score > bestSafe.Score) then
+						bestSafe = candidate
+					end
+				end
+			end
+		end
+	end
+	return bestSide or bestSwitch or bestFullbackReset or bestSafe
+end
+
+function Service.ChooseWingPlayRelease(context: any, passer: any, style: any, difficulty: any): any?
+	if not isWingPlay(style) or not isMidfielder(passer) or not midfieldEstablishedInOpponentHalf(context, passer.Side) then
+		return nil
+	end
+	local pressure = AIContextBuilder.Pressure(context, passer)
+	if Service.ShouldRetreatFromPressure(pressure) then
+		return nil
+	end
+	local best = nil
+	for _, receiver in ipairs(context.Teams[passer.Side].List) do
+		if receiver.Model ~= passer.Model and receiver.Root and not receiver.IsGoalkeeper and isWingRole(receiver) then
+			local targetPitch = PitchConfig.ClampInsidePitch(Vector3.new(
+				wingSidelineX(receiver, style),
+				3,
+				math.min(wingEndlineZ(style), math.max(receiver.Pitch.Z + 42, passer.Pitch.Z + 68))
+			))
+			local target = PitchConfig.TeamPitchPositionToWorld(targetPitch, passer.Side, context.Options)
+			local passKind = targetPitch.Z - passer.Pitch.Z >= 42 and "Through" or "Lofted"
+			local laneKind = passKind == "Through" and "Driven" or "Lobbed"
+			local laneClear = AIContextBuilder.PassingLaneClear(context, passer, target, laneKind)
+			local laneRisk = laneInterceptionRisk(context, passer, target, passKind)
+			if laneClear and laneRisk <= 0.5 and not receiverOffside(context, passer, receiver) then
+				local distance = PitchConfig.GetDistanceStuds(passer.World, target)
+				local openness = nearestOpponentDistance(context, passer.Side, target)
+				local sameLaneBonus = sameSide(passer, receiver) and 18 or 0
+				local score = 250 + math.clamp(openness, 0, 42) * 0.9 + math.clamp(targetPitch.Z - passer.Pitch.Z, 0, 130) * 0.32 + sameLaneBonus - math.abs(distance - 118) * 0.08
+				local candidate = {
+					Receiver = receiver,
+					Target = target,
+					Distance = distance,
+					PassKind = passKind,
+					Kind = "Forward",
+					ForwardGain = targetPitch.Z - passer.Pitch.Z,
+					Score = score,
+					Safe = laneRisk <= 0.38,
+					LaneClear = true,
+					LaneRisk = laneRisk,
+					WingPlayRelease = true,
+					ForcePassTarget = true,
+				}
+				if not best or candidate.Score > best.Score then
+					best = candidate
+				end
+			end
+		end
+	end
+	if best then
+		best.Receiver.Model:SetAttribute("AIWingPlayReleaseTarget", best.Target)
+		best.Receiver.Model:SetAttribute("AIWingPlayReleaseUntil", (context.Now or os.clock()) + 3)
+		best.Receiver.Model:SetAttribute("VTRReceiveRouteSprintRequested", true)
+	end
+	return best
+end
+
 function Service.ChooseDefenderExit(context: any, passer: any, style: any, difficulty: any): any?
 	local side, long, forward, keeperReset = nil, nil, nil, nil
 	for _, receiver in ipairs(context.Teams[passer.Side].List) do
@@ -1025,6 +1301,26 @@ function Service.ChooseQuickPassing(context: any, passer: any, style: any, diffi
 end
 
 function Service.Choose(context: any, passer: any, style: any, difficulty: any, forcedSafe: boolean?): any?
+	if forcedSafe and isSidePressureEscape(style) and Service.ShouldRetreatFromPressure(AIContextBuilder.Pressure(context, passer)) then
+		local sideEscape = Service.ChooseSidePressureEscape(context, passer, style, difficulty)
+		if sideEscape then return sideEscape end
+	end
+	local wingRelease = Service.ChooseWingPlayRelease(context, passer, style, difficulty)
+	if wingRelease then
+		return wingRelease
+	end
+	if isVerticalTikiTaka(style) then
+		local vertical = Service.ChooseVerticalTikiTaka(context, passer, style, difficulty, forcedSafe)
+		if vertical then
+			return vertical
+		end
+	end
+	if isTikiTaka(style) then
+		local tiki = Service.ChooseTikiTaka(context, passer, style, difficulty, forcedSafe)
+		if tiki then
+			return tiki
+		end
+	end
 	if isQuickPassing(style) then
 		return Service.ChooseQuickPassing(context, passer, style, difficulty, forcedSafe)
 	end

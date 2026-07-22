@@ -19,6 +19,17 @@ local TACTIC_BY_PRESET = {
 	all_out_attack = "AllOutAttack",
 }
 
+local TACTIC_BY_PLAYSTYLE = {
+	basic_possession = "Balanced",
+	quick_passing = "KeepPossession",
+	vertical_tiki_taka = "VerticalTikiTaka",
+	wing_play = "WingPlay",
+	route_one = "RouteOne",
+	park_the_bus = "ParkTheBus",
+	counter_attack = "CounterAttack",
+	gegenpress = "Gegenpress",
+}
+
 local ACTIONS = {
 	MidfieldProgression = {Duration = 3, Roles = {CM = 34, CDM = 28, CAM = 24, Winger = 18, ST = 12}, Movement = "Possession"},
 	WingerAttack = {Duration = 3, Roles = {Winger = 42, Fullback = 20, ST = 18, CM = 12}, Movement = "Wide"},
@@ -61,6 +72,10 @@ local TACTICS = {
 	WingPlay = {"WideBuildUp", "WideOverload", "CrossingAttack", "DefensiveRecycling", "SwitchPlay"},
 	CentralCombination = {"CentralTriangle", "ThirdManRun", "StrikerWallPass", "StrikerLinkUp", "MidfieldProgression"},
 	DirectPlay = {"DirectOutlet", "TargetStrikerReceive", "SecondBall", "SecurePossession"},
+	VerticalTikiTaka = {"CentralTriangle", "StrikerWallPass", "ThirdManRun", "MidfieldProgression", "DirectOutlet"},
+	RouteOne = {"DirectOutlet", "TargetStrikerReceive", "SecondBall", "FirstForwardPass", "CrossingAttack"},
+	ParkTheBus = {"LowBlockShape", "DelayCarrier", "DefensiveBlock", "SafeCounter", "DefensiveRecycling"},
+	Gegenpress = {"Counterpress", "PressTrigger", "PressRecovery", "FirstForwardPass", "OrganizedDefense"},
 	LowBlockCounter = {"LowBlockShape", "DelayCarrier", "CounterRelease", "FirstForwardPass", "OrganizedDefense"},
 	Balanced = {"MidfieldProgression", "WingerAttack", "StrikerLinkUp", "DefensiveRecycling", "FirstForwardPass", "OrganizedDefense"},
 	AllOutAttack = {"CommitForward", "FastChanceCreation", "CrossingAttack", "FinalPressure", "Counterpress"},
@@ -80,6 +95,8 @@ local function pitchThird(pitch: Vector3): string
 end
 
 local function teamTactic(style: any): string
+	local playstyleId = tostring(style and style.Tactics and style.Tactics.PlaystyleId or style and style.PlaystyleId or "")
+	if TACTIC_BY_PLAYSTYLE[playstyleId] then return TACTIC_BY_PLAYSTYLE[playstyleId] end
 	return TACTIC_BY_PRESET[tostring(style and style.PresetId or "")] or "Balanced"
 end
 
@@ -134,6 +151,14 @@ local function scoreAction(context: any, side: string, tactic: string, name: str
 		score += (ownerRole == "CM" or ownerRole == "CAM" or ownerRole == "CDM") and name == "CentralTriangle" and 54 or ownerRole == "ST" and name == "StrikerWallPass" and 52 or name == "ThirdManRun" and third ~= "Defensive" and 30 or 0
 	elseif tactic == "DirectPlay" then
 		score += name == "DirectOutlet" and third ~= "Attacking" and 58 or ownerRole == "ST" and name == "TargetStrikerReceive" and 54 or name == "SecondBall" and 24 or 0
+	elseif tactic == "VerticalTikiTaka" then
+		score += (ownerRole == "CM" or ownerRole == "CAM" or ownerRole == "CDM") and name == "CentralTriangle" and 62 or ownerRole == "ST" and name == "StrikerWallPass" and 58 or name == "ThirdManRun" and third ~= "Defensive" and 42 or name == "DirectOutlet" and third == "Defensive" and 24 or 0
+	elseif tactic == "RouteOne" then
+		score += name == "DirectOutlet" and third ~= "Attacking" and 74 or ownerRole == "ST" and name == "TargetStrikerReceive" and 66 or name == "SecondBall" and 44 or name == "FirstForwardPass" and 32 or 0
+	elseif tactic == "ParkTheBus" then
+		score += name == "LowBlockShape" and context.OwnerSide ~= side and 84 or name == "DefensiveBlock" and context.OwnerSide ~= side and 72 or name == "SafeCounter" and context.OwnerSide == side and third ~= "Defensive" and 38 or name == "DefensiveRecycling" and context.OwnerSide == side and 46 or 0
+	elseif tactic == "Gegenpress" then
+		score += phase == "LooseBall" and name == "Counterpress" and 82 or context.LastPossessionSide == side and context.OwnerSide ~= side and name == "Counterpress" and 92 or name == "PressTrigger" and third ~= "Defensive" and 68 or name == "PressRecovery" and 42 or 0
 	elseif tactic == "AllOutAttack" then
 		score += third == "Attacking" and name == "FastChanceCreation" and 62 or name == "CommitForward" and 50 or name == "FinalPressure" and 28 or 0
 	elseif tactic == "ProtectLead" then

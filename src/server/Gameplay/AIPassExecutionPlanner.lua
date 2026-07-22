@@ -97,10 +97,11 @@ function Planner.Plan(context: any, passer: any, pass: any, style: any, difficul
 		local opponentETA = nearestOpponentETA(context, passer.Side, target)
 		local arrival = PassArrivalPlanner.Solve({Receiver = pass.Receiver, Target = target, BallETA = ballETA, PassFamily = passType, SprintEnergy = receiverEnergy, OpponentETA = opponentETA, BallPosition = context.BallWorld, AttackDirection = context.PitchCFrame.LookVector * (context.AttackSigns and context.AttackSigns[passer.Side] or 1)})
 		if not arrival then continue end
+		local contactBallETA = tonumber(arrival.BallETA) or ballETA
 		local receiverETA = arrival.SelectedMovementETA
-		local timingError = math.abs(ballETA - receiverETA)
-		local receiverLate = receiverETA - ballETA
-		local opponentMargin = opponentETA - math.min(ballETA, receiverETA)
+		local timingError = math.abs(contactBallETA - receiverETA)
+		local receiverLate = receiverETA - contactBallETA
+		local opponentMargin = opponentETA - math.min(contactBallETA, receiverETA)
 		local contactSpeed = arrivalSpeed
 		local laneRisk = math.clamp(tonumber(pass.LaneRisk) or 0, 0, 1)
 		local passQuality = math.clamp(tonumber(passer.Stats and passer.Stats.passQuality) or tonumber(passer.Stats and passer.Stats.passing) or 60, 1, 99)
@@ -112,13 +113,13 @@ function Planner.Plan(context: any, passer: any, pass: any, style: any, difficul
 		score += (tonumber(difficulty and difficulty.PassRisk) or 0) * 0.08
 		if style then score += style:Ratio("PassRisk") * 0.04 end
 		if receiverLate > 0.18 then score -= receiverLate * 0.55 end
-		if opponentETA + 0.08 < math.min(receiverETA, ballETA) then score -= 1.2 end
-		if family == "Ground" and pass.MiddlePass == true and opponentETA + 0.08 < math.max(receiverETA, ballETA) then continue end
+		if opponentETA + 0.08 < math.min(receiverETA, contactBallETA) then score -= 1.2 end
+		if family == "Ground" and pass.MiddlePass == true and opponentETA + 0.08 < math.max(receiverETA, contactBallETA) then continue end
 		local committedRun = pass.Receiver.Model:GetAttribute("VTRRunTicketId") ~= nil or tostring(pass.Receiver.Model:GetAttribute("currentAssignment") or ""):find("Run") ~= nil
 		if committedRun and (family == "Through" or family == "Lofted") then score += 0.18 end
 		if arrival.Reachable ~= true then score -= 1.35 end
 		score += (arrival.ExpectedContactQuality or 0) * .28
-		local result = {Target = target, InterceptPoint = arrival.InterceptPoint, Power = power, Distance = distance, BallETA = ballETA, ReceiverETA = receiverETA, OpponentETA = opponentETA, ExpectedContactSpeed = contactSpeed, Viability = score, Family = family, Arrival = arrival, SelectedLocomotionMode = arrival.SelectedLocomotionMode, TimingDeficit = arrival.TimingDeficit, DesiredArrivalVelocity = arrival.DesiredArrivalVelocity, BrakingDistance = arrival.BrakingDistance, FacingTarget = arrival.FacingTarget, ContactKind = arrival.ContactKind, PreferredFoot = arrival.PreferredFoot, FirstTouchIntent = arrival.FirstTouchIntent, Reachable = arrival.Reachable}
+		local result = {Target = target, InterceptPoint = arrival.InterceptPoint, Power = power, Distance = distance, BallETA = contactBallETA, ReceiverETA = receiverETA, OpponentETA = opponentETA, ExpectedContactSpeed = contactSpeed, Viability = score, Family = family, Arrival = arrival, SelectedLocomotionMode = arrival.SelectedLocomotionMode, TimingDeficit = arrival.TimingDeficit, DesiredArrivalVelocity = arrival.DesiredArrivalVelocity, BrakingDistance = arrival.BrakingDistance, FacingTarget = arrival.FacingTarget, ContactKind = arrival.ContactKind, PreferredFoot = arrival.PreferredFoot, FirstTouchIntent = arrival.FirstTouchIntent, Reachable = arrival.Reachable}
 		if not best or result.Viability > best.Viability then best = result end
 	end
 	local floor = (family == "Ground" and pass.MiddlePass == true) and -0.05 or -0.22

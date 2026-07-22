@@ -43,7 +43,7 @@ local function activeTactics(localState: any): any
 	return {PresetId = draft and draft.BasePresetId or "balanced_control", Sliders = sliders, Custom = true}
 end
 
-function AILabPage.new(context: any): CanvasGroup
+function AILabPage.new(context: any): Frame
 	local group, scroll = PageBase.new("AILab", 1380)
 	local state = {Loaded = false, Allowed = false, Side = "Home", Draft = nil, Values = {}, Name = "Lab Playstyle", ExportText = ""}
 
@@ -112,7 +112,7 @@ function AILabPage.new(context: any): CanvasGroup
 
 	render = function()
 		clear()
-		PageBase.heading(scroll, "STUDIO ONLY", "AI LAB", "Choose SAFE Possession or Quick Passing and apply the tactic live.")
+		PageBase.heading(scroll, "STUDIO ONLY", "AI LAB", "Choose a built-in football identity or draft your own and apply it live.")
 		if not state.Loaded then
 			text(scroll, "Loading AI LAB...", UDim2.fromOffset(0, 104), UDim2.new(1, 0, 0, 32), 14, Theme.Colors.Silver, Theme.Fonts.Strong)
 			task.defer(refresh)

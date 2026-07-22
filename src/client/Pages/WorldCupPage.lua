@@ -1448,7 +1448,7 @@ local detail=Instance.new("Frame");detail.AnchorPoint=Vector2.new(.5,.5);detail.
 	end)
 end
 
-function Page.new(context:any):CanvasGroup
+function Page.new(context:any):Frame
 	local group,scroll=PageBase.new("WorldCup",2340)
 	local cleanupEvent=Instance.new("BindableEvent")
 	cleanupEvent.Name="Cleanup"

@@ -110,7 +110,7 @@ function PlayerDetailsModal.open(root: Frame, data: any)
 	if existing then
 		existing:Destroy()
 	end
-	local overlay = Instance.new("CanvasGroup")
+	local overlay = Instance.new("Frame")
 	overlay.Name = "PlayerDetailsModal"
 	overlay.BackgroundColor3 = Theme.Colors.Black
 	overlay.BackgroundTransparency = 0.12

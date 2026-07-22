@@ -22,6 +22,7 @@ end
 function VTRPlayers.GetShard(index: number): { any }
 	assert(index>=1 and index<=VTRPlayers.ShardCount,"Invalid VTR player shard")
 	if decodedCache[index] then return decodedCache[index] end
+	if index%4==1 then task.wait() end
 	local module=script.Parent.Players:FindFirstChild(string.format("Shard%03d",index));assert(module and module:IsA("ModuleScript"),"Missing VTR player shard "..index)
 	local result={};for _,row in require(module) do local player=decode(row);table.insert(result,player);idCache[player.playerId]=player end;decodedCache[index]=result;return result
 end
@@ -32,8 +33,8 @@ function VTRPlayers.Get(playerId: string): any?
 end
 
 function VTRPlayers.LoadAll(): { any }
-	local result=table.create(VTRPlayers.Count);for index=1,VTRPlayers.ShardCount do for _,player in VTRPlayers.GetShard(index) do table.insert(result,player) end end;return result
+	local result=table.create(VTRPlayers.Count);for index=1,VTRPlayers.ShardCount do for _,player in VTRPlayers.GetShard(index) do table.insert(result,player) end;if index%4==0 then task.wait() end end;return result
 end
 
-function VTRPlayers.Iterate(callback: (any)->()) for index=1,VTRPlayers.ShardCount do for _,player in VTRPlayers.GetShard(index) do callback(player) end end end
+function VTRPlayers.Iterate(callback: (any)->()) for index=1,VTRPlayers.ShardCount do for _,player in VTRPlayers.GetShard(index) do callback(player) end;if index%4==0 then task.wait() end end end
 return table.freeze(VTRPlayers)

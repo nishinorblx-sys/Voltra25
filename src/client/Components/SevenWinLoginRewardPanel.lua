@@ -502,7 +502,7 @@ function SevenWinLoginRewardPanel.Show(rewards, wins, onConfirm)
 	}, gui)
 	gradient(shade, Color3.fromRGB(2, 6, 11), Color3.fromRGB(4, 20, 20), 22)
 
-	local panel = create("CanvasGroup", {
+	local panel = create("Frame", {
 		Name = "KeepItemsPanel",
 		AnchorPoint = Vector2.new(0.5, 0.5),
 		BackgroundColor3 = PANEL,
@@ -680,7 +680,7 @@ function SevenWinLoginRewardPanel.Show(rewards, wins, onConfirm)
 			task.delay(0.78, function()
 				if panel.Parent then
 					TweenService:Create(panel, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
-						GroupTransparency = 1,
+						BackgroundTransparency = 1,
 					}):Play()
 				end
 				TweenService:Create(shade, TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {

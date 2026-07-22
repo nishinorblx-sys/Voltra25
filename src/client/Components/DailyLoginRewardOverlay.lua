@@ -227,12 +227,12 @@ function Overlay.Show(payload: any, claim: () -> any)
 	local designHeight = 620
 	local modalScale = dailyModalScale(viewport, designWidth, designHeight)
 
-	local panel = Instance.new("CanvasGroup")
+	local panel = Instance.new("Frame")
 	panel.AnchorPoint = Vector2.new(0.5, 0.5)
 	panel.BackgroundColor3 = PANEL
+	panel.BackgroundTransparency = 0
 	panel.BorderSizePixel = 0
 	panel.ClipsDescendants = true
-	panel.GroupTransparency = 1
 	panel.Position = UDim2.fromScale(0.5, 0.48)
 	panel.Size = UDim2.fromOffset(designWidth, designHeight)
 	panel.ZIndex = 60
@@ -422,7 +422,7 @@ function Overlay.Show(payload: any, claim: () -> any)
 		if closed then return end
 		closed = true
 		TweenService:Create(scale, TweenInfo.new(0.16), {Scale = modalScale * 0.96}):Play()
-		TweenService:Create(panel, TweenInfo.new(0.16), {GroupTransparency = 1, Position = UDim2.fromScale(0.5, 0.46)}):Play()
+		TweenService:Create(panel, TweenInfo.new(0.16), {BackgroundTransparency = 1, Position = UDim2.fromScale(0.5, 0.46)}):Play()
 		TweenService:Create(shade, TweenInfo.new(0.16), {BackgroundTransparency = 1}):Play()
 		task.delay(0.18, function() if gui.Parent then gui:Destroy() end end)
 	end
@@ -447,7 +447,7 @@ function Overlay.Show(payload: any, claim: () -> any)
 	end)
 
 	TweenService:Create(scale, TweenInfo.new(0.26, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Scale = modalScale}):Play()
-	TweenService:Create(panel, TweenInfo.new(0.24, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {GroupTransparency = 0, Position = UDim2.fromScale(0.5, 0.5)}):Play()
+	TweenService:Create(panel, TweenInfo.new(0.24, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {BackgroundTransparency = 0, Position = UDim2.fromScale(0.5, 0.5)}):Play()
 	TweenService:Create(outerStroke, TweenInfo.new(0.9, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true), {Transparency = 0.32}):Play()
 
 	for index, card in ipairs(cards) do

@@ -5,12 +5,11 @@ local Component = {}
 Component.__index = Component
 
 function Component.new(parent: Instance)
-	local group = Instance.new("CanvasGroup")
+	local group = Instance.new("Frame")
 	group.Name = "VTRTrainerPrompt"
 	group.AnchorPoint = Vector2.new(0.5, 0.5)
 	group.Size = UDim2.fromOffset(178, 108)
 	group.BackgroundTransparency = 1
-	group.GroupTransparency = 1
 	group.Visible = false
 	group.ZIndex = 15
 	group.Parent = parent
@@ -80,8 +79,13 @@ function Component:SetVisible(visible: boolean)
 	self.Visible = visible
 	if self.Tween then self.Tween:Cancel() end
 	if visible then self.Group.Visible = true end
-	self.Tween = TweenService:Create(self.Group, TweenInfo.new(0.16, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {GroupTransparency = visible and 0.6 or 1})
-	self.Tween:Play()
+	local targetTransparency = visible and 0 or 1
+	for _, child in ipairs(self.Group:GetDescendants()) do
+		if child:IsA("TextLabel") then
+			self.Tween = TweenService:Create(child, TweenInfo.new(0.16, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {TextTransparency = targetTransparency})
+			self.Tween:Play()
+		end
+	end
 	if not visible then task.delay(0.18, function() if not self.Visible and self.Group.Parent then self.Group.Visible = false end end) end
 end
 

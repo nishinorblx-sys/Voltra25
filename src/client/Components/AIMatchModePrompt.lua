@@ -158,22 +158,20 @@ function Prompt.Choose(): string?
 	gui.ResetOnSpawn = false
 	gui.DisplayOrder = 380
 	gui.Parent = playerGui
-	local overlay = Instance.new("CanvasGroup")
+	local overlay = Instance.new("Frame")
 	overlay.Size = UDim2.fromScale(1, 1)
 	overlay.BackgroundColor3 = Color3.fromHex("030503")
-	overlay.BackgroundTransparency = .08
-	overlay.GroupTransparency = 1
+	overlay.BackgroundTransparency = 1
 	overlay.Active = true
 	overlay.ZIndex = 300
 	overlay.Parent = gui
-	local panel = Instance.new("CanvasGroup")
+	local panel = Instance.new("Frame")
 	panel.AnchorPoint = Vector2.new(.5, .5)
 	panel.Position = UDim2.fromScale(.5, .52)
 	panel.Size = UDim2.fromOffset(720, 390)
 	panel.BackgroundColor3 = Color3.fromHex("071209")
-	panel.BackgroundTransparency = .02
+	panel.BackgroundTransparency = 1
 	panel.BorderSizePixel = 0
-	panel.GroupTransparency = 1
 	panel.ZIndex = 302
 	panel.Parent = overlay
 	corner(panel, 16)
@@ -244,8 +242,8 @@ function Prompt.Choose(): string?
 		if GuiService.SelectedObject and GuiService.SelectedObject:IsDescendantOf(gui) then
 			GuiService.SelectedObject = nil
 		end
-		TweenService:Create(panel, TweenInfo.new(.14, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {GroupTransparency = 1, Position = UDim2.fromScale(.5, .56)}):Play()
-		TweenService:Create(overlay, TweenInfo.new(.18), {GroupTransparency = 1}):Play()
+		TweenService:Create(panel, TweenInfo.new(.14, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {BackgroundTransparency = 1, Position = UDim2.fromScale(.5, .56)}):Play()
+		TweenService:Create(overlay, TweenInfo.new(.18), {BackgroundTransparency = 1}):Play()
 		task.delay(.2, function()
 			if gui.Parent then gui:Destroy() end
 			done:Fire(value)
@@ -333,8 +331,8 @@ function Prompt.Choose(): string?
 			selectIndex(1)
 		end
 	end))
-	TweenService:Create(overlay, TweenInfo.new(.18), {GroupTransparency = 0}):Play()
-	TweenService:Create(panel, TweenInfo.new(.24, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {GroupTransparency = 0, Position = UDim2.fromScale(.5, .5)}):Play()
+	TweenService:Create(overlay, TweenInfo.new(.18), {BackgroundTransparency = .08}):Play()
+	TweenService:Create(panel, TweenInfo.new(.24, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {BackgroundTransparency = .02, Position = UDim2.fromScale(.5, .5)}):Play()
 	TweenService:Create(scale, TweenInfo.new(.24, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Scale = 1}):Play()
 	task.defer(function()
 		if gui.Parent then

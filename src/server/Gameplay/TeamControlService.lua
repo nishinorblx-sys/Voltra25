@@ -526,8 +526,13 @@ function Service:Handle(player: Player, payload: any)
 			local activeRoot=root(active)
 			local offset=activeRoot and aimPoint and(aimPoint-activeRoot.Position)or nil
 			if activeRoot and aimPoint and offset and offset.Magnitude>1 then
+				local receiver = self:_closestTeammateToPoint(player, active, aimPoint)
+				if receiver and self.BallService and self.BallService._primePassReceiver then
+					local eta = offset.Magnitude / (internalPass == "Lofted" and 58 or 72)
+					self.BallService:_primePassReceiver(active, receiver, aimPoint, eta, eta + 2, internalPass)
+				end
 				if self.Reception then self.Reception:ConfigureNextPass(active,{Player=player,AssistanceMode="Manual",AutoSwitchMode=payload.AutoSwitch,ManualPass=true})end
-				local kicked = self.BallService:Kick(active,"Pass",offset,evaluatedCharge,nil,internalPass,offset.Magnitude,aimPoint)
+				local kicked = self.BallService:Kick(active,"Pass",offset,evaluatedCharge,receiver,internalPass,offset.Magnitude,aimPoint)
 				if not kicked and self.Reception then self.Reception:ClearNextPass(active) end
 				if kicked then
 					self:_emitTelemetry(player,"playability_pass_selection",{passFamily=requestedPass,targetChanged=false})

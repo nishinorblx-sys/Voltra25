@@ -67,12 +67,23 @@ local function predictReceivePoint(context: any, receiverInfo: any, requestedTar
 	local toReceiver = flat(receiverPosition - ballPosition)
 	local along = toReceiver:Dot(direction)
 	local receiverSpeed = estimateReceiverSpeed(receiverInfo)
-	local bestPoint = ballPosition + direction * math.clamp(along + 8, 5, 70)
+	local toRequested = flat(requestedTarget - ballPosition)
+	local remaining = toRequested.Magnitude
+	if remaining > 0 and remaining < 12 then
+		return requestedTarget
+	end
+	local maxTravel = if remaining > 5 then math.max(5, remaining - math.clamp(remaining * .28, 6, 18)) else 70
+	local lateral = math.max(0, (toReceiver - direction * math.clamp(along, 0, math.max(remaining, 1))).Magnitude)
+	local lead = math.clamp(7 + lateral * .16 + ballSpeed * .045, 6, 22)
+	local bestPoint = ballPosition + direction * math.clamp(along + lead, 5, math.min(70, maxTravel))
 	local bestScore = math.huge
 
 	for step = 1, 18 do
 		local t = step * 0.12
 		local travel = ballSpeed * t
+		if remaining > 5 and travel > maxTravel then
+			break
+		end
 		local projected = ballPosition + direction * travel
 		local distanceToProjected = PitchConfig.GetDistanceStuds(receiverPosition, projected)
 		local reachableGap = distanceToProjected - receiverSpeed * t
@@ -109,15 +120,17 @@ local function cutPassCoursePoint(context: any, receiverInfo: any, requestedTarg
 	if remaining<3 then
 		return requestedTarget
 	end
-	local cutDistance=math.clamp(remaining*.9,5,58)
-	if remaining<18 then
-		cutDistance=math.max(remaining*.58,3.5)
-	end
+	local receiverOffset=flat(receiverInfo.World-ball)
+	local receiverAlong=math.clamp(receiverOffset:Dot(direction),0,remaining)
+	local lateral=math.max(0,(receiverOffset-direction*receiverAlong).Magnitude)
+	local lead=math.clamp(7+lateral*.18+velocity.Magnitude*.035,6,22)
+	local finalBuffer=math.clamp(remaining*.28,6,18)
+	local cutDistance=math.clamp(receiverAlong+lead,math.min(remaining,4.5),math.max(4.5,remaining-finalBuffer))
 	local cut=ball+direction*cutDistance
 	local receiverToCut=PitchConfig.GetDistanceStuds(receiverInfo.World,cut)
 	local receiverToTarget=PitchConfig.GetDistanceStuds(receiverInfo.World,requestedTarget)
 	if receiverToCut>receiverToTarget+26 and remaining>22 then
-		cut=ball+direction*math.clamp(remaining*.72,5,42)
+		cut=ball+direction*math.clamp(math.min(cutDistance,remaining*.72),5,math.max(6,remaining-finalBuffer))
 	end
 	return Vector3.new(cut.X,receiverInfo.World.Y,cut.Z)
 end
@@ -337,9 +350,24 @@ local function setTeamAction(model: Model, action: string, reason: string, now: 
 end
 
 local function isQuickPassingStyle(style: any): boolean
-	return tostring(style and style.Tactics and style.Tactics.PlaystyleId or "") == "quick_passing"
-		or tostring(style and style.Tactics and style.Tactics.PlaystyleName or "") == "Quick Passing"
+	local id = tostring(style and style.Tactics and style.Tactics.PlaystyleId or "")
+	local name = tostring(style and style.Tactics and style.Tactics.PlaystyleName or "")
+	return id == "quick_passing"
+		or id == "vertical_tiki_taka"
+		or id == "counter_attack"
+		or name == "Quick Passing"
+		or name == "Tiki-Taka"
 		or (tonumber(style and style.MetricsTargets and style.MetricsTargets.QuickPassing) or 0) >= 1
+		or (tonumber(style and style.MetricsTargets and style.MetricsTargets.FirstTimePassChance) or 0) >= 60
+end
+
+local function isSidePressureEscapeStyle(style: any): boolean
+	local id = tostring(style and style.Tactics and style.Tactics.PlaystyleId or "")
+	local name = tostring(style and style.Tactics and style.Tactics.PlaystyleName or "")
+	return id == "wing_play"
+		or id == "wing_overload"
+		or name == "Wing Play"
+		or (tonumber(style and style.MetricsTargets and style.MetricsTargets.SidePressureEscape) or 0) >= 1
 end
 
 local function quickPassingForwardSpace(context: any, carrier: any, pressure: any): (boolean, Vector3)
@@ -918,6 +946,7 @@ function Service:_carrierDecision(context: any, carrier: any, assignment: any)
 
 	local escapingPressure = carrier.Model:GetAttribute("AIEscapingClosePressure") == true or self.LastAction[carrier.Model] == "ForcedSafePass" or self.LastAction[carrier.Model] == "PressureEscape"
 	local retreatPressureActive = AIPassingDecisionService.ShouldRetreatFromPressure and AIPassingDecisionService.ShouldRetreatFromPressure(pressure) or pressure.Heavy or pressure.Closest <= 10
+	local sidePressureEscape = isSidePressureEscapeStyle(self.Style) and retreatPressureActive
 	local runningIntoSpaceDanger = retreatPressureActive or strikerUnderClosePressure or (escapingPressure and retreatPressureActive)
 	local conservativeSafe = defensiveMood ~= "AggressiveRisk" and (pressure.Heavy or pressure.Approaching and (pressure.ApproachingCount or 0) >= 2 or carriedFor >= holdLimit * 0.45 or self.Style:Risk() < 0.3)
 	if defensiveCarrier and not retreatPressureActive then
@@ -925,6 +954,10 @@ function Service:_carrierDecision(context: any, carrier: any, assignment: any)
 	end
 	local forcedSafe = wingerEndLine or runningIntoSpaceDanger or conservativeSafe
 	local pass = canPass and AIPassingDecisionService.Choose(context, carrier, self.Style, self.Difficulty, forcedSafe) or nil
+	if canPass and sidePressureEscape and pass and pass.Kind == "Back" then
+		local sideEscape = AIPassingDecisionService.ChooseSidePressureEscape and AIPassingDecisionService.ChooseSidePressureEscape(context, carrier, self.Style, self.Difficulty) or nil
+		pass = sideEscape
+	end
 	local defenderDeepEnough = defensiveCarrier and carrier.Pitch.Z <= PitchConfig.Zones.OwnBox.ZMax + 48
 	local defenderMustExitSideOrLong = defenderDeepEnough
 	if canPass and defenderMustExitSideOrLong then
@@ -989,6 +1022,7 @@ function Service:_carrierDecision(context: any, carrier: any, assignment: any)
 	carrier.Model:SetAttribute("AITeamProgressionAnchor", forwardOverride and PitchConfig.TeamPitchPositionToWorld(forwardCarryPitch, carrier.Side, context.Options) or nil)
 	carrier.Model:SetAttribute("AIRunningIntoSpaceDanger", runningIntoSpaceDanger)
 	carrier.Model:SetAttribute("AIEscapingClosePressure", runningIntoSpaceDanger)
+	carrier.Model:SetAttribute("AISidePressureEscape", sidePressureEscape)
 	carrier.Model:SetAttribute("AIForcePassPressure10", pressure.Closest <= 10)
 	carrier.Model:SetAttribute("AIForcedSafe", forcedSafe)
 	carrier.Model:SetAttribute("AIPassScore", pass and pass.Score or -999)
@@ -1014,7 +1048,7 @@ function Service:_carrierDecision(context: any, carrier: any, assignment: any)
 			self.CarrySince[carrier.Model] = nil
 			self.LastAction[carrier.Model] = runningIntoSpaceDanger and "PressureEscape" or self.LastAction[carrier.Model]
 			if runningIntoSpaceDanger then
-				setTeamAction(carrier.Model, defenderMustExitSideOrLong and "Defender Exit" or "Pressure Escape", defenderMustExitSideOrLong and "Defender is already deep enough so escape goes sideways or long, not back toward the box" or "Close pressure inside 10 studs forced a safe pass", now)
+				setTeamAction(carrier.Model, sidePressureEscape and "Side Pressure Escape" or defenderMustExitSideOrLong and "Defender Exit" or "Pressure Escape", sidePressureEscape and "Wing Play escapes pressure with sideways circulation until the press is relieved" or defenderMustExitSideOrLong and "Defender is already deep enough so escape goes sideways or long, not back toward the box" or "Close pressure inside 10 studs forced a safe pass", now)
 			elseif pass.ForwardSpaceOverride == true then
 				setTeamAction(carrier.Model, "Forward Pass", "Forward space is open so progression overrides recycle options", now)
 			elseif forcedSafe then
@@ -1070,8 +1104,8 @@ function Service:_carrierDecision(context: any, carrier: any, assignment: any)
 		return
 	end
 
-	local fallbackZ = wingerEndLine and carrier.Pitch.Z - 28 or carrier.Pitch.Z + 32
-	local fallbackX = wingerEndLine and (carrier.Pitch.X + (carrier.Pitch.X < PitchConfig.HALF_WIDTH and 28 or -28)) or carrier.Pitch.X
+	local fallbackZ = wingerEndLine and carrier.Pitch.Z - 28 or sidePressureEscape and carrier.Pitch.Z or carrier.Pitch.Z + 32
+	local fallbackX = (wingerEndLine or sidePressureEscape) and (carrier.Pitch.X + (carrier.Pitch.X < PitchConfig.HALF_WIDTH and 28 or -28)) or carrier.Pitch.X
 	local targetPitch = PitchConfig.ClampInsidePitch(Vector3.new(fallbackX, 3, fallbackZ))
 	local target = PitchConfig.TeamPitchPositionToWorld(targetPitch, carrier.Side, context.Options)
 	if not canCarry then
@@ -1079,11 +1113,11 @@ function Service:_carrierDecision(context: any, carrier: any, assignment: any)
 	end
 	assignment.TargetWorld = target
 	assignment.MovementTarget = target
-	assignment.PrimaryAssignment = "DribbleSupport"
+	assignment.PrimaryAssignment = sidePressureEscape and "SideRetreatPressure" or "DribbleSupport"
 	assignment.MovementUrgency = 1
 	assignment.SprintAllowed = not wingerEndLine
-	self.LastAction[carrier.Model] = wingerEndLine and "TurnAwayFromEndLine" or "ForcedCarry"
-	setTeamAction(carrier.Model, self.LastAction[carrier.Model], wingerEndLine and "Reached end line and needs a side escape" or "No valid pass shot or dribble was selected", now)
+	self.LastAction[carrier.Model] = sidePressureEscape and "SideRetreatPressure" or wingerEndLine and "TurnAwayFromEndLine" or "ForcedCarry"
+	setTeamAction(carrier.Model, self.LastAction[carrier.Model], sidePressureEscape and "Wing Play pressure escape found no immediate pass, so the carrier shifts sideways instead of retreating backward" or wingerEndLine and "Reached end line and needs a side escape" or "No valid pass shot or dribble was selected", now)
 end
 
 function Service:_defensiveActions(context: any, assignmentsBySide: any, onlySide: string?)

@@ -22,6 +22,7 @@ local DifficultyConfig=require(ReplicatedStorage.VTR.Shared.DifficultyConfig)
 local Remotes=require(ReplicatedStorage.VTR.Shared.Remotes)
 local PenaltyConfig=require(ReplicatedStorage.VTR.Shared.PenaltyConfig)
 local AITacticConfig=require(ReplicatedStorage.VTR.Shared.AITacticConfig)
+local AIPlaystyleConfig=require(ReplicatedStorage.VTR.Shared.AIPlaystyleConfig)
 local AIPlaystyleResolver=require(ReplicatedStorage.VTR.Shared.AIPlaystyleResolver)
 local AIPlayerInstructionConfig=require(ReplicatedStorage.VTR.Shared.AIPlayerInstructionConfig)
 local Catalog=require(ReplicatedStorage.VTR.Shared.Catalog)
@@ -38,6 +39,7 @@ local TeamControlService=require(script.Parent.TeamControlService)
 local ReceiverMovementService=require(script.Parent.ReceiverMovementService)
 local OutOfBoundsService=require(script.Parent.OutOfBoundsService)
 local SetPieceService=require(script.Parent.SetPieceService)
+local KickoffPositionService=require(script.Parent.KickoffPositionService)
 local MatchClockService=require(script.Parent.MatchClockService)
 local StaminaService=require(script.Parent.StaminaService)
 local BallFactoryService=require(script.Parent.BallFactoryService)
@@ -168,6 +170,25 @@ local function sanitizeRuntimeTactics(payload:any):any
 	end
 	local normalized=AITacticConfig.Normalize(payload)
 	if type(payload)=="table"then
+		local function clone(value:any):any
+			if type(value)~="table"then return value end
+			local result={}
+			for key,child in pairs(value)do result[key]=clone(child)end
+			return result
+		end
+		local builtIn=AIPlaystyleConfig.ResolveBuiltIn(payload.PlaystyleId or payload.PlaystyleName or payload.PresetId)
+		if builtIn then
+			normalized.PlaystyleId=builtIn.PlaystyleId
+			normalized.PlaystyleVersion=builtIn.Version
+			normalized.PlaystyleName=builtIn.Name
+			normalized.PlaystyleStatus=builtIn.Status
+			normalized.PassRules=clone(builtIn.PassRules)
+			normalized.PositioningRules=clone(builtIn.PositioningRules)
+			normalized.PressRules=clone(builtIn.PressRules)
+			normalized.RoleInstructions=clone(builtIn.RoleInstructions)
+			normalized.SequenceRules=clone(builtIn.SequenceRules)
+			normalized.MetricsTargets=clone(builtIn.MetricsTargets)
+		end
 		for _,key in ipairs({"Formation","PlaystyleId","PlaystyleVersion","PlaystyleName","PlaystyleStatus","PassRules","PositioningRules","PressRules","RoleInstructions","SequenceRules","MetricsTargets"})do
 			if payload[key]~=nil then normalized[key]=payload[key]end
 		end
@@ -1210,19 +1231,28 @@ function Service:_teleportPresentationStage(session:any,stage:string,state:strin
 	self:_syncPositions(session)
 end
 
+function Service:_positionPrematchKickoff(session:any)
+	self:_cancelPrematchPresentation(session)
+	local half=session.Clock and session.Clock:Payload().Half or 1
+	KickoffPositionService.Position(session.Teams,session.Formation,session.World.PitchCFrame,"Home",half)
+	for _,model in session.Models do
+		local root=modelRoot(model)
+		if root then
+			root.Anchored=true
+			root.AssemblyLinearVelocity=Vector3.zero
+			root.AssemblyAngularVelocity=Vector3.zero
+		end
+		model:SetAttribute("VTRPresentationState","KickoffReady")
+		model:SetAttribute("VTRForceIdle",true)
+		if session.Animations then session.Animations:ForceIdle(model)end
+	end
+	self:_syncPositions(session)
+end
+
 function Service:_finishPrematchPresentation(session:any)
 	if session.Ended or session.PresentationFinished or session.Phase~="PRE MATCH"then return end
 	session.PresentationFinished=true
-	self:_cancelPrematchPresentation(session)
-	self:_teleportPresentationStage(session,"Kickoff","KickoffReady")
-	self:_destroyPresentationOfficials(session)
-	for _,model in session.Models do
-		local root=modelRoot(model)
-		if root then root.Anchored=true;root.AssemblyLinearVelocity=Vector3.zero;root.AssemblyAngularVelocity=Vector3.zero end
-		model:SetAttribute("VTRPresentationState","KickoffReady")
-		model:SetAttribute("VTRForceIdle",true)
-	end
-	self:_syncPositions(session)
+	self:_positionPrematchKickoff(session)
 	task.delay(.15,function()
 		if self.Sessions[session.Player]==session and not session.Ended and session.Phase=="PRE MATCH"then
 			self:_startSetPiece(session,"Kickoff","Home",session.World.PitchCFrame.Position)
@@ -1235,53 +1265,12 @@ function Service:_startPrematchPresentation(session:any)
 	session.PresentationActive=true
 	session.PresentationStartedAt=os.clock()
 	for _,participant in session.Players do self:_track(session,participant,"playability_presentation_started",{})end
-	local profile=tostring(session.PresentationProfile or"Standard")
 	local duration=math.max(1,tonumber(session.Presentation and session.Presentation.Duration)or 8)
-	if profile~="Broadcast"then
-		self:_teleportPresentationStage(session,"Kickoff","KickoffReady")
-		task.spawn(function()
-			local earliest=session.PresentationStartedAt+(profile=="Acquisition"and.5 or math.max(.5,duration-.35))
-			local deadline=session.PresentationStartedAt+duration
-			while not presentationStopped(session)and os.clock()<deadline do
-				if os.clock()>=earliest and allParticipantsReady(session,"PresentationReady")then break end
-				task.wait(.05)
-			end
-			if not presentationStopped(session)then self:_finishPrematchPresentation(session)end
-		end)
-		return
-	end
-	self:_ensurePresentationOfficials(session)
-	for _,side in{"Home","Away"}do
-		for index,model in session.Teams[side]or{}do
-			model:PivotTo(self:_presentationFrame(session,model,index,side,"Tunnel"))
-			local root=modelRoot(model)
-			if root then root.Anchored=true;root.AssemblyLinearVelocity=Vector3.zero;root.AssemblyAngularVelocity=Vector3.zero end
-			model:SetAttribute("VTRPresentationState","TunnelIdle")
-			model:SetAttribute("VTRForceIdle",true)
-			if session.Animations then session.Animations:ForceIdle(model)end
-		end
-	end
-	for index,model in self:_ensurePresentationOfficials(session)do
-		model:PivotTo(self:_presentationFrame(session,model,index,"Official","Tunnel"))
-		local root=modelRoot(model)
-		if root then root.Anchored=true;root.AssemblyLinearVelocity=Vector3.zero;root.AssemblyAngularVelocity=Vector3.zero end
-		model:SetAttribute("VTRPresentationState","TunnelIdle")
-		model:SetAttribute("VTRForceIdle",true)
-		if session.OfficialAnimations then session.OfficialAnimations:ForceIdle(model)end
-	end
-	self:_syncPositions(session)
+	self:_positionPrematchKickoff(session)
+	session.PresentationActive=true
 	task.spawn(function()
-		task.wait(math.min(1.5,duration*.08))
-		if presentationStopped(session)then return end
-		self:_movePresentationStage(session,"Walkout",math.min(4,duration*.22))
-		if presentationStopped(session)then return end
-		self:_teleportPresentationStage(session,"Lineup","LineupIdle")
-		local kickoffAt=session.PresentationStartedAt+math.max(5,duration-2.5)
-		while not presentationStopped(session)and os.clock()<kickoffAt do task.wait(.05)end
-		if presentationStopped(session)then return end
-		self:_teleportPresentationStage(session,"Kickoff","KickoffReady")
-		self:_destroyPresentationOfficials(session)
-		local earliest=session.PresentationStartedAt+math.max(1,duration-.35)
+		local profile=tostring(session.PresentationProfile or"Standard")
+		local earliest=session.PresentationStartedAt+(profile=="Acquisition"and.5 or math.max(.5,duration-.35))
 		local deadline=session.PresentationStartedAt+duration
 		while not presentationStopped(session)and os.clock()<deadline do
 			if os.clock()>=earliest and allParticipantsReady(session,"PresentationReady")then break end
@@ -1327,15 +1316,7 @@ function Service:_skipPrematch(session:any)
 	session.PrematchSkipInProgress=true
 	session.PrematchSkipped=true
 	for _,participant in session.Players do self:_track(session,participant,"playability_presentation_skipped",{stageDuration=os.clock()-(tonumber(session.PresentationStartedAt)or os.clock())})end
-	self:_cancelPrematchPresentation(session)
-	self:_teleportPresentationStage(session,"Kickoff","KickoffReady")
-	for _,model in session.Models do
-		local root=modelRoot(model)
-		if root then root.Anchored=true;root.AssemblyLinearVelocity=Vector3.zero;root.AssemblyAngularVelocity=Vector3.zero end
-		model:SetAttribute("VTRPresentationState","KickoffReady")
-		model:SetAttribute("VTRForceIdle",true)
-	end
-	self:_syncPositions(session)
+	self:_positionPrematchKickoff(session)
 	broadcast(self.State,session,{Type="PrematchSkip",Immediate=true})
 	task.delay(.45,function()
 		if self.Sessions[session.Player]==session and not session.Ended and session.Phase=="PRE MATCH"then
@@ -5078,7 +5059,8 @@ function Service:_step(dt:number)
 				end
 			end
 		end
-		local currentHalf=session.Clock and session.Clock:Payload().Half or 1;if session.AI and session.AI.SetHalf then session.AI:SetHalf(currentHalf)end;if session.Offside and session.Offside.SetHalf and session.OffsideDisabled~=true then session.Offside:SetHalf(currentHalf)end;if session.Goalkeepers and session.Goalkeepers.SetHalf then session.Goalkeepers:SetHalf(currentHalf)end;if session.Stats and session.Stats.RecordPositions then session.Stats:RecordPositions(session.Models,dt)end;session.BallService:Step(dt);session.TeamControl:Step(dt);session.Animations:Step(session.Possession:GetOwner());session.Grounding:Step();local tutorialAI=session.WorldCupTutorial and session.TutorialAllowAI==true and session.TutorialStage~=1;if not session.ShootingPractice and (not session.WorldCupTutorial or tutorialAI) then session.AI:Step(dt)end;self:_stepWorldCupTutorial(session,dt);session.Goalkeepers:Step(dt);session.Goals:Step();if session.Running and not session.ShootingPractice and not session.WorldCupTutorial then session.OutOfBounds:Step()end;if not session.ShootingPractice and not session.WorldCupTutorial then RefereeService.Enforce(session.Models,session.World.PitchCFrame,session.World.Width,session.World.Length)end;if session.LinkDebug then session.LinkDebug:Step(session,dt)end
+		local clockPayload=session.Clock and session.Clock:Payload()or nil;local gameSeconds=clockPayload and tonumber(clockPayload.GameSeconds)or 0;local currentHalf=clockPayload and clockPayload.Half or 1;if session.AI and session.AI.SetHalf then session.AI:SetHalf(currentHalf)end;if session.Offside and session.Offside.SetHalf and session.OffsideDisabled~=true then session.Offside:SetHalf(currentHalf)end;if session.Goalkeepers and session.Goalkeepers.SetHalf then session.Goalkeepers:SetHalf(currentHalf)end;if session.Stats and session.Stats.RecordPositions then session.Stats:RecordPositions(session.Models,dt,gameSeconds,session.Possession and session.Possession:GetOwner()or nil,session.World and session.World.Ball and session.World.Ball.Position or nil,currentHalf)end;session.BallService:Step(dt);session.TeamControl:Step(dt);session.Animations:Step(session.Possession:GetOwner());session.Grounding:Step();local tutorialAI=session.WorldCupTutorial and session.TutorialAllowAI==true and session.TutorialStage~=1;if not session.ShootingPractice and (not session.WorldCupTutorial or tutorialAI) then session.AI:Step(dt)end;self:_stepWorldCupTutorial(session,dt);session.Goalkeepers:Step(dt);session.Goals:Step();if session.Running and not session.ShootingPractice and not session.WorldCupTutorial then session.OutOfBounds:Step()end;if not session.ShootingPractice and not session.WorldCupTutorial then RefereeService.Enforce(session.Models,session.World.PitchCFrame,session.World.Width,session.World.Length)end;if session.LinkDebug then session.LinkDebug:Step(session,dt)end
+		if session.Stats and session.Stats.ConsumeMomentumUpdate then local momentum=session.Stats:ConsumeMomentumUpdate(gameSeconds);if momentum then broadcast(self.State,session,{Type="MomentumUpdate",Momentum=momentum})end end
 		if session.WorldCupTutorial and session.GuidedTutorialFlow~=true then
 			local owner=session.Possession and session.Possession:GetOwner()or nil
 			if session.TutorialStage==2 and not session.TutorialRestarting and owner and tostring(owner:GetAttribute("VTRTeam")or"")=="Away"then

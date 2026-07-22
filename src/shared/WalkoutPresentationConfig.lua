@@ -34,14 +34,48 @@ Config.Scene = table.freeze({
 })
 
 Config.LightingPhases = table.freeze({
-	Blackout = table.freeze({ Ambient = Color3.fromRGB(4, 6, 5), LightColor = Color3.fromRGB(125, 205, 20), LightDirection = Vector3.new(-0.35, -0.75, -0.4), Light = 0.18 }),
-	TunnelIgnition = table.freeze({ Ambient = Color3.fromRGB(6, 9, 7), LightColor = Color3.fromRGB(165, 255, 0), LightDirection = Vector3.new(-0.45, -0.7, -0.25), Light = 0.36 }),
-	PackEntrance = table.freeze({ Ambient = Color3.fromRGB(8, 12, 9), LightColor = Color3.fromRGB(190, 235, 130), LightDirection = Vector3.new(-0.45, -0.72, -0.25), Light = 0.48 }),
-	EnergyCharge = table.freeze({ Ambient = Color3.fromRGB(10, 15, 11), LightColor = Color3.fromRGB(220, 240, 215), LightDirection = Vector3.new(-0.4, -0.7, -0.3), Light = 0.58 }),
-	Silhouette = table.freeze({ Ambient = Color3.fromRGB(12, 17, 13), LightColor = Color3.fromRGB(235, 240, 235), LightDirection = Vector3.new(0.1, -0.55, -0.82), Light = 0.64 }),
-	Walkout = table.freeze({ Ambient = Color3.fromRGB(13, 18, 14), LightColor = Color3.fromRGB(235, 240, 235), LightDirection = Vector3.new(-0.3, -0.62, -0.45), Light = 0.7 }),
-	Celebration = table.freeze({ Ambient = Color3.fromRGB(14, 20, 15), LightColor = Color3.fromRGB(235, 245, 225), LightDirection = Vector3.new(-0.28, -0.62, -0.42), Light = 0.74 }),
-	RatingReveal = table.freeze({ Ambient = Color3.fromRGB(16, 22, 17), LightColor = Color3.fromRGB(235, 245, 225), LightDirection = Vector3.new(-0.3, -0.58, -0.5), Light = 0.78 }),
+	Blackout = table.freeze({ Ambient = Color3.fromRGB(3, 5, 4), LightColor = Color3.fromRGB(95, 165, 12), LightDirection = Vector3.new(-0.35, -0.75, -0.4), Light = 0.12 }),
+	TunnelIgnition = table.freeze({ Ambient = Color3.fromRGB(5, 7, 6), LightColor = Color3.fromRGB(135, 220, 16), LightDirection = Vector3.new(-0.45, -0.7, -0.25), Light = 0.22 }),
+	PackEntrance = table.freeze({ Ambient = Color3.fromRGB(6, 9, 7), LightColor = Color3.fromRGB(165, 210, 85), LightDirection = Vector3.new(-0.45, -0.72, -0.25), Light = 0.32 }),
+	EnergyCharge = table.freeze({ Ambient = Color3.fromRGB(7, 10, 8), LightColor = Color3.fromRGB(205, 225, 195), LightDirection = Vector3.new(-0.4, -0.7, -0.3), Light = 0.42 }),
+	Silhouette = table.freeze({ Ambient = Color3.fromRGB(8, 12, 9), LightColor = Color3.fromRGB(225, 235, 220), LightDirection = Vector3.new(0.1, -0.55, -0.82), Light = 0.5 }),
+	Walkout = table.freeze({ Ambient = Color3.fromRGB(9, 13, 10), LightColor = Color3.fromRGB(235, 240, 228), LightDirection = Vector3.new(-0.3, -0.62, -0.45), Light = 0.56 }),
+	Celebration = table.freeze({ Ambient = Color3.fromRGB(10, 14, 11), LightColor = Color3.fromRGB(235, 242, 225), LightDirection = Vector3.new(-0.28, -0.62, -0.42), Light = 0.62 }),
+	RatingReveal = table.freeze({ Ambient = Color3.fromRGB(11, 16, 12), LightColor = Color3.fromRGB(235, 242, 225), LightDirection = Vector3.new(-0.3, -0.58, -0.5), Light = 0.66 }),
+})
+
+Config.GlobalLighting = table.freeze({
+	Brightness = 1.08,
+	Ambient = Color3.fromRGB(5, 7, 6),
+	OutdoorAmbient = Color3.fromRGB(1, 2, 1),
+	EnvironmentDiffuseScale = 0.18,
+	EnvironmentSpecularScale = 0.46,
+	ExposureCompensation = -0.38,
+	BloomIntensity = 0.2,
+	BloomSize = 22,
+	BloomThreshold = 1.85,
+	ColorCorrectionBrightness = -0.05,
+	ColorCorrectionContrast = 0.2,
+	ColorCorrectionSaturation = -0.08,
+	AtmosphereDensity = 0.08,
+	AtmosphereHaze = 0.28,
+})
+
+Config.Shots = table.freeze({
+	Start = table.freeze({ Position = Vector3.new(0, 4.6, -35), Target = Vector3.new(0, 2.8, 0), FOV = 44, Duration = 0.35 }),
+	Tunnel = table.freeze({ Position = Vector3.new(0, 4.1, -29), Target = Vector3.new(0, 2.55, 9), FOV = 42, Duration = 0.62 }),
+	PackEntrance = table.freeze({ Position = Vector3.new(0, 4.2, -25), Target = Vector3.new(0, 2.2, -1), FOV = 39, Duration = 0.48 }),
+	Charge = table.freeze({ Position = Vector3.new(0, 4.1, -23), Target = Vector3.new(0, 2.5, 0), FOV = 40, Duration = 0.62 }),
+	Rupture = table.freeze({ Position = Vector3.new(0, 4.05, -20), Target = Vector3.new(0, 2.55, 2), FOV = 37, Duration = 0.24 }),
+	Silhouette = table.freeze({ Position = Vector3.new(0.5, 3.7, 13.4), Target = Vector3.new(0, 2.5, 30), FOV = 37, Duration = 0.45 }),
+	WalkStart = table.freeze({ Position = Vector3.new(3.8, 3.75, 16), Target = Vector3.new(0, 2.6, 26), FOV = 36, Duration = 0.35 }),
+	WalkMid = table.freeze({ Position = Vector3.new(2.6, 3.75, 3.5), Target = Vector3.new(0, 2.6, 13), FOV = 34, Duration = 0.4 }),
+	WalkEnd = table.freeze({ Position = Vector3.new(2, 3.75, -1.8), Target = Vector3.new(0, 2.55, 10), FOV = 32, Duration = 0.4 }),
+	CelebrationLow = table.freeze({ Position = Vector3.new(-5.8, 2.45, -1.4), Target = Vector3.new(0, 2.35, 10), FOV = 31, Duration = 1.05 }),
+	CelebrationSide = table.freeze({ Position = Vector3.new(7.2, 3.2, 1.4), Target = Vector3.new(0, 2.4, 10), FOV = 31, Duration = 1.25 }),
+	Hero = table.freeze({ Position = Vector3.new(4.9, 3.15, -3.1), Target = Vector3.new(0, 2.35, 10), FOV = 30, Duration = 0.82 }),
+	Card = table.freeze({ Position = Vector3.new(8.5, 3.2, -14), Target = Vector3.new(1.2, 2.35, 10), FOV = 30, Duration = 0.55 }),
+	ResultsTransition = table.freeze({ Position = Vector3.new(0, 4.4, -22), Target = Vector3.new(0, 2.6, 10), FOV = 39, Duration = 0.38 }),
 })
 
 Config.LightStations = table.freeze({ -18, -10, -2, 6, 14, 22 })

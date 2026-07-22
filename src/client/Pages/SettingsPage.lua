@@ -284,7 +284,7 @@ local function renderTab(context: any, scroll: ScrollingFrame, active: string)
 	end
 end
 
-function SettingsPage.new(context: any): CanvasGroup
+function SettingsPage.new(context: any): Frame
 	local group, scroll = PageBase.new("Settings", 1120)
 	PageBase.heading(scroll, "SETTINGS", "GAME SETTINGS", "Adjust controls, audio, camera, accessibility, and account matchmaking.")
 	local active = (context.Data.UIState.SelectedTabs and context.Data.UIState.SelectedTabs.Settings) or "Controls"

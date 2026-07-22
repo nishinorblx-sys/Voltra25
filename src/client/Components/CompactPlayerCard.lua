@@ -25,6 +25,7 @@ end
 function CompactPlayerCard.new(props: any): TextButton
 	local card = props.Card
 	local horizontal = props.Horizontal == true
+	local pitchCompact = props.PitchCompact == true
 	local root = Instance.new("TextButton")
 	root.Name = "CardRoot"
 	root.AutoButtonColor = false
@@ -36,7 +37,18 @@ function CompactPlayerCard.new(props: any): TextButton
 	local visual = CardSurface.apply(root, card.Rarity or card.rarity, card.CardType or card.cardType, 7)
 	CardSurface.decorateAscension(root, card, horizontal and "Horizontal" or "Compact")
 
-	if horizontal then
+	if pitchCompact then
+		local shortName = string.match(card.Name or card.displayName, "([^%s]+)$") or (card.Name or card.displayName)
+		local portrait = AvatarPortraitGenerator.new(root, card, UDim2.new(1, -18, 0, 48), false)
+		portrait.Position = UDim2.fromOffset(9, 24)
+		portrait.ZIndex = root.ZIndex + 3
+		label(root, tostring(card.Rating or card.overall), UDim2.fromOffset(7, 3), UDim2.fromOffset(32, 20), 13, Theme.Colors.White, Theme.Fonts.Display)
+		local position = label(root, card.Position or card.bestPosition, UDim2.new(1, -40, 0, 5), UDim2.fromOffset(33, 17), 10, visual.trimColor, Theme.Fonts.Strong)
+		position.TextXAlignment = Enum.TextXAlignment.Right
+		local name = label(root, shortName, UDim2.fromOffset(5, 73), UDim2.new(1, -10, 0, 15), 9, Theme.Colors.White, Theme.Fonts.Strong)
+		name.TextXAlignment = Enum.TextXAlignment.Center
+		name.TextTruncate = Enum.TextTruncate.AtEnd
+	elseif horizontal then
 		local portrait = AvatarPortraitGenerator.new(root, card, UDim2.fromOffset(38, 38), false)
 		portrait.Position = UDim2.fromOffset(7, 16)
 		portrait.ZIndex = root.ZIndex + 3
@@ -77,9 +89,9 @@ function CompactPlayerCard.new(props: any): TextButton
 	end
 
 	local meta = props.Meta or card.Meta or {}
-	if meta.LoanMatchesRemaining then label(root,"LOAN "..meta.LoanMatchesRemaining,UDim2.new(0,4,1,-18),UDim2.fromOffset(horizontal and 48 or 42,12),6,Theme.Colors.Warning,Theme.Fonts.Strong)end
-	if meta.Favorite then label(root, utf8.char(9733), UDim2.fromOffset(3, horizontal and 2 or 49), UDim2.fromOffset(14, 14), 8, Theme.Colors.Warning, Theme.Fonts.Strong) end
-	if meta.Locked then label(root, "L", UDim2.fromOffset(horizontal and 35 or 4, horizontal and 2 or 49), UDim2.fromOffset(14, 14), 6, Theme.Colors.Electric, Theme.Fonts.Strong) end
+	if meta.LoanMatchesRemaining then label(root,"LOAN "..meta.LoanMatchesRemaining,UDim2.new(0,4,1,-18),UDim2.fromOffset(horizontal and 48 or 42,12),pitchCompact and 9 or 6,Theme.Colors.Warning,Theme.Fonts.Strong)end
+	if meta.Favorite then label(root, utf8.char(9733), UDim2.fromOffset(3, horizontal and 2 or pitchCompact and 55 or 49), UDim2.fromOffset(14, 14), pitchCompact and 10 or 8, Theme.Colors.Warning, Theme.Fonts.Strong) end
+	if meta.Locked then label(root, "L", UDim2.fromOffset(horizontal and 35 or 4, horizontal and 2 or pitchCompact and 55 or 49), UDim2.fromOffset(14, 14), pitchCompact and 9 or 6, Theme.Colors.Electric, Theme.Fonts.Strong) end
 	if props.Selected then
 		local check = label(root, utf8.char(10003), UDim2.new(1, -20, 1, -20), UDim2.fromOffset(16, 16), 9, Theme.Colors.Black, Theme.Fonts.Strong)
 		check.BackgroundColor3 = Theme.Colors.Electric

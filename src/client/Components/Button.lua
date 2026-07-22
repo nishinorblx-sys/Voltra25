@@ -14,6 +14,7 @@ export type Props = {
 	Variant: string?,
 	Size: UDim2?,
 	OnActivated: (() -> ())?,
+	RunImmediately: boolean?,
 }
 
 function Button.new(props: Props): TextButton
@@ -33,6 +34,7 @@ function Button.new(props: Props): TextButton
 	instance:SetAttribute("VTRPrimary", primary)
 	instance:SetAttribute("VTRDanger", danger)
 	instance:SetAttribute("VTRUISoundBound", true)
+	instance:SetAttribute("VTRActionRunning", false)
 
 	local corner = Instance.new("UICorner")
 	corner.CornerRadius = UDim.new(0, Theme.Radius.Medium)
@@ -77,6 +79,8 @@ function Button.new(props: Props): TextButton
 	instance.MouseButton1Down:Connect(function() tween(0.96, primary and C.Neon or danger and Color3.fromHex("D92E3D") or C.Raised) end)
 	instance.MouseButton1Up:Connect(focus)
 	instance.Activated:Connect(function()
+		if instance:GetAttribute("VTRActionRunning") == true then return end
+		instance:SetAttribute("VTRActionRunning", true)
 		UISoundService.PlayClick()
 		if scaleTween then scaleTween:Cancel() end
 		scaleTween = TweenService:Create(scale, TweenInfo.new(Theme.Animation.Press), { Scale = 0.94 })
@@ -84,7 +88,24 @@ function Button.new(props: Props): TextButton
 		task.delay(Theme.Animation.Press, function()
 			if instance.Parent then TweenService:Create(scale, TweenInfo.new(Theme.Animation.Hover), { Scale = 1.035 }):Play() end
 		end)
-		if props.OnActivated then props.OnActivated() end
+		if props.OnActivated then
+			local function run()
+				local ok, err = pcall(props.OnActivated)
+				if not ok then
+					warn("[VTR Button] Action failed: " .. tostring(err))
+				end
+				if instance.Parent then
+					instance:SetAttribute("VTRActionRunning", false)
+				end
+			end
+			if props.RunImmediately == true then
+				run()
+			else
+				task.defer(run)
+			end
+		else
+			instance:SetAttribute("VTRActionRunning", false)
+		end
 	end)
 
 	return instance

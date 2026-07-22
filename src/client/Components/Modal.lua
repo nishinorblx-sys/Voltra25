@@ -55,6 +55,14 @@ function Modal.open(parent:Instance,props:any)
 	local confirm=Button.new({Text=props.ConfirmLabel or "CONFIRM",Variant="Primary",OnActivated=function()
 		if props.OnConfirm then
 			local values={};for key,input in fieldValues do values[key]=input.Text end
+			if props.CloseBeforeConfirm==true then
+				close(false)
+				task.defer(function()
+					local ok, err=pcall(props.OnConfirm,values)
+					if not ok then warn("[VTR Modal] Confirm failed: "..tostring(err))end
+				end)
+				return
+			end
 			local result=props.OnConfirm(values)
 			if type(result)=="table"and result.Success==false then
 				local message=tostring(result.Message or result.Error or"Not allowed")

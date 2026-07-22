@@ -1,5 +1,7 @@
 --!strict
 local MatchRatingService=require(script.Parent.MatchRatingService)
+local ReplicatedStorage=game:GetService("ReplicatedStorage")
+local MatchMomentumService=require(ReplicatedStorage.VTR.Shared.MatchMomentumService)
 local Service={};Service.__index=Service
 local KEYS={"Possession","Shots","ShotsOnTarget","Goals","ExpectedGoals","Passes","CompletedPasses","Tackles","CompletedTackles","Interceptions","Saves","Corners","Fouls","Offsides","YellowCards","RedCards","CornersIntoBox","CornerReachedTeammate","CornerGoals","Blocks","Clearances","Crosses","CompletedCrosses","Dribbles","CompletedDribbles","KeyPasses","BigChancesCreated","Errors"}
 local function bucket():any local value={};for _,key in KEYS do value[key]=0 end;return value end
@@ -10,10 +12,13 @@ local function distanceChance(distance:number):number
 	return .01
 end
 function Service.new(models:{Model},pitchCFrame:CFrame,width:number,length:number)
-	return setmetatable({Home=bucket(),Away=bucket(),Goals={},PassMap={Home={},Away={}},ShotMap={Home={},Away={}},PositionMap={},PitchCFrame=pitchCFrame,Width=width,Length=length,Ratings=MatchRatingService.new(models),LastGameSeconds=0,PositionAccumulator=0},Service)
+	return setmetatable({Home=bucket(),Away=bucket(),Goals={},PassMap={Home={},Away={}},ShotMap={Home={},Away={}},PositionMap={},PitchCFrame=pitchCFrame,Width=width,Length=length,Ratings=MatchRatingService.new(models),Momentum=MatchMomentumService.new(pitchCFrame,width,length),LastGameSeconds=0,PositionAccumulator=0},Service)
 end
-function Service:Add(team:string,key:string,amount:number?)local target=self[team];if target and target[key]~=nil then target[key]+=(amount or 1)end end
-function Service:Event(model:Model,event:string,amount:number?)local team=tostring(model:GetAttribute("VTRTeam")or"Home");if event=="Block"then self:Add(team,"Blocks",amount)elseif event=="Clearance"then self:Add(team,"Clearances",amount)elseif event=="SuccessfulDribble"then self:Add(team,"CompletedDribbles",amount);self:Add(team,"Dribbles",amount)elseif event=="FailedDribble"then self:Add(team,"Dribbles",amount)elseif event=="KeyPass"then self:Add(team,"KeyPasses",amount)elseif event=="BigChanceCreated"then self:Add(team,"BigChancesCreated",amount)elseif event=="Error"or event=="ErrorLeadingToGoal"then self:Add(team,"Errors",amount)end;self.Ratings:Record(model,event,amount)end
+function Service:_momentumEvent(team:string,event:string,value:number?)
+	if self.Momentum then self.Momentum:AddEvent(team,event,self.LastGameSeconds,value)end
+end
+function Service:Add(team:string,key:string,amount:number?)local target=self[team];if target and target[key]~=nil then target[key]+=(amount or 1)end;if key=="Corners"then self:_momentumEvent(team,"Corner",nil)elseif key=="Fouls"then self:_momentumEvent(team=="Away"and"Home"or"Away","FreeKickNearBox",nil)end end
+function Service:Event(model:Model,event:string,amount:number?)local team=tostring(model:GetAttribute("VTRTeam")or"Home");if event=="Block"then self:Add(team,"Blocks",amount)elseif event=="Clearance"then self:Add(team,"Clearances",amount)elseif event=="SuccessfulDribble"then self:Add(team,"CompletedDribbles",amount);self:Add(team,"Dribbles",amount);self:_momentumEvent(team,"SuccessfulDribble",nil)elseif event=="FailedDribble"then self:Add(team,"Dribbles",amount)elseif event=="ProgressivePass"then self:_momentumEvent(team,"ProgressivePass",nil)elseif event=="KeyPass"then self:Add(team,"KeyPasses",amount);self:_momentumEvent(team,"PassIntoBox",nil)elseif event=="BigChanceCreated"then self:Add(team,"BigChancesCreated",amount);self:_momentumEvent(team,"BigChanceCreated",nil)elseif event=="CrossAttempt"then self:_momentumEvent(team,"CrossAttempt",nil)elseif event=="CrossCompleted"then self:_momentumEvent(team,"CrossCompleted",nil)elseif event=="HighBallWin"or event=="Interception"then self:_momentumEvent(team,"HighBallWin",nil)elseif event=="YellowCard"then self:_momentumEvent(team,"YellowCard",0)elseif event=="RedCard"then self:_momentumEvent(team,"RedCard",0)elseif event=="Error"or event=="ErrorLeadingToGoal"then self:Add(team,"Errors",amount);if self.Momentum then self.Momentum:AddOpponentEvent(team,"HighBallWin",self.LastGameSeconds,nil)end end;self.Ratings:Record(model,event,amount)end
 function Service:RecordPassAttempt(model:Model)self:Add(tostring(model:GetAttribute("VTRTeam")or"Home"),"Passes");self:Event(model,"PassAttempt")end
 function Service:RecordPassCompleted(model:Model,receiver:Model?,startPoint:Vector3?,endPoint:Vector3?)
 	local team=tostring(model:GetAttribute("VTRTeam")or"Home");self:Add(team,"CompletedPasses");self:Event(model,"SuccessfulPass")
@@ -23,6 +28,8 @@ function Service:RecordPassCompleted(model:Model,receiver:Model?,startPoint:Vect
 		local side=team=="Home"and-1 or 1;local a=self.PitchCFrame:PointToObjectSpace(startPoint);local b=self.PitchCFrame:PointToObjectSpace(endPoint)
 		table.insert(self.PassMap[team],{From={X=a.X,Z=a.Z},To={X=b.X,Z=b.Z},Passer=model:GetAttribute("DisplayName"),Receiver=receiver and receiver:GetAttribute("DisplayName")or nil,Completed=true})
 		if(b.Z-a.Z)*side>=self.Length*.1 then self:Event(model,"ProgressivePass")end
+		local attackZ=team=="Home"and -self.Length*.5 or self.Length*.5
+		if math.abs(attackZ-b.Z)<=self.Length*.18 and math.abs(b.X)<=self.Width*.32 then self:_momentumEvent(team,"PassIntoBox",nil)end
 	end
 end
 function Service:RecordPassFailed(model:Model,interceptor:Model?)self:Event(model,"BadPass");self:Event(model,"PossessionLost");if interceptor then self:Add(tostring(interceptor:GetAttribute("VTRTeam")or"Home"),"Interceptions");self:Event(interceptor,"Interception")end end
@@ -37,13 +44,16 @@ function Service:CalculateXG(model:Model,position:Vector3,pressure:number?,shotT
 end
 function Service:RecordShot(model:Model,onTarget:boolean,xg:number)
 	local team=tostring(model:GetAttribute("VTRTeam")or"Home");self:Add(team,"Shots");self:Add(team,"ExpectedGoals",xg);self:Event(model,"Shot");self.Ratings:Record(model,"ExpectedGoals",xg);if onTarget then self:Add(team,"ShotsOnTarget");self:Event(model,"ShotOnTarget")else self:Event(model,"ShotOffTarget")end;if xg>=.3 then model:SetAttribute("VTRLastBigChance",true)end
+	self:_momentumEvent(team,onTarget and"ShotOnTarget"or"Shot",(xg or 0)>=.3 and 28 or nil)
 	local root=model:FindFirstChild("HumanoidRootPart")::BasePart?
 	if root then local p=self.PitchCFrame:PointToObjectSpace(root.Position);table.insert(self.ShotMap[team],{From={X=p.X,Z=p.Z},Shooter=model:GetAttribute("DisplayName"),OnTarget=onTarget,XG=math.floor(xg*100)/100})end
 	local pass=self.LastCompletedPass;if pass and pass.Receiver==model and pass.Team==team and os.clock()-pass.At<=5 then self:Event(pass.Passer,"KeyPass");self:Event(pass.Passer,"ChanceCreated");if xg>=.3 then self:Event(pass.Passer,"BigChanceCreated")end;self.PendingAssist={Passer=pass.Passer,Scorer=model,At=os.clock(),Team=team}end
 end
 function Service:RecordTackle(model:Model,success:boolean) local team=tostring(model:GetAttribute("VTRTeam")or"Home");self:Add(team,"Tackles");if success then self:Add(team,"CompletedTackles");self:Event(model,"TackleWon")else self:Event(model,"TackleFailed")end end
 function Service:RecordSave(model:Model,xg:number?)local team=tostring(model:GetAttribute("VTRTeam")or"Home");self:Add(team,"Saves");self:Event(model,"Save");if(xg or 0)>=.3 then self:Event(model,"DifficultSave")end end
-function Service:RecordPositions(models:{Model},dt:number)
+function Service:RecordPositions(models:{Model},dt:number,gameSeconds:number?,owner:Model?,ballPosition:Vector3?,half:number?)
+	if gameSeconds then self.LastGameSeconds=gameSeconds end
+	if self.Momentum then self.Momentum:Step(self.LastGameSeconds,owner,ballPosition,half)end
 	self.PositionAccumulator+=dt
 	if self.PositionAccumulator<.65 then return end
 	self.PositionAccumulator=0
@@ -65,8 +75,16 @@ function Service:RecordPositions(models:{Model},dt:number)
 		if #samples<180 then table.insert(samples,sample)else samples[(math.floor(os.clock()*10)%#samples)+1]=sample end
 	end
 end
+function Service:ConsumeMomentumUpdate(gameSeconds:number?): any?
+	if not self.Momentum then return nil end
+	local count=#(self.Momentum.Samples or{})
+	if count<=0 or count==(self.LastMomentumBroadcastCount or 0)then return nil end
+	self.LastMomentumBroadcastCount=count
+	return self.Momentum:Serialize(gameSeconds or self.LastGameSeconds)
+end
 function Service:Goal(team:string,scorer:any?,ownGoal:boolean?,gameSeconds:number?)
 	self:Add(team,"Goals");local name=typeof(scorer)=="Instance"and scorer:GetAttribute("DisplayName")or scorer or"Unknown";local assist=nil;local pending=self.PendingAssist;if not ownGoal and pending and pending.Scorer==scorer and pending.Team==team and os.clock()-pending.At<=10 then assist=pending.Passer:GetAttribute("DisplayName");self:Event(pending.Passer,"Assist")end;table.insert(self.Goals,{Team=team,Scorer=name,Assist=assist,At=os.clock(),GameSeconds=gameSeconds or self.LastGameSeconds or 0,OwnGoal=ownGoal==true});if typeof(scorer)=="Instance"then self:Event(scorer,ownGoal and"OwnGoal"or"Goal")end;self.PendingAssist=nil
+	self:_momentumEvent(team,"Goal",nil)
 end
 function Service:Serialize(homeScore:number,awayScore:number,gameSeconds:number?):any
 	gameSeconds=gameSeconds or self.LastGameSeconds;self.LastGameSeconds=gameSeconds
@@ -74,6 +92,6 @@ function Service:Serialize(homeScore:number,awayScore:number,gameSeconds:number?
 	local function team(v:any)local attempts=math.max(1,v.Passes);local dribbles=math.max(1,v.Dribbles);return{Possession=math.floor(v.Possession/total*100+.5),Shots=v.Shots,ShotsOnTarget=v.ShotsOnTarget,ShotsOffTarget=math.max(0,v.Shots-v.ShotsOnTarget),Goals=v.Goals,ExpectedGoals=math.floor(v.ExpectedGoals*100)/100,PassesAttempted=v.Passes,PassesCompleted=v.CompletedPasses,PassAccuracy=math.floor(v.CompletedPasses/attempts*100+.5),TacklesAttempted=v.Tackles,TacklesCompleted=v.CompletedTackles,Interceptions=v.Interceptions,Saves=v.Saves,Corners=v.Corners,Fouls=v.Fouls,Offsides=v.Offsides,YellowCards=v.YellowCards,RedCards=v.RedCards,CornersIntoBox=v.CornersIntoBox,CornerReachedTeammate=v.CornerReachedTeammate,CornerGoals=v.CornerGoals,BlockedShots=v.Blocks,Blocks=v.Blocks,Clearances=v.Clearances,Crosses=v.Crosses,CompletedCrosses=v.CompletedCrosses,Dribbles=v.Dribbles,DribblesCompleted=v.CompletedDribbles,DribbleAccuracy=math.floor(v.CompletedDribbles/dribbles*100+.5),KeyPasses=v.KeyPasses,BigChanceCreated=v.BigChancesCreated,Errors=v.Errors}end
 	local ratings=self.Ratings:Serialize(gameSeconds,homeScore,awayScore)
 	for _,entry in ratings.Players do local key=tostring(entry.playerId or"");if key~=""and self.PositionMap[key]then entry.HeatMap=self.PositionMap[key]end end
-	return{HomeScore=homeScore,AwayScore=awayScore,Home=team(self.Home),Away=team(self.Away),Goals=self.Goals,Assists={},PassMap=self.PassMap,ShotMap=self.ShotMap,PlayerRatings=ratings.Players,MOTM=ratings.MOTM,PlayerRating=ratings.MOTM and ratings.MOTM.Rating or 6}
+	return{HomeScore=homeScore,AwayScore=awayScore,Home=team(self.Home),Away=team(self.Away),Goals=self.Goals,Assists={},PassMap=self.PassMap,ShotMap=self.ShotMap,Momentum=self.Momentum and self.Momentum:Serialize(gameSeconds)or nil,PlayerRatings=ratings.Players,MOTM=ratings.MOTM,PlayerRating=ratings.MOTM and ratings.MOTM.Rating or 6}
 end
 return Service

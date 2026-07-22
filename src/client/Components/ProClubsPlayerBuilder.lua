@@ -35,7 +35,7 @@ function Builder.open(parent:Instance,context:any)
 	local old=parent:FindFirstChild("ProClubsPlayerBuilder")
 	if old then old:Destroy()end
 
-	local overlay=Instance.new("CanvasGroup")
+	local overlay=Instance.new("Frame")
 	overlay.Name="ProClubsPlayerBuilder"
 	overlay.BackgroundColor3=Theme.Colors.Black
 	overlay.BackgroundTransparency=.04

@@ -54,18 +54,20 @@ function Controller:Walk(from: CFrame, to: CFrame, duration: number, style: stri
 		return
 	end
 	local started = os.clock()
-	local power = style == "powerful" and 1.22 or style == "energetic" and 1.35 or style == "calm" and 0.78 or 1
-	local stride = 9
+	local power = style == "powerful" and 1.12 or style == "energetic" and 1.2 or style == "calm" and 0.86 or 1
+	local stride = 6
+	local stepMarkers = { 0.22, 0.45, 0.68, 0.9 }
+	local nextStep = 1
 	local animatedWalk = self:_playWalkAnimation()
 	root.Anchored = true
 	model:PivotTo(from)
 	self.Connection = RunService.RenderStepped:Connect(function()
 		if not model.Parent then self:StopWalk();return end
 		local alpha = math.clamp((os.clock() - started) / math.max(duration, 0.05), 0, 1)
-		local eased = 1 - (1 - alpha) * (1 - alpha)
+		local eased = alpha < 0.82 and (1 - (1 - alpha) * (1 - alpha)) or alpha
 		local wave = math.sin(alpha * math.pi * stride)
 		local counter = math.cos(alpha * math.pi * stride)
-		local bob = math.max(0, math.sin(alpha * math.pi * stride * 2)) * 0.06 * power
+		local bob = math.max(0, math.sin(alpha * math.pi * stride * 2)) * 0.035 * power
 		local pivot = from:Lerp(to, eased) * CFrame.new(0, bob, 0)
 		model:PivotTo(pivot)
 		if not animatedWalk then
@@ -78,7 +80,10 @@ function Controller:Walk(from: CFrame, to: CFrame, duration: number, style: stri
 				elseif motor.Name == "Neck" then motor.Transform = CFrame.Angles(math.rad(-2.5), math.rad(-1.4 * wave), 0) end
 			end
 		end
-		if onStep then onStep(alpha, pivot) end
+		if onStep and nextStep <= #stepMarkers and alpha >= stepMarkers[nextStep] then
+			onStep(stepMarkers[nextStep], pivot)
+			nextStep += 1
+		end
 		if alpha >= 1 then
 			self:StopWalk()
 			model:PivotTo(to)

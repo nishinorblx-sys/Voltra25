@@ -1,12 +1,39 @@
 --!strict
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
 local Theme = require(ReplicatedStorage.VTR.Shared.Theme)
 
 local PageBase = {}
 
-function PageBase.new(name: string, canvasHeight: number?): (CanvasGroup, ScrollingFrame)
-	local group = Instance.new("CanvasGroup")
+local function pageDiagnostics(group: Frame)
+	if not RunService:IsStudio() then return end
+	task.defer(function()
+		if not group.Parent then return end
+		local scale = 1
+		local canvasGroups = 0
+		local current: Instance? = group
+		while current do
+			if current:IsA("UIScale") then
+				scale *= current.Scale
+			elseif current:IsA("CanvasGroup") then
+				canvasGroups += 1
+			end
+			for _, child in ipairs(current:GetChildren()) do
+				if child:IsA("UIScale") then
+					scale *= child.Scale
+				end
+			end
+			current = current.Parent
+		end
+		group:SetAttribute("VTRPageRootClass", group.ClassName)
+		group:SetAttribute("VTRAncestorScale", scale)
+		group:SetAttribute("VTRCanvasGroupAncestorCount", canvasGroups)
+	end)
+end
+
+function PageBase.new(name: string, canvasHeight: number?): (Frame, ScrollingFrame)
+	local group = Instance.new("Frame")
 	group.Name = name
 	group.BackgroundTransparency = 1
 	group.Size = UDim2.fromScale(1, 1)
@@ -39,6 +66,7 @@ function PageBase.new(name: string, canvasHeight: number?): (CanvasGroup, Scroll
 	padding.PaddingLeft = UDim.new(0, 0)
 	padding.PaddingRight = UDim.new(0, 0)
 	padding.Parent = scroll
+	pageDiagnostics(group)
 	return group, scroll
 end
 
@@ -61,14 +89,14 @@ function PageBase.heading(parent: Instance, kicker: string, titleText: string, s
 	block.BackgroundTransparency = 1
 	block.Size = UDim2.new(1, 0, 0, 86)
 	block.Parent = parent
-	local kick = PageBase.label(kicker, 9, Theme.Colors.Electric, Theme.Fonts.Strong)
+	local kick = PageBase.label(kicker, 11, Theme.Colors.Electric, Theme.Fonts.Strong)
 	kick.Size = UDim2.new(1, 0, 0, 18)
 	kick.Parent = block
 	local title = PageBase.label(titleText, 30, Theme.Colors.White, Theme.Fonts.Display)
 	title.Position = UDim2.fromOffset(0, 17)
 	title.Size = UDim2.new(1, 0, 0, 39)
 	title.Parent = block
-	local sub = PageBase.label(subtitle, 10, Theme.Colors.Muted, Theme.Fonts.Body)
+	local sub = PageBase.label(subtitle, 12, Theme.Colors.Muted, Theme.Fonts.Body)
 	sub.Position = UDim2.fromOffset(0, 59)
 	sub.Size = UDim2.new(1, 0, 0, 20)
 	sub.Parent = block

@@ -384,19 +384,70 @@ local function carrierIsPressed(context: any, ownerInfo: any?): boolean
 end
 
 local function isBasicPossessionStyle(style: any): boolean
-	return tostring(style and style.Tactics and style.Tactics.PlaystyleId or "") == "basic_possession"
-		or tostring(style and style.Tactics and style.Tactics.PlaystyleName or "") == "Basic Possession"
-		or tostring(style and style.Tactics and style.Tactics.PlaystyleName or "") == "SAFE Possession"
-		or tostring(style and style.Tactics and style.Tactics.PlaystyleId or "") == "quick_passing"
-		or tostring(style and style.Tactics and style.Tactics.PlaystyleName or "") == "Quick Passing"
+	local id = tostring(style and style.Tactics and style.Tactics.PlaystyleId or "")
+	local name = tostring(style and style.Tactics and style.Tactics.PlaystyleName or "")
+	return id == "basic_possession"
+		or name == "Basic Possession"
+		or name == "SAFE Possession"
+		or id == "quick_passing"
+		or id == "vertical_tiki_taka"
+		or name == "Quick Passing"
+		or name == "Tiki-Taka"
 		or (tonumber(style and style.MetricsTargets and style.MetricsTargets.QuickPassing) or 0) >= 1
 		or (tonumber(style and style.MetricsTargets and style.MetricsTargets.BoxEdgeRetreatLimit) or 0) >= 100
 end
 
 local function isQuickPassingStyle(style: any): boolean
-	return tostring(style and style.Tactics and style.Tactics.PlaystyleId or "") == "quick_passing"
-		or tostring(style and style.Tactics and style.Tactics.PlaystyleName or "") == "Quick Passing"
+	local id = tostring(style and style.Tactics and style.Tactics.PlaystyleId or "")
+	local name = tostring(style and style.Tactics and style.Tactics.PlaystyleName or "")
+	return id == "quick_passing"
+		or id == "vertical_tiki_taka"
+		or id == "counter_attack"
+		or name == "Quick Passing"
+		or name == "Tiki-Taka"
 		or (tonumber(style and style.MetricsTargets and style.MetricsTargets.QuickPassing) or 0) >= 1
+		or (tonumber(style and style.MetricsTargets and style.MetricsTargets.FirstTimePassChance) or 0) >= 60
+end
+
+local function isWingPlayStyle(style: any): boolean
+	local id = tostring(style and style.Tactics and style.Tactics.PlaystyleId or "")
+	local name = tostring(style and style.Tactics and style.Tactics.PlaystyleName or "")
+	return id == "wing_play"
+		or id == "wing_overload"
+		or name == "Wing Play"
+		or (tonumber(style and style.MetricsTargets and style.MetricsTargets.WingReleaseAfterMidfieldAdvance) or 0) >= 1
+end
+
+local function isVerticalTikiTakaStyle(style: any): boolean
+	local id = tostring(style and style.Tactics and style.Tactics.PlaystyleId or "")
+	local name = tostring(style and style.Tactics and style.Tactics.PlaystyleName or "")
+	return id == "vertical_tiki_taka" or name == "Vertical Tiki-Taka" or name == "Vertical Tiki Taka"
+end
+
+local function wingPlayTouchlineX(info: any, style: any): number
+	local offset = math.clamp(tonumber(style and style.MetricsTargets and style.MetricsTargets.WingSidelineOffset) or 10, 6, 24)
+	local left = info.BasePitch.X < PitchConfig.HALF_WIDTH
+	return left and offset or PitchConfig.PITCH_WIDTH - offset
+end
+
+local function wingPlayEndlineZ(style: any): number
+	local offset = math.clamp(tonumber(style and style.MetricsTargets and style.MetricsTargets.WingEndlineTargetOffset) or 10, 6, 28)
+	return PitchConfig.PITCH_LENGTH - offset
+end
+
+local function midfieldEstablishedInOpponentHalf(context: any, side: string): boolean
+	local team = context.Teams and context.Teams[side]
+	if not team then return false end
+	local total, advanced = 0, 0
+	for _, teammate in ipairs(team.List) do
+		if teammate.Root and (teammate.Role == "CDM" or teammate.Role == "CM" or teammate.Role == "CAM") then
+			total += 1
+			if teammate.Pitch.Z >= PitchConfig.HALF_LENGTH + 6 then
+				advanced += 1
+			end
+		end
+	end
+	return total > 0 and advanced >= math.max(2, total)
 end
 
 local function closestDefenderToCarrier(context: any, info: any, ownerInfo: any?): boolean
@@ -447,6 +498,17 @@ local function sideLaneX(info: any, wide: boolean?): number
 		return left and 44 or 380
 	end
 	return left and 118 or 306
+end
+
+local function isWingPlayWidePlayer(info: any): boolean
+	local specific = tostring(info.SpecificRole or "")
+	return info.Role == "Winger"
+		or specific == "LW"
+		or specific == "RW"
+		or specific == "LM"
+		or specific == "RM"
+		or specific == "LWB"
+		or specific == "RWB"
 end
 
 local function basicLaneCenter(info: any): number
@@ -725,17 +787,21 @@ local function attackingRoleTarget(context: any, info: any, ballPitch: Vector3, 
 	local ballWideNearGoal = ballIsWide(ballPitch) and ballNearAttackingBox
 	local defensiveLine = AIContextBuilder.DefensiveLineZ(context, info.Side)
 	local highDefensiveLine = defensiveLine >= 430
-	local ownerSameSideWinger = ownerInfo and ownerInfo.Role == "Winger" and sameWideSide(ownerInfo, info.BasePitch)
+	local ownerSameSideWinger = ownerInfo and isWingPlayWidePlayer(ownerInfo) and sameWideSide(ownerInfo, info.BasePitch)
 	local ownerFullbackOrCM = ownerInfo and (ownerInfo.Role == "Fullback" or ownerInfo.Role == "CM") and sameWideSide(info, ownerInfo.Pitch)
 	local ownerCMOrCDM = teammateByRoleWithBall(ownerInfo, {CM = true, CDM = true})
 	local stMarked = nearestRoleMarked(context, info.Side, "ST", 16)
 	local base = info.BasePitch
-	local wingerHasBallWide = ownerInfo and ownerInfo.Role == "Winger" and ballIsWide(ownerInfo.Pitch)
+	local wingerHasBallWide = ownerInfo and isWingPlayWidePlayer(ownerInfo) and ballIsWide(ownerInfo.Pitch)
 	local ballInAttackingHalf = ballPitch.Z >= PitchConfig.HALF_LENGTH
 	local ballSide = sideOf(ballPitch)
 	local infoSide = sideOf(info)
 	local ballSideSupportX = ballPitch.X + (ballPitch.X < PitchConfig.HALF_WIDTH and 38 or -38)
 	local farPostX = ballPitch.X < PitchConfig.HALF_WIDTH and 306 or 118
+	local wingPlay = isWingPlayStyle(style)
+	local wingPlayReleaseReady = wingPlay and midfieldEstablishedInOpponentHalf(context, info.Side)
+	local verticalTikiTaka = isVerticalTikiTakaStyle(style)
+	local verticalTrigger = verticalTikiTaka and ownerInfo and (ownerInfo.Role == "CB" or ownerInfo.Role == "Fullback" or ownerInfo.Role == "CDM" or ownerInfo.Role == "CM" or ownerInfo.Role == "CAM") and safe and facingForward
 
 	if info.Role == "CB" then
 		if pressed then
@@ -772,7 +838,10 @@ local function attackingRoleTarget(context: any, info: any, ballPitch: Vector3, 
 	elseif info.Role == "CDM" then
 		return cdmTarget(context, info, ballPitch, pressed or wingerHasBallWide, safe)
 	elseif info.Role == "CM" then
-		if wingerHasBallWide and infoSide == ballSide then
+		if verticalTrigger and ownerInfo and ownerInfo.Model ~= info.Model then
+			local supportX = math.clamp(ballPitch.X + (info.BasePitch.X < PitchConfig.HALF_WIDTH and -24 or 24), 135, 289)
+			return "VerticalTikiTakaSupportRun", Vector3.new(supportX, 3, math.clamp(ballPitch.Z + 26, 340, 590)), 0.94, true
+		elseif wingerHasBallWide and infoSide == ballSide then
 			return "InsideTriangleSupport", Vector3.new(math.clamp(ballSideSupportX, 125, 299), 3, math.clamp(ballPitch.Z + 4, 440, 594)), 0.94, true
 		elseif wingerHasBallWide then
 			return "FarSideSwitchOption", Vector3.new(math.clamp(info.BasePitch.X + (PitchConfig.HALF_WIDTH - info.BasePitch.X) * 0.5, 145, 279), 3, math.clamp(ballPitch.Z + 16, 450, 584)), 0.86, true
@@ -785,7 +854,10 @@ local function attackingRoleTarget(context: any, info: any, ballPitch: Vector3, 
 		end
 		return "MidfieldSupport", Vector3.new(base.X, 3, math.max(base.Z, ballPitch.Z + 38)), 0.82, true
 	elseif info.Role == "CAM" then
-		if wingerHasBallWide then
+		if verticalTrigger and ownerInfo and ownerInfo.Model ~= info.Model then
+			local target = capBehindStriker(context, info.Side, Vector3.new(PitchConfig.HALF_WIDTH + (base.X < PitchConfig.HALF_WIDTH and -18 or 18), 3, onsideZ(context, info.Side, ballPitch.Z + 54)), 38)
+			return "VerticalTikiTakaBetweenLines", target, 0.96, true
+		elseif wingerHasBallWide then
 			local cutbackZ = ballInsideAttackingBox and 584 or 552
 			local target = capBehindStriker(context, info.Side, Vector3.new(PitchConfig.HALF_WIDTH, 3, cutbackZ), 35)
 			return "CentralCutbackOption", target, 0.92, true
@@ -803,7 +875,31 @@ local function attackingRoleTarget(context: any, info: any, ballPitch: Vector3, 
 		end
 		local target = capBehindStriker(context, info.Side, Vector3.new(PitchConfig.HALF_WIDTH, 3, onsideZ(context, info.Side, math.max(base.Z, ballPitch.Z + 42))), 45)
 		return "BetweenLines", target, 0.82, false
-	elseif info.Role == "Winger" then
+	elseif info.Role == "Winger" or wingPlay and isWingPlayWidePlayer(info) then
+		if wingPlay then
+			local touchlineX = wingPlayTouchlineX(info, style)
+			local releaseUntil = tonumber(info.Model:GetAttribute("AIWingPlayReleaseUntil")) or 0
+			local releaseTarget = info.Model:GetAttribute("AIWingPlayReleaseTarget")
+			if typeof(releaseTarget) == "Vector3" and (context.Now or os.clock()) <= releaseUntil then
+				local releasePitch = PitchConfig.WorldToTeamPitchPosition(releaseTarget, info.Side, context.Options)
+				return "WingPlayReleaseTarget", Vector3.new(touchlineX, 3, onsideZ(context, info.Side, releasePitch.Z)), 1, info.Stamina > 34
+			end
+			if wingerHasBallWide and ownerInfo and ownerInfo.Model ~= info.Model and not sameWideSide(info, ballPitch) then
+				return "WingPlayFarPost", Vector3.new(farPostX, 3, math.clamp(ballPitch.Z + 28, 610, 670)), 0.96, true
+			end
+			if wingerHasBallWide and ownerInfo and ownerInfo.Model == info.Model then
+				return "WingPlayDriveEndline", Vector3.new(touchlineX, 3, onsideZ(context, info.Side, math.max(ballPitch.Z + 58, wingPlayEndlineZ(style)))), 1, info.Stamina > 34
+			end
+			if wingPlayReleaseReady then
+				local releaseZ = math.max(base.Z, ballPitch.Z + 92)
+				return "WingPlayTouchlineRun", Vector3.new(touchlineX, 3, onsideZ(context, info.Side, math.min(wingPlayEndlineZ(style), releaseZ))), 1, info.Stamina > 34
+			end
+			return "WingPlayTouchlineReady", Vector3.new(touchlineX, 3, onsideZ(context, info.Side, math.max(base.Z, ballPitch.Z + 46))), 0.88, info.Stamina > 38
+		end
+		if verticalTrigger then
+			local tuckedX = info.BasePitch.X < PitchConfig.HALF_WIDTH and PitchConfig.HALF_WIDTH - 62 or PitchConfig.HALF_WIDTH + 62
+			return "VerticalTikiTakaHalfSpaceRun", Vector3.new(tuckedX, 3, onsideZ(context, info.Side, ballPitch.Z + 82)), 0.98, info.Stamina > 34
+		end
 		if wingerHasBallWide and ownerInfo and ownerInfo.Model ~= info.Model and not sameWideSide(info, ballPitch) then
 			return "AttackBackPost", Vector3.new(farPostX, 3, math.clamp(ballPitch.Z + 28, 610, 670)), 0.96, true
 		end
@@ -817,6 +913,9 @@ local function attackingRoleTarget(context: any, info: any, ballPitch: Vector3, 
 		local outlet = wideOutletTarget(context, info, ballPitch, style)
 		return "WideOutlet", Vector3.new(outlet.X, 3, math.max(outlet.Z, ballPitch.Z + 48)), 0.86, info.Stamina > 35
 	elseif info.Role == "ST" then
+		if verticalTrigger then
+			return "VerticalTikiTakaDropShort", Vector3.new(PitchConfig.HALF_WIDTH, 3, math.max(320, math.min(ballPitch.Z + 18, 520))), 0.96, true
+		end
 		if wingerHasBallWide or ballWideNearGoal then
 			local nearPostX = ballPitch.X < PitchConfig.HALF_WIDTH and 176 or 248
 			local strikerX = ballInsideAttackingBox and nearPostX or PitchConfig.HALF_WIDTH

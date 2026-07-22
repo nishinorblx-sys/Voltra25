@@ -22,6 +22,7 @@ local BallTrajectory = require(ReplicatedStorage.VTR.Shared.BallTrajectory)
 local BallContactResolver = require(ReplicatedStorage.VTR.Shared.BallContactResolver)
 local TackleResolver = require(ReplicatedStorage.VTR.Shared.TackleResolver)
 local DribbleTargetResolver = require(ReplicatedStorage.VTR.Shared.DribbleTargetResolver)
+local VTRGoalPassThrough = require(script.Parent.GoalShotPassThroughService)
 
 local Service = {}
 Service.__index = Service
@@ -55,9 +56,15 @@ local function keepDribbleTargetAtFeet(ball: BasePart, raycast: RaycastParams, o
 	local rootFlat = Vector3.new(ownerRoot.Position.X, 0, ownerRoot.Position.Z)
 	local targetFlat = Vector3.new(target.X, 0, target.Z)
 	local offset = targetFlat - rootFlat
-	local minSeparation = math.max(radius * 1.65, 2.15)
-	if offset.Magnitude < minSeparation then
-		local safeDirection = direction.Magnitude > 0.01 and direction.Unit or flat(ownerRoot.CFrame.LookVector)
+	local facing = flat(ownerRoot.CFrame.LookVector)
+	local ownerVelocity = Vector3.new(ownerRoot.AssemblyLinearVelocity.X, 0, ownerRoot.AssemblyLinearVelocity.Z)
+	local safeDirection = direction.Magnitude > 0.01 and direction.Unit or ownerVelocity.Magnitude > 0.5 and ownerVelocity.Unit or facing
+	if safeDirection:Dot(facing) < -0.1 then
+		safeDirection = facing
+	end
+	local minSeparation = math.max(radius * 2.35, 3.2)
+	local behindOwner = offset.Magnitude > 0.05 and offset.Unit:Dot(facing) < -0.05
+	if offset.Magnitude < minSeparation or behindOwner then
 		targetFlat = rootFlat + safeDirection * minSeparation
 	end
 
@@ -250,6 +257,19 @@ function Service:_root(model: Model): BasePart?
 	return model:FindFirstChild("HumanoidRootPart") :: BasePart?
 end
 
+function Service:_passerReclaimLocked(model: Model): boolean
+	if model ~= self.LastPasser then return false end
+	local untilTime = tonumber(model:GetAttribute("VTRPasserReclaimLockedUntil")) or 0
+	if untilTime <= os.clock() then return false end
+	if typeof(self.LastPassOrigin) == "Vector3" then
+		local distanceFromKick = Vector3.new(self.Ball.Position.X - self.LastPassOrigin.X, 0, self.Ball.Position.Z - self.LastPassOrigin.Z).Magnitude
+		if distanceFromKick >= 30 then
+			return false
+		end
+	end
+	return true
+end
+
 function Service:_contactPoints(model: Model, modelRoot: BasePart): {any}
 	local cache = self.ContactPartCache[model]
 	if not cache then
@@ -277,6 +297,7 @@ function Service:_contactPoints(model: Model, modelRoot: BasePart): {any}
 end
 
 function Service:_contactCandidate(model: Model): any?
+	if self:_passerReclaimLocked(model) then return nil end
 	local modelRoot = self:_root(model)
 	local humanoid = model:FindFirstChildOfClass("Humanoid")
 	if not modelRoot or not humanoid then return nil end
@@ -338,6 +359,9 @@ function Service:_rollingBallClaimCandidate(preferred: Model?): Model?
 	local best: Model? = nil
 	local bestScore = math.huge
 	for _, model in self.Models do
+		if self:_passerReclaimLocked(model) then
+			continue
+		end
 		local assignment = tostring(model:GetAttribute("currentAssignment") or model:GetAttribute("SupportRole") or "")
 		local activeChaser = assignment == "ChaseLooseBall" or assignment == "CoverLooseBall" or assignment == "ReceivePass" or model:GetAttribute("VTRPreparingReceive") == true or model:GetAttribute("VTRAITargetedPass") == true or model:GetAttribute("VTRAIAlternatePassChaser") == true
 		if model == preferred then activeChaser = true end
@@ -1018,6 +1042,40 @@ function Service:_cancelKinematicFlight()
 	pcall(function() self.Ball:SetNetworkOwner(nil) end)
 end
 
+function Service:StopForRestart()
+	if self.PassReception then self.PassReception:Cancel("Restart") end
+	self:_cancelKinematicFlight()
+	if self.Curve then self.Curve:Stop() end
+	self.ShotPlan = nil
+	self.PassPlan = nil
+	self.PassTargetPoint = nil
+	self.ExpectedReceiver = nil
+	self.LastPassTeam = nil
+	self.LastPasser = nil
+	self.LastPassOrigin = nil
+	self.PendingCurve = nil
+	self.PendingFreeKickTrajectory = nil
+	self.PassCurveStarted = nil
+	self.MotionKind = "Restart"
+	self.MotionStarted = os.clock()
+	clearFlightAttributes(self.Ball)
+	for _, attribute in {"VTRPassStartedAt", "VTRPassTeam", "VTRPassReceiver", "VTRMotionKind", "VTRPenaltyShotActive", "VTRGoalPassThroughUntil"} do
+		self.Ball:SetAttribute(attribute, nil)
+	end
+	for _, model in self.Models do
+		if model:GetAttribute("VTRPasserReclaimLockedUntil") ~= nil then
+			model:SetAttribute("VTRPasserReclaimLockedUntil", nil)
+		end
+	end
+	self.Ball.Anchored = true
+	self.Ball.CanCollide = true
+	self.Ball.CanTouch = true
+	self.Ball.CanQuery = true
+	pcall(function() self.Ball:SetNetworkOwner(nil) end)
+	self.Ball.AssemblyLinearVelocity = Vector3.zero
+	self.Ball.AssemblyAngularVelocity = Vector3.zero
+end
+
 function Service:_finishKinematicFlight(position: Vector3, velocity: Vector3, reason: string)
 	local active = self.ActiveTrajectory
 	if not active then return end
@@ -1226,6 +1284,7 @@ function Service:Kick(model: Model, kind: string, direction: Vector3, charge: nu
 			local horizontalSpeed = Vector3.new(velocity.X, 0, velocity.Z).Magnitude
 			plannedEta = (passDistance or direction.Magnitude) / math.max(horizontalSpeed, 1)
 		end
+		model:SetAttribute("VTRPasserReclaimLockedUntil", os.clock() + math.clamp(plannedEta * 0.78 + 0.22, 0.72, 1.65))
 		self:_primePassReceiver(model, receiver, self.PassTargetPoint or targetPoint, plannedEta, nil, passType)
 		self.Ball:SetAttribute("VTRPassStartedAt", os.clock())
 		self.Ball:SetAttribute("VTRPassTeam", team)
@@ -1366,7 +1425,9 @@ function Service:Kick(model: Model, kind: string, direction: Vector3, charge: nu
 		end
 		self.LastShooter=model
 		self.Stats:RecordShot(model,shotOnTarget,shotChance)
-		VTRGoalPassThrough.Force(self.Ball, shotType=="Penalty" and 3.1 or 1.85)
+		if VTRGoalPassThrough and VTRGoalPassThrough.Force then
+			VTRGoalPassThrough.Force(self.Ball, shotType=="Penalty" and 3.1 or 1.85)
+		end
 	elseif kind == "Skill" then
 		self.Ball:SetAttribute("VTRPassStartedAt", nil)
 		self.Ball:SetAttribute("VTRPassTeam", nil)
@@ -1407,6 +1468,7 @@ function Service:Kick(model: Model, kind: string, direction: Vector3, charge: nu
 		self.PassSequence = (self.PassSequence or 0) + 1
 		local activePass = self.ActiveTrajectory and self.ActiveTrajectory.Kind == "Pass" and self.ActiveTrajectory.Kicker == model and self.ActiveTrajectory or nil
 		local duration = activePass and activePass.Data and tonumber(activePass.Data.Duration) or (passDistance or direction.Magnitude) / math.max(flat(velocity).Magnitude, 1)
+		model:SetAttribute("VTRPasserReclaimLockedUntil", math.max(tonumber(model:GetAttribute("VTRPasserReclaimLockedUntil")) or 0, os.clock() + math.clamp(duration * 0.78 + 0.22, 0.72, 1.65)))
 		if not receiver and self.PassTargetPoint then
 			receiver = self:_closestPassReceiverToTarget(model, self.PassTargetPoint, nil)
 			self.ExpectedReceiver = receiver

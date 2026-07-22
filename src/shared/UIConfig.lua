@@ -8,8 +8,7 @@ UIConfig.Navigation = {
 	{ Id = "AILab", Label = "AI LAB", Icon = "AI", Order = 3 },
 	{ Id = "WorldCup", Label = "WORLD CUP", Icon = "WC", Order = 4 },
 	{ Id = "Campaign", Label = "ASCENSION", Icon = "A", Order = 5 },
-	{ Id = "MyPlayer", Label = "MY PLAYER", Icon = "MP", Order = 5.5 },
-	{ Id = "FiveVFive", Label = "PLAY", Icon = "▶︎", Order = 6 },
+	{ Id = "Career", Label = "MY CAREER", Icon = "MC", Order = 5.75 },
 	{ Id = "Ranked", Label = "RANKED", Icon = "R", Order = 7 },
 	{ Id = "Inventory", Label = "INVENTORY", Icon = "I", Order = 8 },
 	{ Id = "Store", Label = "STORE", Icon = "S", Order = 9 },
@@ -35,6 +34,7 @@ UIConfig.Pages = {
 	WorldCup = { Kicker = "NATIONAL STAGE", Title = "WORLD CUP", Subtitle = "Pick a nation, draw groups, qualify, and chase the trophy." },
 	Campaign = { Kicker = "CLUB DEVELOPMENT", Title = "VOLTRA ASCENSION", Subtitle = "Earn promotion, develop a favorite player, and build a club worth taking into Ranked." },
 	MyPlayer = { Kicker = "PLAY MODE", Title = "MY PLAYER", Subtitle = "Build your Voltra footballer for online PLAY lobbies." },
+	Career = { Kicker = "PLAYER STORY", Title = "MY CAREER", Subtitle = "Live as one footballer through selection, training, match days and long-term development." },
 	FiveVFive = { Kicker = "ONLINE MODE", Title = "5V5", Subtitle = "Queue ten players, teleport together, and play assigned 70 OVR outfield slots with AI goalkeepers." },
 	Ranked = { Kicker = "7-WIN TOURNAMENT", Title = "RANKED", Subtitle = "Enter with your current squad. Seven wins earns a Legendary Pack; three losses ends the run." },
 }

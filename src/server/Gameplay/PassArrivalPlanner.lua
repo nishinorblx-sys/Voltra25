@@ -44,6 +44,29 @@ local function movement(model: Model?, sprintEnergy: number?): any
 	return {Jog = jog, Run = run, Sprint = sprint, Acceleration = acceleration, Tolerance = tolerance, Control = control, Energy = energy}
 end
 
+local function routeIntercept(receiver: Model, target: Vector3, ballPosition: any, ballETA: number): (Vector3, number)
+	if typeof(ballPosition) ~= "Vector3" then return target, ballETA end
+	local modelRoot = root(receiver)
+	if not modelRoot then return target, ballETA end
+	local segment = flat(target - ballPosition)
+	local remaining = segment.Magnitude
+	if remaining < 12 then return target, ballETA end
+	local direction = segment.Unit
+	local receiverOffset = flat(modelRoot.Position - ballPosition)
+	local receiverAlong = math.clamp(receiverOffset:Dot(direction), 0, remaining)
+	local lateral = math.max(0, (receiverOffset - direction * receiverAlong).Magnitude)
+	local velocity = flat(modelRoot.AssemblyLinearVelocity)
+	local speedLead = math.max(0, velocity:Dot(direction)) * .16
+	local lead = math.clamp(7 + lateral * .18 + speedLead, 6, 22)
+	local finalBuffer = math.clamp(remaining * .28, 6, 18)
+	local minAlong = math.min(remaining, 5)
+	local maxAlong = math.max(minAlong, remaining - finalBuffer)
+	local desiredAlong = math.clamp(receiverAlong + lead, minAlong, maxAlong)
+	local point = ballPosition + direction * desiredAlong
+	local etaAtPoint = ballETA * math.clamp(desiredAlong / remaining, .08, 1)
+	return Vector3.new(point.X, target.Y, point.Z), etaAtPoint
+end
+
 function Planner.Solve(input: any): any
 	local receiver = input.ReceiverModel or input.Receiver and input.Receiver.Model
 	local target = input.Target
@@ -51,21 +74,22 @@ function Planner.Solve(input: any): any
 	local ballETA = math.max(.05, tonumber(input.BallETA) or .8)
 	local passFamily = tostring(input.PassFamily or "Ground")
 	local profile = movement(receiver, input.SprintEnergy)
-	local jogETA = eta(receiver, target, profile.Jog, profile.Acceleration, profile.Tolerance)
-	local runETA = eta(receiver, target, profile.Run, profile.Acceleration, profile.Tolerance)
-	local sprintETA = eta(receiver, target, profile.Sprint, profile.Acceleration, profile.Tolerance)
+	local interceptPoint, interceptETA = routeIntercept(receiver, target, input.BallPosition, ballETA)
+	local jogETA = eta(receiver, interceptPoint, profile.Jog, profile.Acceleration, profile.Tolerance)
+	local runETA = eta(receiver, interceptPoint, profile.Run, profile.Acceleration, profile.Tolerance)
+	local sprintETA = eta(receiver, interceptPoint, profile.Sprint, profile.Acceleration, profile.Tolerance)
 	local selected = "Jog"
 	local selectedETA = jogETA
-	if jogETA > ballETA - .2 then
+	if jogETA > interceptETA - .2 then
 		selected = "Run"
 		selectedETA = runETA
 	end
-	if selectedETA > ballETA + .05 then
+	if selectedETA > interceptETA + .05 then
 		selected = "SprintBurst"
 		selectedETA = sprintETA
 	end
-	local deficit = selectedETA - ballETA
-	local reachable = selectedETA <= ballETA + .35
+	local deficit = selectedETA - interceptETA
+	local reachable = selectedETA <= interceptETA + .35
 	if deficit > .35 then
 		reachable = false
 	end
@@ -109,9 +133,9 @@ function Planner.Solve(input: any): any
 	local opponentETA = tonumber(input.OpponentETA) or math.huge
 	return {
 		Target = target,
-		InterceptPoint = target,
+		InterceptPoint = interceptPoint,
 		PassFamily = passFamily,
-		BallETA = ballETA,
+		BallETA = interceptETA,
 		JogETA = jogETA,
 		RunETA = runETA,
 		SprintETA = sprintETA,

@@ -71,7 +71,7 @@ return Factory.new({
 		{Id = "Account", Label = "ACCOUNT", Description = "Session and privacy", Cards = {
 			{Title = "VOLT_X", Subtitle = "ACCOUNT CONNECTED", Meta = "EU WEST", Accent = true, Action = {Label = "ACCOUNT DETAILS", Operation = "Toast", Message = "Account ID and region information displayed."}},
 			{Title = "CROSS-PLAY", Subtitle = "ENABLED", Meta = "All supported platforms", Action = {Label = "TOGGLE", Operation = "Toggle", Key = "Crossplay"}},
-			{Title = "SAVE SETTINGS", Subtitle = "SERVER PROFILE", Meta = "Saved for your next session", Action = {Label = "SAVE CHANGES", Operation = "Save", Confirm = true}},
+			{Title = "SAVE SETTINGS", Subtitle = "PROFILE SETTINGS", Meta = "Saved for your next session", Action = {Label = "SAVE CHANGES", Operation = "Save", Confirm = true}},
 			{Title = "RESET LAUNCH PROFILE", Subtitle = "FRESH SAVE", Meta = "Studio only", Action = {Label = "RESET PROFILE", Operation = "Developer", ServerAction = "DeveloperResetProfile", Confirm = true}},
 			{Title = "WORLD CUP ONBOARDING", Subtitle = "GUIDED START", Meta = "Replay the direct World Cup first-match guide", Action = {Label = "OPEN GUIDE", Operation = "ShowTutorial"}},
 		}},

@@ -190,13 +190,13 @@ function AvatarPortraitGenerator.new(parent: Instance, playerData: any, size: UD
 	local special=playerData.appearance and playerData.appearance.specialPortrait==true
 	local viewport = Instance.new("ViewportFrame")
 	viewport.Name = "R6PlayerPortrait"
-	viewport.BackgroundColor3 = special and Color3.fromHex("0D1609") or Color3.fromHex("101410")
-	viewport.BackgroundTransparency = 0.18
+	viewport.BackgroundColor3 = Color3.fromHex("0D1609")
+	viewport.BackgroundTransparency = 1
 	viewport.BorderSizePixel = 0
 	viewport.ClipsDescendants = true
 	viewport.Size = size or UDim2.fromScale(1, 1)
-	viewport.Ambient = special and Color3.fromHex("D4E4BE")or Color3.fromHex("B8BCB5")
-	viewport.LightColor = special and Color3.fromHex("DFFF9E")or Color3.fromHex("F3F7EE")
+	viewport.Ambient = special and Color3.fromHex("F1FFD7")or Color3.fromHex("DCE3D6")
+	viewport.LightColor = special and Color3.fromHex("F3FFC9")or Color3.fromHex("FFFFFF")
 	viewport.LightDirection = Vector3.new(-0.7, -1, -0.8)
 	viewport.Parent = parent
 	local corner = Instance.new("UICorner")
@@ -205,7 +205,7 @@ function AvatarPortraitGenerator.new(parent: Instance, playerData: any, size: UD
 	local stroke = Instance.new("UIStroke")
 	stroke.Color = special and Color3.fromHex("B7FF1A")or Color3.fromHex("444941")
 	stroke.Thickness = special and 2 or 1
-	stroke.Transparency = special and 0.04 or 0.28
+	stroke.Transparency = 1
 	stroke.Parent = viewport
 	local world = Instance.new("WorldModel")
 	world.Parent = viewport

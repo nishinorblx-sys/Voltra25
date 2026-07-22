@@ -30,6 +30,7 @@ local MonetizationConfig=require(ReplicatedStorage.VTR.Shared.MonetizationConfig
 local Modal=require(script.Parent.Parent.Components.Modal)
 local FormationConfig=require(ReplicatedStorage.VTR.Shared.FormationConfig)
 local LiteConfig=require(ReplicatedStorage.VTR.Shared.VTRLiteConfig)
+local AIPlaystyleConfig=require(ReplicatedStorage.VTR.Shared.AIPlaystyleConfig)
 local AIBehaviorTuningConfig=require(ReplicatedStorage.VTR.Shared.AIBehaviorTuningConfig)
 local QuickSellValueConfig=require(ReplicatedStorage.VTR.Shared.QuickSellValueConfig)
 local PlayabilityUnlockConfig=require(ReplicatedStorage.VTR.Shared.PlayabilityUnlockConfig)
@@ -41,7 +42,16 @@ local POSITIONS={"ALL","GK","LB","CB","RB","CDM","CM","CAM","LW","ST","RW"}
 local RARITIES={"ALL","STARTER","COMMON","BRONZE","SILVER","GOLD","RARE","ELITE","LEGENDARY","ICON","MYTHIC"}
 local RARITY_RANK={COMMON=1,STARTER=2,BRONZE=3,SILVER=4,GOLD=5,RARE=6,ELITE=7,LEGENDARY=8,ICON=9,MYTHIC=10}
 local TACTIC_FORMATIONS={"4-3-3","4-2-3-1","4-4-2","4-1-2-1-2","4-5-1","3-4-3","4-3-2-1","3-5-2","5-3-2"}
-local TACTIC_IDENTITIES={{Id="basic_possession",Label="Slow Build Up",Name="SAFE Possession",PresetId="balanced_control"},{Id="quick_passing",Label="Tiki-Taka",Name="Quick Passing",PresetId="short_possession"}}
+local TACTIC_IDENTITY_LABELS={basic_possession="Slow Build Up",quick_passing="Tiki-Taka",vertical_tiki_taka="Vertical Tiki-Taka",wing_play="Wing Play",route_one="Route One",park_the_bus="Park the Bus",counter_attack="Counter-Attack",gegenpress="Gegenpress"}
+local function tacticIdentities():{any}
+	local result={}
+	for _,id in AIPlaystyleConfig.BuiltInOrder do
+		local style=AIPlaystyleConfig.BuiltIns[id]
+		if style and style.Tactics then table.insert(result,{Id=style.PlaystyleId,Label=TACTIC_IDENTITY_LABELS[style.PlaystyleId]or style.Name,Name=style.Name,PresetId=style.Tactics.PresetId})end
+	end
+	return result
+end
+local TACTIC_IDENTITIES=tacticIdentities()
 local TACTIC_BEHAVIOR_CONTROLS={
 	{Key="DefensiveLineReach",Label="DEFENSIVE LINE REACH",Low="Halfway cap",High="Higher reach"},
 	{Key="FirstTimePassing",Label="FIRST TIME PASSING",Low="Control first",High="One-touch"},
@@ -124,17 +134,34 @@ local function applyTacticIdentity(tactics:any,index:number)
 	tactics.MetricsTargets.QuickPassing=identity.Id=="quick_passing"and 1 or 0
 	tactics.MetricsTargets.BoxEdgeRetreatLimit=identity.Id=="basic_possession"and 132 or nil
 	tactics.Sliders=tactics.Sliders or{}
+	local builtIn=AIPlaystyleConfig.ResolveBuiltIn(identity.Id)
+	if builtIn and builtIn.Tactics and builtIn.Tactics.Sliders then
+		for key,value in builtIn.Tactics.Sliders do tactics.Sliders[key]=value end
+	end
+	if builtIn and builtIn.MetricsTargets then
+		for key,value in builtIn.MetricsTargets do tactics.MetricsTargets[key]=value end
+	end
+	if builtIn then
+		tactics.PassRules=builtIn.PassRules
+		tactics.PositioningRules=builtIn.PositioningRules
+		tactics.PressRules=builtIn.PressRules
+		tactics.RoleInstructions=builtIn.RoleInstructions
+		tactics.SequenceRules=builtIn.SequenceRules
+	end
 	if identity.Id=="quick_passing"then
 		tactics.Sliders.BuildUpSpeed=72;tactics.Sliders.PassTempo=92;tactics.Sliders.SupportDistance=28;tactics.Sliders.PassingDirectness=44
 		setSimpleTacticControl(tactics,"FirstTimePassing",math.max(simpleTacticValue(tactics,"FirstTimePassing"),100))
-	else
+	elseif identity.Id=="basic_possession"then
 		tactics.Sliders.BuildUpSpeed=48;tactics.Sliders.PassTempo=66;tactics.Sliders.SupportDistance=34;tactics.Sliders.PassingDirectness=32
 		setSimpleTacticControl(tactics,"FirstTimePassing",math.min(simpleTacticValue(tactics,"FirstTimePassing"),28))
 	end
 end
 local function currentTacticIdentityIndex(tactics:any):number
 	local id=tostring(tactics and(tactics.PlaystyleId or tactics.PlaystyleName or tactics.PresetId or tactics.Identity)or"")
-	return(id=="quick_passing"or id=="Quick Passing"or id=="short_possession"or id=="Tiki-Taka")and 2 or 1
+	for index,identity in TACTIC_IDENTITIES do
+		if id==identity.Id or id==identity.Name or id==identity.PresetId or id==identity.Label then return index end
+	end
+	return 1
 end
 
 local function bootPalette(bootStyle:string):(Color3,Color3,Enum.Material)
@@ -413,7 +440,7 @@ local function createCelebrationViewport(parent:Instance,celebrationId:string,po
 	return viewport
 end
 
-function UltimateTeamPage.new(context:any):CanvasGroup
+function UltimateTeamPage.new(context:any):Frame
 	local group,scroll=PageBase.new("UltimateTeam",930)
 	PageBase.heading(scroll,"VOLTRA ULTIMATE TEAM","SQUAD BUILDER","Build, move and manage the complete matchday roster.")
 	local response=SquadService:GetSquad();local snapshot=response.Success and response.Data or {Slots={},SlotOrder={},Bench={},Reserves={},Club={},Rating=0,Chemistry=0,Filled=0,Formation="4-3-3",FormationOptions={"4-3-3"},CardMeta={}}
@@ -456,7 +483,7 @@ function UltimateTeamPage.new(context:any):CanvasGroup
 	local trayContent=Instance.new("Frame");trayContent.BackgroundTransparency=1;trayContent.Position=UDim2.fromOffset(12,52);trayContent.Size=UDim2.new(1,-24,1,-62);trayContent.Parent=tray
 	local tabButtons={}
 
-	local renderAll:()->();local renderTray:()->();local renderPitch:()->();local renderSummary:()->();local renderPreview:()->();local repositionPitchOnly:()->();local selectCard:(any)->();local requestMove:(string,string,any?)->();local openCardMenu:(any)->();local destinationTap:(any?,string,any?)->();local openCustomizeHub:()->()
+	local renderAll:()->();local renderTray:()->();local renderPitch:()->();local renderSummary:()->();local renderPreview:()->();local repositionPitchOnly:()->();local selectCard:(any)->();local requestMove:(string,string,any?)->();local openCardMenu:(any)->();local destinationTap:(any?,string,any?)->();local openCustomizeHub:()->();local openTacticsHub:()->()
 	local function toast(message:string,kind:string?) context.Toast({Title="SQUAD BUILDER",Message=message,Kind=kind or "Info"}) end
 	local function saveTrayState()
 		trayState.ActiveTab=activeTab
@@ -570,28 +597,8 @@ function UltimateTeamPage.new(context:any):CanvasGroup
 		local button:TextButton
 		if card then
 			local outOfPosition=kind=="StartingXI" and snapshot.Slots[slot] and snapshot.Slots[slot].OutOfPosition
-			button=CompactPlayerCard.new({Parent=parent,Card=card,Size=size,Horizontal=compact==true,Selected=selected,Meta=rosterMeta(snapshot,card),ChemistryColor=compact and nil or (outOfPosition and Theme.Colors.Warning or Theme.Colors.Electric)})
+			button=CompactPlayerCard.new({Parent=parent,Card=card,Size=size,Horizontal=compact==true,PitchCompact=kind=="StartingXI" and compact~=true,Selected=selected,Meta=rosterMeta(snapshot,card),ChemistryColor=compact and nil or (outOfPosition and Theme.Colors.Warning or Theme.Colors.Electric)})
 			button.Name="Card_"..card.Id;addDrag(button,card,kind,slot)
-			local instructionSummary=(kind=="StartingXI" and slot and snapshot.Slots[slot] and snapshot.Slots[slot].InstructionSummary) or card.InstructionSummary
-			if type(instructionSummary)=="string"and instructionSummary~=""then
-				local badge=Instance.new("TextLabel")
-				badge.Name="InstructionSummary"
-				badge.AnchorPoint=Vector2.new(.5,1)
-				badge.BackgroundColor3=Theme.Colors.Black
-				badge.BackgroundTransparency=.18
-				badge.BorderSizePixel=0
-				badge.Position=UDim2.new(.5,0,1,-4)
-				badge.Size=compact and UDim2.new(0,78,0,14)or UDim2.new(1,-8,0,14)
-				badge.Font=Theme.Fonts.Strong
-				badge.Text=tostring(instructionSummary)
-				badge.TextColor3=Theme.Colors.Electric
-				badge.TextScaled=true
-				badge.TextXAlignment=Enum.TextXAlignment.Center
-				badge.TextYAlignment=Enum.TextYAlignment.Center
-				badge.ZIndex=(button.ZIndex or 1)+3
-				badge.Parent=button
-				corner(badge,5)
-			end
 		else
 			button=Instance.new("TextButton");button.Name=kind.."Empty";button.AutoButtonColor=false;button.BackgroundColor3=Color3.fromHex("13200F");button.BackgroundTransparency=.28;button.BorderSizePixel=0;button.Size=size;button.Text="";button.Selectable=false;button.Parent=parent;corner(button,7)
 			local stroke=Instance.new("UIStroke");stroke.Color=Theme.Colors.Border;stroke.Thickness=1;stroke.Transparency=.2;stroke.Parent=button
@@ -649,9 +656,6 @@ function UltimateTeamPage.new(context:any):CanvasGroup
 		item("VIEW DETAILS",function() context.OpenPlayerDetails(card.Id) end)
 		item("COMPARE PLAYER",function() compareCard=card;toast("Select another player to compare against "..card.Name..".") end)
 		item("MOVE PLAYER",function() pendingCardId=card.Id;tapMoveEnabled=UserInputService:GetLastInputType()==Enum.UserInputType.Touch;if tapMoveEnabled then toast("Tap a highlighted destination, then confirm the move.") else toast("Valid destinations are highlighted. Drag the card to move it.") end;renderAll() end)
-		local movementSlot=nil;for slot,data in snapshot.Slots do if data.Card and data.Card.Id==card.Id then movementSlot=slot;break end end
-		local onBench=false;for _,entry in snapshot.Bench or{}do if entry.Card and entry.Card.Id==card.Id then onBench=true;break end end
-		if movementSlot or onBench then item("PLAYER INSTRUCTIONS",function()playerInstructionsMenu(card,movementSlot)end)end
 		item("SEND TO BENCH",function() local destination=1;for index=1,7 do if not snapshot.Bench[index] or not snapshot.Bench[index].Card then destination=index;break end end;requestMove(card.Id,"Bench",destination) end)
 		item("SEND TO RESERVES",function() requestMove(card.Id,"Reserves",nil) end)
 		item("REMOVE FROM SQUAD",function() requestMove(card.Id,"Club",nil) end)
@@ -688,9 +692,9 @@ function UltimateTeamPage.new(context:any):CanvasGroup
 		end
 		meter("MATCHDAY XI  "..tostring(math.min(filled,11)).." / 11",math.min(filled,11)/11,108,filled>=11 and Theme.Colors.Electric or Theme.Colors.Warning)
 		text(teamContent,"FORMATION",UDim2.fromOffset(0,154),UDim2.new(1,0,0,18),8,Theme.Colors.Muted,Theme.Fonts.Strong)
-		local formation=Button.new({Text=snapshot.Formation.."  V",Variant="Secondary",Size=UDim2.new(1,0,0,34),OnActivated=function() formationOpen=not formationOpen;renderSummary() end});formation.Position=UDim2.fromOffset(0,176);formation.Parent=teamContent
-		local nextY=218;if formationOpen then for _,name in snapshot.FormationOptions do local option=Button.new({Text=name,Variant=name==snapshot.Formation and "Primary" or "Secondary",Size=UDim2.new(1,0,0,28),OnActivated=function() setFormationInstant(name) end});option.Position=UDim2.fromOffset(0,nextY);option.Parent=teamContent;nextY+=31 end end
-		local objective=snapshot.Objective;if not formationOpen then local objectiveY=232;text(teamContent,"STARTER OBJECTIVE",UDim2.fromOffset(0,objectiveY),UDim2.new(1,0,0,18),8,Theme.Colors.Electric,Theme.Fonts.Strong);text(teamContent,objective and (objective.title.."\n"..objective.progress.." / "..objective.target) or "JOURNEY COMPLETE",UDim2.fromOffset(0,objectiveY+20),UDim2.new(1,0,0,43),8,Theme.Colors.Silver,Theme.Fonts.Strong);if objective and (objective.status=="claimable" or objective.status=="completed") then local claim=Button.new({Text="CLAIM REWARD",Variant="Primary",Size=UDim2.new(1,0,0,32),OnActivated=function() local result=ProgressionService:Claim("Objective",objective.objectiveId);if result.Success then toast(result.Message or "Reward claimed.","Reward");local refresh=SquadService:GetSquad();if refresh.Success then snapshot=refresh.Data;renderAll() end else toast(result.Message or "Claim failed.","Error") end end});claim.Position=UDim2.fromOffset(0,302);claim.Parent=teamContent end end
+		local formationValue=text(teamContent,tostring(snapshot.Formation or"4-3-3"),UDim2.fromOffset(0,176),UDim2.new(1,0,0,28),18,Theme.Colors.White,Theme.Fonts.Display);formationValue.TextXAlignment=Enum.TextXAlignment.Center
+		local tacticsButton=Button.new({Text="TACTICS",Variant="Secondary",Size=UDim2.new(1,0,0,34),OnActivated=function()if openTacticsHub then openTacticsHub()end end});tacticsButton.Position=UDim2.fromOffset(0,208);tacticsButton.Parent=teamContent
+		local objective=snapshot.Objective;local objectiveY=260;text(teamContent,"STARTER OBJECTIVE",UDim2.fromOffset(0,objectiveY),UDim2.new(1,0,0,18),8,Theme.Colors.Electric,Theme.Fonts.Strong);text(teamContent,objective and (objective.title.."\n"..objective.progress.." / "..objective.target) or "JOURNEY COMPLETE",UDim2.fromOffset(0,objectiveY+20),UDim2.new(1,0,0,43),8,Theme.Colors.Silver,Theme.Fonts.Strong);if objective and (objective.status=="claimable" or objective.status=="completed") then local claim=Button.new({Text="CLAIM REWARD",Variant="Primary",Size=UDim2.new(1,0,0,32),OnActivated=function() local result=ProgressionService:Claim("Objective",objective.objectiveId);if result.Success then toast(result.Message or "Reward claimed.","Reward");local refresh=SquadService:GetSquad();if refresh.Success then snapshot=refresh.Data;renderAll() end else toast(result.Message or "Claim failed.","Error") end end});claim.Position=UDim2.fromOffset(0,330);claim.Parent=teamContent end
 		local auto=Button.new({Text="AUTO BUILD",Variant="Primary",Size=UDim2.new(1,0,0,36),OnActivated=function() apply(SquadService:AutoBuildSquad()) end});auto.Position=UDim2.new(0,0,1,-120);auto.Parent=teamContent
 		local clear=Button.new({Text="CLEAR XI",Variant="Secondary",Size=UDim2.new(1,0,0,36),OnActivated=function() context.Flow:Confirmation("CLEAR STARTING XI","Move all starters to reserves?","CLEAR XI",function() apply(SquadService:ClearSquad()) end) end});clear.Position=UDim2.new(0,0,1,-78);clear.Parent=teamContent
 		text(teamContent,"SAVED  "..os.date("!%H:%M:%S",snapshot.SavedAt or os.time()),UDim2.new(0,0,1,-28),UDim2.new(1,0,0,20),7,Theme.Colors.Electric,Theme.Fonts.Strong)
@@ -698,7 +702,7 @@ function UltimateTeamPage.new(context:any):CanvasGroup
 
 	renderPitch=function()
 		targets={};pitchNodes={};for _,child in cardsLayer:GetChildren() do child:Destroy() end
-		for _,slot in snapshot.SlotOrder or {} do local data=snapshot.Slots[slot];local card=data and data.Card;local node=makeCard(cardsLayer,card,UDim2.fromOffset(76,94),"StartingXI",slot,false);node.Position=UDim2.fromScale(data.Coordinate.X,data.Coordinate.Y);pitchNodes[slot]=node end
+		for _,slot in snapshot.SlotOrder or {} do local data=snapshot.Slots[slot];local card=data and data.Card;local node=makeCard(cardsLayer,card,UDim2.fromOffset(84,104),"StartingXI",slot,false);node.Position=UDim2.fromScale(data.Coordinate.X,data.Coordinate.Y);pitchNodes[slot]=node end
 	end
 
 	renderPreview=function()
@@ -785,8 +789,7 @@ function UltimateTeamPage.new(context:any):CanvasGroup
 		clearShortcutOverlays("PackHubOverlay")
 		local existing=group:FindFirstChild("PackHubOverlay")
 		if existing then existing:Destroy() end
-		local response=PackService:GetInventory();if not response.Success then toast(response.Message or "Pack inventory unavailable.","Error");return end
-		local packData=response.Data or {Packs={},History={}};local selectedTab="My Packs";local packTabs={"My Packs","Store Packs","Pack Odds","History"};local storeOrder={"starter_pack","bronze_pack","silver_pack","gold_pack","elite_pack","voltra_pack"}
+		local packData={Packs={},History={}};local selectedTab="My Packs";local packTabs={"My Packs","Store Packs","Pack Odds","History"};local storeOrder={"starter_pack","bronze_pack","silver_pack","gold_pack","elite_pack","voltra_pack"}
 		local overlay=Instance.new("TextButton");overlay.Name="PackHubOverlay";overlay.AutoButtonColor=false;overlay.BackgroundColor3=Theme.Colors.Black;overlay.BackgroundTransparency=.12;overlay.BorderSizePixel=0;overlay.Size=UDim2.fromScale(1,1);overlay.Text="";overlay.ZIndex=70;overlay.Parent=group
 		local hub=Panel.new({Name="PackHub",Size=UDim2.fromOffset(900,580),ClipsDescendants=true});hub.AnchorPoint=Vector2.new(.5,.5);hub.Position=UDim2.fromScale(.5,.5);hub.ZIndex=71;hub.Parent=overlay
 		text(hub,"ULTIMATE TEAM PACKS",UDim2.fromOffset(24,16),UDim2.new(1,-150,0,34),21,Theme.Colors.White,Theme.Fonts.Display).ZIndex=73
@@ -794,6 +797,10 @@ function UltimateTeamPage.new(context:any):CanvasGroup
 		local close=Button.new({Text="CLOSE",Variant="Secondary",Size=UDim2.fromOffset(96,34),OnActivated=function() overlay:Destroy() end});close.Position=UDim2.new(1,-120,0,20);close.ZIndex=74;close.Parent=hub
 		local tabBar=Instance.new("Frame");tabBar.BackgroundTransparency=1;tabBar.Position=UDim2.fromOffset(24,78);tabBar.Size=UDim2.new(1,-48,0,36);tabBar.ZIndex=73;tabBar.Parent=hub;local tabLayout=Instance.new("UIListLayout");tabLayout.FillDirection=Enum.FillDirection.Horizontal;tabLayout.Padding=UDim.new(0,8);tabLayout.Parent=tabBar
 		local body=Instance.new("Frame");body.BackgroundTransparency=1;body.Position=UDim2.fromOffset(24,124);body.Size=UDim2.new(1,-48,1,-148);body.ZIndex=72;body.Parent=hub
+		local loading=text(body,"LOADING PACK INVENTORY...",UDim2.fromOffset(0,160),UDim2.new(1,0,0,40),14,Theme.Colors.Electric,Theme.Fonts.Display);loading.TextXAlignment=Enum.TextXAlignment.Center;loading.ZIndex=73
+		local response=PackService:GetInventory();if not response.Success then overlay:Destroy();toast(response.Message or "Pack inventory unavailable.","Error");return end
+		if loading.Parent then loading:Destroy() end
+		packData=response.Data or packData
 		local tabButtons={};local renderTab:()->()
 		local function oddsFor(definition:any):string local values={};for _,rarity in {"Starter","Common","Bronze","Silver","Gold","Rare","Elite","Legendary","Icon","Mythic"} do local chance=definition.Odds and definition.Odds[rarity];if chance and chance>0 then table.insert(values,string.format("%s %.2g%%",string.upper(rarity),chance)) end end;return table.concat(values,"   ")..(definition.GuaranteedMinRarity and ("   /   GUARANTEED "..string.upper(definition.GuaranteedMinRarity).."+") or "") end
 		local function refreshData() local fresh=PackService:GetInventory();if fresh.Success then packData=fresh.Data end end
@@ -811,7 +818,7 @@ function UltimateTeamPage.new(context:any):CanvasGroup
 			local list=Instance.new("ScrollingFrame");list.BackgroundTransparency=1;list.BorderSizePixel=0;list.Size=UDim2.fromScale(1,1);list.AutomaticCanvasSize=Enum.AutomaticSize.Y;list.CanvasSize=UDim2.new();list.ScrollBarThickness=3;list.ScrollBarImageColor3=Theme.Colors.Electric;list.ZIndex=73;list.Parent=body;local layout=Instance.new("UIListLayout");layout.Padding=UDim.new(0,9);layout.Parent=list
 			local function row(titleValue:string,subtitle:string,meta:string,buttonText:string?,callback:(()->())?) local item=Panel.new({Name=titleValue,Size=UDim2.new(1,-6,0,92)});item.ZIndex=74;item.Parent=list;text(item,titleValue,UDim2.fromOffset(18,10),UDim2.new(1,-230,0,24),14,Theme.Colors.White,Theme.Fonts.Display).ZIndex=75;text(item,subtitle,UDim2.fromOffset(18,37),UDim2.new(1,-230,0,17),8,Theme.Colors.Silver,Theme.Fonts.Strong).ZIndex=75;text(item,meta,UDim2.fromOffset(18,58),UDim2.new(1,-230,0,18),7,Theme.Colors.Muted,Theme.Fonts.Body).ZIndex=75;if buttonText and callback then local action=Button.new({Text=buttonText,Variant="Primary",Size=UDim2.fromOffset(170,38),OnActivated=callback});action.Position=UDim2.new(1,-190,.5,-19);action.ZIndex=75;action.Parent=item end end
 			if selectedTab=="My Packs" then local packs=packData.Packs or {};if #packs==0 then local empty=text(list,"NO UNOPENED PACKS\n\nPurchase a pack in Store Packs or earn one from objectives.",UDim2.fromOffset(0,140),UDim2.new(1,0,0,90),13,Theme.Colors.Muted,Theme.Fonts.Display);empty.TextXAlignment=Enum.TextXAlignment.Center else for _,pack in packs do row(pack.name,pack.CardCount.." PLAYERS  /  UNOPENED",pack.description or "VTR player pack","OPEN PACK",function() openOwned(pack) end) end end
-			elseif selectedTab=="Store Packs" then for _,id in storeOrder do local definition=Catalog.Packs[id];row(definition.Name,definition.CardCount.." PLAYER CARDS",oddsFor(definition).."  /  ◈ "..definition.PriceCoins,"BUY PACK",function() context.Flow:Confirmation("BUY "..definition.Name,"The server will validate your coins and deliver a unique unopened pack instance.","BUY PACK",function() local purchased=LaunchService:Request("Purchase",{ItemType="Pack",Id=id});if not purchased.Success then toast(purchased.Message or "Purchase failed.","Error");return end;toast("Pack added to inventory.","Reward");refreshData();renderTab();if purchased.Data and purchased.Data.Pack then offerOpenNow(purchased.Data.Pack) end end) end) end
+			elseif selectedTab=="Store Packs" then for _,id in storeOrder do local definition=Catalog.Packs[id];row(definition.Name,definition.CardCount.." PLAYER CARDS",oddsFor(definition).."  /  ◈ "..definition.PriceCoins,"BUY PACK",function() context.Flow:Confirmation("BUY "..definition.Name,"Confirm this purchase to deliver a unique unopened pack to your inventory.","BUY PACK",function() local purchased=LaunchService:Request("Purchase",{ItemType="Pack",Id=id});if not purchased.Success then toast(purchased.Message or "Purchase failed.","Error");return end;toast("Pack added to inventory.","Reward");refreshData();renderTab();if purchased.Data and purchased.Data.Pack then offerOpenNow(purchased.Data.Pack) end end) end) end
 			elseif selectedTab=="Pack Odds" then for _,id in storeOrder do local definition=Catalog.Packs[id];row(definition.Name,definition.Description,oddsFor(definition),nil,nil) end
 			else local history=packData.History or {};if #history==0 then local empty=text(list,"NO PACK HISTORY\n\nYour opened packs and best pulls will appear here.",UDim2.fromOffset(0,140),UDim2.new(1,0,0,90),13,Theme.Colors.Muted,Theme.Fonts.Display);empty.TextXAlignment=Enum.TextXAlignment.Center else for _,entry in history do local best=entry.bestPull;local bestText=best and (best.rating.." "..best.position.."  "..best.name.."  /  "..string.upper(best.rarity)) or "BEST PULL UNAVAILABLE";row(entry.name,"OPENED  "..os.date("!%Y-%m-%d  %H:%M",entry.openedAt or 0),bestText,best and "VIEW PLAYER" or nil,best and function() context.OpenPlayerDetails(best.cardInstanceId) end or nil) end end end
 		end
@@ -825,7 +832,7 @@ function UltimateTeamPage.new(context:any):CanvasGroup
 		local progression=ProgressionService:Get()or context.Data.Progression;local selectedGroup="starter_journey";local groups={{"starter_journey","STARTER"},{"daily","DAILY"},{"weekly","WEEKLY"},{"milestone","MILESTONES"},{"loan_trials","LOAN PLAYERS"}}
 		local overlay=Instance.new("TextButton");overlay.Name="ObjectivesHubOverlay";overlay.AutoButtonColor=false;overlay.BackgroundColor3=Theme.Colors.Black;overlay.BackgroundTransparency=.12;overlay.BorderSizePixel=0;overlay.Size=UDim2.fromScale(1,1);overlay.Text="";overlay.ZIndex=70;overlay.Parent=group
 		local hub=Panel.new({Name="ObjectivesHub",Size=UDim2.fromOffset(900,580),ClipsDescendants=true});hub.AnchorPoint=Vector2.new(.5,.5);hub.Position=UDim2.fromScale(.5,.5);hub.ZIndex=71;hub.Parent=overlay
-		text(hub,"OBJECTIVES",UDim2.fromOffset(24,16),UDim2.new(1,-150,0,34),22,Theme.Colors.White,Theme.Fonts.Display).ZIndex=73;text(hub,"LIVE SERVER PROGRESS  /  REWARDS  /  LIMITED LOAN PLAYERS",UDim2.fromOffset(24,50),UDim2.new(1,-48,0,18),8,Theme.Colors.Electric,Theme.Fonts.Strong).ZIndex=73
+		text(hub,"OBJECTIVES",UDim2.fromOffset(24,16),UDim2.new(1,-150,0,34),22,Theme.Colors.White,Theme.Fonts.Display).ZIndex=73;text(hub,"LIVE PROGRESS  /  REWARDS  /  LIMITED LOAN PLAYERS",UDim2.fromOffset(24,50),UDim2.new(1,-48,0,18),8,Theme.Colors.Electric,Theme.Fonts.Strong).ZIndex=73
 		local close=Button.new({Text="CLOSE",Variant="Secondary",Size=UDim2.fromOffset(96,34),OnActivated=function()overlay:Destroy()end});close.Position=UDim2.new(1,-120,0,20);close.ZIndex=74;close.Parent=hub
 		local tabBar=Instance.new("Frame");tabBar.BackgroundTransparency=1;tabBar.Position=UDim2.fromOffset(24,78);tabBar.Size=UDim2.new(1,-48,0,36);tabBar.ZIndex=73;tabBar.Parent=hub;local tabLayout=Instance.new("UIListLayout");tabLayout.FillDirection=Enum.FillDirection.Horizontal;tabLayout.Padding=UDim.new(0,7);tabLayout.Parent=tabBar
 		local body=Instance.new("Frame");body.BackgroundTransparency=1;body.Position=UDim2.fromOffset(24,124);body.Size=UDim2.new(1,-48,1,-148);body.ZIndex=72;body.Parent=hub;local buttons={};local renderObjectives:()->()
@@ -840,18 +847,18 @@ function UltimateTeamPage.new(context:any):CanvasGroup
 		for _,entry in groups do local id,labelValue=entry[1],entry[2];local tab=Button.new({Text=labelValue,Variant=id==selectedGroup and"Primary"or"Secondary",Size=UDim2.fromOffset(145,34),OnActivated=function()selectedGroup=id;renderObjectives()end});tab.ZIndex=74;tab.Parent=tabBar;buttons[id]=tab end;renderObjectives()
 	end
 
-	local function openTacticsHub()
+	openTacticsHub=function()
 		clearShortcutOverlays("TacticsHubOverlay")
 		local existing=group:FindFirstChild("TacticsHubOverlay")
 		if existing then existing:Destroy() end
 		local overlay=Instance.new("TextButton");overlay.Name="TacticsHubOverlay";overlay.AutoButtonColor=false;overlay.BackgroundColor3=Theme.Colors.Black;overlay.BackgroundTransparency=.1;overlay.BorderSizePixel=0;overlay.Size=UDim2.fromScale(1,1);overlay.Text="";overlay.ZIndex=70;overlay.Parent=group
-		local hub=Panel.new({Name="TacticsHub",Size=UDim2.fromOffset(1120,650),ClipsDescendants=true});hub.AnchorPoint=Vector2.new(.5,.5);hub.Position=UDim2.fromScale(.5,.5);hub.ZIndex=71;hub.Parent=overlay
-		text(hub,"TACTICS",UDim2.fromOffset(24,16),UDim2.new(1,-150,0,34),22,Theme.Colors.White,Theme.Fonts.Display).ZIndex=73
-		text(hub,"SQUAD FORMATION  /  AI IDENTITY  /  MATCH BEHAVIOR",UDim2.fromOffset(24,50),UDim2.new(1,-48,0,18),8,Theme.Colors.Electric,Theme.Fonts.Strong).ZIndex=73
-		local close=Button.new({Text="CLOSE",Variant="Secondary",Size=UDim2.fromOffset(96,34),OnActivated=function()overlay:Destroy()end});close.Position=UDim2.new(1,-120,0,20);close.ZIndex=74;close.Parent=hub
-		local body=Instance.new("Frame");body.BackgroundTransparency=1;body.Position=UDim2.fromOffset(24,88);body.Size=UDim2.new(1,-48,1,-112);body.ZIndex=72;body.Parent=hub
-		local pitch=Panel.new({Name="TacticsPitch",Position=UDim2.fromOffset(0,0),Size=UDim2.new(.32,-8,1,0),Color=Theme.Colors.Pitch,ClipsDescendants=true});pitch.ZIndex=73;pitch.Parent=body
-		local controls=Panel.new({Name="TacticsControls",Position=UDim2.new(.32,8,0,0),Size=UDim2.new(.68,-8,1,0),ClipsDescendants=true});controls.ZIndex=73;controls.Parent=body
+		local hub=Panel.new({Name="TacticsHub",Size=UDim2.fromOffset(960,560),ClipsDescendants=true});hub.AnchorPoint=Vector2.new(.5,.5);hub.Position=UDim2.fromScale(.5,.5);hub.ZIndex=71;hub.Parent=overlay
+		text(hub,"TACTICS",UDim2.fromOffset(22,14),UDim2.new(1,-140,0,28),18,Theme.Colors.White,Theme.Fonts.Display).ZIndex=73
+		text(hub,"SQUAD FORMATION  /  AI IDENTITY  /  MATCH BEHAVIOR",UDim2.fromOffset(22,42),UDim2.new(1,-48,0,16),7,Theme.Colors.Electric,Theme.Fonts.Strong).ZIndex=73
+		local close=Button.new({Text="CLOSE",Variant="Secondary",Size=UDim2.fromOffset(82,30),OnActivated=function()overlay:Destroy()end});close.Position=UDim2.new(1,-104,0,16);close.ZIndex=74;close.Parent=hub
+		local body=Instance.new("Frame");body.BackgroundTransparency=1;body.Position=UDim2.fromOffset(22,72);body.Size=UDim2.new(1,-44,1,-92);body.ZIndex=72;body.Parent=hub
+		local pitch=Panel.new({Name="TacticsPitch",Position=UDim2.fromOffset(0,0),Size=UDim2.new(.29,-7,1,0),Color=Theme.Colors.Pitch,ClipsDescendants=true});pitch.ZIndex=73;pitch.Parent=body
+		local controls=Panel.new({Name="TacticsControls",Position=UDim2.new(.29,7,0,0),Size=UDim2.new(.71,-7,1,0),ClipsDescendants=true});controls.ZIndex=73;controls.Parent=body
 		local function saveTactics():boolean
 			local result=LaunchService:Request("SaveTeamTactics",tactics)
 			if not result.Success then toast(result.Message or"Could not save AI tactics.","Error");return false end
@@ -862,9 +869,9 @@ function UltimateTeamPage.new(context:any):CanvasGroup
 		local function renderHub()
 			for _,child in pitch:GetChildren()do if child:IsA("GuiObject")then child:Destroy()end end
 			for _,child in controls:GetChildren()do if child:IsA("GuiObject")then child:Destroy()end end
-			text(pitch,string.upper(snapshot.Formation or"4-3-3"),UDim2.fromOffset(20,18),UDim2.new(1,-40,0,36),24,Theme.Colors.White,Theme.Fonts.Display).ZIndex=75
-			text(pitch,"CLICK A PLAYER TO SET INSTRUCTIONS",UDim2.fromOffset(22,55),UDim2.new(1,-44,0,18),8,Theme.Colors.Electric,Theme.Fonts.Strong).ZIndex=75
-			local field=Instance.new("Frame");field.BackgroundTransparency=1;field.Position=UDim2.fromOffset(42,92);field.Size=UDim2.new(1,-84,1,-132);field.ZIndex=74;field.Parent=pitch
+			text(pitch,string.upper(snapshot.Formation or"4-3-3"),UDim2.fromOffset(18,14),UDim2.new(1,-36,0,28),20,Theme.Colors.White,Theme.Fonts.Display).ZIndex=75
+			text(pitch,"CLICK A PLAYER TO SET INSTRUCTIONS",UDim2.fromOffset(18,46),UDim2.new(1,-36,0,16),7,Theme.Colors.Electric,Theme.Fonts.Strong).ZIndex=75
+			local field=Instance.new("Frame");field.BackgroundTransparency=1;field.Position=UDim2.fromOffset(34,76);field.Size=UDim2.new(1,-68,1,-108);field.ZIndex=74;field.Parent=pitch
 			local stroke=Instance.new("UIStroke");stroke.Color=Theme.Colors.Border;stroke.Thickness=2;stroke.Transparency=.18;stroke.Parent=field
 			local half=Instance.new("Frame");half.BackgroundColor3=Theme.Colors.Border;half.BackgroundTransparency=.28;half.BorderSizePixel=0;half.Position=UDim2.fromScale(0,.5);half.Size=UDim2.new(1,0,0,2);half.ZIndex=75;half.Parent=field
 			local dots=FORMATION_DOTS[snapshot.Formation or"4-3-3"] or FORMATION_DOTS["4-3-3"]
@@ -872,43 +879,43 @@ function UltimateTeamPage.new(context:any):CanvasGroup
 				local slot=snapshot.SlotOrder and snapshot.SlotOrder[index]
 				local slotData=slot and snapshot.Slots[slot]
 				local card=slotData and slotData.Card
-				local node=Instance.new("TextButton");node.AnchorPoint=Vector2.new(.5,.5);node.Position=UDim2.fromScale(dot[1],dot[2]);node.Size=UDim2.fromOffset(index==1 and 28 or 24,index==1 and 28 or 24);node.BackgroundColor3=index==1 and Theme.Colors.Electric or card and Theme.Colors.White or Theme.Colors.Gunmetal;node.BorderSizePixel=0;node.AutoButtonColor=false;node.Text=slotData and tostring(slotData.Label or slot)or"";node.TextColor3=index==1 and Theme.Colors.Black or card and Theme.Colors.Black or Theme.Colors.Muted;node.TextSize=6;node.Font=Theme.Fonts.Strong;node.ZIndex=76;node.Parent=field
+				local node=Instance.new("TextButton");node.AnchorPoint=Vector2.new(.5,.5);node.Position=UDim2.fromScale(dot[1],dot[2]);node.Size=UDim2.fromOffset(index==1 and 24 or 21,index==1 and 24 or 21);node.BackgroundColor3=index==1 and Theme.Colors.Electric or card and Theme.Colors.White or Theme.Colors.Gunmetal;node.BorderSizePixel=0;node.AutoButtonColor=false;node.Text=slotData and tostring(slotData.Label or slot)or"";node.TextColor3=index==1 and Theme.Colors.Black or card and Theme.Colors.Black or Theme.Colors.Muted;node.TextSize=5;node.Font=Theme.Fonts.Strong;node.ZIndex=76;node.Parent=field
 				local round=Instance.new("UICorner");round.CornerRadius=UDim.new(1,0);round.Parent=node
 				if card and slot then node.Activated:Connect(function()playerInstructionsMenu(card,slot)end)end
 			end
-			text(controls,"FORMATION",UDim2.fromOffset(22,18),UDim2.new(1,-44,0,18),8,Theme.Colors.Muted,Theme.Fonts.Strong).ZIndex=75
-			local formationRow=Instance.new("Frame");formationRow.BackgroundTransparency=1;formationRow.Position=UDim2.fromOffset(22,42);formationRow.Size=UDim2.new(1,-44,0,108);formationRow.ZIndex=74;formationRow.Parent=controls
-			local formationGrid=Instance.new("UIGridLayout");formationGrid.CellSize=UDim2.new(1/3,-7,0,30);formationGrid.CellPadding=UDim2.fromOffset(9,8);formationGrid.Parent=formationRow
+			text(controls,"FORMATION",UDim2.fromOffset(18,14),UDim2.new(1,-36,0,16),7,Theme.Colors.Muted,Theme.Fonts.Strong).ZIndex=75
+			local formationRow=Instance.new("Frame");formationRow.BackgroundTransparency=1;formationRow.Position=UDim2.fromOffset(18,34);formationRow.Size=UDim2.new(1,-36,0,92);formationRow.ZIndex=74;formationRow.Parent=controls
+			local formationGrid=Instance.new("UIGridLayout");formationGrid.CellSize=UDim2.new(1/3,-6,0,26);formationGrid.CellPadding=UDim2.fromOffset(8,7);formationGrid.Parent=formationRow
 			for _,name in snapshot.FormationOptions or TACTIC_FORMATIONS do
 				local option=Button.new({Text=name,Variant=name==snapshot.Formation and"Primary"or"Secondary",Size=UDim2.new(1,0,1,0),OnActivated=function()setFormationInstant(name);task.defer(renderHub)end});option.ZIndex=76;option.Parent=formationRow
 			end
-			text(controls,"AI IDENTITY",UDim2.fromOffset(22,168),UDim2.new(1,-44,0,18),8,Theme.Colors.Muted,Theme.Fonts.Strong).ZIndex=75
-			local identityRow=Instance.new("Frame");identityRow.BackgroundTransparency=1;identityRow.Position=UDim2.fromOffset(22,192);identityRow.Size=UDim2.new(1,-44,0,74);identityRow.ZIndex=74;identityRow.Parent=controls
-			local identityGrid=Instance.new("UIGridLayout");identityGrid.CellSize=UDim2.new(.5,-6,0,64);identityGrid.CellPadding=UDim2.fromOffset(12,0);identityGrid.Parent=identityRow
+			text(controls,"AI IDENTITY",UDim2.fromOffset(18,138),UDim2.new(1,-36,0,16),7,Theme.Colors.Muted,Theme.Fonts.Strong).ZIndex=75
+			local identityRow=Instance.new("Frame");identityRow.BackgroundTransparency=1;identityRow.Position=UDim2.fromOffset(18,158);identityRow.Size=UDim2.new(1,-36,0,102);identityRow.ZIndex=74;identityRow.Parent=controls
+			local identityGrid=Instance.new("UIGridLayout");identityGrid.CellSize=UDim2.new(.25,-7,0,44);identityGrid.CellPadding=UDim2.fromOffset(8,7);identityGrid.Parent=identityRow
 			local activeIdentity=currentTacticIdentityIndex(tactics)
 			for index,identity in TACTIC_IDENTITIES do
-				local option=Button.new({Text=identity.Label.." ("..identity.Name..")",Variant=index==activeIdentity and"Primary"or"Secondary",Size=UDim2.new(1,0,1,0),OnActivated=function()applyTacticIdentity(tactics,index);renderHub()end});option.ZIndex=76;option.Parent=identityRow
+				local option=Button.new({Text=identity.Label,Variant=index==activeIdentity and"Primary"or"Secondary",Size=UDim2.new(1,0,1,0),OnActivated=function()applyTacticIdentity(tactics,index);renderHub()end});option.ZIndex=76;option.Parent=identityRow
 			end
-			text(controls,"BEHAVIOUR SETTINGS",UDim2.fromOffset(22,290),UDim2.new(1,-44,0,18),8,Theme.Colors.Muted,Theme.Fonts.Strong).ZIndex=75
-			local settings=Instance.new("Frame");settings.BackgroundTransparency=1;settings.Position=UDim2.fromOffset(22,318);settings.Size=UDim2.new(1,-44,0,210);settings.ZIndex=74;settings.Parent=controls
+			text(controls,"BEHAVIOUR SETTINGS",UDim2.fromOffset(18,276),UDim2.new(1,-36,0,16),7,Theme.Colors.Muted,Theme.Fonts.Strong).ZIndex=75
+			local settings=Instance.new("Frame");settings.BackgroundTransparency=1;settings.Position=UDim2.fromOffset(18,298);settings.Size=UDim2.new(1,-36,0,150);settings.ZIndex=74;settings.Parent=controls
 			local function drawControl(spec:any,row:number,column:number)
 				local value=simpleTacticValue(tactics,spec.Key)
 				local xScale=column==1 and 0 or .5
 				local xPad=column==1 and 0 or 12
-				local frame=Instance.new("Frame");frame.BackgroundTransparency=1;frame.Position=UDim2.new(xScale,xPad,0,row);frame.Size=UDim2.new(.5,-12,0,58);frame.ZIndex=75;frame.Parent=settings
-				text(frame,spec.Label,UDim2.fromOffset(0,0),UDim2.new(1,-84,0,16),8,Theme.Colors.Silver,Theme.Fonts.Strong).ZIndex=76
-				text(frame,string.upper(spec.Low),UDim2.fromOffset(0,36),UDim2.new(.45,0,0,14),6,Theme.Colors.Muted,Theme.Fonts.Strong).ZIndex=76
-				local high=text(frame,string.upper(spec.High),UDim2.new(.55,0,0,36),UDim2.new(.45,0,0,14),6,Theme.Colors.Muted,Theme.Fonts.Strong);high.TextXAlignment=Enum.TextXAlignment.Right;high.ZIndex=76
-				local bar=Instance.new("Frame");bar.BackgroundColor3=Theme.Colors.Gunmetal;bar.BorderSizePixel=0;bar.Position=UDim2.fromOffset(0,24);bar.Size=UDim2.new(1,-92,0,8);bar.ZIndex=76;bar.Parent=frame
+				local frame=Instance.new("Frame");frame.BackgroundTransparency=1;frame.Position=UDim2.new(xScale,xPad,0,row);frame.Size=UDim2.new(.5,-12,0,45);frame.ZIndex=75;frame.Parent=settings
+				text(frame,spec.Label,UDim2.fromOffset(0,0),UDim2.new(1,-76,0,14),7,Theme.Colors.Silver,Theme.Fonts.Strong).ZIndex=76
+				text(frame,string.upper(spec.Low),UDim2.fromOffset(0,30),UDim2.new(.45,0,0,12),5,Theme.Colors.Muted,Theme.Fonts.Strong).ZIndex=76
+				local high=text(frame,string.upper(spec.High),UDim2.new(.55,0,0,30),UDim2.new(.45,0,0,12),5,Theme.Colors.Muted,Theme.Fonts.Strong);high.TextXAlignment=Enum.TextXAlignment.Right;high.ZIndex=76
+				local bar=Instance.new("Frame");bar.BackgroundColor3=Theme.Colors.Gunmetal;bar.BorderSizePixel=0;bar.Position=UDim2.fromOffset(0,20);bar.Size=UDim2.new(1,-82,0,7);bar.ZIndex=76;bar.Parent=frame
 				local fill=Instance.new("Frame");fill.BackgroundColor3=Theme.Colors.Electric;fill.BorderSizePixel=0;fill.Size=UDim2.fromScale(math.clamp(value/100,0,1),1);fill.ZIndex=77;fill.Parent=bar
-				local minus=Button.new({Text="-",Variant="Secondary",Size=UDim2.fromOffset(24,26),OnActivated=function()setSimpleTacticControl(tactics,spec.Key,value-10);renderHub()end});minus.Position=UDim2.new(1,-88,0,13);minus.ZIndex=77;minus.Parent=frame
-				local valueText=text(frame,tostring(math.floor(value+.5)),UDim2.new(1,-60,0,14),UDim2.fromOffset(32,22),9,Theme.Colors.Electric,Theme.Fonts.Display);valueText.TextXAlignment=Enum.TextXAlignment.Center;valueText.ZIndex=77
-				local plus=Button.new({Text="+",Variant="Secondary",Size=UDim2.fromOffset(24,26),OnActivated=function()setSimpleTacticControl(tactics,spec.Key,value+10);renderHub()end});plus.Position=UDim2.new(1,-24,0,13);plus.ZIndex=77;plus.Parent=frame
+				local minus=Button.new({Text="-",Variant="Secondary",Size=UDim2.fromOffset(22,24),OnActivated=function()setSimpleTacticControl(tactics,spec.Key,value-10);renderHub()end});minus.Position=UDim2.new(1,-80,0,10);minus.ZIndex=77;minus.Parent=frame
+				local valueText=text(frame,tostring(math.floor(value+.5)),UDim2.new(1,-55,0,11),UDim2.fromOffset(28,20),8,Theme.Colors.Electric,Theme.Fonts.Display);valueText.TextXAlignment=Enum.TextXAlignment.Center;valueText.ZIndex=77
+				local plus=Button.new({Text="+",Variant="Secondary",Size=UDim2.fromOffset(22,24),OnActivated=function()setSimpleTacticControl(tactics,spec.Key,value+10);renderHub()end});plus.Position=UDim2.new(1,-22,0,10);plus.ZIndex=77;plus.Parent=frame
 			end
 			for index,spec in TACTIC_BEHAVIOR_CONTROLS do
-				drawControl(spec,math.floor((index-1)/2)*68,((index-1)%2)+1)
+				drawControl(spec,math.floor((index-1)/2)*50,((index-1)%2)+1)
 			end
-			local save=Button.new({Text="SAVE TACTICS",Variant="Primary",Size=UDim2.fromOffset(180,40),OnActivated=saveTactics});save.Position=UDim2.new(1,-202,1,-58);save.ZIndex=76;save.Parent=controls
+			local save=Button.new({Text="SAVE",Variant="Primary",Size=UDim2.fromOffset(112,34),OnActivated=saveTactics});save.Position=UDim2.new(1,-130,1,-46);save.ZIndex=76;save.Parent=controls
 		end
 		renderHub()
 	end
@@ -1240,7 +1247,6 @@ function UltimateTeamPage.new(context:any):CanvasGroup
 		context.Navigate("Inventory");task.delay(.65,function()navigatingToPlayers=false end)
 	end});playersButton.Parent=shortcuts
 	local objectivesButton=Button.new({Text="OBJECTIVES",Variant="Secondary",Size=UDim2.fromOffset(116,34),OnActivated=openObjectivesHub});objectivesButton.Parent=shortcuts
-	local tacticsButton=Button.new({Text="TACTICS",Variant="Secondary",Size=UDim2.fromOffset(104,34),OnActivated=openTacticsHub});tacticsButton.Parent=shortcuts
 	local customizeButton=Button.new({Text="CUSTOMIZE",Variant="Secondary",Size=UDim2.fromOffset(116,34),OnActivated=function()activeTab="Customize";saveTrayState();renderTray();openCustomizeHub()end});customizeButton.Parent=shortcuts
 	renderAll()
 	return group

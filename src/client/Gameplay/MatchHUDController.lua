@@ -11,6 +11,7 @@ local BadgePreview = require(script.Parent.Parent.Components.BadgePreview)
 local AvatarPortraitGenerator = require(script.Parent.Parent.Services.PlayerPortraitService)
 local SettingsRuntimeService = require(script.Parent.Parent.Services.SettingsRuntimeService)
 local ControlGlyphService = require(script.Parent.Parent.Services.ControlGlyphService)
+local MatchMomentumGraph = require(script.Parent.Parent.Components.MatchMomentumGraph)
 
 local matchSetupService = nil
 local uiStateService = nil
@@ -402,13 +403,12 @@ function Controller.new(data: any)
 		shotModeRows.Finesse.Visible=false
 		shotModeRows.LowDriven.Visible=false
 	end
-	local scorerPanel = Instance.new("CanvasGroup")
+	local scorerPanel = Instance.new("Frame")
 	scorerPanel.Name = "KickoffScorerPanel"
 	scorerPanel.BackgroundColor3 = Color3.fromHex("8E00D6")
 	scorerPanel.BorderSizePixel = 0
 	scorerPanel.Position = UDim2.fromOffset(156, 58)
 	scorerPanel.Size = UDim2.fromOffset(64, 64)
-	scorerPanel.GroupTransparency = 1
 	scorerPanel.Visible = false
 	scorerPanel.ZIndex = 13
 	scorerPanel.Parent = gui
@@ -447,7 +447,13 @@ function Controller.new(data: any)
 	local activeTeamName = controlledSide == "Away" and data.Away or data.Home
 	local activeBadge = label(activePanel,string.sub(tostring(activeLogo or shortCode(activeTeamName)),1,2),UDim2.fromOffset(8,11),UDim2.fromOffset(42,42),13)
 	activeBadge.TextXAlignment=Enum.TextXAlignment.Center;activeBadge.BackgroundColor3=badgeColor(controlledSide=="Away"and data.AwayColor or data.HomeColor,Theme.Colors.Electric);activeBadge.BackgroundTransparency=0.08;activeBadge.TextColor3=Theme.Colors.Black;corner(activeBadge,21);renderTeamBadge(activeBadge,data,controlledSide,2)
-	local activeName = label(activePanel, "ACTIVE PLAYER", UDim2.fromOffset(60, 34), UDim2.new(1, -70, 0, 20), 12)
+	local activeName = label(activePanel, "ACTIVE PLAYER", UDim2.fromOffset(60, 34), UDim2.new(1, -154, 0, 20), 12)
+	activeName.TextScaled = true
+	activeName.TextTruncate = Enum.TextTruncate.AtEnd
+	local activeNameConstraint = Instance.new("UITextSizeConstraint")
+	activeNameConstraint.MinTextSize = 7
+	activeNameConstraint.MaxTextSize = 12
+	activeNameConstraint.Parent = activeName
 	local activeState = label(activePanel, "ST  9", UDim2.fromOffset(60, 7), UDim2.new(1, -70, 0, 17), 9)
 	activeState.TextColor3 = Theme.Colors.Electric
 	local rating = label(activePanel, "", UDim2.new(1, -92, 0, 35), UDim2.fromOffset(80, 16), 8)
@@ -798,11 +804,9 @@ function Controller:ShowKickoffScorer()
 	local home = scorer.Team == "Home"
 	panel.BackgroundColor3 = home and Color3.fromHex("8E00D6") or Color3.fromHex("1F1648")
 	panel.Position = UDim2.fromOffset(home and 156 or 156, home and 58 or 78)
-	panel.GroupTransparency = 1
 	panel.Visible = true
 	TweenService:Create(panel, TweenInfo.new(0.28, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
 		Position = UDim2.fromOffset(156, home and 58 or 78),
-		GroupTransparency = 0,
 	}):Play()
 end
 
@@ -811,10 +815,9 @@ function Controller:HideKickoffScorer()
 	local panel = self.ScorerPanel
 	TweenService:Create(panel, TweenInfo.new(0.18, Enum.EasingStyle.Quart, Enum.EasingDirection.In), {
 		Position = panel.Position - UDim2.fromOffset(18, 0),
-		GroupTransparency = 1,
 	}):Play()
 	task.delay(0.2, function()
-		if panel.Parent and panel.GroupTransparency >= 0.95 then
+		if panel.Parent then
 			panel.Visible = false
 		end
 	end)
@@ -1009,6 +1012,7 @@ end
 function Controller:SetActivePlayer(name: string, position: string, model: Model?)
 	self.ActiveModel = model
 	self.ActiveName.Text = string.upper(name)
+	self.ActiveName.TextSize = 12
 	local number = model and tonumber(model:GetAttribute("ShirtNumber")) or 0
 	self.ActiveState.Text = string.upper(position ~= "" and position or "--") .. "  " .. tostring(number)
 	self:UpdateActiveRating()
@@ -1087,7 +1091,13 @@ function Controller:ShowFinalChance(active: boolean)
 		local overlay = self.FinalChanceOverlay
 		self.FinalChanceOverlay = nil
 		if overlay and overlay.Parent then
-			TweenService:Create(overlay, TweenInfo.new(.16), {GroupTransparency = 1}):Play()
+			for _, child in ipairs(overlay:GetDescendants()) do
+				if child:IsA("TextLabel") then
+					TweenService:Create(child, TweenInfo.new(.16), {TextTransparency = 1, TextStrokeTransparency = 1}):Play()
+				elseif child:IsA("Frame") then
+					TweenService:Create(child, TweenInfo.new(.16), {BackgroundTransparency = 1}):Play()
+				end
+			end
 			task.delay(.18, function()
 				if overlay.Parent then overlay:Destroy() end
 			end)
@@ -1095,11 +1105,10 @@ function Controller:ShowFinalChance(active: boolean)
 		return
 	end
 	if self.FinalChanceOverlay and self.FinalChanceOverlay.Parent then return end
-	local overlay = Instance.new("CanvasGroup")
+	local overlay = Instance.new("Frame")
 	overlay.Name = "FinalChanceOverlay"
 	overlay.AnchorPoint = Vector2.new(.5, .5)
 	overlay.BackgroundTransparency = 1
-	overlay.GroupTransparency = 1
 	overlay.Position = UDim2.fromScale(.5, .34)
 	overlay.Size = UDim2.fromOffset(760, 170)
 	overlay.ZIndex = 88
@@ -1126,7 +1135,6 @@ function Controller:ShowFinalChance(active: boolean)
 	local scale = Instance.new("UIScale")
 	scale.Scale = .82
 	scale.Parent = overlay
-	TweenService:Create(overlay, TweenInfo.new(.18), {GroupTransparency = 0}):Play()
 	TweenService:Create(scale, TweenInfo.new(.24, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Scale = 1}):Play()
 end
 
@@ -1462,6 +1470,49 @@ function Controller:ShowHalfTime(payload: any, options: any?)
 	end)
 end
 
+function Controller:UpdateMomentum(momentum: any)
+	if type(momentum) ~= "table" then return end
+	self.LastMomentum = momentum
+	if self.MomentumDockMode == "Hidden" then return end
+	local frame = self.LiveMomentumGraph
+	if not frame or not frame.Parent then
+		frame = Instance.new("Frame")
+		frame.Name = "LiveMatchMomentumGraph"
+		frame.BackgroundTransparency = 1
+		frame.ZIndex = 38
+		frame.Parent = self.Gui
+		self.LiveMomentumGraph = frame
+	end
+	local mode = tostring(self.MomentumDockMode or "Compact")
+	if mode == "Analysis" then
+		frame.AnchorPoint = Vector2.new(1, .5)
+		frame.Position = UDim2.new(1, -18, .5, 10)
+		frame.Size = UDim2.fromOffset(340, 292)
+		frame.ZIndex = 172
+	elseif mode == "Manager" then
+		frame.AnchorPoint = Vector2.new(1, .5)
+		frame.Position = UDim2.new(1, -12, .5, 0)
+		frame.Size = UDim2.fromOffset(430, 360)
+		frame.ZIndex = 140
+	else
+		frame.AnchorPoint = Vector2.new(1, 0)
+		frame.Position = UDim2.new(1, -28, 0, 92)
+		frame.Size = UDim2.fromOffset(330, 94)
+		frame.ZIndex = 38
+	end
+	frame.Visible = true
+	MatchMomentumGraph.Render(frame, momentum, {Title = "LIVE MOMENTUM", HomeColor = badgeColor(self.HomeColor, Theme.Colors.Electric), AwayColor = badgeColor(self.AwayColor, Color3.fromHex("24C6B8"))})
+end
+
+function Controller:SetMomentumDock(mode: string?)
+	self.MomentumDockMode = mode or "Compact"
+	if self.MomentumDockMode == "Hidden" then
+		if self.LiveMomentumGraph then self.LiveMomentumGraph.Visible = false end
+		return
+	end
+	self:UpdateMomentum(self.LastMomentum or {Samples = {}, Markers = {}, Periods = {{Time = 2700, Label = "HT"}}, MaxTime = 5400})
+end
+
 function Controller:SetPaused(paused: boolean, cameraController: any, onReturn: () -> (), payload: any?, onForfeit: (() -> ())?)
 	if not paused then
 		self:ClearPause()
@@ -1638,6 +1689,8 @@ function Controller:SetPaused(paused: boolean, cameraController: any, onReturn: 
 		local left=label(header,self.HomeCode,UDim2.new(.2,-35,0,8),UDim2.fromOffset(70,38),22);left.TextXAlignment=Enum.TextXAlignment.Center;left.BackgroundColor3=Theme.Colors.Electric;left.BackgroundTransparency=.05;left.TextColor3=Theme.Colors.Black;corner(left,19)
 		local score=label(header,tostring(stats.HomeScore or payload.Home or 0).."  -  "..tostring(stats.AwayScore or payload.Away or 0),UDim2.new(.5,-75,0,8),UDim2.fromOffset(150,38),24);score.TextXAlignment=Enum.TextXAlignment.Center
 		local right=label(header,self.AwayCode,UDim2.new(.8,-35,0,8),UDim2.fromOffset(70,38),22);right.TextXAlignment=Enum.TextXAlignment.Center;right.BackgroundColor3=Color3.fromHex("24C6B8");right.BackgroundTransparency=.05;right.TextColor3=Theme.Colors.Black;corner(right,19)
+		local momentumFrame=Instance.new("Frame");momentumFrame.Name="MatchMomentumFacts";momentumFrame.BackgroundTransparency=1;momentumFrame.Size=UDim2.new(1,-8,0,138);momentumFrame.ZIndex=98;momentumFrame.Parent=body
+		MatchMomentumGraph.Render(momentumFrame,stats.Momentum,{Title="LIVE ATTACK MOMENTUM",HomeColor=badgeColor(self.HomeColor,Theme.Colors.Electric),AwayColor=badgeColor(self.AwayColor,Color3.fromHex("24C6B8"))})
 		local rows={{"POSSESSION",home.Possession or 0,away.Possession or 0,"%"},{"SHOTS",home.Shots or 0,away.Shots or 0,""},{"ON TARGET",home.ShotsOnTarget or 0,away.ShotsOnTarget or 0,""},{"EXPECTED GOALS",home.ExpectedGoals or 0,away.ExpectedGoals or 0,""},{"PASS ACCURACY",home.PassAccuracy or 0,away.PassAccuracy or 0,"%"},{"TACKLES",home.TacklesCompleted or 0,away.TacklesCompleted or 0,""},{"FOULS",home.Fouls or 0,away.Fouls or 0,""},{"CARDS",tostring(home.YellowCards or 0).."/"..tostring(home.RedCards or 0),tostring(away.YellowCards or 0).."/"..tostring(away.RedCards or 0),""}}
 		for _,row in rows do local r=addRow(tostring(row[2])..tostring(row[4]).."          "..row[1].."          "..tostring(row[3])..tostring(row[4]),Theme.Colors.White);r.TextXAlignment=Enum.TextXAlignment.Center end
 	end
@@ -2504,7 +2557,7 @@ function Controller:ShowResult(payload: any, onReturn: () -> ())
 		return tostring(number)
 	end
 	local function statRow(parent:Instance,index:number,name:string,homeValue:any,awayValue:any,formatter:((any)->string)?)
-		local y=58+(index-1)*34
+		local y=198+(index-1)*34
 		local row=Instance.new("Frame");row.BackgroundColor3=index%2==0 and Theme.Colors.Gunmetal or Theme.Colors.Black;row.BackgroundTransparency=index%2==0 and .62 or .82;row.BorderSizePixel=0;row.Position=UDim2.fromOffset(0,y);row.Size=UDim2.new(1,-8,0,32);row.ZIndex=53;row.Parent=parent;corner(row,6)
 		local format=formatter or numberText
 		local left=label(row,format(homeValue),UDim2.new(.10,0,0,5),UDim2.new(.18,0,0,22),14);left.TextXAlignment=Enum.TextXAlignment.Center;left.TextColor3=Theme.Colors.White
@@ -2516,6 +2569,8 @@ function Controller:ShowResult(payload: any, onReturn: () -> ())
 	local homeHeader=label(header,self.HomeCode,UDim2.new(.09,0,0,4),UDim2.new(.20,0,0,28),15);homeHeader.TextXAlignment=Enum.TextXAlignment.Center;homeHeader.BackgroundColor3=Theme.Colors.Electric;homeHeader.BackgroundTransparency=.06;homeHeader.TextColor3=Theme.Colors.Black;homeHeader.ZIndex=54;corner(homeHeader,14);renderTeamBadge(homeHeader,self,"Home",2)
 	local titleHeader=label(header,"TEAM STATS",UDim2.new(.35,0,0,5),UDim2.new(.30,0,0,24),15);titleHeader.TextXAlignment=Enum.TextXAlignment.Center;titleHeader.TextColor3=Theme.Colors.White
 	local awayHeader=label(header,self.AwayCode,UDim2.new(.71,0,0,4),UDim2.new(.20,0,0,28),15);awayHeader.TextXAlignment=Enum.TextXAlignment.Center;awayHeader.BackgroundColor3=Color3.fromHex("24C6B8");awayHeader.BackgroundTransparency=.06;awayHeader.TextColor3=Theme.Colors.Black;awayHeader.ZIndex=54;corner(awayHeader,14);renderTeamBadge(awayHeader,self,"Away",2)
+	local momentumFrame=Instance.new("Frame");momentumFrame.Name="MatchMomentumFullTime";momentumFrame.BackgroundTransparency=1;momentumFrame.Position=UDim2.fromOffset(0,50);momentumFrame.Size=UDim2.new(1,-8,0,132);momentumFrame.ZIndex=53;momentumFrame.Parent=teamStats
+	MatchMomentumGraph.Render(momentumFrame,stats.Momentum,{Title="ATTACK MOMENTUM",HomeColor=badgeColor(self.HomeColor,Theme.Colors.Electric),AwayColor=badgeColor(self.AwayColor,Color3.fromHex("24C6B8"))})
 	local rows={
 		{"POSSESSION",teamValue(home,"Possession"),teamValue(away,"Possession"),pctText},
 		{"SHOTS",teamValue(home,"Shots"),teamValue(away,"Shots")},

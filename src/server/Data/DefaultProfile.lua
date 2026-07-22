@@ -12,7 +12,7 @@ local function defaultSettings():any
 	return settings
 end
 return table.freeze({
-	Version=15,SchemaVersion=15,CreatedAt=0,LastLogin=0,OnboardingCompleted=false,
+	Version=16,SchemaVersion=16,CreatedAt=0,LastLogin=0,OnboardingCompleted=false,
 	Profile={Level=1,XP=0,SelectedClub="NO CLUB",Avatar={UserId=0,HeadshotType="HeadShot",OutfitId=0}},
 	Currency={Coins=EconomyConfig.StarterCoins,Bolts=EconomyConfig.StarterBolts,VoltraPoints=EconomyConfig.StarterVoltraPoints},Season={Name="SEASON 01",Level=1,XP=0,RequiredXP=1000},
 	Ranked={Division="DIVISION 10",DivisionNumber=10,DivisionWins=0,ProtectedWins=0,VoltraRating=0,Rank="NEW SEASON",PlacementStatus="PLACEMENT READY",Wins=0,Draws=0,Losses=0,RP=0,RequiredRP=10,WinStreak=0,BestWinStreak=0,FlawlessRuns=0,CleanSheets=0,BestPackRating=0,History={},PlayerStats={MatchesPlayed=0,Goals=0,Assists=0,MOTM=0,AverageRating=0,HatTricks=0,PenaltiesScored=0,FreeKickGoals=0}},

@@ -25,6 +25,7 @@ function Director.new(parent: Instance, props: any)
 		Cancelled = false,
 		Completed = false,
 		ResultsShown = false,
+		CleanedUp = false,
 		StartedAt = 0,
 		SkipStartedAt = nil,
 		SkipAvailableAt = 0,
@@ -124,6 +125,9 @@ function Director:_runPhase(phase: any): boolean
 		if self.Scene then self.Scene:ChargePack(tonumber(self.Selection.Profile.Intensity) or 0.5) end
 	elseif name == "ClueSequence" then
 		local clues = self.Selection.Profile.Clues or {}
+		if self.Selection.Profile.Walkout ~= true and #clues > 3 then
+			clues = { clues[1], clues[2], clues[3] }
+		end
 		local minimumPerClue = self.Selection.ReducedMotion and 0.45 or 0.72
 		local per = #clues > 0 and math.max(duration / #clues, minimumPerClue) or duration
 		for _, clue in clues do
@@ -144,19 +148,29 @@ function Director:_runPhase(phase: any): boolean
 	elseif name == "Walkout" then
 		self.Audio:Play("CrowdSwell")
 		local finished = false
-		if self.Scene then self.Scene:StartWalkout(function() finished = true end) else finished = true end
-		while not finished and not self.Cancelled do
-			self.Audio:Play("Footstep")
-			task.wait(0.32)
+		if self.Scene then
+			self.Scene.OnWalkoutStep = function()
+				self.Audio:Play("Footstep", { PitchVariation = 0.035 })
+			end
+			self.Scene:StartWalkout(function()
+				if self.Scene then self.Scene.OnWalkoutStep = nil end
+				finished = true
+			end)
+		else
+			finished = true
 		end
+		while not finished and not self.Cancelled do
+			task.wait(0.04)
+		end
+		if self.Scene then self.Scene.OnWalkoutStep = nil end
 		return not self.Cancelled
 	elseif name == "Celebration" then
 		self.Audio:Play("WalkoutImpact")
 		if self.Scene then
 			self.Scene:Celebrate()
 			local finished = false
-			local orbitDuration = self.Selection.ReducedMotion and 1.05 or 4.35
-			local orbitTurns = self.Selection.ReducedMotion and 1 or 3
+			local orbitDuration = duration > 0 and duration or (self.Selection.ReducedMotion and 0.95 or 2.6)
+			local orbitTurns = self.Selection.ReducedMotion and 0 or 0.45
 			self.Scene:OrbitPlayer(orbitTurns, orbitDuration, function()
 				finished = true
 			end)
@@ -169,7 +183,7 @@ function Director:_runPhase(phase: any): boolean
 		self.Audio:Play("RatingTick")
 		if self.Scene then self.Scene:RevealRating() end
 		task.delay(math.max(0.05, duration - 0.08), function()
-			if not self.Completed then
+			if not self.Completed and not self.Cancelled and self.Phase == "RatingReveal" then
 				self.Audio:Play("RatingFinalHit")
 				if self.Scene then self.Scene:RatingImpact(1) end
 			end
@@ -219,13 +233,15 @@ function Director:Play(): CanvasGroup
 end
 
 function Director:Cleanup(destroyOverlay: boolean?)
+	if self.CleanedUp and destroyOverlay ~= true then return end
+	self.CleanedUp = true
 	ContextActionService:UnbindAction(ACTION)
 	for _, connection in self.Connections do
 		connection:Disconnect()
 	end
 	self.Connections = {}
 	if self.Audio then self.Audio:Cleanup() end
-	if destroyOverlay == true and self.Scene then self.Scene:Destroy() end
+	if self.Scene then self.Scene:Destroy() end
 end
 
 return Director

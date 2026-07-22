@@ -8,20 +8,20 @@ local DeviceScaleService = require(script.Parent.DeviceScaleService)
 local Service = {}
 local GUI_NAME = "VTRPrematchBroadcast"
 
-local function current(): (ScreenGui?, CanvasGroup?, Frame?)
+local function current(): (ScreenGui?, Frame?, Frame?)
 	local playerGui = Players.LocalPlayer:FindFirstChild("PlayerGui")
 	local gui = playerGui and playerGui:FindFirstChild(GUI_NAME)
 	if not gui or not gui:IsA("ScreenGui") then return nil, nil, nil end
 	local overlay = gui:FindFirstChild("PersistentOverlay")
 	local stage = overlay and overlay:FindFirstChild("PresentationStage")
-	return gui, overlay :: CanvasGroup?, stage :: Frame?
+	return gui, overlay :: Frame?, stage :: Frame?
 end
 
 local function clear(stage: Frame)
 	for _, child in stage:GetChildren() do child:Destroy() end
 end
 
-local function acquire(): (ScreenGui, CanvasGroup, Frame)
+local function acquire(): (ScreenGui, Frame, Frame)
 	local gui, overlay, stage = current()
 	if gui and overlay and stage then return gui, overlay, stage end
 	local playerGui = Players.LocalPlayer:WaitForChild("PlayerGui")
@@ -33,13 +33,12 @@ local function acquire(): (ScreenGui, CanvasGroup, Frame)
 	gui.DisplayOrder = 960
 	gui.Parent = playerGui
 	DeviceScaleService.Apply(gui)
-	overlay = Instance.new("CanvasGroup")
+	overlay = Instance.new("Frame")
 	overlay.Name = "PersistentOverlay"
 	overlay.Size = UDim2.fromScale(1, 1)
 	overlay.BackgroundColor3 = Color3.fromHex("020402")
 	overlay.BackgroundTransparency = 0
 	overlay.BorderSizePixel = 0
-	overlay.GroupTransparency = 0
 	overlay.Active = true
 	overlay.ZIndex = 180
 	overlay.Parent = gui
@@ -64,7 +63,6 @@ function Service.BeginLoading(title: string, detail: string): any
 	Players.LocalPlayer:SetAttribute("VTRPresentationOverlayCreatedAt", os.clock())
 	gui:SetAttribute("VTRRuntimePresentationStarted", nil)
 	gui:SetAttribute("VTRPresentationCompleting", nil)
-	overlay.GroupTransparency = 0
 	overlay.BackgroundTransparency = 0
 	clear(stage)
 	local heading = Instance.new("TextLabel")
@@ -127,7 +125,6 @@ function Service.PrepareRuntime(data: any, profile: string): (ScreenGui, Frame, 
 	gui:SetAttribute("VTRMatchSessionId", key)
 	gui:SetAttribute("VTRPresentationProfile", profile)
 	gui:SetAttribute("VTRPresentationCompleting", nil)
-	overlay.GroupTransparency = 0
 	overlay.BackgroundTransparency = profile == "Broadcast" and 1 or profile == "Standard" and 0.1 or 0
 	clear(stage)
 	Players.LocalPlayer:SetAttribute("VTRPresentationStartedAt", os.clock())
@@ -142,13 +139,13 @@ function Service.Complete(immediate: boolean?): boolean
 	if immediate then
 		gui:Destroy()
 	else
-		TweenService:Create(overlay, TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {GroupTransparency = 1}):Play()
+		TweenService:Create(overlay, TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundTransparency = 1}):Play()
 		task.delay(0.22, function() if gui.Parent then gui:Destroy() end end)
 	end
 	return true
 end
 
-function Service.Current(): (ScreenGui?, CanvasGroup?, Frame?)
+function Service.Current(): (ScreenGui?, Frame?, Frame?)
 	return current()
 end
 

@@ -10,7 +10,7 @@ local AvatarPortraitGenerator = require(script.Parent.Parent.Services.PlayerPort
 
 local ModeHub = {}
 
-function ModeHub.new(context: any, service: any): CanvasGroup
+function ModeHub.new(context: any, service: any): Frame
 	local spec = service:GetSpec()
 	local state = service:GetState()
 	service:Hydrate(context.Data.UIState, context.Data.Progression)
@@ -237,7 +237,7 @@ function ModeHub.new(context: any, service: any): CanvasGroup
 				context.Flow:Handle(cardData, action, function()
 					local persisted = context.Persist(spec.Id, action, state)
 					if type(persisted) == "table" then
-						if not persisted.Success then return persisted.Message or "Action rejected by server." end
+						if not persisted.Success then return persisted.Message or "Action unavailable right now." end
 						service:Perform(action)
 						if action.AfterTab then task.defer(function() setTab(action.AfterTab) end) end
 						return persisted

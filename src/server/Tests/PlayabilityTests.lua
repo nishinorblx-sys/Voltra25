@@ -271,7 +271,7 @@ function Tests.Run(): any
 		local metadata = AIPlaystyleConfig.ClientMetadata()
 		expectEqual(#metadata.HighImpactSettings, 10, "AI LAB does not expose exactly 10 high-impact settings")
 		expect(table.find(metadata.Roles, "LM") ~= nil and table.find(metadata.Roles, "RM") ~= nil, "AI LAB roles do not expose wide midfielders")
-		expectEqual(#AIPlaystyleConfig.BuiltInOrder, 2, "AI LAB should expose SAFE Possession and Quick Passing")
+		expectEqual(#AIPlaystyleConfig.BuiltInOrder, 8, "AI LAB should expose all built-in playstyles")
 		expectEqual(AIPlaystyleConfig.BuiltInOrder[1], "basic_possession", "AI LAB first built-in is not SAFE Possession")
 		expectEqual(AIPlaystyleConfig.BuiltInOrder[2], "quick_passing", "AI LAB second built-in is not Quick Passing")
 		local basic = AIPlaystyleConfig.ResolveBuiltIn("balanced_control")
@@ -285,7 +285,12 @@ function Tests.Run(): any
 		expect(quick.Tactics.Sliders.ReceiverTrapAggression <= 20, "Quick Passing should avoid trapping when a clean pass exists")
 		expect((quick.MetricsTargets.FirstTimePassChance or 0) == 100, "Quick Passing should force first-time pass triggers")
 		expect(#quick.PassRules >= 3 and #quick.SequenceRules >= 2, "Quick Passing does not define first-time pass-and-move rules")
-		expectEqual(AIPlaystyleConfig.ResolveBuiltIn("Wing Play"), nil, "Wing Play should not be exposed as a built-in playstyle")
+		for _, id in {"vertical_tiki_taka", "wing_play", "route_one", "park_the_bus", "counter_attack", "gegenpress"} do
+			local style = AIPlaystyleConfig.ResolveBuiltIn(id)
+			expect(style ~= nil, id .. " should resolve as a built-in playstyle")
+			expect(#style.PassRules >= 1 and #style.PositioningRules >= 1 and #style.PressRules >= 1, id .. " should define executable rule collections")
+		end
+		expectEqual(AIPlaystyleConfig.ResolveBuiltIn("Wing Play").PlaystyleId, "wing_play", "Wing Play should be exposed as a built-in playstyle")
 	end)
 
 	test("safe possession retreat only persists under close pressure", function()

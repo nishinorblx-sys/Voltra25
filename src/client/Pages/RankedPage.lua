@@ -246,7 +246,7 @@ local function inputShield(parent: Instance, zIndex: number?)
 	end)
 end
 
-function RankedPage.new(context: any): CanvasGroup
+function RankedPage.new(context: any): Frame
 	local group, scroll = PageBase.new("Ranked", 1180)
 	local mainObjects = {}
 	local function track<T>(object: T): T

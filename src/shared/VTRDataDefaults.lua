@@ -109,6 +109,16 @@ function VTRDataDefaults.ForKey(player, key)
 		}
 	end
 
+	if key == "Career" then
+		return {
+			Enabled = true,
+			SelectedSlot = 1,
+			Slots = {{Slot = 1, Type = "Empty"}, {Slot = 2, Type = "Empty"}, {Slot = 3, Type = "Empty"}},
+			ActiveCareer = nil,
+			Config = {},
+		}
+	end
+
 	return {}
 end
 

@@ -137,7 +137,7 @@ local function showRankedMatchFoundTeleport(data:any)
 	sub.Position=UDim2.fromScale(.5,.39)
 	sub.Size=UDim2.fromScale(.8,.05)
 	sub.Font=Theme.Fonts.Strong
-	sub.Text="RANKED 1V1  /  VOLTRA SERVER LOCKED"
+	sub.Text="RANKED 1V1  /  VOLTRA MATCH"
 	sub.TextColor3=Theme.Colors.White
 	sub.TextSize=12
 	sub.ZIndex=505
@@ -236,7 +236,7 @@ local function showReservedRankedBoot()
 	elseif teleportData.MatchMode == "WorldCupSolo" or teleportData.WorldCup == true then
 		title.Text = "WORLD CUP MATCH"
 	else
-		title.Text = "RANKED 1V1 SERVER"
+		title.Text = "RANKED 1V1 MATCH"
 	end
 	title.TextColor3 = Theme.Colors.Electric
 	title.TextSize = 32

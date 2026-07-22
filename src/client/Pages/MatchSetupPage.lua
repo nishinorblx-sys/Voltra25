@@ -17,7 +17,7 @@ local function text(parent:Instance,value:string,position:UDim2,size:UDim2,textS
 local function corner(parent:Instance,radius:number)local item=Instance.new("UICorner");item.CornerRadius=UDim.new(0,radius);item.Parent=parent end
 local function findById(items:any,id:string):any?for _,item in items do if item.teamId==id or item.Id==id then return item end end;return nil end
 local function indexOf(items:any,value:any):number return table.find(items,value)or 1 end
-function Page.new(context:any):CanvasGroup
+function Page.new(context:any):Frame
 	local group,scroll=PageBase.new("Play",800);PageBase.heading(scroll,"MATCHDAY EXPERIENCE","MATCH SETUP","Configure every detail before entering the VTR presentation sequence.")
 	local identityBadge=BadgePreview.new(scroll,context.Data.Progression.ClubMembership,UDim2.fromOffset(58,58));identityBadge.AnchorPoint=Vector2.new(1,0);identityBadge.Position=UDim2.new(1,0,0,8);identityBadge.ZIndex=12
 	local response=MatchSetupService:GetConfig();local payload=response.Success and response.Data or nil;if not payload then local errorLabel=text(scroll,"MATCH SETUP SERVICE UNAVAILABLE\n"..(response.Message or"Try restarting Play mode."),UDim2.fromOffset(0,160),UDim2.new(1,0,0,100),18,Theme.Colors.Danger,Theme.Fonts.Display);errorLabel.TextXAlignment=Enum.TextXAlignment.Center;return group end

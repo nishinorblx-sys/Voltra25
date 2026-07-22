@@ -137,9 +137,11 @@ local function clearSpaceAround(models:any,center:Vector3,radius:number,pitchCFr
 					local offset=Vector3.new(modelRoot.Position.X-center.X,0,modelRoot.Position.Z-center.Z)
 					if offset.Magnitude<radius then
 						local direction=offset.Magnitude>.05 and offset.Unit or pitchCFrame.RightVector
-						local desired=center+direction*radius
+						local desired=center+direction*(radius+2.5)
 						local localPoint=pitchCFrame:PointToObjectSpace(desired)
-						localPoint=Vector3.new(math.clamp(localPoint.X,-width*.5+3,width*.5-3),modelRoot.Position.Y,math.clamp(localPoint.Z,-length*.5+3,length*.5-3))
+						local currentLocal=pitchCFrame:PointToObjectSpace(modelRoot.Position)
+						local safeRootY=math.max(currentLocal.Y,2.8)
+						localPoint=Vector3.new(math.clamp(localPoint.X,-width*.5+3,width*.5-3),safeRootY,math.clamp(localPoint.Z,-length*.5+3,length*.5-3))
 						local world=pitchCFrame:PointToWorldSpace(localPoint)
 						model:PivotTo(CFrame.lookAt(world,Vector3.new(center.X,world.Y,center.Z)))
 					end
@@ -248,9 +250,9 @@ end
 
 local function penaltyKeeperSpot(goalSign:number,pitchCFrame:CFrame,width:number,length:number):Vector3
 	local rectangle=GoalModelResolver.ResolveByAttackSign(goalSign,pitchCFrame,width,length)
-	local goalWidth=rectangle.RightBound-rectangle.Left
 	local goalHeight=rectangle.Top-rectangle.Bottom
-	return rectangle.PlanePoint+rectangle.Right*(rectangle.Left+goalWidth*.5)+rectangle.Up*(rectangle.Bottom+goalHeight*.08)-rectangle.Normal*1.35
+	local goalCenter=pitchCFrame:PointToWorldSpace(Vector3.new(0,0,goalSign*length*.5))
+	return Vector3.new(goalCenter.X,rectangle.PlanePoint.Y,goalCenter.Z)+rectangle.Up*(rectangle.Bottom+goalHeight*.08)-rectangle.Normal*1.35
 end
 
 local function setPieceGoalSign(team:string):number
@@ -957,7 +959,7 @@ function Service:_releaseCorner(player:Player,payload:any)
 	end
 	local takerRoot=active.Data.Taker:FindFirstChild("HumanoidRootPart")::BasePart?;if takerRoot then takerRoot.Anchored=false;takerRoot.AssemblyLinearVelocity=Vector3.zero;takerRoot.AssemblyAngularVelocity=Vector3.zero end
 	active.Data.Taker:SetAttribute("VTRForceIdle",nil)
-	self.World.Ball.Anchored=false;self.World.Ball:SetNetworkOwner(nil);self.Possession:ForcePickup(active.Data.Taker)
+	self.World.Ball.Anchored=false;pcall(function() self.World.Ball:SetNetworkOwner(nil) end);self.Possession:ForcePickup(active.Data.Taker)
 	primeSetPieceReceiver(active.Data.Taker, delivery=="Short"and active.Data.ShortOption or plannedReceiver, target, delivery=="Short" and "Ground" or "Cross", .18, .86)
 	local kicked=self.BallService:CornerKick(active.Data.Taker,target,delivery,power,delivery=="Short"and active.Data.ShortOption or plannedReceiver)
 	if not kicked then self.World.Ball.Anchored=true;return false end
@@ -975,10 +977,14 @@ function Service:Start(player: Player, kind: string, restartTeam: string, locati
 	self.Sequence += 1
 	local sequence = self.Sequence
 	if self.BallService then
+		if self.BallService.StopForRestart then
+			self.BallService:StopForRestart()
+		end
 		self.BallService.LastPassTeam=nil;self.BallService.LastPasser=nil;self.BallService.LastPassOrigin=nil;self.BallService.ExpectedReceiver=nil;self.BallService.PassPlan=nil;self.BallService.PassTargetPoint=nil;self.BallService.OffsideCandidate=nil;self.BallService.OffsideCandidates=nil;self.BallService.OffsidePasser=nil;self.BallService.OffsidePassStartedAt=nil
 	end
 	self.Possession:Reset()
 	self.World.Ball.Anchored = true
+	pcall(function() self.World.Ball:SetNetworkOwner(nil) end)
 	self.World.Ball.AssemblyLinearVelocity = Vector3.zero
 	self.World.Ball.AssemblyAngularVelocity = Vector3.zero
 	local taker: Model
@@ -1024,6 +1030,8 @@ function Service:Start(player: Player, kind: string, restartTeam: string, locati
 	local penaltyBallPosition=location+self.World.PitchCFrame.UpVector*1.15
 	local ballPosition = kind == "Corner"and self.ActiveCorner.Data.BallPosition or kind == "Kickoff" and self.World.PitchCFrame:PointToWorldSpace(Vector3.new(0, 1.3, 0))or kind=="FreeKick"and freeKickBallPosition or kind=="Penalty"and penaltyBallPosition or takerRoot and (takerRoot.Position + takerRoot.CFrame.LookVector * 2.4 + Vector3.new(0, -1.6, 0)) or location
 	self.World.Ball.CFrame = CFrame.new(ballPosition)
+	self.World.Ball.AssemblyLinearVelocity = Vector3.zero
+	self.World.Ball.AssemblyAngularVelocity = Vector3.zero
 	if userControlled==true and player and player.Parent then self.TeamControl:SetActive(player, taker, kind)end
 	if kind=="FreeKick"or kind=="Penalty"or kind=="GoalKick"or kind=="ThrowIn"then
 		self.RestartMode = (kind=="GoalKick" or kind=="ThrowIn") and kind or kind=="FreeKick" and (freeKickSetupType=="DirectShootingFreeKick" and "DirectShotFreeKick" or "LongFreeKick") or kind
@@ -1093,7 +1101,7 @@ function Service:Start(player: Player, kind: string, restartTeam: string, locati
 			return
 		end
 		self.World.Ball.Anchored = false
-		self.World.Ball:SetNetworkOwner(nil)
+		pcall(function() self.World.Ball:SetNetworkOwner(nil) end)
 		self.Possession:ForcePickup(taker)
 		if kind=="FreeKick" and self.RestartMode=="LongFreeKick" and userControlled~=true then
 			local takerRoot=root(taker)

@@ -70,6 +70,7 @@ function ServerApp.Start()
 	local packAction = remote(remotes, "RemoteFunction", NetworkConfig.PackFunction) :: RemoteFunction
 	local inventoryAction = remote(remotes, "RemoteFunction", NetworkConfig.InventoryFunction) :: RemoteFunction
 	local matchAction = remote(remotes, "RemoteFunction", NetworkConfig.MatchFunction) :: RemoteFunction
+	local careerAction = remote(remotes, "RemoteFunction", NetworkConfig.CareerFunction) :: RemoteFunction
 	local developerAction = remote(remotes, "RemoteFunction", NetworkConfig.DeveloperFunction) :: RemoteFunction
 
 	local function publish(player: Player, serviceName: string, payload: any)
@@ -108,7 +109,7 @@ function ServerApp.Start()
 	local dailyLogin = DailyLoginRewardService.new(profiles,inventory,publish)
 	local monetization = MonetizationReceiptService.new(profiles, inventory, progression, publish)
 	local developerPacks = DeveloperPackGrantService.new(profiles, inventory, progression, publish, notifications, fiveVFiveQueue)
-	local career = CareerService.new(profiles)
+	local career = CareerService.new(profiles,publish)
 	local clubIdentity = ClubIdentityService.new(profiles)
 	local onboarding = OnboardingService.new(profiles)
 	local services = {
@@ -257,6 +258,17 @@ function ServerApp.Start()
 		local ok,success,message,data=pcall(function()return developerPacks:Handle(player,action,payload)end)
 		return{Success=ok and success,Message=ok and message or"Developer action failed.",Data=ok and data or nil}
 	end
+	local lastCareerAction:{[Player]:number}={}
+	careerAction.OnServerInvoke=function(player:Player,action:any,payload:any)
+		if type(action)~="string"or#action>40 then return{Success=false,Message="Invalid career action."}end
+		payload=type(payload)=="table"and payload or{}
+		local now=os.clock()
+		if action~="GetCareerHub"and action~="GetCareer"and now-(lastCareerAction[player]or 0)<.18 then return{Success=false,Message="Please wait."}end
+		lastCareerAction[player]=now
+		local ok,success,message,data=pcall(function()return career:Handle(player,action,payload)end)
+		if not ok then warn("[VTR CAREER ERROR] "..tostring(success));return{Success=false,Message=RunService:IsStudio()and("Career failed: "..tostring(success))or"Career service failed.",Data=nil}end
+		return{Success=success,Message=message,Data=data,Revision=type(data)=="table"and data.Revision or nil}
+	end
 	local lastMatchAction:{[Player]:number}={}
 	local campaignActions={GetCampaignState=true,GetCampaignEligibleProjects=true,StartCampaignPlacement=true,StartCampaignSeason=true,ChooseCampaignScoutingFocus=true,SelectCampaignProject=true,SkipCampaignProject=true,RetireCampaignProject=true,StartCampaignFixture=true,ResumeCampaignMatch=true,ChooseCampaignProjectUpgrade=true,GenerateCampaignPromotionChoice=true,RerollCampaignPromotionChoice=true,ChooseCampaignPromotionPlayer=true,UpgradeCampaignFacility=true,ApplyCampaignCounterPlan=true,AcknowledgeCampaignPresentation=true,GetCampaignHistory=true,GetCampaignMastery=true,StartCampaignMastery=true,StartCampaignMasteryFixture=true}
 	matchAction.OnServerInvoke=function(player:Player,action:any,payload:any)
@@ -272,7 +284,7 @@ return rankedQueue:Join(player,payload)elseif action=="LeaveRankedQueue"then ret
 		end
 		return{Success=success,Message=message,Data=data}
 	end
-	Players.PlayerRemoving:Connect(function(player)rankedQueue:PlayerRemoving(player);fiveVFiveQueue:PlayerRemoving(player);campaignAscension:PlayerRemoving(player);if rankedProfile.PlayerRemoving then rankedProfile:PlayerRemoving(player)end;if matchRuntime.PlayerRemoving then matchRuntime:PlayerRemoving(player)else matchSetup:ReturnToMenu(player)end;analytics:PlayerRemoving(player);lastRequest[player] = nil;lastProgressionAction[player]=nil;lastLaunchAction[player]=nil;lastSquadAction[player]=nil;lastPlayerData[player]=nil;lastPackAction[player]=nil;lastInventoryAction[player]=nil;lastDeveloperAction[player]=nil;lastMatchAction[player]=nil end)
+	Players.PlayerRemoving:Connect(function(player)rankedQueue:PlayerRemoving(player);fiveVFiveQueue:PlayerRemoving(player);campaignAscension:PlayerRemoving(player);if rankedProfile.PlayerRemoving then rankedProfile:PlayerRemoving(player)end;if matchRuntime.PlayerRemoving then matchRuntime:PlayerRemoving(player)else matchSetup:ReturnToMenu(player)end;analytics:PlayerRemoving(player);lastRequest[player] = nil;lastProgressionAction[player]=nil;lastLaunchAction[player]=nil;lastSquadAction[player]=nil;lastPlayerData[player]=nil;lastPackAction[player]=nil;lastInventoryAction[player]=nil;lastDeveloperAction[player]=nil;lastCareerAction[player]=nil;lastMatchAction[player]=nil end)
 
 	-- Public server API for future gameplay systems. Nothing here is exposed as
 	-- a client-controlled mutation remote.

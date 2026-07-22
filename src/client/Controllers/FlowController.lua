@@ -70,22 +70,22 @@ end
 function FlowController:ModeTransition(title:string,callback:()->(),compact:boolean?)
 	if self.Busy then return end;self.Busy=true;UISoundService.PlayTransition()
 	local reduced=workspace:GetAttribute("VTRReducedMotion")==true
-	local overlay=Instance.new("CanvasGroup");overlay.Name="ModeTransition";overlay.BackgroundColor3=Theme.Colors.Black;overlay.BorderSizePixel=0;overlay.GroupTransparency=1;overlay.Size=UDim2.fromScale(1,1);overlay.ZIndex=80;overlay.Active=true;overlay.Selectable=false;overlay.Parent=self.Root
+	local overlay=Instance.new("Frame");overlay.Name="ModeTransition";overlay.BackgroundColor3=Theme.Colors.Black;overlay.BackgroundTransparency=1;overlay.BorderSizePixel=0;overlay.Size=UDim2.fromScale(1,1);overlay.ZIndex=80;overlay.Active=true;overlay.Selectable=false;overlay.Parent=self.Root
 	local shield=Instance.new("TextButton");shield.Name="ModeTransitionShield";shield.BackgroundTransparency=1;shield.BorderSizePixel=0;shield.Size=UDim2.fromScale(1,1);shield.Text="";shield.AutoButtonColor=false;shield.Selectable=false;shield.Modal=true;shield.Active=true;shield.ZIndex=80;shield.Parent=overlay
 	local slash=Instance.new("Frame");slash.AnchorPoint=Vector2.new(.5,.5);slash.BackgroundColor3=Theme.Colors.Electric;slash.BorderSizePixel=0;slash.Position=UDim2.fromScale(-.25,.5);slash.Rotation=-16;slash.Size=UDim2.fromScale(.55,1.7);slash.ZIndex=81;slash.Parent=overlay
 	local label=Instance.new("TextLabel");label.AnchorPoint=Vector2.new(.5,.5);label.BackgroundTransparency=1;label.Position=UDim2.fromScale(.5,.5);label.Size=UDim2.fromOffset(700,80);label.Text=string.upper(title);label.TextColor3=Theme.Colors.White;label.TextSize=compact and 22 or 34;label.Font=Theme.Fonts.Display;label.ZIndex=82;label.Parent=overlay
 	local fadeIn=reduced and .04 or .08
 	local sweep=reduced and .08 or(compact and .16 or .2)
-	TweenService:Create(overlay,TweenInfo.new(fadeIn),{GroupTransparency=0}):Play();TweenService:Create(slash,TweenInfo.new(sweep,Theme.Animation.EasingStyle,Theme.Animation.EasingDirection),{Position=UDim2.fromScale(1.22,.5)}):Play()
+	TweenService:Create(overlay,TweenInfo.new(fadeIn),{BackgroundTransparency=0}):Play();TweenService:Create(slash,TweenInfo.new(sweep,Theme.Animation.EasingStyle,Theme.Animation.EasingDirection),{Position=UDim2.fromScale(1.22,.5)}):Play()
 	task.defer(callback)
-	task.delay(sweep,function() TweenService:Create(overlay,TweenInfo.new(fadeIn),{GroupTransparency=1}):Play();task.delay(fadeIn,function() overlay:Destroy();self.Busy=false end) end)
+	task.delay(sweep,function() TweenService:Create(overlay,TweenInfo.new(fadeIn),{BackgroundTransparency=1}):Play();task.delay(fadeIn,function() overlay:Destroy();self.Busy=false end) end)
 end
 
 function FlowController:_safe(action:any,perform:()->any,refresh:()->()):any
 	local ok,result=pcall(perform)
 	if not ok then self:Error("ACTION FAILED","The mock service rejected this action. Please try again.");return end
 	if type(result)=="table"and result.Success==false then
-		self.Toast({Title=action.Item or"VTR 25",Message=result.Message or result.Error or"Action blocked by server.",Kind="Error"})
+		self.Toast({Title=action.Item or"VTR 25",Message=result.Message or result.Error or"Action unavailable right now.",Kind="Error"})
 		return result
 	end
 	local message=type(result)=="table" and (result.Message or "Action completed.") or tostring(result)
@@ -101,7 +101,7 @@ function FlowController:PackPreview(card:any,action:any,callback:()->())
 		return
 	end
 	clearPackOverlays(self.Root)
-	Modal.open(self.Root,{Kicker="PACK PREVIEW",Title=card.Title,Meta=card.Subtitle,Description=card.Detail or "Cards are generated from the 5,000-player VTR database using this pack tier's server-owned rarity weights.",ConfirmLabel=action.Label=="OPEN PACK" and "OPEN PACK" or "VIEW CONTENTS",OnConfirm=function()
+	Modal.open(self.Root,{Kicker="PACK PREVIEW",Title=card.Title,Meta=card.Subtitle,Description=card.Detail or "Cards are generated from the 5,000-player VTR database using this pack tier's rarity weights.",ConfirmLabel=action.Label=="OPEN PACK" and "OPEN PACK" or "VIEW CONTENTS",CloseBeforeConfirm=action.Label=="OPEN PACK",OnConfirm=function()
 		if action.Label=="OPEN PACK" then
 			self.LastPackOpenClickedAt=os.clock()
 		end
@@ -112,7 +112,7 @@ end
 function FlowController:_packResults(title:string,reveals:any,complete:()->())
 	local existing=self.Root:FindFirstChild("PackResults")
 	if existing then existing:Destroy() end
-	local overlay=Instance.new("CanvasGroup");overlay.Name="PackResults";overlay.BackgroundColor3=Theme.Colors.Black;overlay.BackgroundTransparency=.08;overlay.BorderSizePixel=0;overlay.Size=UDim2.fromScale(1,1);overlay.ZIndex=105;overlay.Active=true;overlay.Selectable=false;overlay.Parent=self.Root
+	local overlay=Instance.new("Frame");overlay.Name="PackResults";overlay.BackgroundColor3=Theme.Colors.Black;overlay.BackgroundTransparency=.08;overlay.BorderSizePixel=0;overlay.Size=UDim2.fromScale(1,1);overlay.ZIndex=105;overlay.Active=true;overlay.Selectable=false;overlay.Parent=self.Root
 	local shield=Instance.new("TextButton");shield.Name="PackResultsShield";shield.BackgroundTransparency=1;shield.BorderSizePixel=0;shield.Size=UDim2.fromScale(1,1);shield.Text="";shield.AutoButtonColor=false;shield.Selectable=false;shield.Modal=true;shield.Active=true;shield.ZIndex=105;shield.Parent=overlay
 	local panel=Panel.new({Name="PackResultsPanel",Size=UDim2.fromOffset(880,500)});panel.AnchorPoint=Vector2.new(.5,.5);panel.Position=UDim2.fromScale(.5,.5);panel.ZIndex=106;panel.Parent=overlay
 	local titleLabel=Instance.new("TextLabel");titleLabel.BackgroundTransparency=1;titleLabel.Position=UDim2.fromOffset(24,18);titleLabel.Size=UDim2.new(1,-48,0,42);titleLabel.Text=string.upper(title).."  /  PLAYER REVEAL";titleLabel.TextColor3=Theme.Colors.White;titleLabel.TextSize=22;titleLabel.Font=Theme.Fonts.Display;titleLabel.TextXAlignment=Enum.TextXAlignment.Left;titleLabel.ZIndex=107;titleLabel.Parent=panel
@@ -124,7 +124,7 @@ function FlowController:_packResults(title:string,reveals:any,complete:()->())
 end
 
 function FlowController:PackOpening(title:string,complete:()->(),reveals:any?,metadata:any?)
-	if not reveals or #reveals==0 then self:Error("PACK OPENING FAILED","The server returned no player cards.");return end
+	if not reveals or #reveals==0 then self:Error("PACK OPENING FAILED","No player cards were found for this pack.");return end
 	if self.PackOpeningActive==true then return end
 	self.PackOpeningActive=true
 	local localPlayer=Players.LocalPlayer
@@ -169,8 +169,8 @@ function FlowController:OfferPackDelivery(delivered:any,onComplete:(()->())?,bef
 	end})
 end
 
-function FlowController:RewardClaim(card:any,action:any,callback:()->()) Modal.open(self.Root,{Kicker="REWARD CLAIM",Title=action.Item or card.Title,Meta="READY TO CLAIM",Description="The server validates eligibility before the reward reveal.",ConfirmLabel="CLAIM REWARD",OnConfirm=function() local loading=LoadingScreen.new(self.Root,"UNLOCKING REWARD");task.delay(.65,function() LoadingScreen.complete(loading,callback) end) end}) end
-function FlowController:CreateClubForm(callback:(any)->()) Modal.open(self.Root,{Kicker="CREATE CLUB",Title="NEW CLUB IDENTITY",Meta="CLUB SETUP",Description="Choose a club name and 2–4 letter tag. The server validates and stores this identity.",Fields={{Key="Name",Placeholder="CLUB NAME",Default="VOLTAGE UNITED"},{Key="Tag",Placeholder="TAG",Default="VTR"}},ConfirmLabel="CREATE CLUB",OnConfirm=callback}) end
+function FlowController:RewardClaim(card:any,action:any,callback:()->()) Modal.open(self.Root,{Kicker="REWARD CLAIM",Title=action.Item or card.Title,Meta="READY TO CLAIM",Description="Claim eligibility is checked before the reward reveal.",ConfirmLabel="CLAIM REWARD",OnConfirm=function() local loading=LoadingScreen.new(self.Root,"UNLOCKING REWARD");task.delay(.65,function() LoadingScreen.complete(loading,callback) end) end}) end
+function FlowController:CreateClubForm(callback:(any)->()) Modal.open(self.Root,{Kicker="CREATE CLUB",Title="NEW CLUB IDENTITY",Meta="CLUB SETUP",Description="Choose a club name and 2–4 letter tag for your Voltra identity.",Fields={{Key="Name",Placeholder="CLUB NAME",Default="VOLTAGE UNITED"},{Key="Tag",Placeholder="TAG",Default="VTR"}},ConfirmLabel="CREATE CLUB",OnConfirm=callback}) end
 function FlowController:CareerSetup(callback:()->()) Modal.open(self.Root,{Kicker="CAREER SETUP",Title="NEW CAREER SAVE",Meta="LOCAL MOCK SLOT",Description="Choose the career type to continue into the full setup hub.",ConfirmLabel="CHOOSE CAREER",OnConfirm=callback}) end
 function FlowController:ComingSoon(title:string,message:string,callback:(()->())?) Modal.open(self.Root,{Kicker="COMING SOON",Title=title,Meta="FRAMEWORK READY",Description=message,ConfirmLabel="UNDERSTOOD",OnConfirm=callback}) end
 function FlowController:Error(title:string,message:string) Modal.open(self.Root,{Kicker="ERROR",Title=title,Meta="PLEASE TRY AGAIN",Description=message,ConfirmLabel="CLOSE"}) end
@@ -217,13 +217,12 @@ function FlowController:ShowStarCardOffer(card:any,action:any)
 	if not productId or productId<=0 then self:Error("PRODUCT UNAVAILABLE","The Star Card product id is missing.");return end
 	local existing=self.Root:FindFirstChild("StarCardOfferOverlay")
 	if existing then existing:Destroy()end
-	local overlay=Instance.new("CanvasGroup")
+	local overlay=Instance.new("Frame")
 	overlay.Name="StarCardOfferOverlay"
 	overlay.BackgroundColor3=Theme.Colors.Black
-	overlay.BackgroundTransparency=.1
+	overlay.BackgroundTransparency=1
 	overlay.BorderSizePixel=0
 	overlay.Size=UDim2.fromScale(1,1)
-	overlay.GroupTransparency=1
 	overlay.ZIndex=180
 	overlay.Active=true
 	overlay.Selectable=false
@@ -354,7 +353,7 @@ function FlowController:ShowStarCardOffer(card:any,action:any)
 	buyButton.Position=UDim2.new(0,28,1,-64)
 	buyButton.ZIndex=190
 	buyButton.Parent=panel
-	TweenService:Create(overlay,TweenInfo.new(.16),{GroupTransparency=0}):Play()
+	TweenService:Create(overlay,TweenInfo.new(.16),{BackgroundTransparency=.1}):Play()
 	TweenService:Create(scale,TweenInfo.new(.24,Enum.EasingStyle.Back,Enum.EasingDirection.Out),{Scale=1}):Play()
 end
 
@@ -401,7 +400,7 @@ function FlowController:Handle(card:any,action:any,perform:()->any,refresh:()->(
 	elseif action.Operation=="ShowStarCard" then
 		self:ShowStarCardOffer(card,action)
 	elseif action.Operation=="EquipToggle" then self:PlayerCardDetail(card,action,run)
-	elseif action.Operation=="Purchase" and action.ItemType=="Pack" then Modal.open(self.Root,{Kicker="PACK PURCHASE",Title="BUY "..string.upper(card.Title),Meta=card.Meta,Description="Choose how many sealed packs to buy. The server validates currency and grants each pack as its own unopened inventory item.",Fields={{Key="Quantity",Placeholder="1 - 25",Default="1"}},ConfirmLabel="BUY PACKS",OnConfirm=function(values:any)
+	elseif action.Operation=="Purchase" and action.ItemType=="Pack" then Modal.open(self.Root,{Kicker="PACK PURCHASE",Title="BUY "..string.upper(card.Title),Meta=card.Meta,Description="Choose how many sealed packs to buy. Each pack lands in your inventory unopened.",Fields={{Key="Quantity",Placeholder="1 - 25",Default="1"}},ConfirmLabel="BUY PACKS",OnConfirm=function(values:any)
 		local quantity=math.clamp(math.floor(tonumber(values.Quantity)or 1),1,25)
 		action.Quantity=quantity
 		local localPlayer=Players.LocalPlayer
@@ -415,7 +414,7 @@ function FlowController:Handle(card:any,action:any,perform:()->any,refresh:()->(
 		end
 		action.Quantity=nil
 	end})
-	elseif action.Operation=="Purchase" then self:Confirmation("PURCHASE "..card.Title,card.Meta.."\n\nThe server will validate ownership and currency before granting this item.","PURCHASE",function()
+	elseif action.Operation=="Purchase" then self:Confirmation("PURCHASE "..card.Title,card.Meta.."\n\nConfirm this purchase to add the item to your club.","PURCHASE",function()
 		local result=run();local delivered=type(result)=="table" and result.Success and result.Data and result.Data.Pack
 		if action.ItemType=="Pack" and delivered then
 			self:OfferPackDelivery(delivered)

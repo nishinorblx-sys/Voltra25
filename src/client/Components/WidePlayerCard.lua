@@ -38,13 +38,7 @@ function WidePlayerCard.new(props: any): TextButton
 	local portrait = AvatarPortraitGenerator.new(root, card, UDim2.fromOffset(82, 92), false)
 	portrait.Position = UDim2.fromOffset(8, 10)
 	portrait.ZIndex = root.ZIndex + 3
-	portrait.BackgroundTransparency = 0.28
-	local portraitMask = Instance.new("UIStroke")
-	portraitMask.Name = "PortraitShapeLine"
-	portraitMask.Color = visual.glowColor
-	portraitMask.Thickness = 1
-	portraitMask.Transparency = 0.28
-	portraitMask.Parent = portrait
+	portrait.BackgroundTransparency = 1
 	label(root, tostring(card.Rating or card.overall), UDim2.fromOffset(98, 9), UDim2.fromOffset(36, 25), 20, Theme.Colors.White, Theme.Fonts.Display)
 	label(root, card.Position or card.bestPosition, UDim2.fromOffset(101, 36), UDim2.fromOffset(32, 18), 9, visual.trimColor, Theme.Fonts.Strong)
 	local name = label(root, card.Name or card.displayName, UDim2.fromOffset(140, 10), UDim2.new(1, -292, 0, 24), 13, Theme.Colors.White, Theme.Fonts.Display)
@@ -66,12 +60,6 @@ function WidePlayerCard.new(props: any): TextButton
 	holder.Size = UDim2.fromOffset(132, 94)
 	holder.ZIndex = root.ZIndex + 4
 	holder.Parent = root
-	local holderLine = Instance.new("UIStroke")
-	holderLine.Name = "StatsShapeLine"
-	holderLine.Color = visual.trimColor
-	holderLine.Thickness = 1
-	holderLine.Transparency = 0.82
-	holderLine.Parent = holder
 	local grid = Instance.new("UIGridLayout")
 	grid.CellSize = UDim2.fromOffset(42, 42)
 	grid.CellPadding = UDim2.fromOffset(2, 4)

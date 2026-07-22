@@ -99,7 +99,7 @@ local function currentLobbyId(current: any): string
 	return tostring(current.LobbyId or "")
 end
 
-function Page.new(context: any): CanvasGroup
+function Page.new(context: any): Frame
 	local group, scroll = PageBase.new("FiveVFive", 900)
 	PageBase.heading(scroll, "ONLINE MODE", "PLAY", "Host 3v3/4v4/5v5 lobbies, browse servers, assign teams, and start when ready.")
 

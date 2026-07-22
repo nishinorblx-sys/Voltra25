@@ -11,6 +11,7 @@ local DeveloperAccessService=require(script.Parent.DeveloperAccessService)
 local PlayerDatabase=require(script.Parent.Parent.Data.PlayerDatabase)
 local StarCardOfferService=require(script.Parent.StarCardOfferService)
 local PlayabilityUnlockConfig=require(ReplicatedStorage.VTR.Shared.PlayabilityUnlockConfig)
+local PlayerCareerConfig=require(ReplicatedStorage.VTR.Shared.PlayerCareerConfig)
 
 local ProgressionService = {}
 ProgressionService.__index = ProgressionService
@@ -143,7 +144,11 @@ function ProgressionService:GetClientData(player: Player): any?
 		ClubMembership = copy(profile.ClubMembership),
 		ProClubMembership=copy(profile.ProClubMembership),
 		ProClubsPlayer=copy(profile.ProClubsPlayer),
-		CareerSaveSlots = copy(profile.CareerSaveSlots),
+		CareerSaveSlots = copy((function()
+			local slots={}
+			for _,slot in profile.CareerSaveSlots or{}do table.insert(slots,PlayerCareerConfig.ClientSummary(slot))end
+			return slots
+		end)()),
 		StoreOwnership = copy(profile.StoreOwnership),
 		StarCard = copy(StarCardOfferService.GetOffer(profile, player.UserId)),
 		StoreCatalog = { Packs = copy(Catalog.Packs), CoinBundles = copy(Catalog.CoinBundles), VoltraPointBundles = copy(Catalog.VoltraPointBundles), GamePasses = copy(Catalog.GamePasses), DeveloperProducts = copy(Catalog.DeveloperProducts), Kits = copy(Catalog.Kits), Stadiums = copy(Catalog.Stadiums), Cosmetics = copy(Catalog.Cosmetics),Consumables=copy(Catalog.Consumables) },

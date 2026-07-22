@@ -163,7 +163,7 @@ local function makePreview(parent: Instance): (TextLabel, TextLabel)
 	return ovr, name
 end
 
-function Page.new(context: any): CanvasGroup
+function Page.new(context: any): Frame
 	local group, scroll = PageBase.new("MyPlayer", 960)
 	PageBase.heading(scroll, "PLAY MODE", "MY PLAYER", "Build your Voltra footballer for 3v3, 4v4, and 5v5.")
 

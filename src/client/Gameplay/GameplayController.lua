@@ -10,6 +10,7 @@ local ContextActionService=game:GetService("ContextActionService")
 local ReplicatedStorage=game:GetService("ReplicatedStorage")
 local Config=require(ReplicatedStorage.VTR.Shared.GameplayConfig)
 local LiteConfig=require(ReplicatedStorage.VTR.Shared.VTRLiteConfig)
+local AIPlaystyleConfig=require(ReplicatedStorage.VTR.Shared.AIPlaystyleConfig)
 local DeviceGameplayConfig=require(ReplicatedStorage.VTR.Shared.DeviceGameplayConfig)
 local PlayabilitySettingsConfig=require(ReplicatedStorage.VTR.Shared.PlayabilitySettingsConfig)
 local Remotes=require(ReplicatedStorage.VTR.Shared.Remotes)
@@ -128,7 +129,16 @@ local TACTIC_DEBUG_GROUPS:{[string]:string}={
 }
 local TACTIC_FORMATIONS={"4-3-3","4-2-3-1","4-4-2","4-1-2-1-2","4-5-1","3-4-3","4-3-2-1","3-5-2","5-3-2"}
 local TACTIC_LAB_SLIDERS={}
-local TACTIC_IDENTITIES={{Id="basic_possession",Label="Slow Build Up",PresetId="balanced_control",Name="SAFE Possession"},{Id="quick_passing",Label="Tiki-Taka",PresetId="short_possession",Name="Quick Passing"}}
+local TACTIC_IDENTITY_LABELS={basic_possession="Slow Build Up",quick_passing="Tiki-Taka",vertical_tiki_taka="Vertical Tiki-Taka",wing_play="Wing Play",route_one="Route One",park_the_bus="Park the Bus",counter_attack="Counter-Attack",gegenpress="Gegenpress"}
+local function tacticIdentities():{any}
+	local result={}
+	for _,id in AIPlaystyleConfig.BuiltInOrder do
+		local style=AIPlaystyleConfig.BuiltIns[id]
+		if style and style.Tactics then table.insert(result,{Id=style.PlaystyleId,Label=TACTIC_IDENTITY_LABELS[style.PlaystyleId]or style.Name,PresetId=style.Tactics.PresetId,Name=style.Name})end
+	end
+	return result
+end
+local TACTIC_IDENTITIES=tacticIdentities()
 local TACTIC_BEHAVIOR_CONTROLS={
 	{Key="DefensiveLineReach",Label="DEFENSIVE LINE REACH",Group="Depth",Low="Halfway cap",High="Higher step limit"},
 	{Key="FirstTimePassing",Label="FIRST TIME PASSING",Group="Passing",Low="Control first",High="One-touch"},
@@ -182,23 +192,43 @@ local function simpleTacticValue(tactics:any,key:string):number
 end
 local function applyTacticIdentity(tactics:any,index:number)
 	local identity=TACTIC_IDENTITIES[((index-1)%#TACTIC_IDENTITIES)+1]
+	tactics.Sliders=tactics.Sliders or{}
 	tactics.PresetId=identity.PresetId
+	tactics.BasePresetId=identity.PresetId
 	tactics.PlaystyleId=identity.Id
 	tactics.PlaystyleName=identity.Name
+	tactics.Identity=identity.Name
 	tactics.MetricsTargets=tactics.MetricsTargets or{}
 	tactics.MetricsTargets.QuickPassing=identity.Id=="quick_passing"and 1 or 0
 	tactics.MetricsTargets.BoxEdgeRetreatLimit=identity.Id=="basic_possession"and 132 or nil
+	local builtIn=AIPlaystyleConfig.ResolveBuiltIn(identity.Id)
+	if builtIn and builtIn.Tactics and builtIn.Tactics.Sliders then
+		for key,value in builtIn.Tactics.Sliders do tactics.Sliders[key]=value end
+	end
+	if builtIn and builtIn.MetricsTargets then
+		for key,value in builtIn.MetricsTargets do tactics.MetricsTargets[key]=value end
+	end
+	if builtIn then
+		tactics.PassRules=builtIn.PassRules
+		tactics.PositioningRules=builtIn.PositioningRules
+		tactics.PressRules=builtIn.PressRules
+		tactics.RoleInstructions=builtIn.RoleInstructions
+		tactics.SequenceRules=builtIn.SequenceRules
+	end
 	if identity.Id=="quick_passing"then
 		tactics.Sliders.BuildUpSpeed=72;tactics.Sliders.PassTempo=92;tactics.Sliders.SupportDistance=28;tactics.Sliders.PassingDirectness=44
 		setSimpleTacticControl(tactics,"FirstTimePassing",math.max(simpleTacticValue(tactics,"FirstTimePassing"),100))
-	else
+	elseif identity.Id=="basic_possession"then
 		tactics.Sliders.BuildUpSpeed=48;tactics.Sliders.PassTempo=66;tactics.Sliders.SupportDistance=34;tactics.Sliders.PassingDirectness=32
 		setSimpleTacticControl(tactics,"FirstTimePassing",math.min(simpleTacticValue(tactics,"FirstTimePassing"),28))
 	end
 end
 local function currentTacticIdentityIndex(tactics:any):number
 	local id=tostring(tactics and (tactics.PlaystyleId or tactics.PlaystyleName or tactics.PresetId)or"")
-	return(id=="quick_passing"or id=="Quick Passing"or id=="short_possession")and 2 or 1
+	for index,identity in TACTIC_IDENTITIES do
+		if id==identity.Id or id==identity.Name or id==identity.PresetId or id==identity.Label then return index end
+	end
+	return 1
 end
 local function keyCodeFromSetting(value:any,fallback:Enum.KeyCode):Enum.KeyCode
 	if type(value)~="string"then return fallback end
@@ -1627,8 +1657,10 @@ function Controller:_activate(data:any)
 			OnSubstitutions=function()self:_setPaused(true)end,
 			OnClose=function()
 				if self.AscensionManagerPanel then self.AscensionManagerPanel:Destroy();self.AscensionManagerPanel=nil end
+				if self.HUD and self.HUD.SetMomentumDock then self.HUD:SetMomentumDock("Manager")end
 			end,
 		})
+		if self.HUD and self.HUD.SetMomentumDock then self.HUD:SetMomentumDock("Hidden")end
 	end
 	if self.WatchMode then
 		if self.ControlledIndicator then self.ControlledIndicator:Destroy();self.ControlledIndicator=nil end
@@ -1649,7 +1681,7 @@ function Controller:_activate(data:any)
 	if self.HUD and self.HUD.TouchFirstSession and self.Minimap then self.Minimap:SetMode("Off")end
 	self.AnimationCache={};for _,side in data.TeamModels do for _,footballer in side do self.AnimationCache[footballer]=AnimationController.new(footballer)end end
 	if self.ReplayController then self.ReplayController:Destroy()end;self.ReplayController=ReplayController.new(data,ball)
-	if data.DeveloperAccess==true then self.RuntimeTactics={Home=LiteConfig.DefaultTactics(),Away=LiteConfig.DefaultTactics()};self.RuntimeTactics.Home.Formation=data.HomeFormation or"4-3-3";self.RuntimeTactics.Away.Formation=data.AwayFormation or"4-3-3";applyTacticIdentity(self.RuntimeTactics.Home,1);applyTacticIdentity(self.RuntimeTactics.Away,1);self:_createAnalysisBoard();self:_sendRuntimeTactics("Home");self:_sendRuntimeTactics("Away")end
+	if data.DeveloperAccess==true then self.RuntimeTactics={Home=LiteConfig.DefaultTactics(),Away=LiteConfig.DefaultTactics()};self.RuntimeTactics.Home.Formation=data.HomeFormation or"4-3-3";self.RuntimeTactics.Away.Formation=data.AwayFormation or"4-3-3";applyTacticIdentity(self.RuntimeTactics.Home,1);applyTacticIdentity(self.RuntimeTactics.Away,1);if not self.AscensionManagerPanel and self.HUD and self.HUD.SetMomentumDock then self.HUD:SetMomentumDock("Analysis")end;self:_sendRuntimeTactics("Home");self:_sendRuntimeTactics("Away")end
 	self.HUD:SetResumeCallback(function()self:_setPaused(false)end)
 	self.Lifecycle:BindActionAtPriority(PAUSE_ACTION,function(_,state)if state==Enum.UserInputState.Begin and self.Active then self:_setPaused(not self.Paused)end;return Enum.ContextActionResult.Sink end,false,Enum.ContextActionPriority.High.Value+200,Enum.KeyCode.ButtonSelect,Enum.KeyCode.ButtonStart)
 	self.PauseConnection=self:_trackConnection(UserInputService.InputBegan:Connect(function(input,processed)
@@ -2126,6 +2158,7 @@ function Controller:_state(payload:any)
 	elseif payload.Type=="PauseQueue"then self.HUD:ShowPauseQueue(tostring(payload.PlayerName or"PLAYER"),payload.Queued==true)
 	elseif payload.Type=="PauseState"then payload.ControlledSide=self.ControlledSide;self.Paused=payload.Paused==true;if self.InputLock then self.InputLock:SetSprintEnabled(not self.Paused)end;if self.Input then self.Input:SetSprintAllowed(not self.Paused and self.MatchInPlay==true)end;local visible=not self.Paused and self.MatchInPlay==true;if self.Trainer then self.Trainer:SetMatchActive((self.WorldCupOnboardingTrainer or not UserInputService.TouchEnabled)and visible)end;if self.Minimap then self.Minimap:SetMatchActive(visible)end;if self.AimLine then self.AimLine:SetMatchActive(visible)end;if self.GoalTarget then self.GoalTarget:SetMatchActive(visible)end;if self.HUD then self.HUD:SetPaused(self.Paused,self.Camera,function()self:_cleanup(true)end,payload,function()self.Action:FireServer({Type="Forfeit"})end)end
 	elseif payload.Type=="PauseTimer"then self.HUD:SetPauseTimer(payload.Remaining or 0)
+	elseif payload.Type=="MomentumUpdate"then if self.HUD and self.HUD.UpdateMomentum then self.HUD:UpdateMomentum(payload.Momentum)end
 	elseif payload.Type=="PauseResumeVote"then if payload.Ready~=true then self.HUD:Flash(tostring(payload.PlayerName or"PLAYER").." READY TO RESUME",1.0)end
 	elseif payload.Type=="PrematchSkipLocked"then self.PrematchSkipRequested=false;if self.HUD then self.HUD:Flash("SKIP IN "..tostring(math.max(1,math.floor(tonumber(payload.Remaining)or 1))),.7)end
 	elseif payload.Type=="PrematchSkipQueued"then self:_setPrematchSkipProgress(payload.ReadyCount,payload.TotalCount);if self.HUD then local total=math.max(1,math.floor(tonumber(payload.TotalCount)or 2));local count=math.clamp(math.floor(tonumber(payload.ReadyCount)or 1),0,total);self.HUD:Flash(payload.Ready and"INTRO SKIPPED"or(string.format("SKIP %d/%d",count,total)),1.0)end

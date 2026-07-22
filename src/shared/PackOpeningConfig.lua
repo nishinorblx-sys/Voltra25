@@ -10,6 +10,7 @@ Config.SuperWalkoutMinimumRating = 90
 Config.PremiumConfettiEnabled = true
 Config.PremiumPyroEnabled = true
 Config.PremiumSmokeEnabled = true
+Config.TestHeroHoldSeconds = nil
 
 Config.ForcePremiumRarities = table.freeze({})
 
@@ -269,36 +270,44 @@ end
 function Config.PhaseTimeline(selection: any): { any }
 	local tier = selection and selection.Profile or Config.Tiers.QuickReveal
 	local reduced = selection and selection.ReducedMotion == true
+	local heroHoldDuration = tonumber(Config.TestHeroHoldSeconds) or tonumber(tier.HeroHold) or 0.8
 	if reduced then
 		return {
 			{ Name = "Preparing", Duration = 0.08 },
 			{ Name = "Blackout", Duration = 0.12 },
+			{ Name = "PackEntrance", Duration = 0.18 },
 			{ Name = "PackRupture", Duration = 0.18 },
-			{ Name = "Silhouette", Duration = 0.16 },
-			{ Name = "Walkout", Duration = 0.8 },
-			{ Name = "Celebration", Duration = 1.05 },
 			{ Name = "RatingReveal", Duration = 0.7 },
 			{ Name = "NameReveal", Duration = 0.75 },
-			{ Name = "HeroHold", Duration = tonumber(tier.HeroHold) and math.min(tier.HeroHold, 0.45) or 0.35 },
+			{ Name = "HeroHold", Duration = math.min(heroHoldDuration, 0.75) },
 			{ Name = "RemainingCards", Duration = 0.18 },
 			{ Name = "Results", Duration = 0 },
 		}
 	end
 	if tier.Walkout ~= true then
+		if tonumber(tier.Rank) <= 1 then
+			return {
+				{ Name = "Preparing", Duration = 0.1 },
+				{ Name = "Blackout", Duration = 0.18 },
+				{ Name = "PackEntrance", Duration = 0.32 },
+				{ Name = "PackRupture", Duration = 0.22 },
+				{ Name = "RatingReveal", Duration = 0.82 },
+				{ Name = "NameReveal", Duration = 0.72 },
+				{ Name = "RemainingCards", Duration = 0.24 },
+				{ Name = "Results", Duration = 0 },
+			}
+		end
 		return {
 			{ Name = "Preparing", Duration = 0.1 },
 			{ Name = "Blackout", Duration = 0.22 },
 			{ Name = "TunnelIgnition", Duration = 0.42 },
 			{ Name = "PackEntrance", Duration = 0.35 },
-			{ Name = "EnergyCharge", Duration = tier.Rank >= 2 and 0.55 or 0.28 },
-			{ Name = "ClueSequence", Duration = tier.Rank >= 2 and 2.25 or 0 },
+			{ Name = "EnergyCharge", Duration = 0.55 },
+			{ Name = "ClueSequence", Duration = 2.05 },
 			{ Name = "PackRupture", Duration = 0.24 },
-			{ Name = "Silhouette", Duration = 0.24 },
-			{ Name = "Walkout", Duration = 1.15 },
-			{ Name = "Celebration", Duration = 1.05 },
 			{ Name = "RatingReveal", Duration = 0.85 },
 			{ Name = "NameReveal", Duration = 0.85 },
-			{ Name = "HeroHold", Duration = tier.HeroHold },
+			{ Name = "HeroHold", Duration = heroHoldDuration },
 			{ Name = "RemainingCards", Duration = 0.28 },
 			{ Name = "Results", Duration = 0 },
 		}
@@ -313,10 +322,10 @@ function Config.PhaseTimeline(selection: any): { any }
 		{ Name = "PackRupture", Duration = 0.32 },
 		{ Name = "Silhouette", Duration = 0.42 },
 		{ Name = "Walkout", Duration = tier.WalkDuration or 1.7 },
-		{ Name = "Celebration", Duration = 4.35 },
+		{ Name = "Celebration", Duration = tier.Rank >= 4 and 2.9 or 2.45 },
 		{ Name = "RatingReveal", Duration = 1.25 },
 		{ Name = "NameReveal", Duration = 1.35 },
-		{ Name = "HeroHold", Duration = tier.HeroHold },
+		{ Name = "HeroHold", Duration = heroHoldDuration },
 		{ Name = "RemainingCards", Duration = 0.44 },
 		{ Name = "Results", Duration = 0 },
 	}

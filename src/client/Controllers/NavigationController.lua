@@ -25,7 +25,7 @@ function NavigationController.new(breadcrumb: TextLabel)
 	return self
 end
 
-function NavigationController:RegisterPage(id: string, page: CanvasGroup)
+function NavigationController:RegisterPage(id: string, page: GuiObject)
 	local old = self.Pages[id]
 	if old and old ~= page then
 		cleanupPage(old)
@@ -44,7 +44,6 @@ function NavigationController:HidePage(id: string)
 	local page = self.Pages[id]
 	if not page then return end
 	cleanupPage(page)
-	TweenService:Create(page,TweenInfo.new(0),{GroupTransparency=1}):Play()
 	page.Visible=false
 	page.Active=false
 end
@@ -65,7 +64,7 @@ function NavigationController:EnforceCurrent()
 		local registeredNames:any={}
 		for pageId in self.Pages do registeredNames[pageId]=true end
 		for _, child in parent:GetChildren() do
-			if child:IsA("CanvasGroup") and registeredNames[child.Name] and child ~= self.Pages[child.Name] then
+			if child:IsA("GuiObject") and registeredNames[child.Name] and child ~= self.Pages[child.Name] then
 				cleanupPage(child)
 				child:Destroy()
 			elseif child:IsA("GuiObject") and child ~= currentPage and child.Name ~= "BackgroundEnergy" then
@@ -119,10 +118,8 @@ function NavigationController:Navigate(id: string)
 	incoming.Visible = true
 	incoming.Active = true
 	GuiService.SelectedObject = nil
-	incoming.GroupTransparency = 1
 	incoming.Position = UDim2.fromOffset(26, 0)
 	TweenService:Create(incoming, TweenInfo.new(Theme.Animation.Page, Theme.Animation.EasingStyle, Theme.Animation.EasingDirection), {
-		GroupTransparency = 0,
 		Position = UDim2.fromOffset(0, 0),
 	}):Play()
 	task.defer(function() if transitionId == self.TransitionId then self:EnforceCurrent() end end)
@@ -139,9 +136,6 @@ function NavigationController:SyncPageVisibility()
 		local active = pageId == self.Current
 		page.Visible = active
 		page.Active = active
-		if not active then
-			page.GroupTransparency = 1
-		end
 	end
 end
 

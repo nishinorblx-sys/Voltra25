@@ -115,7 +115,7 @@ local function makeGoalScene(parent: Instance)
 	trailCorner.Parent = trail
 end
 
-function Page.new(context: any): CanvasGroup
+function Page.new(context: any): Frame
 	local group, scroll = PageBase.new("Shooting", 620)
 	PageBase.heading(scroll, "STRIKER LAB", "SHOOTING", "Solo striker reps against an AI goalkeeper.")
 

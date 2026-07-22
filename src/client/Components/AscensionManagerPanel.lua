@@ -514,7 +514,7 @@ function ManagerPanel:_buildSubstitutionsPage()
 	local page = self.Pages.Substitutions
 	local card = self:_makeCard(page, 150)
 	makeLabel(card, "SUBSTITUTIONS", UDim2.new(1, 0, 0, 24), 16, Theme.Colors.White, Theme.Fonts.Display).Position = UDim2.fromOffset(0, 0)
-	makeLabel(card, "Use the live team sheet to swap bench players into the lineup. Existing stamina, lineup, and server validation stay in charge.", UDim2.new(1, 0, 0, 52), 12, Theme.Colors.Silver, Theme.Fonts.Body).Position = UDim2.fromOffset(0, 34)
+	makeLabel(card, "Use the live team sheet to swap bench players into the lineup. Existing stamina and lineup rules stay in charge.", UDim2.new(1, 0, 0, 52), 12, Theme.Colors.Silver, Theme.Fonts.Body).Position = UDim2.fromOffset(0, 34)
 	local open = makeButton(card, "OPEN TEAM SHEET", UDim2.new(1, 0, 0, 44), function()
 		if self.Options.OnSubstitutions then self.Options.OnSubstitutions() end
 	end)

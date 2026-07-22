@@ -122,7 +122,7 @@ local function presentationCopy(item: any): (string, string)
 	return string.upper(kind), "Your Ascension state has been updated."
 end
 
-function Page.new(context: any): CanvasGroup
+function Page.new(context: any): Frame
 	local campaignService = context.CampaignService
 	if not campaignService then
 		DefaultCampaignService = DefaultCampaignService or require(script.Parent.Parent.Services.CampaignService)
@@ -1049,7 +1049,7 @@ function Page.new(context: any): CanvasGroup
 		if state then renderTabs(content) end
 		renderError(content)
 		if not state then
-			local status = panel(content, "LoadState", busy and busyText or "ASCENSION UNAVAILABLE", "SERVER STATE", 180)
+			local status = panel(content, "LoadState", busy and busyText or "ASCENSION UNAVAILABLE", "MATCH STATE", 180)
 			wrap(label(status, loadError or "Loading your saved season, squad readiness, Project, scouting, facilities, and history.", UDim2.fromOffset(18, 72), UDim2.new(1, -36, 0, 52), 9, Theme.Colors.Muted, Theme.Fonts.Body))
 			if not busy then
 				local retry = actionButton(status, "RETRY", "Primary", UDim2.fromOffset(140, 40), function() refreshState() end)

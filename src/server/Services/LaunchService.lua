@@ -15,6 +15,7 @@ local AITacticConfig=require(ReplicatedStorage.VTR.Shared.AITacticConfig)
 local AIBehaviorTuningConfig=require(ReplicatedStorage.VTR.Shared.AIBehaviorTuningConfig)
 local AIPlaystyleConfig=require(ReplicatedStorage.VTR.Shared.AIPlaystyleConfig)
 local AIPlaystyleResolver=require(ReplicatedStorage.VTR.Shared.AIPlaystyleResolver)
+local PlayerCareerConfig=require(ReplicatedStorage.VTR.Shared.PlayerCareerConfig)
 local ClubNameFilterService=require(script.Parent.ClubNameFilterService)
 local LaunchService={};LaunchService.__index=LaunchService
 local function find(list:any,id:string):any? for _,item in list do if item.Id==id then return item end end;return nil end
@@ -48,6 +49,19 @@ end
 local function sanitizeTactics(payload:any):any
 	local normalized=AITacticConfig.Normalize(payload)
 	if type(payload)~="table"then return normalized end
+	local builtIn=AIPlaystyleConfig.ResolveBuiltIn(payload.PlaystyleId or payload.PlaystyleName or payload.PresetId)
+	if builtIn then
+		normalized.PlaystyleId=builtIn.PlaystyleId
+		normalized.PlaystyleVersion=builtIn.Version
+		normalized.PlaystyleName=builtIn.Name
+		normalized.PlaystyleStatus=builtIn.Status
+		normalized.PassRules=copy(builtIn.PassRules)
+		normalized.PositioningRules=copy(builtIn.PositioningRules)
+		normalized.PressRules=copy(builtIn.PressRules)
+		normalized.RoleInstructions=copy(builtIn.RoleInstructions)
+		normalized.SequenceRules=copy(builtIn.SequenceRules)
+		normalized.MetricsTargets=copy(builtIn.MetricsTargets)
+	end
 	for _,key in {"Formation","PlaystyleId","PlaystyleVersion","PlaystyleName","PlaystyleStatus","PassRules","PositioningRules","PressRules","RoleInstructions","SequenceRules","MetricsTargets"}do
 		if payload[key]~=nil then normalized[key]=copy(payload[key])end
 	end
@@ -340,7 +354,7 @@ function LaunchService:Handle(player:Player,action:string,payload:any):(boolean,
 	end
 	elseif action=="EquipCard" then return false,"Use the authoritative Squad Builder to change the starting XI.",nil
 	elseif action=="EquipCosmetic" then local owned=has(p.StoreOwnership.Kits,payload.Id) or has(p.StoreOwnership.Stadiums,payload.Id) or has(p.StoreOwnership.Cosmetics,payload.Id);if not owned or not Schema.CosmeticSlots[payload.Slot] then return false,"Cosmetic ownership validation failed.",nil end;p.UIState.EquippedCosmetics[payload.Slot]=payload.Id
-	elseif action=="CreateCareer" then if payload.Type~="Player" and payload.Type~="Manager" then return false,"Invalid career type.",nil end;local slot=nil;for _,save in p.CareerSaveSlots do if save.Type=="Empty" then slot=save;break end end;if not slot then return false,"No empty career slots.",nil end;slot.Type=payload.Type;slot.Name=payload.Type=="Player" and "ALEX VOLT" or "MORGAN VALE";slot.Season="2026/27";slot.Overall=payload.Type=="Player" and 62 or nil;p.UIState.CareerSaveSelection=slot.Slot
+	elseif action=="CreateCareer" then if payload.Type~="Player" and payload.Type~="Manager" then return false,"Invalid career type.",nil end;p.CareerSaveSlots=PlayerCareerConfig.NormalizeSlots(p.CareerSaveSlots);local slotIndex=nil;for index,save in p.CareerSaveSlots do if save.Type=="Empty" then slotIndex=index;break end end;if not slotIndex then return false,"No empty career slots.",nil end;if payload.Type=="Manager"then p.CareerSaveSlots[slotIndex]=PlayerCareerConfig.DefaultManagerSlot(slotIndex)else local ok,creation=PlayerCareerConfig.NormalizeCreation(payload);if not ok then ok,creation=PlayerCareerConfig.NormalizeCreation({FirstName="Rin",LastName="Vale",PrimaryPosition="CAM",OriginId="academy_graduate",ArchetypeId="advanced_creator"})end;p.CareerSaveSlots[slotIndex]=PlayerCareerConfig.BuildPlayerCareer(slotIndex,creation)end;p.UIState.CareerSaveSelection=slotIndex
 	elseif action=="CreateClub" then if p.ProClubMembership.ClubId~="" then return false,"You already belong to a Pro Club.",nil end;local valid,name=cleanClubName(player,payload.Name);local tagOk,abbreviation=cleanClubTag(player,payload.Tag);if not valid then return false,name,nil end;if not tagOk then return false,abbreviation,nil end;p.ProClubMembership={ClubId="proclub_"..player.UserId,Name=name,Tag=abbreviation,Role="OWNER",Members=1,Capacity=24,Reputation="ROOKIE",LeagueId="",JoinPolicy="InviteOnly",MatchHistory={}}
 	elseif action=="CreateProPlayer"then local pro=p.ProClubsPlayer;if pro.Created then return false,"Your Pro already exists.",nil end;local first=type(payload.FirstName)=="string"and string.match(payload.FirstName,"^%s*([%a][%a '%-]+)%s*$")or nil;local last=type(payload.LastName)=="string"and string.match(payload.LastName,"^%s*([%a][%a '%-]+)%s*$")or nil;if not first or#first>18 or not last or#last>18 then return false,"Use valid first and last names (18 characters maximum).",nil end;pro.Created=true;pro.FirstName=first;pro.LastName=last;pro.JerseyName=string.upper(last);pro.Position=type(payload.Position)=="string"and payload.Position or"ST";pro.PreferredFoot=payload.PreferredFoot=="Left"and"Left"or"Right";pro.Attributes={};for _,attributes in ProClubsConfig.Categories do for _,attribute in attributes do pro.Attributes[attribute]=55 end end;responseMessage="Pro created with 20 attribute points.";responseData={Pro=pro}
 	elseif action=="SpendProAttribute"then local pro=p.ProClubsPlayer;local attribute=payload.Attribute;local amount=math.floor(tonumber(payload.Amount)or 0);if not pro.Created or type(attribute)~="string"or amount<1 or amount>10 then return false,"Invalid attribute request.",nil end;local valid=false;for _,attributes in ProClubsConfig.Categories do if table.find(attributes,attribute)then valid=true;break end end;if not valid or pro.AttributePointsAvailable<amount then return false,"Not enough attribute points.",nil end;pro.Attributes=pro.Attributes or{};local current=tonumber(pro.Attributes[attribute])or 55;if current+amount>99 then return false,"Attribute cap reached.",nil end;pro.Attributes[attribute]=current+amount;pro.SpentAttributePoints[attribute]=(pro.SpentAttributePoints[attribute]or 0)+amount;pro.AttributePointsAvailable-=amount;local total=0;for _,spent in pro.SpentAttributePoints do total+=spent end;pro.Overall=math.min(99,60+math.floor(total/6));responseMessage=attribute.." upgraded to "..pro.Attributes[attribute]..".";responseData={Pro=pro}

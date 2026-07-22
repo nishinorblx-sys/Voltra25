@@ -13,6 +13,7 @@ local NetworkConfig = {
 	PackFunction = "PackAction",
 	InventoryFunction = "InventoryAction",
 	MatchFunction = "MatchSetupAction",
+	CareerFunction = "CareerAction",
 	DeveloperFunction = "DeveloperAction",
 	RequestCooldown = 0.15,
 	Services = table.freeze({
@@ -24,6 +25,7 @@ local NetworkConfig = {
 		Fixture = true,
 		UIState = true,
 		Progression = true,
+		Career = true,
 	}),
 }
 

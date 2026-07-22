@@ -9,22 +9,33 @@ local remoteList = {
 	ConfirmSevenWinLoginReward = "RemoteFunction",
 	ClaimDailyLoginReward = "RemoteFunction",
 	DataUpdated = "RemoteEvent",
+	DeveloperAction = "RemoteFunction",
+	CareerAction = "RemoteFunction",
 	GameplayAction = "RemoteEvent",
 	InventoryAction = "RemoteFunction",
 	KickoffAction = "RemoteEvent",
+	LaunchAction = "RemoteFunction",
 	MatchAction = "RemoteEvent",
 	MatchSetupAction = "RemoteFunction",
 	PackAction = "RemoteFunction",
+	PlayerDataAction = "RemoteFunction",
 	PendingSevenWinLoginReward = "RemoteEvent",
 	PendingDailyLoginReward = "RemoteEvent",
 	PenaltyAction = "RemoteEvent",
+	ProgressionAction = "RemoteFunction",
 	RankedMatchFound = "RemoteEvent",
 	RequestData = "RemoteFunction",
+	SquadAction = "RemoteFunction",
 	SetPieceAction = "RemoteEvent",
 	ShowPackRewardAnimation = "RemoteEvent",
 	SoundAction = "RemoteEvent",
 	UpdateData = "RemoteEvent",
 	UpdateUIState = "RemoteEvent",
+}
+
+local gameplayRemoteList = {
+	GameplayAction = "RemoteEvent",
+	GameplayState = "RemoteEvent",
 }
 
 local folderGroups = {
@@ -93,12 +104,23 @@ end
 function VTRRemoteBootstrapService.Start()
 	local remotes = getRemotes()
 	local legacyRemotes = getLegacyRemotes()
+	local rootFolder = getRoot()
+	local gameplayRemotes = rootFolder:FindFirstChild("GameplayRemotes")
+	if not gameplayRemotes then
+		gameplayRemotes = Instance.new("Folder")
+		gameplayRemotes.Name = "GameplayRemotes"
+		gameplayRemotes.Parent = rootFolder
+	end
 
 	for name, className in pairs(remoteList) do
 		ensureRemote(remotes, name, className)
 		if className == "RemoteEvent" then
 			ensureRemote(legacyRemotes, name, className)
 		end
+	end
+
+	for name, className in pairs(gameplayRemoteList) do
+		ensureRemote(gameplayRemotes, name, className)
 	end
 
 	for folderName, children in pairs(folderGroups) do

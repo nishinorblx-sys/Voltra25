@@ -67,9 +67,9 @@ local function renderBadge(container:GuiObject,summary:any,strokeLimit:number?)
 	end
 end
 
-local function base(root:Instance):CanvasGroup
+local function base(root:Instance):Frame
 	destroyExisting(root)
-	local overlay=Instance.new("CanvasGroup");overlay.Name=OVERLAY_NAME;overlay.BackgroundColor3=Theme.Colors.Black;overlay.BorderSizePixel=0;overlay.Size=UDim2.fromScale(1,1);overlay.ZIndex=240;overlay.Parent=root
+	local overlay=Instance.new("Frame");overlay.Name=OVERLAY_NAME;overlay.BackgroundColor3=Theme.Colors.Black;overlay.BackgroundTransparency=0;overlay.BorderSizePixel=0;overlay.Size=UDim2.fromScale(1,1);overlay.ZIndex=240;overlay.Parent=root
 	local wash=Instance.new("Frame");wash.BackgroundColor3=Color3.fromHex("0A1607");wash.BackgroundTransparency=.12;wash.BorderSizePixel=0;wash.Position=UDim2.fromScale(.06,.08);wash.Size=UDim2.fromScale(.88,.84);wash.ZIndex=241;wash.Parent=overlay
 	local stroke=Instance.new("UIStroke");stroke.Color=Theme.Colors.Electric;stroke.Transparency=.72;stroke.Thickness=1;stroke.Parent=wash
 	for index=1,4 do local slash=Instance.new("Frame");slash.BackgroundColor3=index%2==0 and Theme.Colors.White or Theme.Colors.Gunmetal;slash.BackgroundTransparency=index%2==0 and .84 or .35;slash.BorderSizePixel=0;slash.AnchorPoint=Vector2.new(.5,.5);slash.Position=UDim2.fromScale(.14+index*.2,.5);slash.Size=UDim2.fromScale(.06,1.35);slash.Rotation=24;slash.ZIndex=242;slash.Parent=overlay end
@@ -78,11 +78,11 @@ local function base(root:Instance):CanvasGroup
 end
 
 function Presentation.Cancel(root:Instance)
-	local overlay=root:FindFirstChild(OVERLAY_NAME);if overlay and overlay:IsA("CanvasGroup")then TweenService:Create(overlay,TweenInfo.new(.22),{GroupTransparency=1}):Play();task.delay(.23,function()if overlay.Parent then overlay:Destroy()end end)end
+	local overlay=root:FindFirstChild(OVERLAY_NAME);if overlay and overlay:IsA("Frame")then TweenService:Create(overlay,TweenInfo.new(.22),{BackgroundTransparency=1}):Play();task.delay(.23,function()if overlay.Parent then overlay:Destroy()end end)end
 end
 
 function Presentation.StartSearching(root:Instance)
-	local overlay=base(root);overlay.GroupTransparency=1;TweenService:Create(overlay,TweenInfo.new(.28),{GroupTransparency=0}):Play()
+	local overlay=base(root);overlay.BackgroundTransparency=1;TweenService:Create(overlay,TweenInfo.new(.28),{BackgroundTransparency=0}):Play()
 	local title=text(overlay,"SEARCHING FOR OPPONENT",UDim2.fromScale(.15,.25),UDim2.fromScale(.7,.09),Theme.Fonts.Display,30,Theme.Colors.White,246)
 	local subtitle=text(overlay,"GLOBAL WATCH QUEUE",UDim2.fromScale(.2,.345),UDim2.fromScale(.6,.035),Theme.Fonts.Strong,9,Theme.Colors.Muted,246)
 	local scanner=Instance.new("Frame");scanner.AnchorPoint=Vector2.new(.5,.5);scanner.BackgroundColor3=Theme.Colors.Electric;scanner.BorderSizePixel=0;scanner.Position=UDim2.fromScale(.5,.47);scanner.Size=UDim2.fromOffset(250,2);scanner.ZIndex=246;scanner.Parent=overlay
@@ -96,7 +96,7 @@ function Presentation.StartSearching(root:Instance)
 	local started=os.clock();local connection:RBXScriptConnection?;connection=RunService.RenderStepped:Connect(function()if not overlay.Parent then if connection then connection:Disconnect()end;return end;local seconds=math.floor(os.clock()-started);elapsed.Text=string.format("%02d:%02d",math.floor(seconds/60),seconds%60);subtitle.Text="GLOBAL WATCH QUEUE  /  "..string.rep(".",seconds%4+1)end)
 end
 
-local function teamPanel(overlay:CanvasGroup,summary:any,side:string,controlledSide:string):Frame
+local function teamPanel(overlay:Frame,summary:any,side:string,controlledSide:string):Frame
 	local panel=Instance.new("Frame");panel.Name=side.."Team";panel.BackgroundColor3=Theme.Colors.Graphite;panel.BackgroundTransparency=.06;panel.BorderSizePixel=0;panel.Size=UDim2.fromScale(.34,.46);panel.Position=side=="Home"and UDim2.fromScale(.1,.29)or UDim2.fromScale(.56,.29);panel.ZIndex=246;panel.Parent=overlay
 	local stroke=Instance.new("UIStroke");stroke.Color=side=="Home"and Theme.Colors.Electric or Color3.fromHex("D9D9D9");stroke.Transparency=.35;stroke.Thickness=1;stroke.Parent=panel
 	text(panel,side==controlledSide and"YOUR TEAM"or"OPPONENT",UDim2.fromScale(.08,.015),UDim2.fromScale(.84,.05),Theme.Fonts.Strong,8,side==controlledSide and Theme.Colors.White or Theme.Colors.Muted,247)
@@ -121,29 +121,29 @@ end
 function Presentation.ShowMatchFound(root:Instance,data:any,onComplete:()->())
 	local key=matchFoundKey(data)
 	local existing=root:FindFirstChild(OVERLAY_NAME)
-	if existing and existing:IsA("CanvasGroup")and existing:GetAttribute("VTRMatchFoundActive")==true then
+	if existing and existing:IsA("Frame")and existing:GetAttribute("VTRMatchFoundActive")==true then
 		local completeAt=tonumber(existing:GetAttribute("VTRMatchFoundCompleteAt"))or(os.clock()+.2)
 		task.delay(math.max(.05,completeAt-os.clock()),function()if onComplete then onComplete()end end)
 		return
 	end
-	if existing and existing:IsA("CanvasGroup")and existing:GetAttribute("VTRMatchFoundKey")==key then
+	if existing and existing:IsA("Frame")and existing:GetAttribute("VTRMatchFoundKey")==key then
 		local completeAt=tonumber(existing:GetAttribute("VTRMatchFoundCompleteAt"))or(os.clock()+.2)
 		task.delay(math.max(.05,completeAt-os.clock()),function()if onComplete then onComplete()end end)
 		return
 	end
-	local overlay=existing and existing:IsA("CanvasGroup")and existing or base(root)
+	local overlay=existing and existing:IsA("Frame")and existing or base(root)
 	overlay:SetAttribute("VTRMatchFoundKey",key)
 	overlay:SetAttribute("VTRMatchFoundActive",true)
 	overlay:SetAttribute("VTRMatchFoundCompleteAt",os.clock()+3.95)
 	for _,child in overlay:GetChildren()do if child:IsA("GuiObject")then child:Destroy()end end
-	overlay.GroupTransparency=0;overlay.BackgroundColor3=Theme.Colors.Black
+	overlay.BackgroundTransparency=0;overlay.BackgroundColor3=Theme.Colors.Black
 	text(overlay,"OPPONENT FOUND",UDim2.fromScale(.15,.08),UDim2.fromScale(.7,.07),Theme.Fonts.Display,29,Theme.Colors.Electric,246)
 	text(overlay,"RANKED WATCH VS WATCH  /  SYNCHRONIZING MATCH",UDim2.fromScale(.2,.15),UDim2.fromScale(.6,.035),Theme.Fonts.Strong,9,Theme.Colors.Muted,246)
 	local controlled=data.ControlledSide or"Home";local home=teamPanel(overlay,data.HomeSummary or{teamName=data.Home,logo=data.HomeLogo},"Home",controlled);local away=teamPanel(overlay,data.AwaySummary or{teamName=data.Away,logo=data.AwayLogo},"Away",controlled)
 	local vs=text(overlay,"VS",UDim2.fromScale(.44,.42),UDim2.fromScale(.12,.12),Theme.Fonts.Display,31,Theme.Colors.Electric,248);vs.TextTransparency=1
 	task.delay(.18,function()if vs.Parent then TweenService:Create(vs,TweenInfo.new(.25),{TextTransparency=0}):Play()end end)
 	local opponent=text(overlay,"OPPONENT  /  "..string.upper(data.Opponent or"CHALLENGER"),UDim2.fromScale(.25,.82),UDim2.fromScale(.5,.05),Theme.Fonts.Strong,10,Theme.Colors.White,247);opponent.TextTransparency=1;task.delay(.75,function()if opponent.Parent then TweenService:Create(opponent,TweenInfo.new(.3),{TextTransparency=0}):Play()end end)
-	task.delay(3.4,function()if not overlay.Parent then return end;overlay:SetAttribute("VTRMatchFoundActive",false);local fade=TweenService:Create(overlay,TweenInfo.new(.45),{GroupTransparency=1});fade.Completed:Once(function()if overlay.Parent then overlay:Destroy()end;onComplete()end);fade:Play()end)
+	task.delay(3.4,function()if not overlay.Parent then return end;overlay:SetAttribute("VTRMatchFoundActive",false);local fade=TweenService:Create(overlay,TweenInfo.new(.45),{BackgroundTransparency=1});fade.Completed:Once(function()if overlay.Parent then overlay:Destroy()end;onComplete()end);fade:Play()end)
 end
 
 return Presentation

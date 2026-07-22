@@ -33,7 +33,7 @@ function Presentation.play(root:Frame,setup:any,home:any,away:any,onReturn:(()->
 	Players.LocalPlayer:SetAttribute("VTREssentialMatchReady",false)
 	local persistent=MatchPresentationService.BeginLoading("MATCHDAY","BUILDING MATCH RUNTIME")
 	persistent:Clear()
-	local overlay:CanvasGroup?=nil
+	local overlay:Frame?=nil
 	local preloadHandle:any=nil
 	local function finish(showMenu:boolean)
 		if showMenu then
@@ -47,7 +47,7 @@ function Presentation.play(root:Frame,setup:any,home:any,away:any,onReturn:(()->
 	end
 	setMenuVisible(root,false)
 	local homeKit=home.kits[setup.HomeKit]or home.kits.Home;local awayKit=away.kits[setup.AwayKit]or away.kits.Away
-	overlay=Instance.new("CanvasGroup");overlay.Name="MatchStartPresentation";overlay.BackgroundColor3=Theme.Colors.Black;overlay.BackgroundTransparency=0;overlay.BorderSizePixel=0;overlay.Size=UDim2.fromScale(1,1);overlay.GroupTransparency=0;overlay.ZIndex=180;overlay.Active=true;overlay.Selectable=false;overlay.Parent=persistent.Stage
+	overlay=Instance.new("Frame");overlay.Name="MatchStartPresentation";overlay.BackgroundColor3=Theme.Colors.Black;overlay.BackgroundTransparency=0;overlay.BorderSizePixel=0;overlay.Size=UDim2.fromScale(1,1);overlay.ZIndex=180;overlay.Active=true;overlay.Selectable=false;overlay.Parent=persistent.Stage
 	overlay.Destroying:Connect(function()root:SetAttribute("VTRMatchPresentationActive",nil);if preloadHandle and not preloadHandle:IsComplete()then preloadHandle:Cancel()end end)
 	local shield=Instance.new("TextButton");shield.Name="PresentationInputShield";shield.BackgroundTransparency=1;shield.BorderSizePixel=0;shield.Size=UDim2.fromScale(1,1);shield.Text="";shield.AutoButtonColor=false;shield.Selectable=false;shield.Modal=true;shield.Active=true;shield.ZIndex=180;shield.Parent=overlay
 	local stadiumWash=Instance.new("Frame");stadiumWash.BackgroundColor3=Theme.Colors.Pitch;stadiumWash.BackgroundTransparency=.3;stadiumWash.BorderSizePixel=0;stadiumWash.Position=UDim2.fromScale(.08,.12);stadiumWash.Size=UDim2.fromScale(.84,.76);stadiumWash.ZIndex=181;stadiumWash.Parent=overlay;local washCorner=Instance.new("UICorner");washCorner.CornerRadius=UDim.new(0,14);washCorner.Parent=stadiumWash
@@ -66,9 +66,9 @@ function Presentation.play(root:Frame,setup:any,home:any,away:any,onReturn:(()->
 	label(overlay,stadiumName.."  /  "..string.upper(setup.Weather).."  /  "..string.upper(setup.Time),UDim2.fromScale(.12,.67),UDim2.fromScale(.76,.04),10,Theme.Colors.Electric,Theme.Fonts.Strong)
 	local entering=label(overlay,"ENTERING MATCH",UDim2.fromScale(.2,.75),UDim2.fromScale(.6,.055),18,Theme.Colors.White,Theme.Fonts.Display)
 	local track=Instance.new("Frame");track.BackgroundColor3=Theme.Colors.Gunmetal;track.BorderSizePixel=0;track.Position=UDim2.fromScale(.25,.83);track.Size=UDim2.fromScale(.5,.008);track.ZIndex=184;track.Parent=overlay;local fill=Instance.new("Frame");fill.BackgroundColor3=Theme.Colors.Electric;fill.BorderSizePixel=0;fill.Size=UDim2.fromScale(0,1);fill.ZIndex=185;fill.Parent=track
-	status.Text="BUILDING MATCH RUNTIME";entering.Text="SERVER SPAWNING STADIUM, TEAMS + BALL"
+	status.Text="BUILDING MATCH RUNTIME";entering.Text="PREPARING STADIUM, TEAMS + BALL"
 	local started=watchMode and MatchSetupService:WatchMatch()or MatchSetupService:StartMatch()
-	if not started.Success then status.Text="MATCH LOAD FAILED";entering.Text=started.Message or"The server could not verify the match scene.";TweenService:Create(fill,TweenInfo.new(.2),{BackgroundColor3=Theme.Colors.Danger}):Play();task.wait(1.5);finish(true);return end
+	if not started.Success then status.Text="MATCH LOAD FAILED";entering.Text=started.Message or"The match scene could not be prepared.";TweenService:Create(fill,TweenInfo.new(.2),{BackgroundColor3=Theme.Colors.Danger}):Play();task.wait(1.5);finish(true);return end
 	status.Text="LOADING MATCH ESSENTIALS"
 	local worldName=started.Data and started.Data.WorldName
 	local world=type(worldName)=="string"and Workspace:FindFirstChild(worldName)or nil

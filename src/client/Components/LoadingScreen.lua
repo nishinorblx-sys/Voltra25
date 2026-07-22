@@ -6,8 +6,23 @@ local Theme = require(ReplicatedStorage.VTR.Shared.Theme)
 
 local LoadingScreen = {}
 
-function LoadingScreen.new(parent: Instance, statusText: string?): CanvasGroup
-	local group = Instance.new("CanvasGroup")
+local function fadeOut(frame: Frame)
+	TweenService:Create(frame, TweenInfo.new(Theme.Animation.Page), {BackgroundTransparency = 1}):Play()
+	for _, child in ipairs(frame:GetDescendants()) do
+		if child:IsA("TextLabel") or child:IsA("TextButton") or child:IsA("TextBox") then
+			TweenService:Create(child, TweenInfo.new(Theme.Animation.Page), {TextTransparency = 1, BackgroundTransparency = 1}):Play()
+		elseif child:IsA("ImageLabel") or child:IsA("ImageButton") then
+			TweenService:Create(child, TweenInfo.new(Theme.Animation.Page), {ImageTransparency = 1, BackgroundTransparency = 1}):Play()
+		elseif child:IsA("Frame") then
+			TweenService:Create(child, TweenInfo.new(Theme.Animation.Page), {BackgroundTransparency = 1}):Play()
+		elseif child:IsA("UIStroke") then
+			TweenService:Create(child, TweenInfo.new(Theme.Animation.Page), {Transparency = 1}):Play()
+		end
+	end
+end
+
+function LoadingScreen.new(parent: Instance, statusText: string?): Frame
+	local group = Instance.new("Frame")
 	group.Name = "LoadingScreen"
 	group.BackgroundColor3 = Theme.Colors.Black
 	group.BorderSizePixel = 0
@@ -61,8 +76,9 @@ function LoadingScreen.new(parent: Instance, statusText: string?): CanvasGroup
 	return group
 end
 
-function LoadingScreen.complete(group: CanvasGroup, callback: (() -> ())?)
-	local tween = TweenService:Create(group, TweenInfo.new(Theme.Animation.Page), { GroupTransparency = 1 })
+function LoadingScreen.complete(group: Frame, callback: (() -> ())?)
+	fadeOut(group)
+	local tween = TweenService:Create(group, TweenInfo.new(Theme.Animation.Page), { BackgroundTransparency = 1 })
 	tween.Completed:Once(function() group:Destroy(); if callback then callback() end end)
 	tween:Play()
 end

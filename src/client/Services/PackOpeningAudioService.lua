@@ -44,10 +44,16 @@ function Service:DuckMenu()
 	self.DuckToken = MenuMusicService.PushDuck("PackOpening", self.ReducedMotion and 0.18 or 0.12, 0.25)
 end
 
-function Service:Play(name: string)
+function Service:Play(name: string, options: any?)
 	local sound = self.Sounds[name]
 	if sound and sound.Parent then
 		pcall(function()
+			local variation = tonumber(options and options.PitchVariation) or 0
+			if variation > 0 then
+				sound.PlaybackSpeed = 1 + (math.random() * 2 - 1) * variation
+			else
+				sound.PlaybackSpeed = 1
+			end
 			sound.TimePosition = 0
 			sound:Play()
 		end)

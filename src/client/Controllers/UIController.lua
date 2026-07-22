@@ -61,6 +61,12 @@ local PageModules = {
 local UIController = {}
 UIController.__index = UIController
 
+local HiddenNavigation = {
+	MyPlayer = true,
+	FiveVFive = true,
+	Play = true,
+}
+
 local function normalizeRoute(id: string): string
 	return id == "Play" and "Campaign" or id
 end
@@ -167,7 +173,7 @@ function UIController:Start()
 	}
 	if not (data.Profile and data.Currency and data.Season and data.Ranked and data.Objectives and data.Fixtures and data.UIState and data.Progression) then
 		loading:Destroy()
-		ErrorState.new(root, "We couldn't load your Voltra profile. Check the server connection and try again.", function()
+		ErrorState.new(root, "We couldn't load your Voltra profile. Check your connection and try again.", function()
 			if gui.Parent then gui:Destroy() end
 			self:Start()
 		end)
@@ -210,6 +216,7 @@ function UIController:Start()
 	logo.Parent = sidebar
 	self.Logo = logo
 	local mark = label("V", 27, Theme.Colors.Black, Theme.Fonts.Display)
+	mark.Name = "LogoMark"
 	mark.BackgroundColor3 = Theme.Colors.Electric
 	mark.BackgroundTransparency = 0
 	mark.Size = UDim2.fromOffset(42, 42)
@@ -226,10 +233,12 @@ function UIController:Start()
 	markGlow.Parent = mark
 	TweenService:Create(markGlow, TweenInfo.new(1.35, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true), { Transparency = 0.2, Thickness = 4 }):Play()
 	local logoTitle = label("VTR X", 21, Theme.Colors.White, Theme.Fonts.Display)
+	logoTitle.Name = "LogoTitle"
 	logoTitle.Position = UDim2.fromOffset(54, 0)
 	logoTitle.Size = UDim2.new(1, -54, 0, 29)
 	logoTitle.Parent = logo
 	local logoSub = label("VOLTRA FOOTBALL", 8, Theme.Colors.Electric, Theme.Fonts.Strong)
+	logoSub.Name = "LogoSubtitle"
 	logoSub.Position = UDim2.fromOffset(55, 28)
 	logoSub.Size = UDim2.new(1, -55, 0, 17)
 	logoSub.Parent = logo
@@ -323,7 +332,7 @@ function UIController:Start()
 	settingsGear.AnchorPoint = Vector2.new(.5, .5)
 	settingsGear.BackgroundTransparency = 1
 	settingsGear.Image = "rbxassetid://83473210181192"
-	settingsGear.ImageColor3 = Theme.Colors.Electric
+	settingsGear.ImageColor3 = Theme.Colors.Silver
 	settingsGear.Position = UDim2.fromScale(.5, .5)
 	settingsGear.ScaleType = Enum.ScaleType.Fit
 	settingsGear.Size = UDim2.fromOffset(24, 24)
@@ -386,6 +395,9 @@ function UIController:Start()
 	local localPlayer = Players.LocalPlayer
 	for _, navData in Config.Navigation do
 		local item = SidebarItem.new(navData, function(id)
+			if HiddenNavigation[id] then
+				return
+			end
 			if id == "AILab" and not aiLabRouteVisible(localPlayer) then
 				self:_showNotification({Title = "AI LAB", Message = "Developer access required.", Kind = "Info"})
 				return
@@ -397,11 +409,13 @@ function UIController:Start()
 			self.Flow:ModeTransition(id, function() navigation:Navigate(id); UIStateService:SetLastPage(id) end)
 		end)
 		item.Instance.Parent = navHolder
+		item.Instance:SetAttribute("VTRFullText", tostring(navData.Icon) .. "    " .. tostring(navData.Label))
+		item.Instance:SetAttribute("VTRIconText", tostring(navData.Icon))
 		navigation:RegisterItem(navData.Id, item)
-		local unlocked = progressionRouteUnlocked(data.Progression, navData.Id) and (navData.Id ~= "AILab" or aiLabRouteVisible(localPlayer))
-		item.Instance.Visible = unlocked
-		item.Instance.Selectable = unlocked
-		if unlocked then table.insert(order, navData.Id) end
+		local visible = not HiddenNavigation[navData.Id] and progressionRouteUnlocked(data.Progression, navData.Id) and (navData.Id ~= "AILab" or aiLabRouteVisible(localPlayer))
+		item.Instance.Visible = visible
+		item.Instance.Selectable = visible
+		if visible then table.insert(order, navData.Id) end
 	end
 
 	local context = {
@@ -411,6 +425,9 @@ function UIController:Start()
 		Data = data,
 		Navigate = function(id: string)
 			local route = normalizeRoute(id)
+			if HiddenNavigation[route] then
+				route = "Home"
+			end
 			if route == "AILab" and not aiLabRouteVisible(localPlayer) then
 				self:_showNotification({Title = "AI LAB", Message = "Developer access required.", Kind = "Info"})
 				return
@@ -475,6 +492,7 @@ function UIController:Start()
 	navigation:FinalizeSelectionOrder(order)
 	local lastPage = tostring(data.UIState.LastPage or "Home")
 	lastPage = normalizeRoute(lastPage)
+	if HiddenNavigation[lastPage] then lastPage = "Home" end
 	if lastPage == "Shooting" or not PageModules[lastPage] then lastPage = "Home" end
 	if not progressionRouteUnlocked(data.Progression, lastPage) then lastPage = "Home" end
 	if needsWorldCupOnboarding then
@@ -585,7 +603,7 @@ function UIController:_replacePage(id: string)
 	end
 	self.Navigation.Pages[id] = nil
 	for _, child in self.Content:GetChildren() do
-		if child:IsA("CanvasGroup") and child.Name == id then
+		if child:IsA("GuiObject") and child.Name == id then
 			local cleanup = child:FindFirstChild("Cleanup")
 			if cleanup and cleanup:IsA("BindableEvent") then cleanup:Fire() end
 			child.Visible = false
@@ -605,7 +623,6 @@ function UIController:_replacePage(id: string)
 	if self.Navigation.Current == id then
 		newPage.Visible = true
 		newPage.Active = true
-		newPage.GroupTransparency = 0
 		newPage.Position = UDim2.fromOffset(0, 0)
 	end
 	if self.Navigation and self.Navigation.SyncPageVisibility then
@@ -618,7 +635,7 @@ function UIController:_syncProgressionNavigation()
 	local order = {}
 	for _, navData in Config.Navigation do
 		local item = self.Navigation.Items[navData.Id]
-		local unlocked = progressionRouteUnlocked(self.Data and self.Data.Progression, navData.Id)
+		local unlocked = not HiddenNavigation[navData.Id] and progressionRouteUnlocked(self.Data and self.Data.Progression, navData.Id)
 		if item and item.Instance then
 			item.Instance.Visible = unlocked
 			item.Instance.Selectable = unlocked
@@ -845,8 +862,6 @@ function UIController:_bindResponsive()
 		local safeTop = math.max(46, GuiService.TopbarInset.Height)
 		local widthFit = viewport.X / Theme.Layout.DesignWidth
 		local heightFit = viewport.Y / Theme.Layout.DesignHeight
-		-- Fit the complete design viewport on both axes. Individual long pages
-		-- remain scrollable instead of forcing the application outside the screen.
 		local scaleValue = math.clamp(math.min(widthFit, heightFit), Theme.Layout.MinimumScale, Theme.Layout.MaximumScale)
 		if UserInputService.TouchEnabled then
 			scaleValue = math.clamp(scaleValue * 1.2, Theme.Layout.MinimumScale, Theme.Layout.MaximumScale * 1.2)
@@ -867,9 +882,37 @@ function UIController:_bindResponsive()
 		local logoTop = 14 + safeTop / scaleValue
 		local navTop = logoTop + 68
 		self.Logo.Position = UDim2.fromOffset(24, logoTop)
+		self.Logo.Size = UDim2.new(1, -48, 0, 60)
+		for _, child in ipairs(self.Logo:GetChildren()) do
+			if child:IsA("TextLabel") then
+				child.Visible = true
+			end
+		end
 		self.NavHolder.Position = UDim2.fromOffset(14, navTop)
 		self.NavHolder.Size = UDim2.new(1, -28, 1, -(navTop + 250))
+		if self.SeasonCard then
+			self.SeasonCard.Visible = true
+		end
+		if self.NotificationStack then
+			self.NotificationStack.Position = UDim2.new(1, -20, 0, 92)
+			self.NotificationStack.Size = UDim2.fromOffset(340, 460)
+		end
 		self.Currency.Visible = not compact
+		if self.ProfileName then
+			self.ProfileName.Visible = true
+		end
+		for _, item in pairs(self.Navigation and self.Navigation.Items or {}) do
+			local button = item.Instance
+			if button then
+				button.Text = tostring(button:GetAttribute("VTRFullText") or button.Text)
+				button.TextXAlignment = Enum.TextXAlignment.Left
+				button.TextSize = 10
+				local padding = button:FindFirstChildOfClass("UIPadding")
+				if padding then
+					padding.PaddingLeft = UDim.new(0, 16)
+				end
+			end
+		end
 	end
 	local function bindCamera()
 		if cameraConnection then cameraConnection:Disconnect();cameraConnection=nil end

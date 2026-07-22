@@ -46,12 +46,12 @@ local function text(parent: Instance, name: string, value: string, position: UDi
 	return item
 end
 
-local function part(parent: Instance, name: string, size: Vector3, cframe: CFrame, color: Color3, material: Enum.Material): Part
+local function part(parent: Instance, name: string, size: Vector3, cframe: CFrame, color: Color3, material: Enum.Material, role: string?): Part
 	local item = Instance.new("Part")
 	item.Name = name
 	item.Anchored = true
 	item.CanCollide = false
-	item.CastShadow = false
+	item.CastShadow = role == "Structural" or role == "Floor"
 	item.Size = size
 	item.CFrame = cframe
 	item.Color = color
@@ -60,6 +60,18 @@ local function part(parent: Instance, name: string, size: Vector3, cframe: CFram
 	item.BottomSurface = Enum.SurfaceType.Smooth
 	item.Parent = parent
 	return item
+end
+
+local function structuralPart(parent: Instance, name: string, size: Vector3, cframe: CFrame, color: Color3, material: Enum.Material): Part
+	return part(parent, name, size, cframe, color, material, "Structural")
+end
+
+local function floorPart(parent: Instance, name: string, size: Vector3, cframe: CFrame, color: Color3, material: Enum.Material): Part
+	return part(parent, name, size, cframe, color, material, "Floor")
+end
+
+local function trimPart(parent: Instance, name: string, size: Vector3, cframe: CFrame, color: Color3, material: Enum.Material): Part
+	return part(parent, name, size, cframe, color, material, "Trim")
 end
 
 local function rating(card: any): number
@@ -190,7 +202,7 @@ local function normalizeWalkoutRig(model: Model)
 	for _, descendant in model:GetDescendants() do
 		if descendant:IsA("BasePart") then
 			descendant.CanCollide = false
-			descendant.CastShadow = false
+			descendant.CastShadow = descendant.Name ~= "HumanoidRootPart"
 			if descendant.Name == "HumanoidRootPart" then
 				descendant.Transparency = WalkoutPresentationConfig.Scene.HumanoidRootTransparency
 			end
@@ -302,43 +314,45 @@ function Scene.new(parent: Instance, props: any, selection: any)
 		FogStart = lightingGet("FogStart", 0),
 		FogColor = lightingGet("FogColor", Color3.fromRGB(192, 192, 192)),
 	}
+	local globalLighting = WalkoutPresentationConfig.GlobalLighting
 	lightingSet("Technology", Enum.Technology.Future)
-	lightingSet("Brightness", 1.4)
-	lightingSet("Ambient", Color3.fromRGB(6, 8, 7))
-	lightingSet("OutdoorAmbient", Color3.fromRGB(2, 3, 2))
-	lightingSet("EnvironmentDiffuseScale", 0.25)
-	lightingSet("EnvironmentSpecularScale", 0.55)
-	lightingSet("ExposureCompensation", -0.35)
+	lightingSet("Brightness", globalLighting.Brightness)
+	lightingSet("Ambient", globalLighting.Ambient)
+	lightingSet("OutdoorAmbient", globalLighting.OutdoorAmbient)
+	lightingSet("EnvironmentDiffuseScale", globalLighting.EnvironmentDiffuseScale)
+	lightingSet("EnvironmentSpecularScale", globalLighting.EnvironmentSpecularScale)
+	lightingSet("ExposureCompensation", globalLighting.ExposureCompensation)
 	local bloom = Instance.new("BloomEffect")
 	bloom.Name = "VTRWalkoutBloom"
-	bloom.Intensity = 0.35
-	bloom.Size = 24
-	bloom.Threshold = 1.5
+	bloom.Intensity = globalLighting.BloomIntensity
+	bloom.Size = globalLighting.BloomSize
+	bloom.Threshold = globalLighting.BloomThreshold
 	bloom.Parent = Lighting
 	local colorCorrection = Instance.new("ColorCorrectionEffect")
 	colorCorrection.Name = "VTRWalkoutColorCorrection"
-	colorCorrection.Brightness = -0.03
-	colorCorrection.Contrast = 0.18
-	colorCorrection.Saturation = -0.05
+	colorCorrection.Brightness = globalLighting.ColorCorrectionBrightness
+	colorCorrection.Contrast = globalLighting.ColorCorrectionContrast
+	colorCorrection.Saturation = globalLighting.ColorCorrectionSaturation
 	colorCorrection.TintColor = Color3.fromRGB(225, 240, 220)
 	colorCorrection.Parent = Lighting
 	local atmosphere = Instance.new("Atmosphere")
 	atmosphere.Name = "VTRWalkoutAtmosphere"
-	atmosphere.Density = 0.16
+	atmosphere.Density = globalLighting.AtmosphereDensity
 	atmosphere.Offset = 0.08
 	atmosphere.Color = Color3.fromRGB(30, 42, 25)
 	atmosphere.Decay = Color3.fromRGB(5, 8, 5)
 	atmosphere.Glare = 0.05
-	atmosphere.Haze = 0.75
+	atmosphere.Haze = globalLighting.AtmosphereHaze
 	atmosphere.Parent = Lighting
 	local cameraBindName = CAMERA_BIND_PREFIX .. tostring(os.clock()):gsub("%.", "_")
 	local cameraCFrameValue = Instance.new("CFrameValue")
 	cameraCFrameValue.Name = "WalkoutCameraCFrame"
-	cameraCFrameValue.Value = CFrame.lookAt(PackOpeningConfig.CameraKeyframes.Start.Position, PackOpeningConfig.CameraKeyframes.Start.Target)
+	local startShot = WalkoutPresentationConfig.Shots.Start
+	cameraCFrameValue.Value = CFrame.lookAt(startShot.Position, startShot.Target)
 	cameraCFrameValue.Parent = world
 	local cameraFOVValue = Instance.new("NumberValue")
 	cameraFOVValue.Name = "WalkoutCameraFOV"
-	cameraFOVValue.Value = PackOpeningConfig.CameraKeyframes.Start.FOV
+	cameraFOVValue.Value = startShot.FOV
 	cameraFOVValue.Parent = world
 	camera.CameraType = Enum.CameraType.Scriptable
 	camera.CFrame = cameraCFrameValue.Value
@@ -376,6 +390,7 @@ function Scene.new(parent: Instance, props: any, selection: any)
 		Connections = {},
 		Motion = nil,
 		OnResultsContinue = nil,
+		Destroyed = false,
 	}, Scene)
 	RunService:BindToRenderStep(cameraBindName, Enum.RenderPriority.Camera.Value + 100, function()
 		local activeCamera = currentCamera()
@@ -387,7 +402,9 @@ function Scene.new(parent: Instance, props: any, selection: any)
 	self:_buildTunnel()
 	self:_buildOverlays()
 	self:_buildPack()
-	self:_buildAvatar()
+	if selection.Profile and selection.Profile.AvatarPhase == true then
+		self:_buildAvatar()
+	end
 	self.HiddenGui = hideUnderlyingGui(parent, overlay)
 	self.HiddenCharacter = hideLocalCharacter()
 	TweenService:Create(overlay, TweenInfo.new(0.22, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { GroupTransparency = 0 }):Play()
@@ -412,6 +429,12 @@ function Scene:_cameraTo(position: Vector3, target: Vector3, fov: number, durati
 	else
 		self:_trackTween(TweenService:Create(self.Camera, TweenInfo.new(duration, Enum.EasingStyle.Sine, Enum.EasingDirection.Out), { CFrame = CFrame.lookAt(position, target), FieldOfView = fov }))
 	end
+end
+
+function Scene:_cameraShot(name: string, durationOverride: number?)
+	local shot = WalkoutPresentationConfig.Shots[name]
+	if not shot then return end
+	self:_cameraTo(shot.Position, shot.Target, shot.FOV, durationOverride or shot.Duration or 0.45)
 end
 
 function Scene:_tweenModelPivot(model: Model, target: CFrame, info: TweenInfo)
@@ -565,10 +588,10 @@ function Scene:SetLightingPhase(name: string)
 	self:_trackTween(TweenService:Create(Lighting, TweenInfo.new(0.28, Enum.EasingStyle.Sine, Enum.EasingDirection.Out), {
 		Ambient = phase.Ambient,
 		OutdoorAmbient = phase.Ambient:Lerp(Color3.fromRGB(2, 3, 2), 0.62),
-		Brightness = self.PremiumEffects and 1.45 or 1.15,
-		ColorShift_Top = phase.LightColor:Lerp(voltra, self.PremiumEffects and 0.12 or 0.06),
+		Brightness = self.PremiumEffects and 1.18 or 1.02,
+		ColorShift_Top = phase.LightColor:Lerp(voltra, self.PremiumEffects and 0.08 or 0.04),
 		ColorShift_Bottom = Color3.fromRGB(5, 8, 6),
-		ExposureCompensation = self.PremiumEffects and -0.22 or -0.32,
+		ExposureCompensation = self.PremiumEffects and -0.3 or -0.4,
 		FogColor = Color3.fromRGB(5, 9, 6),
 		FogStart = 22,
 		FogEnd = 135,
@@ -598,7 +621,7 @@ function Scene:EnterPack()
 	if self.PackPedestal then
 		self:_trackTween(TweenService:Create(self.PackPedestal, TweenInfo.new(0.42), { Transparency = 0.24 }))
 	end
-	self:_cameraTo(Vector3.new(0, 4.2, -25), Vector3.new(0, 2.2, entrance.Finish.Z), 39, 0.48)
+	self:_cameraShot("PackEntrance")
 	self:PulseRunway(0.7)
 end
 
@@ -652,7 +675,13 @@ function Scene:_buildTunnel()
 	folder(animationGroups, "DoorSequence")
 	folder(animationGroups, "PodiumSequence")
 	local function make(parent: Instance, name: string, size: Vector3, cframe: CFrame, color: Color3, material: Enum.Material, transparency: number?, reflectance: number?): Part
-		local item = part(parent, name, size, cframe, color, material)
+		local isNeon = material == Enum.Material.Neon
+		local isEffect = name:find("Particle") ~= nil or name:find("Smoke") ~= nil or name:find("Pyro") ~= nil or name:find("Beam") ~= nil
+		local isFloor = parent == floorFolder or name:find("Floor") ~= nil or name:find("Walkway") ~= nil or name:find("Platform") ~= nil
+		local item = isFloor and floorPart(parent, name, size, cframe, color, material)
+			or isNeon and trimPart(parent, name, size, cframe, color, material)
+			or isEffect and trimPart(parent, name, size, cframe, color, material)
+			or structuralPart(parent, name, size, cframe, color, material)
 		item.Transparency = transparency or 0
 		item.Reflectance = reflectance or 0
 		return item
@@ -698,23 +727,23 @@ function Scene:_buildTunnel()
 	local stageBase = make(floorFolder, "RaisedCentralPlatform", Vector3.new(18, 0.45, 10), CFrame.new(0, WalkoutPresentationConfig.Scene.StageY, 13), Color3.fromRGB(18, 21, 19), Enum.Material.Metal, 0, 0.24)
 	make(floorFolder, "PlatformWhiteFrontLip", Vector3.new(16.5, 0.08, 0.12), CFrame.new(0, WalkoutPresentationConfig.SurfaceY("Stage") + 0.05, 8.1), white, Enum.Material.Neon, 0.55)
 	make(floorFolder, "PlatformLimeRearLip", Vector3.new(13, 0.08, 0.14), CFrame.new(0, WalkoutPresentationConfig.SurfaceY("Stage") + 0.06, 17.2), main, Enum.Material.Neon, 0.5)
-	addSurfaceLight(stageBase, Enum.NormalId.Top, soft, 0.45, 9)
+	addSurfaceLight(stageBase, Enum.NormalId.Top, soft, 0.25, 8)
 	for _, side in {-1, 1} do
 		local wallFolder = side < 0 and leftWall or rightWall
 		make(wallFolder, "OuterTunnelWall", Vector3.new(0.55, 30, 110), CFrame.new(side * 24, 12.6, -4), wall, Enum.Material.SmoothPlastic)
 		make(wallFolder, "LowerWallRail", Vector3.new(0.8, 1.2, 108), CFrame.new(side * 23.42, -0.6, -4), metal, Enum.Material.Metal)
-		for section = 1, 8 do
-			local z = -45 + section * 12
+		for section = 1, 6 do
+			local z = -42 + section * 14
 			make(wallFolder, "RecessedPanel" .. section, Vector3.new(0.28, 16.5, 8.6), CFrame.new(side * 23.05, 6.7, z), panel, Enum.Material.Metal, 0.04, 0.06)
 			make(wallFolder, "PanelFrameTop" .. section, Vector3.new(0.38, 0.18, 8.9), CFrame.new(side * 22.86, 15.05, z), metal, Enum.Material.Metal)
 			make(wallFolder, "PanelFrameBottom" .. section, Vector3.new(0.38, 0.18, 8.9), CFrame.new(side * 22.86, -1.45, z), metal, Enum.Material.Metal)
 			local strip = make(wallFolder, "VerticalLimeStrip" .. section, Vector3.new(0.12, 9.2, 0.2), CFrame.new(side * 22.7, 5.3, z - 2.9), main, Enum.Material.Neon, 0.5)
-			addSurfaceLight(strip, side < 0 and Enum.NormalId.Right or Enum.NormalId.Left, soft, 0.75, 10)
+			addSurfaceLight(strip, side < 0 and Enum.NormalId.Right or Enum.NormalId.Left, soft, 0.38, 8)
 			table.insert(self.Nodes, strip)
-			for dot = 1, 5 do
+			for dot = 1, 3 do
 				make(wallFolder, "Perforation" .. section .. "_" .. dot, Vector3.new(0.08, 0.08, 0.08), CFrame.new(side * 22.66, 10.2 - dot * 1.05, z + 2.9), dot % 2 == 0 and soft or metal, dot % 2 == 0 and Enum.Material.Neon or Enum.Material.Metal, dot % 2 == 0 and 0.72 or 0.12)
 			end
-			for chevron = 1, 3 do
+			for chevron = 1, 2 do
 				local y = 8.7 - chevron * 1.05
 				make(wallFolder, "VTRChevronA" .. section .. "_" .. chevron, Vector3.new(0.12, 0.85, 0.12), CFrame.new(side * 22.58, y, z + 1.4) * CFrame.Angles(0, 0, math.rad(side * 34)), main, Enum.Material.Neon, 0.38)
 				make(wallFolder, "VTRChevronB" .. section .. "_" .. chevron, Vector3.new(0.12, 0.85, 0.12), CFrame.new(side * 22.58, y, z + 1.78) * CFrame.Angles(0, 0, math.rad(side * -34)), main, Enum.Material.Neon, 0.38)
@@ -725,12 +754,12 @@ function Scene:_buildTunnel()
 	for index, z in {-42, -30, -18, -6, 6, 18, 30} do
 		make(ceiling, "CrossBeam" .. index, Vector3.new(48, 1.1, 0.85), CFrame.new(0, 26.7, z), Color3.fromRGB(16, 18, 16), Enum.Material.Metal)
 		local whiteBar = make(ceiling, "NarrowWhiteCeilingLight" .. index, Vector3.new(8, 0.12, 0.18), CFrame.new(0, 26.05, z + 1.9), white, Enum.Material.Neon, 0.58)
-		addSurfaceLight(whiteBar, Enum.NormalId.Bottom, white, 0.55, 11)
+		addSurfaceLight(whiteBar, Enum.NormalId.Bottom, white, 0.34, 9)
 		table.insert(self.OverheadNodes, whiteBar)
 	end
 	for _, side in {-1, 1} do
 		local spotMount = make(staticLights, "FrontSoftSpotMount" .. (side < 0 and "L" or "R"), Vector3.new(0.7, 0.7, 0.7), CFrame.new(side * 16.5, 25.3, -35) * CFrame.Angles(math.rad(-38), math.rad(side * 18), 0), metal, Enum.Material.Metal)
-		addSpot(spotMount, Enum.NormalId.Front, Color3.fromRGB(190, 230, 120), 1.1, 45, 34)
+		addSpot(spotMount, Enum.NormalId.Front, Color3.fromRGB(190, 230, 120), 0.75, 36, 30)
 	end
 	make(revealDoor, "BackWallGraphite", Vector3.new(48, 30, 0.9), CFrame.new(0, 12.7, 51), wall, Enum.Material.SmoothPlastic)
 	local doorCore = make(revealDoor, "RecessedDarkDoorCore", Vector3.new(20, 18, 0.18), CFrame.new(portalX, 8.1, WalkoutPresentationConfig.Scene.PortalZ + 0.14), Color3.fromRGB(4, 6, 5), Enum.Material.Glass, 0.1, 0.18)
@@ -738,7 +767,7 @@ function Scene:_buildTunnel()
 	self.PortalGlow = portalGlow
 	local portalCore = make(revealDoor, "PlayerPortalCore", Vector3.new(15.6, 13.7, 0.12), CFrame.new(portalX, 8.1, WalkoutPresentationConfig.Scene.PortalZ + 0.08), Color3.fromRGB(80, 120, 55), Enum.Material.Glass, 0.72, 0.14)
 	local portalWhite = make(revealDoor, "PortalWhiteBacklight", Vector3.new(9.5, 9.2, 0.1), CFrame.new(portalX, 8.1, WalkoutPresentationConfig.Scene.PortalZ + 0.02), white, Enum.Material.Neon, 0.9)
-	addSurfaceLight(portalWhite, Enum.NormalId.Front, white, 1.8, 18)
+	addSurfaceLight(portalWhite, Enum.NormalId.Front, white, 0.9, 14)
 	local portalTop = make(revealDoor, "DoorThinLimeTop", Vector3.new(20.5, 0.16, 0.2), CFrame.new(portalX, 17.25, WalkoutPresentationConfig.Scene.PortalZ - 0.22), main, Enum.Material.Neon, 0.28)
 	local portalBottom = make(revealDoor, "DoorThinLimeBottom", Vector3.new(20.5, 0.16, 0.2), CFrame.new(portalX, -1.05, WalkoutPresentationConfig.Scene.PortalZ - 0.22), main, Enum.Material.Neon, 0.34)
 	local portalLeft = make(revealDoor, "DoorThinLimeLeft", Vector3.new(0.16, 18.2, 0.2), CFrame.new(portalX - 10.25, 8.1, WalkoutPresentationConfig.Scene.PortalZ - 0.22), main, Enum.Material.Neon, 0.28)
@@ -800,8 +829,20 @@ function Scene:_buildTunnel()
 	end
 	for _, side in {-1, 1} do
 		local beamPart = make(beamFolder, "ControlledGreenBeam" .. (side < 0 and "L" or "R"), Vector3.new(0.22, 0.22, 0.22), CFrame.new(side * 10, 24.2, 30), main, Enum.Material.Neon, 1)
-		addSpot(beamPart, Enum.NormalId.Bottom, soft, 1.65, 38, 22)
+		addSpot(beamPart, Enum.NormalId.Bottom, soft, 0.9, 30, 20)
 		table.insert(self.OverheadNodes, beamPart)
+	end
+	if RunService:IsStudio() then
+		local budget = PackOpeningConfig.EffectBudget
+		local parts = 0
+		local lights = 0
+		for _, descendant in room:GetDescendants() do
+			if descendant:IsA("BasePart") then parts += 1 end
+			if descendant:IsA("Light") then lights += 1 end
+		end
+		if parts > (tonumber(budget.Max3DParts) or math.huge) then warn(("[PackWalkout] room part budget exceeded: %d"):format(parts)) end
+		if lights > (tonumber(budget.MaxLightBars) or math.huge) then warn(("[PackWalkout] room light budget exceeded: %d"):format(lights)) end
+		if #self.SparkNodes > (tonumber(budget.MaxSparkNodes) or math.huge) then warn(("[PackWalkout] spark budget exceeded: %d"):format(#self.SparkNodes)) end
 	end
 end
 
@@ -930,7 +971,7 @@ function Scene:_buildOverlays()
 	self.ClueFlag.Visible = false
 	self.ClueFlag.ZIndex = 126
 	self.ClueFlag.Parent = self.CluePanel
-	self.ClueMeta = text(self.CluePanel, "ClueMeta", "SERVER REVEAL DATA", UDim2.fromScale(0.08, 0.7), UDim2.fromScale(0.84, 0.2), 8, Theme.Colors.Muted, Theme.Fonts.Strong, 126)
+	self.ClueMeta = text(self.CluePanel, "ClueMeta", "REVEAL DATA", UDim2.fromScale(0.08, 0.7), UDim2.fromScale(0.84, 0.2), 8, Theme.Colors.Muted, Theme.Fonts.Strong, 126)
 	self.ClueMeta.TextXAlignment = Enum.TextXAlignment.Center
 	self.Flash = Instance.new("Frame")
 	self.Flash.BackgroundColor3 = visual.glowColor
@@ -958,22 +999,22 @@ function Scene:_buildPack()
 	pack.Parent = self.World
 	local entrance = WalkoutPresentationConfig.PackEntrance()
 	local base = CFrame.new(entrance.Start)
-	local body = part(pack, "CapsuleBody", Vector3.new(4.3, 6.2, 0.55), base, Color3.fromRGB(9, 11, 10), Enum.Material.Metal)
+	local body = structuralPart(pack, "CapsuleBody", Vector3.new(4.3, 6.2, 0.55), base, Color3.fromRGB(9, 11, 10), Enum.Material.Metal)
 	body.Reflectance = 0.18
-	local left = part(pack, "CapsuleLeftHalf", Vector3.new(2.1, 6.25, 0.62), base * CFrame.new(-1.08, 0, 0.08), Color3.fromRGB(18, 21, 19), Enum.Material.Metal)
+	local left = structuralPart(pack, "CapsuleLeftHalf", Vector3.new(2.1, 6.25, 0.62), base * CFrame.new(-1.08, 0, 0.08), Color3.fromRGB(18, 21, 19), Enum.Material.Metal)
 	left.Reflectance = 0.14
-	local right = part(pack, "CapsuleRightHalf", Vector3.new(2.1, 6.25, 0.62), base * CFrame.new(1.08, 0, 0.08), Color3.fromRGB(18, 21, 19), Enum.Material.Metal)
+	local right = structuralPart(pack, "CapsuleRightHalf", Vector3.new(2.1, 6.25, 0.62), base * CFrame.new(1.08, 0, 0.08), Color3.fromRGB(18, 21, 19), Enum.Material.Metal)
 	right.Reflectance = 0.14
-	local core = part(pack, "CapsuleCore", Vector3.new(2.1, 4.45, 0.16), base * CFrame.new(0, 0, -0.34), Color3.fromRGB(125, 205, 20), Enum.Material.Glass)
+	local core = trimPart(pack, "CapsuleCore", Vector3.new(2.1, 4.45, 0.16), base * CFrame.new(0, 0, -0.34), Color3.fromRGB(125, 205, 20), Enum.Material.Glass)
 	core.Transparency = 0.58
 	core.Reflectance = 0.22
-	local trim = part(pack, "CapsuleTrim", Vector3.new(4.8, 0.18, 0.42), base * CFrame.new(0, 1.72, -0.28), Color3.fromRGB(165, 255, 0), Enum.Material.Neon)
+	local trim = trimPart(pack, "CapsuleTrim", Vector3.new(4.8, 0.18, 0.42), base * CFrame.new(0, 1.72, -0.28), Color3.fromRGB(165, 255, 0), Enum.Material.Neon)
 	trim.Transparency = 0.35
-	local lowerTrim = part(pack, "CapsuleLowerTrim", Vector3.new(4.8, 0.16, 0.42), base * CFrame.new(0, -1.72, -0.28), Color3.fromRGB(165, 255, 0), Enum.Material.Neon)
+	local lowerTrim = trimPart(pack, "CapsuleLowerTrim", Vector3.new(4.8, 0.16, 0.42), base * CFrame.new(0, -1.72, -0.28), Color3.fromRGB(165, 255, 0), Enum.Material.Neon)
 	lowerTrim.Transparency = 0.42
-	local mark = part(pack, "V25Mark", Vector3.new(1.25, 1.25, 0.18), base * CFrame.new(0, 0.1, -0.48), WalkoutPresentationConfig.Colors.Voltra, Enum.Material.Neon)
+	local mark = trimPart(pack, "V25Mark", Vector3.new(1.25, 1.25, 0.18), base * CFrame.new(0, 0.1, -0.48), WalkoutPresentationConfig.Colors.Voltra, Enum.Material.Neon)
 	mark.Transparency = 0.24
-	local pedestal = part(self.World, "PackPedestal", Vector3.new(5.8, 0.55, 3.2), CFrame.new(0, -1.5, entrance.Finish.Z), Color3.fromRGB(16, 19, 17), Enum.Material.Metal)
+	local pedestal = structuralPart(self.World, "PackPedestal", Vector3.new(5.8, 0.55, 3.2), CFrame.new(0, -1.5, entrance.Finish.Z), Color3.fromRGB(16, 19, 17), Enum.Material.Metal)
 	pedestal.Reflectance = 0.2
 	pack.PrimaryPart = body
 	self.Pack = pack
@@ -1027,7 +1068,7 @@ function Scene:_setAvatarVisualState(state: string)
 			descendant.Anchored = descendant.Name == "HumanoidRootPart"
 			descendant.CanCollide = false
 			descendant.LocalTransparencyModifier = 0
-			descendant.CastShadow = false
+			descendant.CastShadow = descendant.Name ~= "HumanoidRootPart"
 			if descendant.Name == "HumanoidRootPart" then
 				descendant.Transparency = WalkoutPresentationConfig.Scene.HumanoidRootTransparency
 			elseif state == "Hidden" then
@@ -1042,30 +1083,37 @@ function Scene:_setAvatarVisualState(state: string)
 end
 
 function Scene:_attachAvatarLighting(model: Model)
-	local modelRoot = model:FindFirstChild("HumanoidRootPart")
-	if not modelRoot or not modelRoot:IsA("BasePart") then return end
-	local key = Instance.new("PointLight")
-	key.Name = "WalkoutAvatarKeyLight"
-	key.Color = Color3.fromRGB(255, 246, 220)
-	key.Brightness = 3.1
-	key.Range = 18
-	key.Shadows = false
-	key.Parent = modelRoot
-	local fill = Instance.new("PointLight")
-	fill.Name = "WalkoutAvatarSoftFill"
-	fill.Color = Color3.fromRGB(180, 235, 125)
-	fill.Brightness = 1.15
-	fill.Range = 12
-	fill.Shadows = false
-	fill.Parent = modelRoot
+	if self.AvatarLightRig then return end
+	local rig = Instance.new("Folder")
+	rig.Name = "WalkoutAvatarLightRig"
+	rig.Parent = self.World
+	self.AvatarLightRig = rig
+	local function spot(name: string, position: Vector3, target: Vector3, color: Color3, brightness: number, range: number, angle: number)
+		local mount = trimPart(rig, name .. "Mount", Vector3.new(0.35, 0.35, 0.35), CFrame.lookAt(position, target), color, Enum.Material.SmoothPlastic)
+		mount.Transparency = 1
+		local light = Instance.new("SpotLight")
+		light.Name = name
+		light.Face = Enum.NormalId.Front
+		light.Color = color
+		light.Brightness = brightness
+		light.Range = range
+		light.Angle = angle
+		light.Shadows = true
+		light.Parent = mount
+	end
+	local accent = paletteColor(self.Palette, "Main", WalkoutPresentationConfig.Colors.Voltra)
+	spot("WarmKeySpot", Vector3.new(-7.5, 9.2, 0.5), Vector3.new(0, 2.6, WalkoutPresentationConfig.Scene.HeroZ), Color3.fromRGB(255, 238, 200), 2.2, 26, 34)
+	spot("NeutralFillSpot", Vector3.new(8.5, 7.2, -5.5), Vector3.new(0, 2.5, WalkoutPresentationConfig.Scene.HeroZ), Color3.fromRGB(215, 225, 220), 0.75, 24, 42)
+	spot("LimeRimSpot", Vector3.new(5.4, 8.3, 19), Vector3.new(0, 2.65, WalkoutPresentationConfig.Scene.HeroZ), accent, 1.15, 28, 28)
+	spot("PortalBacklight", Vector3.new(0, 9.5, 31.4), Vector3.new(0, 2.6, 12), Color3.fromRGB(235, 245, 225), 1.35, 32, 36)
 	local highlight = Instance.new("Highlight")
 	highlight.Name = "WalkoutAvatarReadability"
 	highlight.Adornee = model
 	highlight.DepthMode = Enum.HighlightDepthMode.Occluded
 	highlight.FillColor = Color3.fromRGB(255, 244, 215)
-	highlight.FillTransparency = 0.82
+	highlight.FillTransparency = 0.9
 	highlight.OutlineColor = Color3.fromRGB(165, 255, 0)
-	highlight.OutlineTransparency = 0.78
+	highlight.OutlineTransparency = 0.86
 	highlight.Parent = model
 end
 
@@ -1109,8 +1157,7 @@ function Scene:IgniteTunnel()
 	end
 	self:PulseLightning(0.45, Vector2.new(0.28, 0.38), Vector2.new(0.72, 0.36))
 	self:DriftSmoke(0.35)
-	local key = PackOpeningConfig.CameraKeyframes.Charge
-	self:_cameraTo(key.Position, key.Target, key.FOV, 0.62)
+	self:_cameraShot("Charge")
 end
 
 function Scene:ChargePack(intensity: number)
@@ -1150,10 +1197,10 @@ function Scene:ShowClue(kind: string)
 	end
 	self.ClueValue.Visible = flagAsset == ""
 	self.ClueValue.Text = flagAsset ~= "" and "" or string.upper(value)
-	self.ClueMeta.Text = flagAsset ~= "" and "FLAG SIGNAL FOUND" or "AUTHENTICATED"
+	self.ClueMeta.Text = flagAsset ~= "" and "FLAG SIGNAL FOUND" or "SIGNAL FOUND"
 	self.CluePanel.GroupTransparency = 1
 	self:_trackTween(TweenService:Create(self.CluePanel, TweenInfo.new(0.16), { GroupTransparency = 0 }))
-	self:PulseLightning(0.35, Vector2.new(0.22, 0.48), Vector2.new(0.5, 0.48))
+	self:_burstSparks(Vector2.new(0.2, 0.56), 0.045, 0.45)
 end
 
 function Scene:Rupture()
@@ -1167,6 +1214,7 @@ function Scene:Rupture()
 	if self.PackCore then self:_trackTween(TweenService:Create(self.PackCore, TweenInfo.new(0.18), { Transparency = 1 })) end
 	if self.PackLowerTrim then self:_trackTween(TweenService:Create(self.PackLowerTrim, TweenInfo.new(0.18), { Transparency = 1 })) end
 	if self.PackMark then self:_trackTween(TweenService:Create(self.PackMark, TweenInfo.new(0.18), { Transparency = 1 })) end
+	self:_cameraShot("Rupture")
 	self.Flash.BackgroundTransparency = 1 - limit
 	self:_trackTween(TweenService:Create(self.Flash, TweenInfo.new(0.32), { BackgroundTransparency = 1 }))
 	self:BurstAroundPack(1)
@@ -1177,9 +1225,9 @@ function Scene:RevealSilhouette()
 	if not self.Avatar then return end
 	self:SetLightingPhase("Silhouette")
 	self:_setAvatarVisualState("Silhouette")
-	local key = PackOpeningConfig.CameraKeyframes.Walkout
 	local portalX = tonumber(WalkoutPresentationConfig.Scene.PortalX) or 0
-	self:_cameraTo(Vector3.new(0.5, 3.7, 13.4), Vector3.new(portalX, 2.5, WalkoutPresentationConfig.Scene.PortalZ), key.FOV + 1, 0.45)
+	local shot = WalkoutPresentationConfig.Shots.Silhouette
+	self:_cameraTo(shot.Position, Vector3.new(portalX, 2.5, WalkoutPresentationConfig.Scene.PortalZ), shot.FOV, shot.Duration)
 	self:BurstBehindPlayer(0.72)
 end
 
@@ -1194,9 +1242,10 @@ function Scene:StartWalkout(onComplete: (() -> ())?)
 	local portalX = tonumber(WalkoutPresentationConfig.Scene.PortalX) or 0
 	local from = self.AvatarStart or self:_alignedAvatarCFrame(Vector3.new(portalX, 0, WalkoutPresentationConfig.Scene.PortalZ), Vector3.new(-1, 0, 8), "Runway")
 	local to = self.AvatarEnd or self:_alignedAvatarCFrame(Vector3.new(WalkoutPresentationConfig.Scene.HeroPlayerX, 0, WalkoutPresentationConfig.Scene.HeroZ), Vector3.new(8, 1.4, -8), "Stage")
+	self:_cameraShot("WalkStart", 0.18)
 	self.Motion:Walk(from, to, tonumber(self.Selection.Profile.WalkDuration) or 1.7, tostring(self.Best.WalkStyle or self.Best.walkStyle or ""), function(alpha: number, pivot: CFrame)
 		local chest = pivot.Position + Vector3.new(0, 2.55, 0)
-		local cameraPos = chest + Vector3.new(3.8 - alpha * 1.8, 1.2, -14 + alpha * 3)
+		local cameraPos = chest + Vector3.new(3.2 - alpha * 1.4, 1.15, -13.2 + alpha * 2.4)
 		local cameraCFrame = CFrame.lookAt(cameraPos, chest)
 		local fieldOfView = 36 - alpha * 4
 		if self.CameraCFrameValue and self.CameraFOVValue then
@@ -1206,7 +1255,8 @@ function Scene:StartWalkout(onComplete: (() -> ())?)
 			self.Camera.CFrame = cameraCFrame
 			self.Camera.FieldOfView = fieldOfView
 		end
-		if alpha > 0.22 then self:PulseRunway(0.22) end
+		self:PulseRunway(0.28)
+		if self.OnWalkoutStep then self.OnWalkoutStep(alpha, pivot) end
 	end, onComplete)
 end
 
@@ -1217,43 +1267,33 @@ function Scene:OrbitPlayer(turns: number, duration: number, onComplete: (() -> (
 	end
 	self:SetLightingPhase("Celebration")
 	self:_setAvatarVisualState("Walkout")
-	local started = os.clock()
-	local totalTurns = math.max(1, tonumber(turns) or 3)
 	local totalDuration = math.max(0.8, tonumber(duration) or 3.1)
 	if self.OrbitConnection then self.OrbitConnection:Disconnect();self.OrbitConnection = nil end
-	local connection
-	connection = RunService.RenderStepped:Connect(function()
-		if not self.Avatar or not self.Avatar.Parent then
-			if connection then connection:Disconnect() end
-			if onComplete then onComplete() end
-			return
-		end
-		local alpha = math.clamp((os.clock() - started) / totalDuration, 0, 1)
-		local eased = alpha < 0.5 and 2 * alpha * alpha or 1 - ((-2 * alpha + 2) ^ 2) / 2
-		local pivot = self.Avatar:GetPivot()
-		local center = pivot.Position + Vector3.new(0, 2.35, 0)
-		local angle = math.rad(-90) + eased * math.pi * 2 * totalTurns
-		local radius = 11.8 - math.sin(eased * math.pi) * 1.3
-		local height = 1.45 + math.sin(eased * math.pi * 2) * 0.22
-		local cameraPos = center + Vector3.new(math.cos(angle) * radius, height, math.sin(angle) * radius)
-		local lookAt = center + Vector3.new(0, 0.15, 0)
-		if self.CameraCFrameValue and self.CameraFOVValue then
-			self.CameraCFrameValue.Value = CFrame.lookAt(cameraPos, lookAt)
-			self.CameraFOVValue.Value = 31.5
-		else
-			self.Camera.CFrame = CFrame.lookAt(cameraPos, lookAt)
-			self.Camera.FieldOfView = 31.5
-		end
-		if alpha >= 1 then
-			connection:Disconnect()
-			self.OrbitConnection = nil
-			local front = center + Vector3.new(0, 1.05, -12.8)
-			self:_cameraTo(front, center + Vector3.new(0, 0.1, 0), 30, 0.42)
-			if onComplete then task.delay(0.42, onComplete) end
-		end
+	if self.Selection.ReducedMotion then
+		self:_cameraShot("Hero", math.min(totalDuration, 0.9))
+		task.delay(math.min(totalDuration, 0.95), function()
+			if self.WorldSceneActive and onComplete then onComplete() end
+		end)
+		return
+	end
+	local low = WalkoutPresentationConfig.Shots.CelebrationLow
+	local side = WalkoutPresentationConfig.Shots.CelebrationSide
+	local hero = WalkoutPresentationConfig.Shots.Hero
+	local shotOne = math.max(0.55, totalDuration * 0.34)
+	local shotTwo = math.max(0.55, totalDuration * 0.38)
+	local shotThree = math.max(0.45, totalDuration - shotOne - shotTwo)
+	self:_cameraTo(low.Position, low.Target, low.FOV, shotOne)
+	task.delay(shotOne, function()
+		if not self.WorldSceneActive then return end
+		self:_cameraTo(side.Position, side.Target, side.FOV, shotTwo)
 	end)
-	self.OrbitConnection = connection
-	self:_trackConnection(connection)
+	task.delay(shotOne + shotTwo, function()
+		if not self.WorldSceneActive then return end
+		self:_cameraTo(hero.Position, hero.Target, hero.FOV, shotThree)
+	end)
+	task.delay(totalDuration, function()
+		if self.WorldSceneActive and onComplete then onComplete() end
+	end)
 end
 
 function Scene:Celebrate()
@@ -1285,15 +1325,12 @@ function Scene:_ensureHeroCard()
 	CardSurface.apply(frame, playerRarity(self.Best), playerType(self.Best), 10)
 	for _, child in frame:GetChildren() do
 		if child:IsA("GuiObject") then
-			if child.Name == "CardDepthShadow" then
-				child.BackgroundTransparency = 0.96
-				child.ZIndex = 130
-			elseif child.Name:find("CardTypeEffect") or child.Name == "CardShine" or child.Name:find("EnergySlash") or child.Name:find("StarRay") or child.Name == "GoldFloodlightBeam" then
+			if child.Name:find("CardTypeEffect") or child.Name == "CardShine" or child.Name:find("EnergySlash") or child.Name:find("StarRay") or child.Name == "GoldFloodlightBeam" then
 				child.ZIndex = 132
-				child.BackgroundTransparency = math.max(child.BackgroundTransparency, 0.84)
+				child.BackgroundTransparency = math.max(child.BackgroundTransparency, 0.78)
 			elseif child.Name == "CardPattern_Lightning" or child.Name:find("CardPattern") then
 				child.ZIndex = 131
-				child.BackgroundTransparency = math.max(child.BackgroundTransparency, 0.9)
+				child.BackgroundTransparency = math.max(child.BackgroundTransparency, 0.84)
 			end
 		end
 	end
@@ -1301,7 +1338,7 @@ function Scene:_ensureHeroCard()
 		local faceLight = Instance.new("Frame")
 		faceLight.Name = "HeroCardFaceLight"
 		faceLight.BackgroundColor3 = paletteColor(self.Palette, "Secondary", Color3.new(1, 1, 1))
-		faceLight.BackgroundTransparency = 0.42
+		faceLight.BackgroundTransparency = 0.24
 		faceLight.BorderSizePixel = 0
 		faceLight.Position = UDim2.fromScale(0.04, 0.04)
 		faceLight.Size = UDim2.fromScale(0.92, 0.92)
@@ -1315,9 +1352,9 @@ function Scene:_ensureHeroCard()
 			ColorSequenceKeypoint.new(1, paletteColor(self.Palette, "Main", WalkoutPresentationConfig.Colors.Voltra)),
 		})
 		faceGradient.Transparency = NumberSequence.new({
-			NumberSequenceKeypoint.new(0, 0.18),
-			NumberSequenceKeypoint.new(0.58, 0.36),
-			NumberSequenceKeypoint.new(1, 0.16),
+			NumberSequenceKeypoint.new(0, 0.08),
+			NumberSequenceKeypoint.new(0.58, 0.22),
+			NumberSequenceKeypoint.new(1, 0.08),
 		})
 		faceGradient.Rotation = 28
 		faceGradient.Parent = faceLight
@@ -1367,6 +1404,7 @@ function Scene:_ensureHeroCard()
 	local ok = pcall(function()
 		local portrait = AvatarPortraitGenerator.new(portraitSlot, self.Best, UDim2.fromScale(1, 1), false)
 		portrait.ZIndex = 149
+		portrait.BackgroundTransparency = 1
 	end)
 	if not ok then
 		text(portraitSlot, "PortraitFallback", "PLAYER", UDim2.fromScale(0, 0), UDim2.fromScale(1, 1), 20, Theme.Colors.White, Theme.Fonts.Display, 149).TextXAlignment = Enum.TextXAlignment.Center
@@ -1509,7 +1547,7 @@ function Scene:_restoreWorldScene()
 	if self.Motion then self.Motion:Destroy();self.Motion = nil end
 	if self.ChargeConnection then self.ChargeConnection:Disconnect();self.ChargeConnection = nil end
 	if self.World and self.World.Parent then self.World:Destroy() end
-	local camera = self.Camera
+	local camera = currentCamera()
 	local previousCamera = self.PreviousCamera
 	if camera and previousCamera then
 		camera.CameraType = previousCamera.CameraType or Enum.CameraType.Custom
@@ -1557,7 +1595,10 @@ function Scene:_restoreCharacter()
 end
 
 function Scene:Destroy()
+	if self.Destroyed then return end
+	self.Destroyed = true
 	for _, tween in self.Tweens do pcall(function() tween:Cancel() end) end
+	self.Tweens = {}
 	for _, connection in self.Connections do pcall(function() connection:Disconnect() end) end
 	self.Connections = {}
 	if self.ChargeConnection then self.ChargeConnection:Disconnect();self.ChargeConnection = nil end
